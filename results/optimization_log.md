@@ -1296,3 +1296,58 @@ is not a valid implementation.  The next retry must first build a focused
 Mq64 layout/seed/store correctness probe that verifies score/dP, sidecar row
 mapping, source-layout `Q^T/dO^T`, dV/dK accumulation, and store ownership
 before reconnecting it to the full dKV pipeline.
+
+### Mq64 Seed-Fix Reattempt
+
+Hypothesis:
+
+- The previous Mq64 correctness failure might be caused by an accumulator seed
+  bug, not by the Mq64 algorithm decomposition itself.
+- Evidence from the rejected diff matched the PMD warning: the low D-block used
+  the first-q-tile seed path, but the high D-block used
+  `dv_dk_mmac_four_out<false, 4>` even on the first q tile, so
+  `dv_acc[4..7]` and `dk_acc[4..7]` could be read before initialization.
+
+Change tested:
+
+- Reapplied the opt-in W12 Mq64 path.
+- Changed the high D-block dV/dK MMAC helper to use the same
+  `SeedAccumulator` decision as the low D-block.
+- Did not add new barriers, waits, ordinary matrix-path DS reads, or output
+  ownership changes.
+
+Evidence:
+
+- Workbook rows were added under `Mq64 seed-fix reattempt`.
+- Build and static gates passed.
+- Symbol metadata for `fa3_bwd_dkv_mmac12_mq64`:
+  `private=0`, `sgpr_count=100`, `sgpr_spill_count=0`, `vgpr_count=144`,
+  `vgpr_spill_count=0`.
+- Branch-local consumer pressure stayed `171/208`.
+- H1/S1024 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_064930`.
+- Correctness signal:
+  `pass=1`, `dk_rel_l2=0.0025563`, `dv_rel_l2=0.000337571`, `bad=0`.
+- Stats signal:
+  `simTicks=83209490`, `kernel_ticks=79595880`,
+  MMAC active avg `19.8279%`, `ldsBankConflict=0`,
+  coissue success/fail `13713/7221`.
+- Current zero-seed W12 baseline is still better:
+  `kernel_ticks=70604625`, MMAC active avg `21.7988%`.
+
+Decision:
+
+`OBSERVE_CORRECTNESS_REJECT_PERF`.  The seed bug is real and the Mq64 path is
+now a valid correctness diagnostic, but it is not a performance candidate.
+No full helper `.perf`/xcu capture was taken because both ticks and MMAC active
+regressed in stats-only evidence.
+
+Conclusion:
+
+Mq64 full-D accumulation is no longer blocked by the specific high-D
+uninitialized accumulator bug.  The performance regression points back to the
+larger structural problem: single-buffer exact-128KB Mq64 serializes producer
+and consumer progress enough that doubling the per-turn MMAC island does not
+raise active share.  The next FWD-style design should keep the correctness
+lesson but restore LDS slack or double-buffering, rather than promoting this
+exact single-buffer topology.

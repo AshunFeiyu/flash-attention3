@@ -883,3 +883,28 @@ Post-revert baseline check:
   `private=0`, `sgpr=84`, `sgpr_spill=0`, `vgpr=112`, `vgpr_spill=0`
 - H1/S1024 causal correctness PASS:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_063709`
+
+Mq64 seed-fix reattempt:
+
+- workbook updated first with `Mq64 seed-fix reattempt`
+- restored the opt-in W12 Mq64 path and fixed high D-block accumulator seeding:
+  the high dV/dK accumulator group now follows the same first-q-tile
+  `SeedAccumulator` decision as the low group
+- build/static/metadata PASS:
+  `private=0`, `sgpr=100`, `sgpr_spill=0`, `vgpr=144`, `vgpr_spill=0`,
+  branch-local consumer pressure `171/208`
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_064930`
+- numerical signal:
+  `dk_rel_l2=0.0025563`, `dv_rel_l2=0.000337571`, `bad=0`, `pass=1`
+- stats signal:
+  `simTicks=83209490`, `kernel_ticks=79595880`, MMAC active avg `19.8279%`,
+  coissue success/fail `13713/7221`, `ldsBankConflict=0`
+- comparison:
+  zero-seed W12 baseline remains better at `kernel_ticks=70604625` and
+  MMAC active avg `21.7988%`
+
+Decision: `OBSERVE_CORRECTNESS_REJECT_PERF`.  Keep the seed lesson and the
+opt-in path only as a diagnostic/future Mq64 basis; do not promote this
+single-buffer exact-128KB topology.  The next FWD-style design needs LDS slack
+or real producer/consumer overlap, not only a larger per-q-tile MMAC island.

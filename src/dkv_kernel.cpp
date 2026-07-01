@@ -61,7 +61,8 @@ inline bool valid_probe_shape(const ShaoboFa3Params* p) {
             p->dkv_path == dkv::kDkvPathWaspSoftmaxDsSidecar ||
             p->dkv_path == dkv::kDkvPathWaspFragmentSidecar ||
             p->dkv_path == dkv::kDkvPathWaspDkvMmac ||
-            p->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave) &&
+            p->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave ||
+            p->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64) &&
            p->seqlen_q % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
            p->seqlen_k == p->seqlen_q &&
            p->seqlen_k % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
@@ -108,8 +109,11 @@ inline int64_t tensor_offset(
 template <typename Tile>
 struct DkvLdsLayout {
     static constexpr int kBlockBytes = 32 * 32 * Tile::kHalfBytes;
-    static constexpr int kRawPages = 2;
-    static constexpr int kBlocksPerMqTile = Tile::kHeadDim / 32;
+    static constexpr int kRawPages = Tile::kRawBuffers;
+    static constexpr int kMBlocksPerMqTile = Tile::kBlockMq / 32;
+    static constexpr int kDBlocksPerMqTile = Tile::kHeadDim / 32;
+    static constexpr int kBlocksPerMqTile =
+        kMBlocksPerMqTile * kDBlocksPerMqTile;
     static constexpr int kBlocksPerKvTile =
         Tile::kResidentNk / 32 * Tile::kHeadDim / 32;
     static constexpr int kQBase = 0;
@@ -134,10 +138,30 @@ __device__ __forceinline__ int raw_page_block_offset(int page, int d_block) {
 }
 
 template <typename Tile>
+__device__ __forceinline__ int raw_page_block_offset_m(
+    int page,
+    int m_block,
+    int d_block) {
+    return (page * DkvLdsLayout<Tile>::kBlocksPerMqTile +
+            m_block * DkvLdsLayout<Tile>::kDBlocksPerMqTile + d_block) *
+           DkvLdsLayout<Tile>::kBlockBytes;
+}
+
+template <typename Tile>
 __device__ __forceinline__ int source_page_block_offset(
     int page,
     int d_block) {
     return (page * DkvLdsLayout<Tile>::kBlocksPerMqTile + d_block) *
+           DkvLdsLayout<Tile>::kBlockBytes;
+}
+
+template <typename Tile>
+__device__ __forceinline__ int source_page_block_offset_m(
+    int page,
+    int m_block,
+    int d_block) {
+    return (page * DkvLdsLayout<Tile>::kBlocksPerMqTile +
+            m_block * DkvLdsLayout<Tile>::kDBlocksPerMqTile + d_block) *
            DkvLdsLayout<Tile>::kBlockBytes;
 }
 
@@ -237,6 +261,66 @@ __device__ __forceinline__ void publish_mq32_source_layout_tile(
 }
 
 template <typename Tile>
+__device__ __forceinline__ void publish_mq64_tile(
+    __half* lds,
+    int lds_base,
+    const __half* src,
+    int row_stride,
+    int q_base,
+    int page,
+    int wave_local) {
+    static_assert(Tile::kBlockMq == 64,
+                  "publish_mq64_tile expects a 64-row q tile");
+#pragma unroll
+    for (int m_block = 0; m_block < 2; ++m_block) {
+        const __half* src_tile =
+            src + static_cast<int64_t>(q_base + m_block * 32) * row_stride +
+            wave_local * 32;
+        ins::Vec4U32 srsrc = ins::prepare_matrix_src(src_tile, row_stride);
+        ins::matrix_load_32x32_b16_bps_lds(
+            lds, srsrc,
+            lds_base +
+                raw_page_block_offset_m<Tile>(page, m_block, wave_local),
+            true);
+    }
+}
+
+template <typename Tile>
+__device__ __forceinline__ void publish_mq64_source_from_mq32_tiles(
+    __half* lds,
+    int lds_base,
+    const __half* src,
+    int source_tiles_mq32,
+    int bh,
+    int mq64_q_tile,
+    int page,
+    int wave_local) {
+    static_assert(Tile::kBlockMq == 64,
+                  "Mq64 source publisher expects a 64-row q tile");
+    if (src == nullptr) {
+        return;
+    }
+    constexpr int kMq32 = 32;
+    constexpr int kBlockElems = 32 * 32;
+#pragma unroll
+    for (int m_block = 0; m_block < 2; ++m_block) {
+        const int source_q_tile = mq64_q_tile * 2 + m_block;
+        const size_t tile_base =
+            (static_cast<size_t>(bh) * static_cast<size_t>(source_tiles_mq32) +
+             static_cast<size_t>(source_q_tile)) *
+            static_cast<size_t>(Tile::kHeadDim) * kMq32;
+        const __half* src_tile =
+            src + tile_base + static_cast<size_t>(wave_local) * kBlockElems;
+        ins::Vec4U32 srsrc = ins::prepare_matrix_src(src_tile, kMq32);
+        ins::matrix_load_32x32_b16_bps_lds(
+            lds, srsrc,
+            lds_base +
+                source_page_block_offset_m<Tile>(page, m_block, wave_local),
+            true);
+    }
+}
+
+template <typename Tile>
 __device__ __forceinline__ void publish_sidecar_page(
     float* sidecar_lds,
     const float* scores_max,
@@ -319,7 +403,7 @@ __device__ __forceinline__ void producer_qk_loop(
     ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
 
 #pragma clang loop unroll(disable)
-    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
+    for (int q_tile = 0; q_tile < Tile::kQTilesPerCta; ++q_tile) {
         const int page = q_tile & 1;
         if (q_tile >= 2) {
             wait_raw_used_page<Wdra>(
@@ -451,6 +535,53 @@ __device__ __forceinline__ void producer_all_loop(
             lds, Layout::kDoutTBase, dout_t_source, Tile::kBlockMq,
             tile_base, page, wave_local);
         arrive_raw_filled_page<Wdra>(page);
+    }
+}
+
+template <typename Tile, typename Wdra>
+__device__ __forceinline__ void producer_all_loop_mq64_single(
+    const __half* q_base_ptr,
+    const __half* k_base_ptr,
+    const __half* v_base_ptr,
+    const __half* dout_base_ptr,
+    const __half* q_t_source,
+    const __half* dout_t_source,
+    __half* lds,
+    int bh,
+    int k_base,
+    int row_stride,
+    int wave_local) {
+    using Layout = DkvLdsLayout<Tile>;
+    int raw0_used_phase = 0;
+    constexpr int kSourceTilesMq32 =
+        Tile::kProbeSeqLen / dkv::DkvTileD128Mq32Nk128::kBlockMq;
+
+    ins::abarrier_seq<false>(Wdra::kResidentFilled);
+    publish_nk128_tile<Tile>(
+        lds, Layout::kKBase, k_base_ptr, row_stride, k_base, wave_local);
+    publish_nk128_tile<Tile>(
+        lds, Layout::kVBase, v_base_ptr, row_stride, k_base, wave_local);
+    ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
+
+#pragma clang loop unroll(disable)
+    for (int q_tile = 0; q_tile < Tile::kQTilesPerCta; ++q_tile) {
+        if (q_tile >= 1) {
+            ins::abarrier_try_wait<true>(Wdra::kRaw0Used, raw0_used_phase);
+        }
+        ins::abarrier_seq<false>(Wdra::kRaw0Filled);
+        publish_mq64_tile<Tile>(
+            lds, Layout::kQBase, q_base_ptr, row_stride,
+            q_tile * Tile::kBlockMq, 0, wave_local);
+        publish_mq64_tile<Tile>(
+            lds, Layout::kDoutBase, dout_base_ptr, row_stride,
+            q_tile * Tile::kBlockMq, 0, wave_local);
+        publish_mq64_source_from_mq32_tiles<Tile>(
+            lds, Layout::kQtBase, q_t_source, kSourceTilesMq32, bh, q_tile,
+            0, wave_local);
+        publish_mq64_source_from_mq32_tiles<Tile>(
+            lds, Layout::kDoutTBase, dout_t_source, kSourceTilesMq32, bh,
+            q_tile, 0, wave_local);
+        ins::abarrier_arrive_cnt<false>(Wdra::kRaw0Filled, 1);
     }
 }
 
@@ -799,6 +930,292 @@ __device__ __forceinline__ void softmax_ds_owner16_from_global_sidecar(
     }
 }
 
+template <typename Tile>
+__device__ __forceinline__ void score_dp_mmac_owner16_mq64(
+    __half* lds,
+    int owner_nblock,
+    ins::F32x4 (&score)[4],
+    ins::F32x4 (&dp)[4]) {
+    using Layout = DkvLdsLayout<Tile>;
+    static_assert(Tile::kBlockMq == 64,
+                  "score_dp_mmac_owner16_mq64 expects Mq64");
+
+    ins::F16x8 zero;
+    ins::zero_f16x8(zero);
+
+    const int row_block32 = owner_nblock >> 1;
+    const int n_half = owner_nblock & 1;
+    ins::raise_priority_2();
+#pragma unroll
+    for (int d_block = 0; d_block < 4; ++d_block) {
+        ins::F16x8 k0;
+        ins::F16x8 k1;
+        ins::F16x8 v0;
+        ins::F16x8 v1;
+        const int k_off =
+            Layout::kKBase + kv_block_offset<Tile>(row_block32, d_block);
+        const int v_off =
+            Layout::kVBase + kv_block_offset<Tile>(row_block32, d_block);
+        ins::ds_read_matrix_trans_pair(lds, k_off, k0.f16x8, k1.f16x8);
+        ins::ds_read_matrix_trans_pair(lds, v_off, v0.f16x8, v1.f16x8);
+        ins::wait_lgkm(0);
+
+        const ins::F16x8& k_reg = n_half == 0 ? k0 : k1;
+        const ins::F16x8& v_reg = n_half == 0 ? v0 : v1;
+#pragma unroll
+        for (int m_block = 0; m_block < 2; ++m_block) {
+            ins::F16x8 q0;
+            ins::F16x8 q1;
+            ins::F16x8 dout0;
+            ins::F16x8 dout1;
+            const int q_off =
+                Layout::kQBase + raw_page_block_offset_m<Tile>(
+                                     0, m_block, d_block);
+            const int dout_off =
+                Layout::kDoutBase + raw_page_block_offset_m<Tile>(
+                                        0, m_block, d_block);
+            ins::ds_read_matrix_trans_pair(lds, q_off, q0.f16x8, q1.f16x8);
+            ins::ds_read_matrix_trans_pair(
+                lds, dout_off, dout0.f16x8, dout1.f16x8);
+            ins::wait_lgkm(0);
+
+#pragma unroll
+            for (int m_idx = 0; m_idx < 2; ++m_idx) {
+                const int frag = m_block * 2 + m_idx;
+                const ins::Vec4F16 q_frag[2] = {
+                    m_idx == 0 ? q0.f16x4[0] : q1.f16x4[0],
+                    m_idx == 0 ? q0.f16x4[1] : q1.f16x4[1],
+                };
+                const ins::Vec4F16 dout_frag[2] = {
+                    m_idx == 0 ? dout0.f16x4[0] : dout1.f16x4[0],
+                    m_idx == 0 ? dout0.f16x4[1] : dout1.f16x4[1],
+                };
+#pragma unroll
+                for (int k_half = 0; k_half < 2; ++k_half) {
+                    const bool first = d_block == 0 && k_half == 0;
+                    score[frag].f32 = ins::mmac_f16_lit(
+                        k_reg.f16x4[k_half], q_frag[k_half],
+                        first ? zero.f32 : score[frag].f32);
+                    dp[frag].f32 = ins::mmac_f16_lit(
+                        v_reg.f16x4[k_half], dout_frag[k_half],
+                        first ? zero.f32 : dp[frag].f32);
+                }
+            }
+        }
+    }
+    ins::lower_priority();
+}
+
+template <typename Tile, int MBlock>
+__device__ __forceinline__ void score_dp_mmac_owner16_mq64_half(
+    __half* lds,
+    int owner_nblock,
+    ins::F32x4 (&score)[2],
+    ins::F32x4 (&dp)[2]) {
+    using Layout = DkvLdsLayout<Tile>;
+    static_assert(Tile::kBlockMq == 64,
+                  "score_dp_mmac_owner16_mq64_half expects Mq64");
+    static_assert(MBlock == 0 || MBlock == 1,
+                  "Mq64 half must select one 32-row half");
+
+    ins::F16x8 zero;
+    ins::zero_f16x8(zero);
+
+    const int row_block32 = owner_nblock >> 1;
+    const int n_half = owner_nblock & 1;
+    ins::raise_priority_2();
+#pragma unroll
+    for (int d_block = 0; d_block < 4; ++d_block) {
+        ins::F16x8 q0;
+        ins::F16x8 q1;
+        ins::F16x8 k0;
+        ins::F16x8 k1;
+        ins::F16x8 dout0;
+        ins::F16x8 dout1;
+        ins::F16x8 v0;
+        ins::F16x8 v1;
+        const int q_off =
+            Layout::kQBase + raw_page_block_offset_m<Tile>(
+                                 0, MBlock, d_block);
+        const int dout_off =
+            Layout::kDoutBase + raw_page_block_offset_m<Tile>(
+                                    0, MBlock, d_block);
+        const int k_off =
+            Layout::kKBase + kv_block_offset<Tile>(row_block32, d_block);
+        const int v_off =
+            Layout::kVBase + kv_block_offset<Tile>(row_block32, d_block);
+
+        ins::ds_read_matrix_trans_pair(lds, q_off, q0.f16x8, q1.f16x8);
+        ins::ds_read_matrix_trans_pair(lds, k_off, k0.f16x8, k1.f16x8);
+        ins::ds_read_matrix_trans_pair(
+            lds, dout_off, dout0.f16x8, dout1.f16x8);
+        ins::ds_read_matrix_trans_pair(lds, v_off, v0.f16x8, v1.f16x8);
+        ins::wait_lgkm(0);
+
+        const ins::F16x8& k_reg = n_half == 0 ? k0 : k1;
+        const ins::F16x8& v_reg = n_half == 0 ? v0 : v1;
+#pragma unroll
+        for (int m_idx = 0; m_idx < 2; ++m_idx) {
+            const ins::Vec4F16 q_frag[2] = {
+                m_idx == 0 ? q0.f16x4[0] : q1.f16x4[0],
+                m_idx == 0 ? q0.f16x4[1] : q1.f16x4[1],
+            };
+            const ins::Vec4F16 dout_frag[2] = {
+                m_idx == 0 ? dout0.f16x4[0] : dout1.f16x4[0],
+                m_idx == 0 ? dout0.f16x4[1] : dout1.f16x4[1],
+            };
+#pragma unroll
+            for (int k_half = 0; k_half < 2; ++k_half) {
+                const bool first = d_block == 0 && k_half == 0;
+                score[m_idx].f32 = ins::mmac_f16_lit(
+                    k_reg.f16x4[k_half], q_frag[k_half],
+                    first ? zero.f32 : score[m_idx].f32);
+                dp[m_idx].f32 = ins::mmac_f16_lit(
+                    v_reg.f16x4[k_half], dout_frag[k_half],
+                    first ? zero.f32 : dp[m_idx].f32);
+            }
+        }
+    }
+    ins::lower_priority();
+}
+
+template <typename Tile>
+__device__ __forceinline__ void softmax_ds_owner16_from_global_sidecar_mq64(
+    const ins::F32x4 (&score)[4],
+    const ins::F32x4 (&dp)[4],
+    const float* packed_sidecar,
+    int64_t row_base,
+    int q_tile,
+    int k_base,
+    int owner_nblock,
+    int lane,
+    int seqlen,
+    int causal,
+    float softmax_scale,
+    ins::Vec4F16 (&p_frag)[4],
+    ins::Vec4F16 (&ds_frag)[4]) {
+    static_assert(Tile::kBlockMq == 64,
+                  "softmax_ds_owner16_from_global_sidecar_mq64 expects Mq64");
+    const int lane_n = lane & 15;
+    const int lane_col_group = lane >> 4;
+    const int q_base = q_tile * Tile::kBlockMq;
+    const int krow = k_base + owner_nblock * 16 + lane_n;
+    const float* sidecar_tile =
+        packed_sidecar +
+        (row_base + q_base) * Tile::kPackedSidecarFields;
+    const bool full_valid_tile =
+        q_base + Tile::kBlockMq <= seqlen &&
+        k_base + owner_nblock * 16 + 15 < seqlen &&
+        (!causal || (k_base + owner_nblock * 16 + 15 <= q_base));
+
+#pragma unroll
+    for (int m_idx = 0; m_idx < 4; ++m_idx) {
+        const int local_m_base = m_idx * 16 + lane_col_group * 4;
+        ins::Vec4F16 p_vec{};
+        ins::Vec4F16 ds_vec{};
+#pragma unroll
+        for (int vec_id = 0; vec_id < 4; ++vec_id) {
+            const int local_m = local_m_base + vec_id;
+            const int qrow = q_base + local_m;
+            const bool valid_pair =
+                full_valid_tile ||
+                (krow < seqlen && qrow < seqlen &&
+                 (!causal || krow <= qrow));
+            float p_val = 0.0f;
+            float ds_val = 0.0f;
+            if (valid_pair) {
+                const int sidecar_base =
+                    local_m * Tile::kPackedSidecarFields;
+                const float row_max_log2 = sidecar_tile[sidecar_base + 0];
+                const float row_inv_sum = sidecar_tile[sidecar_base + 1];
+                const float row_delta = sidecar_tile[sidecar_base + 2];
+                p_val =
+                    exp2f(score[m_idx].scalar[vec_id] *
+                              softmax_scale * kLog2E -
+                          row_max_log2) *
+                    row_inv_sum;
+                ds_val =
+                    p_val * (dp[m_idx].scalar[vec_id] - row_delta) *
+                    softmax_scale;
+            }
+            p_vec[vec_id] = static_cast<_Float16>(p_val);
+            ds_vec[vec_id] = static_cast<_Float16>(ds_val);
+        }
+        p_frag[m_idx] = p_vec;
+        ds_frag[m_idx] = ds_vec;
+    }
+}
+
+template <typename Tile, int MBlock>
+__device__ __forceinline__ void softmax_ds_owner16_from_global_sidecar_mq64_half(
+    const ins::F32x4 (&score)[2],
+    const ins::F32x4 (&dp)[2],
+    const float* packed_sidecar,
+    int64_t row_base,
+    int q_tile,
+    int k_base,
+    int owner_nblock,
+    int lane,
+    int seqlen,
+    int causal,
+    float softmax_scale,
+    ins::Vec4F16 (&p_frag)[2],
+    ins::Vec4F16 (&ds_frag)[2]) {
+    static_assert(Tile::kBlockMq == 64,
+                  "softmax_ds_owner16_from_global_sidecar_mq64_half expects Mq64");
+    static_assert(MBlock == 0 || MBlock == 1,
+                  "Mq64 half must select one 32-row half");
+    const int lane_n = lane & 15;
+    const int lane_col_group = lane >> 4;
+    const int q_base = q_tile * Tile::kBlockMq;
+    const int krow = k_base + owner_nblock * 16 + lane_n;
+    const float* sidecar_tile =
+        packed_sidecar +
+        (row_base + q_base) * Tile::kPackedSidecarFields;
+    const bool full_valid_tile =
+        q_base + Tile::kBlockMq <= seqlen &&
+        k_base + owner_nblock * 16 + 15 < seqlen &&
+        (!causal || (k_base + owner_nblock * 16 + 15 <= q_base));
+
+#pragma unroll
+    for (int m_idx = 0; m_idx < 2; ++m_idx) {
+        const int local_m_base =
+            MBlock * 32 + m_idx * 16 + lane_col_group * 4;
+        ins::Vec4F16 p_vec{};
+        ins::Vec4F16 ds_vec{};
+#pragma unroll
+        for (int vec_id = 0; vec_id < 4; ++vec_id) {
+            const int local_m = local_m_base + vec_id;
+            const int qrow = q_base + local_m;
+            const bool valid_pair =
+                full_valid_tile ||
+                (krow < seqlen && qrow < seqlen &&
+                 (!causal || krow <= qrow));
+            float p_val = 0.0f;
+            float ds_val = 0.0f;
+            if (valid_pair) {
+                const int sidecar_base =
+                    local_m * Tile::kPackedSidecarFields;
+                const float row_max_log2 = sidecar_tile[sidecar_base + 0];
+                const float row_inv_sum = sidecar_tile[sidecar_base + 1];
+                const float row_delta = sidecar_tile[sidecar_base + 2];
+                p_val =
+                    exp2f(score[m_idx].scalar[vec_id] *
+                              softmax_scale * kLog2E -
+                          row_max_log2) *
+                    row_inv_sum;
+                ds_val =
+                    p_val * (dp[m_idx].scalar[vec_id] - row_delta) *
+                    softmax_scale;
+            }
+            p_vec[vec_id] = static_cast<_Float16>(p_val);
+            ds_vec[vec_id] = static_cast<_Float16>(ds_val);
+        }
+        p_frag[m_idx] = p_vec;
+        ds_frag[m_idx] = ds_vec;
+    }
+}
+
 template <bool FirstQTile, int OutIdx>
 __device__ __forceinline__ void dv_dk_mmac_one_out(
     const ins::Vec4F16 (&p_frag)[2],
@@ -885,6 +1302,176 @@ __device__ __forceinline__ void dv_dk_mmac_four_out(
         p_frag, ds_frag, src.dout_t2, src.q_t2, dv_acc, dk_acc, zero_f16);
     dv_dk_mmac_one_out<FirstQTile, OutBase + 3>(
         p_frag, ds_frag, src.dout_t3, src.q_t3, dv_acc, dk_acc, zero_f16);
+}
+
+template <typename Tile, int DBlockBase>
+__device__ __forceinline__ void dv_dk_read_owner16_sources4_mq64(
+    __half* lds,
+    int m_block,
+    DvDkSourceRegs4& src) {
+    using Layout = DkvLdsLayout<Tile>;
+    static_assert(Tile::kBlockMq == 64,
+                  "Mq64 source read expects a 64-row q tile");
+    static_assert(DBlockBase == 0 || DBlockBase == 2,
+                  "dV/dK source group must cover two D blocks");
+
+    const int dout_t_off0 =
+        Layout::kDoutTBase +
+        source_page_block_offset_m<Tile>(0, m_block, DBlockBase);
+    const int q_t_off0 =
+        Layout::kQtBase +
+        source_page_block_offset_m<Tile>(0, m_block, DBlockBase);
+    const int dout_t_off1 =
+        Layout::kDoutTBase +
+        source_page_block_offset_m<Tile>(0, m_block, DBlockBase + 1);
+    const int q_t_off1 =
+        Layout::kQtBase +
+        source_page_block_offset_m<Tile>(0, m_block, DBlockBase + 1);
+
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off0, src.dout_t0.f16x8, src.dout_t1.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off0, src.q_t0.f16x8, src.q_t1.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off1, src.dout_t2.f16x8, src.dout_t3.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off1, src.q_t2.f16x8, src.q_t3.f16x8);
+}
+
+template <bool SeedAccumulator, int OutIdx, int MFragBase>
+__device__ __forceinline__ void dv_dk_mmac_one_out_mq64_part(
+    const ins::Vec4F16 (&p_frag)[4],
+    const ins::Vec4F16 (&ds_frag)[4],
+    const ins::F16x8& dout_t,
+    const ins::F16x8& q_t,
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8],
+    const ins::F16x8& zero_f16) {
+#pragma unroll
+    for (int m_half = 0; m_half < 2; ++m_half) {
+        if constexpr (SeedAccumulator) {
+            dv_acc[OutIdx].f32 = ins::mmac_f16_lit(
+                p_frag[MFragBase + m_half], dout_t.f16x4[m_half],
+                m_half == 0 ? zero_f16.f32 : dv_acc[OutIdx].f32);
+            dk_acc[OutIdx].f32 = ins::mmac_f16_lit(
+                ds_frag[MFragBase + m_half], q_t.f16x4[m_half],
+                m_half == 0 ? zero_f16.f32 : dk_acc[OutIdx].f32);
+        } else {
+            dv_acc[OutIdx].f32 = ins::mmac_f16_lit(
+                p_frag[MFragBase + m_half], dout_t.f16x4[m_half],
+                dv_acc[OutIdx].f32);
+            dk_acc[OutIdx].f32 = ins::mmac_f16_lit(
+                ds_frag[MFragBase + m_half], q_t.f16x4[m_half],
+                dk_acc[OutIdx].f32);
+        }
+    }
+}
+
+template <bool SeedAccumulator, int OutBase, int MFragBase>
+__device__ __forceinline__ void dv_dk_mmac_four_out_mq64_part(
+    const ins::Vec4F16 (&p_frag)[4],
+    const ins::Vec4F16 (&ds_frag)[4],
+    const DvDkSourceRegs4& src,
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8],
+    const ins::F16x8& zero_f16) {
+    dv_dk_mmac_one_out_mq64_part<SeedAccumulator, OutBase + 0, MFragBase>(
+        p_frag, ds_frag, src.dout_t0, src.q_t0, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out_mq64_part<SeedAccumulator, OutBase + 1, MFragBase>(
+        p_frag, ds_frag, src.dout_t1, src.q_t1, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out_mq64_part<SeedAccumulator, OutBase + 2, MFragBase>(
+        p_frag, ds_frag, src.dout_t2, src.q_t2, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out_mq64_part<SeedAccumulator, OutBase + 3, MFragBase>(
+        p_frag, ds_frag, src.dout_t3, src.q_t3, dv_acc, dk_acc, zero_f16);
+}
+
+template <typename Tile, bool FirstQTile>
+__device__ __forceinline__ void dv_dk_mmac_owner16_read4x2_mq64(
+    __half* lds,
+    const ins::Vec4F16 (&p_frag)[4],
+    const ins::Vec4F16 (&ds_frag)[4],
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8]) {
+    ins::F16x8 zero_f16;
+    if constexpr (FirstQTile) {
+        ins::zero_f16x8(zero_f16);
+    }
+
+#pragma unroll
+    for (int m_block = 0; m_block < 2; ++m_block) {
+        DvDkSourceRegs4 low_src;
+        dv_dk_read_owner16_sources4_mq64<Tile, 0>(lds, m_block, low_src);
+        ins::wait_lgkm(0);
+        DvDkSourceRegs4 high_src;
+        dv_dk_read_owner16_sources4_mq64<Tile, 2>(lds, m_block, high_src);
+
+        ins::raise_priority_2();
+        if constexpr (FirstQTile) {
+            if (m_block == 0) {
+                dv_dk_mmac_four_out_mq64_part<true, 0, 0>(
+                    p_frag, ds_frag, low_src, dv_acc, dk_acc, zero_f16);
+            } else {
+                dv_dk_mmac_four_out_mq64_part<false, 0, 2>(
+                    p_frag, ds_frag, low_src, dv_acc, dk_acc, zero_f16);
+            }
+        } else {
+            if (m_block == 0) {
+                dv_dk_mmac_four_out_mq64_part<false, 0, 0>(
+                    p_frag, ds_frag, low_src, dv_acc, dk_acc, zero_f16);
+            } else {
+                dv_dk_mmac_four_out_mq64_part<false, 0, 2>(
+                    p_frag, ds_frag, low_src, dv_acc, dk_acc, zero_f16);
+            }
+        }
+        ins::wait_lgkm(0);
+        if constexpr (FirstQTile) {
+            if (m_block == 0) {
+                dv_dk_mmac_four_out_mq64_part<true, 4, 0>(
+                    p_frag, ds_frag, high_src, dv_acc, dk_acc, zero_f16);
+            } else {
+                dv_dk_mmac_four_out_mq64_part<false, 4, 2>(
+                    p_frag, ds_frag, high_src, dv_acc, dk_acc, zero_f16);
+            }
+        } else {
+            if (m_block == 0) {
+                dv_dk_mmac_four_out_mq64_part<false, 4, 0>(
+                    p_frag, ds_frag, high_src, dv_acc, dk_acc, zero_f16);
+            } else {
+                dv_dk_mmac_four_out_mq64_part<false, 4, 2>(
+                    p_frag, ds_frag, high_src, dv_acc, dk_acc, zero_f16);
+            }
+        }
+        ins::lower_priority();
+    }
+}
+
+template <typename Tile, bool SeedAccumulator, int MBlock>
+__device__ __forceinline__ void dv_dk_mmac_owner16_read4x2_mq64_half(
+    __half* lds,
+    const ins::Vec4F16 (&p_frag)[2],
+    const ins::Vec4F16 (&ds_frag)[2],
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8]) {
+    static_assert(MBlock == 0 || MBlock == 1,
+                  "Mq64 half must select one 32-row half");
+    ins::F16x8 zero_f16;
+    if constexpr (SeedAccumulator) {
+        ins::zero_f16x8(zero_f16);
+    }
+
+    DvDkSourceRegs4 low_src;
+    dv_dk_read_owner16_sources4_mq64<Tile, 0>(lds, MBlock, low_src);
+    ins::wait_lgkm(0);
+    DvDkSourceRegs4 high_src;
+    dv_dk_read_owner16_sources4_mq64<Tile, 2>(lds, MBlock, high_src);
+
+    ins::raise_priority_2();
+    dv_dk_mmac_four_out<SeedAccumulator, 0>(
+        p_frag, ds_frag, low_src, dv_acc, dk_acc, zero_f16);
+    ins::wait_lgkm(0);
+    dv_dk_mmac_four_out<SeedAccumulator, 4>(
+        p_frag, ds_frag, high_src, dv_acc, dk_acc, zero_f16);
+    ins::lower_priority();
 }
 
 template <typename Tile, bool FirstQTile>
@@ -1234,6 +1821,82 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
                 lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
         }
         arrive_raw_used_page<Wdra>(page);
+    }
+
+    store_dkv_owner16<Tile>(
+        dk, dv, dk_acc, dv_acc, lane, k_base, owner_nblock, seqlen,
+        tensor_base);
+}
+
+template <typename Tile, typename Wdra, int ConsumerGroup>
+__device__ __forceinline__ void consumer_dkv_mmac_loop_mq64_single(
+    __half* lds,
+    const float* packed_sidecar,
+    float* dk,
+    float* dv,
+    int64_t tensor_base,
+    int64_t row_base,
+    int seqlen,
+    int k_base,
+    int causal,
+    float softmax_scale,
+    int wave_local,
+    int lane) {
+    int resident_phase = 0;
+    int raw0_filled_phase = 0;
+    static_assert(ConsumerGroup == 0 || ConsumerGroup == 1,
+                  "dKV consumer group must be 0 or 1");
+    static_assert(Tile::kBlockMq == 64,
+                  "consumer_dkv_mmac_loop_mq64_single expects Mq64");
+    const int owner_nblock = ConsumerGroup * 4 + wave_local;
+
+    ins::F32x4 dv_acc[8];
+    ins::F32x4 dk_acc[8];
+
+    ins::abarrier_try_wait<true>(Wdra::kResidentFilled, resident_phase);
+
+#pragma clang loop unroll(disable)
+    for (int q_tile = 0; q_tile < Tile::kQTilesPerCta; ++q_tile) {
+        ins::abarrier_try_wait<true>(Wdra::kRaw0Filled, raw0_filled_phase);
+
+        {
+            ins::F32x4 score[2];
+            ins::F32x4 dp[2];
+            score_dp_mmac_owner16_mq64_half<Tile, 0>(
+                lds, owner_nblock, score, dp);
+
+            ins::Vec4F16 p_frag[2];
+            ins::Vec4F16 ds_frag[2];
+            softmax_ds_owner16_from_global_sidecar_mq64_half<Tile, 0>(
+                score, dp, packed_sidecar, row_base, q_tile, k_base,
+                owner_nblock, lane, seqlen, causal, softmax_scale, p_frag,
+                ds_frag);
+
+            if (q_tile == 0) {
+                dv_dk_mmac_owner16_read4x2_mq64_half<Tile, true, 0>(
+                    lds, p_frag, ds_frag, dv_acc, dk_acc);
+            } else {
+                dv_dk_mmac_owner16_read4x2_mq64_half<Tile, false, 0>(
+                    lds, p_frag, ds_frag, dv_acc, dk_acc);
+            }
+        }
+        {
+            ins::F32x4 score[2];
+            ins::F32x4 dp[2];
+            score_dp_mmac_owner16_mq64_half<Tile, 1>(
+                lds, owner_nblock, score, dp);
+
+            ins::Vec4F16 p_frag[2];
+            ins::Vec4F16 ds_frag[2];
+            softmax_ds_owner16_from_global_sidecar_mq64_half<Tile, 1>(
+                score, dp, packed_sidecar, row_base, q_tile, k_base,
+                owner_nblock, lane, seqlen, causal, softmax_scale, p_frag,
+                ds_frag);
+
+            dv_dk_mmac_owner16_read4x2_mq64_half<Tile, false, 1>(
+                lds, p_frag, ds_frag, dv_acc, dk_acc);
+        }
+        ins::abarrier_arrive_cnt<false>(Wdra::kRaw0Used, 1);
     }
 
     store_dkv_owner16<Tile>(
@@ -1602,6 +2265,115 @@ fa3_bwd_dkv_mmac12_kernel(const __half* __restrict__ dout,
 #endif
 }
 
+__global__ void __launch_bounds__(dkv::DkvTileD128Mq64Nk128W12::kThreadsPerCta, 1)
+    __attribute__((hcu_wdra_waves_per_tg(12)))
+fa3_bwd_dkv_mmac12_mq64_kernel(const __half* __restrict__ dout,
+                               const __half* __restrict__ q,
+                               const __half* __restrict__ k,
+                               const __half* __restrict__ v,
+                               const __half* __restrict__ q_t_source,
+                               const __half* __restrict__ dout_t_source,
+                               const float* __restrict__ packed_sidecar,
+                               float* __restrict__ dk,
+                               float* __restrict__ dv,
+                               int heads,
+                               int seqlen,
+                               int dim,
+                               int causal,
+                               float softmax_scale) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    using Tile = dkv::DkvTileD128Mq64Nk128W12;
+    using Bar = dkv::DkvBarrierLedger;
+    using Vgpr = dkv::WdraResourceWindows;
+    using Layout = DkvLdsLayout<Tile>;
+    static_assert(Layout::kBytes == Tile::kLdsBudgetBytes,
+                  "Mq64 single-buffer LDS plan should fill 128KB");
+
+    __shared__ __half lds[Layout::kBytes / sizeof(__half)];
+
+    const uint32_t wave_id = __builtin_hcu_get_wave_id();
+    const int wave_local = static_cast<int>(wave_id & 3u);
+
+    if (wave_id == 0) {
+        __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Filled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kAllDone, 12);
+    }
+    __builtin_hcu_s_ebarrier_sync(0);
+
+    constexpr int kSeqLen = Tile::kProbeSeqLen;
+    constexpr int kCausal = 1;
+
+    if (wave_id < 4) {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducer12Vgprs);
+        const int h = blockIdx.y;
+        const int b = blockIdx.z;
+        const int bh = b * heads + h;
+        const int k_base = blockIdx.x * Tile::kResidentNk;
+        const int64_t tensor_base =
+            (static_cast<int64_t>(b) * heads + h) * kSeqLen * dim;
+        producer_all_loop_mq64_single<Tile, Bar>(
+            q + tensor_base, k + tensor_base, v + tensor_base,
+            dout + tensor_base, q_t_source, dout_t_source, lds, bh,
+            k_base, dim, wave_local);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    } else if (wave_id < 8) {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerMq64Vgprs);
+        const int h = blockIdx.y;
+        const int b = blockIdx.z;
+        const int k_base = blockIdx.x * Tile::kResidentNk;
+        const int lane = static_cast<int>(threadIdx.x % 64);
+        const int64_t tensor_base =
+            (static_cast<int64_t>(b) * heads + h) * kSeqLen * dim;
+        const int64_t row_base =
+            (static_cast<int64_t>(b) * heads + h) * kSeqLen;
+        consumer_dkv_mmac_loop_mq64_single<Tile, Bar, 0>(
+            lds, packed_sidecar, dk, dv, tensor_base, row_base,
+            kSeqLen, k_base, kCausal, softmax_scale, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    } else {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerMq64Vgprs);
+        const int h = blockIdx.y;
+        const int b = blockIdx.z;
+        const int k_base = blockIdx.x * Tile::kResidentNk;
+        const int lane = static_cast<int>(threadIdx.x % 64);
+        const int64_t tensor_base =
+            (static_cast<int64_t>(b) * heads + h) * kSeqLen * dim;
+        const int64_t row_base =
+            (static_cast<int64_t>(b) * heads + h) * kSeqLen;
+        consumer_dkv_mmac_loop_mq64_single<Tile, Bar, 1>(
+            lds, packed_sidecar, dk, dv, tensor_base, row_base,
+            kSeqLen, k_base, kCausal, softmax_scale, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    }
+
+    int done_phase = 0;
+    ins::abarrier_try_wait<false>(Bar::kAllDone, done_phase);
+    __syncthreads();
+    __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
+    __syncthreads();
+#else
+    (void)dout;
+    (void)q;
+    (void)k;
+    (void)v;
+    (void)q_t_source;
+    (void)dout_t_source;
+    (void)packed_sidecar;
+    (void)dk;
+    (void)dv;
+    (void)heads;
+    (void)seqlen;
+    (void)dim;
+    (void)causal;
+    (void)softmax_scale;
+#endif
+}
+
 __global__ void fa3_bwd_dkv_ref_softmax_kernel(
     const __half* __restrict__ q,
     const __half* __restrict__ k,
@@ -1915,7 +2687,8 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
     if ((params->dkv_path == dkv::kDkvPathWaspDkvMmac ||
-         params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave) &&
+         params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave ||
+         params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64) &&
         (dk == nullptr || dv == nullptr ||
          params->reserved_ptr[1] == nullptr ||
          params->reserved_ptr[2] == nullptr ||
@@ -1930,11 +2703,23 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
         ceil_div(params->seqlen_k, dkv::DkvTileD128Mq32Nk128::kResidentNk);
     dim3 grid(grid_x, params->num_heads_q, params->batch);
     dim3 block(
-        params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave
+        (params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave ||
+         params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64)
             ? dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta
             : dkv::DkvTileD128Mq32Nk128::kThreadsPerCta);
 
-    if (params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave) {
+    if (params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64) {
+        hipLaunchKernelGGL(
+            fa3_bwd_dkv_mmac12_mq64_kernel, grid, block, 0, 0,
+            static_cast<const __half*>(dout), static_cast<const __half*>(q),
+            static_cast<const __half*>(k), static_cast<const __half*>(v),
+            static_cast<const __half*>(params->reserved_ptr[1]),
+            static_cast<const __half*>(params->reserved_ptr[2]),
+            static_cast<const float*>(params->reserved_ptr[3]),
+            static_cast<float*>(dk), static_cast<float*>(dv),
+            params->num_heads_q, params->seqlen_k, params->head_dim_qk,
+            params->causal, params->softmax_scale);
+    } else if (params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave) {
         hipLaunchKernelGGL(
             fa3_bwd_dkv_mmac12_kernel, grid, block, 0, 0,
             static_cast<const __half*>(dout), static_cast<const __half*>(q),
@@ -2399,7 +3184,11 @@ int main(int argc, char** argv) {
     const int mmac12_check = arg_int(
         argc, argv, "--dkv-mmac12-check",
         env_int("CHECK_WASP_DKV_MMAC12", 0));
-    const int full_mmac_check = mmac_check || mmac12_check;
+    const int mmac12_mq64_check = arg_int(
+        argc, argv, "--dkv-mmac12-mq64-check",
+        env_int("CHECK_WASP_DKV_MMAC12_MQ64", 0));
+    const int full_mmac_check =
+        mmac_check || mmac12_check || mmac12_mq64_check;
     const int batch = arg_int(argc, argv, "--B", env_int("B", kDefaultBatch));
     const int heads = arg_int(argc, argv, "--H", env_int("H", kDefaultHeads));
     const int default_seq =
@@ -2426,18 +3215,22 @@ int main(int argc, char** argv) {
     params.softmax_aux_mode = SHAOBO_FA3_SOFTMAX_AUX_SMAX_SSUM;
     params.dkv_path =
         check ? dkv::kDkvPathReferenceCorrectness
-              : (mmac12_check
-                     ? dkv::kDkvPathWaspDkvMmac12Wave
-                     : (mmac_check
-                            ? dkv::kDkvPathWaspDkvMmac
-                            : (fragment_check
-                                   ? dkv::kDkvPathWaspFragmentSidecar
-                                   : (probe_check
-                                          ? dkv::kDkvPathWaspSoftmaxDsSidecar
-                                          : dkv::kDkvPathWaspProbe))));
+              : (mmac12_mq64_check
+                     ? dkv::kDkvPathWaspDkvMmac12WaveMq64
+                     : (mmac12_check
+                            ? dkv::kDkvPathWaspDkvMmac12Wave
+                            : (mmac_check
+                                   ? dkv::kDkvPathWaspDkvMmac
+                                   : (fragment_check
+                                          ? dkv::kDkvPathWaspFragmentSidecar
+                                          : (probe_check
+                                                 ? dkv::
+                                                       kDkvPathWaspSoftmaxDsSidecar
+                                                 : dkv::kDkvPathWaspProbe)))));
     params.block_threads =
-        mmac12_check ? dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta
-                     : dkv::DkvTileD128Mq32Nk128::kThreadsPerCta;
+        (mmac12_check || mmac12_mq64_check)
+            ? dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta
+            : dkv::DkvTileD128Mq32Nk128::kThreadsPerCta;
     params.sync_after_launch = 1;
 
     const size_t tensor_elems =
@@ -2662,9 +3455,11 @@ int main(int argc, char** argv) {
             "workspace_bytes=%zu dk_max_abs=%g dk_mean_abs=%g dk_rmse=%g "
             "dk_rel_l2=%g dv_max_abs=%g dv_mean_abs=%g dv_rmse=%g "
             "dv_rel_l2=%g bad=%d pass=%d\n",
-            full_mmac_check ? (mmac12_check
-                                   ? "fa3_bwd_dkv_mmac12_correctness"
-                                   : "fa3_bwd_dkv_mmac_correctness")
+            full_mmac_check ? (mmac12_mq64_check
+                                   ? "fa3_bwd_dkv_mmac12_mq64_correctness"
+                                   : (mmac12_check
+                                          ? "fa3_bwd_dkv_mmac12_correctness"
+                                          : "fa3_bwd_dkv_mmac_correctness"))
                             : "fa3_bwd_dkv_correctness",
             shaobo_fa3_status_string(status), batch, heads, seqlen, dim,
             params.causal, workspace_bytes, dk_metrics.max_abs, dk_metrics.mean_abs,

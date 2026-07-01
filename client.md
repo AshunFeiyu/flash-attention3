@@ -466,3 +466,24 @@ Post-revert baseline check:
 - W12 metadata PASS with `private=0`, `sgpr=84`, `vgpr=112`, no spill
 - H1/S1024 causal correctness PASS:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_063709`
+
+Mq64 seed-fix diagnostic:
+
+- workbook-first row: `Mq64 seed-fix reattempt`
+- fixed the specific high D-block accumulator bug from the rejected Mq64 diff:
+  `dv_acc[4..7]`/`dk_acc[4..7]` now seed on the first q tile instead of using
+  an unconditional accumulate path
+- H1/S1024 causal correctness now PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_064930`
+- resource gate clean:
+  `private=0`, `sgpr=100`, `vgpr=144`, no spill, consumer branch `171/208`
+- performance is not promoted:
+  `kernel_ticks=79595880`, MMAC active avg `19.8279%`, worse than the
+  zero-seed W12 baseline `70604625` and `21.7988%`
+- decision: `OBSERVE_CORRECTNESS_REJECT_PERF`; keep only as an opt-in
+  diagnostic/future Mq64 basis
+
+Rule: a larger MMAC island by itself is not enough.  The exact-128KB
+single-buffer Mq64 topology fixes redundant q-loop control but appears to lose
+too much producer/consumer overlap.  The next FWD-style design should preserve
+the high-D seed lesson while recovering LDS slack or double-buffered overlap.

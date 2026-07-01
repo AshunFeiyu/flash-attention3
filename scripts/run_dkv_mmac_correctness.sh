@@ -10,10 +10,18 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
 fi
 
 python3 scripts/check_dkv_kernel_gate.py
+export WAVES="${WAVES:-16}"
+export MQ64="${MQ64:-0}"
+if [[ "${WAVES}" == "12" && "${MQ64}" == "1" ]]; then
+  metadata_regex="fa3_bwd_dkv_mmac12_mq64"
+elif [[ "${WAVES}" == "12" ]]; then
+  metadata_regex="fa3_bwd_dkv_mmac12_kernel"
+else
+  metadata_regex="fa3_bwd_dkv_mmac_kernel"
+fi
 python3 scripts/check_symbol_metadata_gate.py \
   --asm build/fa3_bwd_wasp_clean.asm \
-  --symbol-regex fa3_bwd_dkv_probe \
-  --symbol-regex fa3_bwd_dkv_mmac
+  --symbol-regex "${metadata_regex}"
 
 case_id="dkv_mmac_correctness_$(date +%Y%m%d_%H%M%S)"
 case_dir="${SHAOBO_RUN_ROOT}/${case_id}"
@@ -30,8 +38,11 @@ export H="\${H:-1}"
 export S="\${S:-128}"
 export D="\${D:-128}"
 export CAUSAL="\${CAUSAL:-1}"
-export WAVES="\${WAVES:-16}"
-if [[ "\${WAVES}" == "12" ]]; then
+export WAVES="\${WAVES:-${WAVES}}"
+export MQ64="\${MQ64:-${MQ64}}"
+if [[ "\${WAVES}" == "12" && "\${MQ64}" == "1" ]]; then
+  ./build/fa3_bwd_wasp_clean --dkv-mmac12-mq64-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
+elif [[ "\${WAVES}" == "12" ]]; then
   ./build/fa3_bwd_wasp_clean --dkv-mmac12-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
 else
   ./build/fa3_bwd_wasp_clean --dkv-mmac-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
@@ -53,7 +64,7 @@ if grep -Eiq 'panic|Program aborted|core dumped|Aborted' "${stdout_log}"; then
   exit 1
 fi
 
-if ! grep -Eq 'fa3_bwd_dkv_mmac(12)?_correctness status=success' "${stdout_log}"; then
+if ! grep -Eq 'fa3_bwd_dkv_mmac(12(_mq64)?)?_correctness status=success' "${stdout_log}"; then
   echo "PMD dKV MMAC correctness did not report successful status" >&2
   exit 1
 fi
