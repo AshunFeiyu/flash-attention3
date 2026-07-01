@@ -110,7 +110,18 @@ Current FA3 BWD clean design workbook:
 
 ## Current Next Step
 
-Current state is stream q-loop probe `OBSERVE_PIPELINE`:
+Current state has two paths:
+
+Reference correctness path `PASS`:
+
+- enabled by `params.dkv_path = kDkvPathReferenceCorrectness` or standalone
+  `--check=1`
+- computes `P`, `delta`, `dP`, then writes float `dK/dV`
+- compares against host CPU golden in standalone
+- latest PMD S128 evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_correctness_20260702_003625`
+
+WASP stream q-loop probe `OBSERVE_PIPELINE`:
 
 - producer0 publishes resident K once, then streams double-buffered Q raw pages
 - producer1 publishes resident V once, then streams double-buffered dO raw pages
@@ -124,7 +135,7 @@ Latest evidence archive:
 /Volumes/172.20.68.76/共享/shaobo/perf/20260701_235316_clean_stream_qloop_probe
 ```
 
-Next step: keep this q-loop shape and make the consumer read/MMAC island more
-FWD-like.  Batch same-family `ds_read_matrix` reads, delay `s_waitcnt` until the
-true first use, and reduce immediate/control work between `lds_matrix` and
-`mmop`; then add softmax+dS before adding dV/dK accumulation and stores.
+Next step: use the reference path as the correctness oracle while moving the
+math into the WASP path in this order: softmax/dS sidecar, dV MMAC accumulation,
+dK MMAC accumulation, store epilogue.  Keep batching same-family
+`ds_read_matrix` reads and delaying `s_waitcnt` until true first use.

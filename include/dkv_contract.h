@@ -4,6 +4,9 @@
 
 namespace shaobo::fa3::bwd::dkv {
 
+inline constexpr int kDkvPathWaspProbe = 0;
+inline constexpr int kDkvPathReferenceCorrectness = 1;
+
 struct DkvTileD128Mq32Nk128 {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = 32;

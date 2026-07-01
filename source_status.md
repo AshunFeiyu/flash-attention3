@@ -179,3 +179,47 @@ gap is not "missing MMAC"; it is control/barrier overhead around page ownership
 and a fragmented `ds_read_matrix -> first MMAC` path.  The next code cut should
 keep this q-loop but batch operand reads into longer FWD-style MMAC islands, then
 add softmax/dS and dV/dK only after the read-to-use gap is measurable.
+
+## 2026-07-02 dK/dV Reference Correctness
+
+Status: `REFERENCE_CORRECTNESS_PASS`
+
+A correctness-first dKV reference path now exists beside the WASP probe:
+
+```text
+P = softmax(QK * scale)
+delta = sum(dO * (P @ V))
+dP = dO @ V^T
+dV = P^T @ dO
+dK = (P * (dP - delta) * scale)^T @ Q
+```
+
+Scope:
+
+- standalone flag: `--check=1`
+- API path: `params.dkv_path = kDkvPathReferenceCorrectness`
+- output dtype for this bring-up path: float `dK/dV`
+- layout: BHSD, fp16 inputs, `B=1,H=1,S=128,D=128` smoke verified
+- purpose: correctness oracle and output-ownership lock, not performance
+
+Evidence:
+
+- Remote build PASS with asm.
+- Static gate PASS.
+- Probe symbol metadata still PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=38`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_correctness_20260702_003625`
+- Numeric result:
+  `dk_max_abs=1.16415e-10`, `dk_rel_l2=3.53805e-07`,
+  `dv_max_abs=3.72529e-09`, `dv_rel_l2=1.7753e-08`, `bad=0`, `pass=1`.
+- WASP probe regression also PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260702_003118`
+
+Boundary:
+
+This does not mean the optimized WASP path computes/stores dK/dV yet.  It means
+the repo now has a verified dK/dV formula path and a reusable golden harness.
+The next step is to migrate `softmax/dS`, then dV MMAC, then dK MMAC and stores
+into the WASP path while comparing against this reference.

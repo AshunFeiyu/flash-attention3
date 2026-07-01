@@ -33,6 +33,14 @@ def main() -> int:
 
     require(source, r"fa3_bwd_dkv_probe_kernel",
             failures, "missing_probe_kernel")
+    require(source, r"fa3_bwd_dkv_ref_softmax_kernel",
+            failures, "missing_ref_softmax_kernel")
+    require(source, r"fa3_bwd_dkv_ref_output_kernel",
+            failures, "missing_ref_output_kernel")
+    require(source, r"cpu_reference_dkv", failures,
+            "missing_cpu_reference_dkv")
+    require(source, r"fa3_bwd_dkv_correctness", failures,
+            "missing_correctness_status_line")
     require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_wdra_attribute")
     require(source, r"producer_qk_loop", failures, "missing_producer_qk_loop")
@@ -71,6 +79,8 @@ def main() -> int:
     require(source, r"raise_priority_2", failures, "missing_s_setprio_helper")
     require(contract, r"struct\s+DkvBarrierLedger", failures,
             "missing_barrier_ledger")
+    require(contract, r"kDkvPathReferenceCorrectness\s*=\s*1", failures,
+            "missing_reference_path_contract")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,
             "missing_active_share_target")
     require(contract, r"kForbidDuplicateScoreDp\s*=\s*true", failures,

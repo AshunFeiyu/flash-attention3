@@ -208,3 +208,55 @@ first MMAC.  The next implementation should keep this stream q-loop shape and
 make the consumer read/MMAC island more FWD-like: batch operand reads, delay
 `s_waitcnt` until true first use, and minimize immediate/control instructions
 between `lds_matrix` and `mmop`.
+
+## 2026-07-02 Add dK/dV Reference Correctness
+
+Decision: `REFERENCE_CORRECTNESS_PASS`
+
+Hypothesis:
+
+`Before moving full dK/dV into the WASP/MMAC path, the clean repo needs a
+verified formula path and a reusable golden check.  That separates algorithm and
+output-ownership mistakes from later pipeline scheduling mistakes.`
+
+Implemented:
+
+- Added `kDkvPathReferenceCorrectness = 1`.
+- Added reference kernels for:
+  - row softmax probability `P`
+  - `delta = sum(dO * O)` with `O = P @ V`
+  - `dP = dO @ V^T`
+  - float `dK/dV` output
+- Added standalone `--check=1` mode with deterministic nonzero fp16 inputs.
+- Added CPU golden implementation and metrics:
+  `max_abs`, `mean_abs`, `rmse`, `rel_l2`, NaN/Inf count.
+- Added `scripts/run_dkv_correctness.sh`.
+- Updated the source gate so correctness support is protected from accidental
+  deletion.
+
+Verified:
+
+- Remote build PASS with asm.
+- Static gate PASS.
+- Probe symbol metadata still PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=38`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_correctness_20260702_003625`
+- Shape:
+  `B=1,H=1,S=128,D=128,causal=true,fp16,GPU_CHIP=sb,GPU_ARGS=['--SQCIPfLines=7']`
+- Result:
+  `fa3_bwd_dkv_correctness status=success ... dk_max_abs=1.16415e-10
+  dk_rel_l2=3.53805e-07 dv_max_abs=3.72529e-09 dv_rel_l2=1.7753e-08 bad=0
+  pass=1`.
+- WASP probe regression:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260702_003118`
+  reported `fa3_bwd_dkv_probe status=success`.
+
+Conclusion:
+
+The clean repo now has verified dK/dV correctness, but only in the reference
+path.  The optimized WASP path remains a score+dP probe.  Next, migrate the
+reference math into the WASP path in narrow cuts: softmax/dS sidecar first,
+then dV MMAC accumulation, then dK MMAC accumulation and store epilogue, using
+the reference path as the correctness oracle after each cut.
