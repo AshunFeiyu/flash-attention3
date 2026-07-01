@@ -134,9 +134,13 @@ Current promotion baseline:
   - Mq64 seed-fix: `kernel_ticks=79595880`, active `19.8279%`.
   - raw-page sidecar overlay: `kernel_ticks=73113950`, active `18.9185%`.
   - score/dP read2x brick: `kernel_ticks=70801640`, active `21.5465%`.
+  - Mq64 semantic-page conveyor: same-build `kernel_ticks=73320065`,
+    active `21.7509%`, versus W12 baseline `kernel_ticks=70974995`.
 - The next FWD-style redesign must raise MMAC active share by reducing
   ABarrier/control and exposed matrix-read/sidecar latency.  More coissue
   count is not enough unless active share and same-shape ticks move with it.
+  The semantic-page negative result specifically says not to add another
+  raw/source ABarrier generation unless it replaces an existing one.
 
 Current state has two paths:
 

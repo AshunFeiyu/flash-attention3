@@ -66,7 +66,9 @@ inline bool valid_probe_shape(const ShaoboFa3Params* p) {
             p->dkv_path ==
                 dkv::kDkvPathWaspDkvMmac12WaveSidecarOverlay ||
             p->dkv_path ==
-                dkv::kDkvPathWaspDkvMmac12WaveScoreDpBrick) &&
+                dkv::kDkvPathWaspDkvMmac12WaveScoreDpBrick ||
+            p->dkv_path ==
+                dkv::kDkvPathWaspDkvMmac12WaveMq64Semantic) &&
            p->seqlen_q % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
            p->seqlen_k == p->seqlen_q &&
            p->seqlen_k % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
@@ -136,6 +138,32 @@ struct DkvLdsLayout {
 };
 
 template <typename Tile>
+struct DkvSemanticMq64LdsLayout {
+    static constexpr int kBlockBytes = 32 * 32 * Tile::kHalfBytes;
+    static constexpr int kMBlocksPerMqTile = Tile::kBlockMq / 32;
+    static constexpr int kDBlocksPerMqTile = Tile::kHeadDim / 32;
+    static constexpr int kBlocksPerMqTile =
+        kMBlocksPerMqTile * kDBlocksPerMqTile;
+    static constexpr int kBlocksPerKvTile =
+        Tile::kResidentNk / 32 * Tile::kHeadDim / 32;
+    static constexpr int kKBase = 0;
+    static constexpr int kVBase = kKBase + kBlocksPerKvTile * kBlockBytes;
+    static constexpr int kPage0Base = kVBase + kBlocksPerKvTile * kBlockBytes;
+    static constexpr int kPageMatrixBytes =
+        kBlocksPerMqTile * kBlockBytes;
+    static constexpr int kPageBytes = 2 * kPageMatrixBytes;
+    static constexpr int kBytes =
+        kPage0Base + Tile::kSemanticPages * kPageBytes;
+
+    static_assert(Tile::kBlockMq == 64,
+                  "semantic-page layout is only defined for Mq64");
+    static_assert(kPageMatrixBytes == Tile::kSemanticMatrixBytes,
+                  "semantic matrix byte budget mismatch");
+    static_assert(kBytes == Tile::kSemanticLdsBytes,
+                  "semantic-page LDS budget mismatch");
+};
+
+template <typename Tile>
 __device__ __forceinline__ int raw_page_block_offset(int page, int d_block) {
     return (page * DkvLdsLayout<Tile>::kBlocksPerMqTile + d_block) *
            DkvLdsLayout<Tile>::kBlockBytes;
@@ -173,6 +201,29 @@ template <typename Tile>
 __device__ __forceinline__ int kv_block_offset(int row_block, int d_block) {
     return (row_block * 4 + d_block) *
            DkvLdsLayout<Tile>::kBlockBytes;
+}
+
+template <typename Tile>
+__device__ __forceinline__ int semantic_kv_block_offset(
+    int row_block,
+    int d_block) {
+    return (row_block * DkvSemanticMq64LdsLayout<Tile>::kDBlocksPerMqTile +
+            d_block) *
+           DkvSemanticMq64LdsLayout<Tile>::kBlockBytes;
+}
+
+template <typename Tile>
+__device__ __forceinline__ int semantic_page_block_offset_m(
+    int page,
+    int matrix,
+    int m_block,
+    int d_block) {
+    return DkvSemanticMq64LdsLayout<Tile>::kPage0Base +
+           page * DkvSemanticMq64LdsLayout<Tile>::kPageBytes +
+           matrix * DkvSemanticMq64LdsLayout<Tile>::kPageMatrixBytes +
+           (m_block * DkvSemanticMq64LdsLayout<Tile>::kDBlocksPerMqTile +
+            d_block) *
+               DkvSemanticMq64LdsLayout<Tile>::kBlockBytes;
 }
 
 template <typename Tile>
@@ -332,6 +383,66 @@ __device__ __forceinline__ void publish_mq64_source_from_mq32_tiles(
             lds, srsrc,
             lds_base +
                 source_page_block_offset_m<Tile>(page, m_block, wave_local),
+            true);
+    }
+}
+
+template <typename Tile>
+__device__ __forceinline__ void publish_mq64_semantic_matrix(
+    __half* lds,
+    int page,
+    int matrix,
+    const __half* src,
+    int row_stride,
+    int q_base,
+    int wave_local) {
+    static_assert(Tile::kBlockMq == 64,
+                  "semantic matrix publisher expects a 64-row q tile");
+#pragma unroll
+    for (int m_block = 0; m_block < 2; ++m_block) {
+        const __half* src_tile =
+            src + static_cast<int64_t>(q_base + m_block * 32) * row_stride +
+            wave_local * 32;
+        ins::Vec4U32 srsrc = ins::prepare_matrix_src(src_tile, row_stride);
+        ins::matrix_load_32x32_b16_bps_lds(
+            lds, srsrc,
+            semantic_page_block_offset_m<Tile>(
+                page, matrix, m_block, wave_local),
+            true);
+    }
+}
+
+template <typename Tile>
+__device__ __forceinline__ void publish_mq64_semantic_source_from_mq32_tiles(
+    __half* lds,
+    int page,
+    int matrix,
+    const __half* src,
+    int source_tiles_mq32,
+    int bh,
+    int mq64_q_tile,
+    int wave_local) {
+    static_assert(Tile::kBlockMq == 64,
+                  "semantic source publisher expects a 64-row q tile");
+    if (src == nullptr) {
+        return;
+    }
+    constexpr int kMq32 = 32;
+    constexpr int kBlockElems = 32 * 32;
+#pragma unroll
+    for (int m_block = 0; m_block < 2; ++m_block) {
+        const int source_q_tile = mq64_q_tile * 2 + m_block;
+        const size_t tile_base =
+            (static_cast<size_t>(bh) * static_cast<size_t>(source_tiles_mq32) +
+             static_cast<size_t>(source_q_tile)) *
+            static_cast<size_t>(Tile::kHeadDim) * kMq32;
+        const __half* src_tile =
+            src + tile_base + static_cast<size_t>(wave_local) * kBlockElems;
+        ins::Vec4U32 srsrc = ins::prepare_matrix_src(src_tile, kMq32);
+        ins::matrix_load_32x32_b16_bps_lds(
+            lds, srsrc,
+            semantic_page_block_offset_m<Tile>(
+                page, matrix, m_block, wave_local),
             true);
     }
 }
@@ -691,6 +802,83 @@ __device__ __forceinline__ void producer_all_loop_mq64_single(
             lds, Layout::kDoutTBase, dout_t_source, kSourceTilesMq32, bh,
             q_tile, 0, wave_local);
         ins::abarrier_arrive_cnt<false>(Wdra::kRaw0Filled, 1);
+    }
+}
+
+template <typename Tile, typename Wdra>
+__device__ __forceinline__ void producer_all_loop_mq64_semantic(
+    const __half* q_base_ptr,
+    const __half* k_base_ptr,
+    const __half* v_base_ptr,
+    const __half* dout_base_ptr,
+    const __half* q_t_source,
+    const __half* dout_t_source,
+    __half* lds,
+    int bh,
+    int k_base,
+    int seqlen,
+    int row_stride,
+    int wave_local) {
+    using Layout = DkvSemanticMq64LdsLayout<Tile>;
+    int raw0_used_phase = 0;
+    int raw1_used_phase = 0;
+    const int q_tiles = seqlen / Tile::kBlockMq;
+    const int source_tiles_mq32 =
+        seqlen / dkv::DkvTileD128Mq32Nk128::kBlockMq;
+
+    ins::abarrier_seq<false>(Wdra::kResidentFilled);
+    publish_nk128_tile<Tile>(
+        lds, Layout::kKBase, k_base_ptr, row_stride, k_base, wave_local);
+    publish_nk128_tile<Tile>(
+        lds, Layout::kVBase, v_base_ptr, row_stride, k_base, wave_local);
+    ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
+
+#pragma clang loop unroll(disable)
+    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
+        const int page = q_tile & 1;
+        if (q_tile >= 2) {
+            wait_raw_used_page<Wdra>(
+                page, raw0_used_phase, raw1_used_phase);
+        }
+
+        seq_raw_filled_page<Wdra>(page);
+        publish_mq64_semantic_matrix<Tile>(
+            lds, page, 0, q_base_ptr, row_stride, q_tile * Tile::kBlockMq,
+            wave_local);
+        publish_mq64_semantic_matrix<Tile>(
+            lds, page, 1, dout_base_ptr, row_stride,
+            q_tile * Tile::kBlockMq, wave_local);
+        arrive_raw_filled_page<Wdra>(page);
+
+        if (q_tile >= 1) {
+            const int prev_tile = q_tile - 1;
+            const int prev_page = prev_tile & 1;
+            wait_raw_used_page<Wdra>(
+                prev_page, raw0_used_phase, raw1_used_phase);
+            seq_raw_filled_page<Wdra>(prev_page);
+            publish_mq64_semantic_source_from_mq32_tiles<Tile>(
+                lds, prev_page, 0, q_t_source, source_tiles_mq32, bh,
+                prev_tile, wave_local);
+            publish_mq64_semantic_source_from_mq32_tiles<Tile>(
+                lds, prev_page, 1, dout_t_source, source_tiles_mq32, bh,
+                prev_tile, wave_local);
+            arrive_raw_filled_page<Wdra>(prev_page);
+        }
+    }
+
+    if (q_tiles > 0) {
+        const int last_tile = q_tiles - 1;
+        const int last_page = last_tile & 1;
+        wait_raw_used_page<Wdra>(
+            last_page, raw0_used_phase, raw1_used_phase);
+        seq_raw_filled_page<Wdra>(last_page);
+        publish_mq64_semantic_source_from_mq32_tiles<Tile>(
+            lds, last_page, 0, q_t_source, source_tiles_mq32, bh,
+            last_tile, wave_local);
+        publish_mq64_semantic_source_from_mq32_tiles<Tile>(
+            lds, last_page, 1, dout_t_source, source_tiles_mq32, bh,
+            last_tile, wave_local);
+        arrive_raw_filled_page<Wdra>(last_page);
     }
 }
 
@@ -1278,6 +1466,80 @@ __device__ __forceinline__ void score_dp_mmac_owner16_mq64_half(
     ins::lower_priority();
 }
 
+template <typename Tile, int MBlock>
+__device__ __forceinline__ void score_dp_mmac_owner16_mq64_semantic_half(
+    __half* lds,
+    int page,
+    int owner_nblock,
+    ins::F32x4 (&score)[2],
+    ins::F32x4 (&dp)[2]) {
+    using Layout = DkvSemanticMq64LdsLayout<Tile>;
+    static_assert(Tile::kBlockMq == 64,
+                  "semantic score/dP helper expects Mq64");
+    static_assert(MBlock == 0 || MBlock == 1,
+                  "Mq64 half must select one 32-row half");
+
+    ins::F16x8 zero;
+    ins::zero_f16x8(zero);
+
+    const int row_block32 = owner_nblock >> 1;
+    const int n_half = owner_nblock & 1;
+    ins::raise_priority_2();
+#pragma unroll
+    for (int d_block = 0; d_block < 4; ++d_block) {
+        ins::F16x8 q0;
+        ins::F16x8 q1;
+        ins::F16x8 k0;
+        ins::F16x8 k1;
+        ins::F16x8 dout0;
+        ins::F16x8 dout1;
+        ins::F16x8 v0;
+        ins::F16x8 v1;
+        const int q_off =
+            semantic_page_block_offset_m<Tile>(page, 0, MBlock, d_block);
+        const int dout_off =
+            semantic_page_block_offset_m<Tile>(page, 1, MBlock, d_block);
+        const int k_off =
+            Layout::kKBase +
+            semantic_kv_block_offset<Tile>(row_block32, d_block);
+        const int v_off =
+            Layout::kVBase +
+            semantic_kv_block_offset<Tile>(row_block32, d_block);
+
+        ins::ds_read_matrix_trans_pair(lds, q_off, q0.f16x8, q1.f16x8);
+        ins::ds_read_matrix_trans_pair(lds, k_off, k0.f16x8, k1.f16x8);
+        ins::ds_read_matrix_trans_pair(
+            lds, dout_off, dout0.f16x8, dout1.f16x8);
+        ins::ds_read_matrix_trans_pair(lds, v_off, v0.f16x8, v1.f16x8);
+        ins::wait_lgkm(0);
+
+        const ins::F16x8& k_reg = n_half == 0 ? k0 : k1;
+        const ins::F16x8& v_reg = n_half == 0 ? v0 : v1;
+#pragma unroll
+        for (int m_idx = 0; m_idx < 2; ++m_idx) {
+            const ins::Vec4F16 q_frag[2] = {
+                m_idx == 0 ? q0.f16x4[0] : q1.f16x4[0],
+                m_idx == 0 ? q0.f16x4[1] : q1.f16x4[1],
+            };
+            const ins::Vec4F16 dout_frag[2] = {
+                m_idx == 0 ? dout0.f16x4[0] : dout1.f16x4[0],
+                m_idx == 0 ? dout0.f16x4[1] : dout1.f16x4[1],
+            };
+#pragma unroll
+            for (int k_half = 0; k_half < 2; ++k_half) {
+                const bool first = d_block == 0 && k_half == 0;
+                score[m_idx].f32 = ins::mmac_f16_lit(
+                    k_reg.f16x4[k_half], q_frag[k_half],
+                    first ? zero.f32 : score[m_idx].f32);
+                dp[m_idx].f32 = ins::mmac_f16_lit(
+                    v_reg.f16x4[k_half], dout_frag[k_half],
+                    first ? zero.f32 : dp[m_idx].f32);
+            }
+        }
+    }
+    ins::lower_priority();
+}
+
 template <typename Tile>
 __device__ __forceinline__ void softmax_ds_owner16_from_global_sidecar_mq64(
     const ins::F32x4 (&score)[4],
@@ -1537,6 +1799,36 @@ __device__ __forceinline__ void dv_dk_read_owner16_sources4_mq64(
         lds, q_t_off1, src.q_t2.f16x8, src.q_t3.f16x8);
 }
 
+template <typename Tile, int DBlockBase>
+__device__ __forceinline__ void dv_dk_read_owner16_sources4_mq64_semantic(
+    __half* lds,
+    int page,
+    int m_block,
+    DvDkSourceRegs4& src) {
+    static_assert(Tile::kBlockMq == 64,
+                  "semantic source read expects a 64-row q tile");
+    static_assert(DBlockBase == 0 || DBlockBase == 2,
+                  "dV/dK source group must cover two D blocks");
+
+    const int dout_t_off0 =
+        semantic_page_block_offset_m<Tile>(page, 1, m_block, DBlockBase);
+    const int q_t_off0 =
+        semantic_page_block_offset_m<Tile>(page, 0, m_block, DBlockBase);
+    const int dout_t_off1 =
+        semantic_page_block_offset_m<Tile>(page, 1, m_block, DBlockBase + 1);
+    const int q_t_off1 =
+        semantic_page_block_offset_m<Tile>(page, 0, m_block, DBlockBase + 1);
+
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off0, src.dout_t0.f16x8, src.dout_t1.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off0, src.q_t0.f16x8, src.q_t1.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off1, src.dout_t2.f16x8, src.dout_t3.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off1, src.q_t2.f16x8, src.q_t3.f16x8);
+}
+
 template <bool SeedAccumulator, int OutIdx, int MFragBase>
 __device__ __forceinline__ void dv_dk_mmac_one_out_mq64_part(
     const ins::Vec4F16 (&p_frag)[4],
@@ -1663,6 +1955,38 @@ __device__ __forceinline__ void dv_dk_mmac_owner16_read4x2_mq64_half(
     ins::wait_lgkm(0);
     DvDkSourceRegs4 high_src;
     dv_dk_read_owner16_sources4_mq64<Tile, 2>(lds, MBlock, high_src);
+
+    ins::raise_priority_2();
+    dv_dk_mmac_four_out<SeedAccumulator, 0>(
+        p_frag, ds_frag, low_src, dv_acc, dk_acc, zero_f16);
+    ins::wait_lgkm(0);
+    dv_dk_mmac_four_out<SeedAccumulator, 4>(
+        p_frag, ds_frag, high_src, dv_acc, dk_acc, zero_f16);
+    ins::lower_priority();
+}
+
+template <typename Tile, bool SeedAccumulator, int MBlock>
+__device__ __forceinline__ void dv_dk_mmac_owner16_read4x2_mq64_semantic_half(
+    __half* lds,
+    int page,
+    const ins::Vec4F16 (&p_frag)[2],
+    const ins::Vec4F16 (&ds_frag)[2],
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8]) {
+    static_assert(MBlock == 0 || MBlock == 1,
+                  "Mq64 half must select one 32-row half");
+    ins::F16x8 zero_f16;
+    if constexpr (SeedAccumulator) {
+        ins::zero_f16x8(zero_f16);
+    }
+
+    DvDkSourceRegs4 low_src;
+    dv_dk_read_owner16_sources4_mq64_semantic<Tile, 0>(
+        lds, page, MBlock, low_src);
+    ins::wait_lgkm(0);
+    DvDkSourceRegs4 high_src;
+    dv_dk_read_owner16_sources4_mq64_semantic<Tile, 2>(
+        lds, page, MBlock, high_src);
 
     ins::raise_priority_2();
     dv_dk_mmac_four_out<SeedAccumulator, 0>(
@@ -2222,6 +2546,81 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop_mq64_single(
                 lds, p_frag, ds_frag, dv_acc, dk_acc);
         }
         ins::abarrier_arrive_cnt<false>(Wdra::kRaw0Used, 1);
+    }
+
+    store_dkv_owner16<Tile>(
+        dk, dv, dk_acc, dv_acc, lane, k_base, owner_nblock, seqlen,
+        tensor_base);
+}
+
+template <typename Tile, typename Wdra, int ConsumerGroup>
+__device__ __forceinline__ void consumer_dkv_mmac_loop_mq64_semantic(
+    __half* lds,
+    const float* packed_sidecar,
+    float* dk,
+    float* dv,
+    int64_t tensor_base,
+    int64_t row_base,
+    int seqlen,
+    int k_base,
+    int causal,
+    float softmax_scale,
+    int wave_local,
+    int lane) {
+    int resident_phase = 0;
+    int raw0_filled_phase = 0;
+    int raw1_filled_phase = 0;
+    static_assert(ConsumerGroup == 0 || ConsumerGroup == 1,
+                  "dKV consumer group must be 0 or 1");
+    static_assert(Tile::kBlockMq == 64,
+                  "semantic consumer expects Mq64");
+    const int owner_nblock = ConsumerGroup * 4 + wave_local;
+    const int q_tiles = seqlen / Tile::kBlockMq;
+
+    ins::F32x4 dv_acc[8];
+    ins::F32x4 dk_acc[8];
+
+    ins::abarrier_try_wait<true>(Wdra::kResidentFilled, resident_phase);
+
+#pragma clang loop unroll(disable)
+    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
+        const int page = q_tile & 1;
+        wait_raw_filled_page<Wdra>(
+            page, raw0_filled_phase, raw1_filled_phase);
+
+        ins::F32x4 score0[2];
+        ins::F32x4 dp0[2];
+        ins::F32x4 score1[2];
+        ins::F32x4 dp1[2];
+        score_dp_mmac_owner16_mq64_semantic_half<Tile, 0>(
+            lds, page, owner_nblock, score0, dp0);
+        score_dp_mmac_owner16_mq64_semantic_half<Tile, 1>(
+            lds, page, owner_nblock, score1, dp1);
+        arrive_raw_used_page<Wdra>(page);
+
+        ins::Vec4F16 p0[2];
+        ins::Vec4F16 ds0[2];
+        ins::Vec4F16 p1[2];
+        ins::Vec4F16 ds1[2];
+        softmax_ds_owner16_from_global_sidecar_mq64_half<Tile, 0>(
+            score0, dp0, packed_sidecar, row_base, q_tile, k_base,
+            owner_nblock, lane, seqlen, causal, softmax_scale, p0, ds0);
+        softmax_ds_owner16_from_global_sidecar_mq64_half<Tile, 1>(
+            score1, dp1, packed_sidecar, row_base, q_tile, k_base,
+            owner_nblock, lane, seqlen, causal, softmax_scale, p1, ds1);
+
+        wait_raw_filled_page<Wdra>(
+            page, raw0_filled_phase, raw1_filled_phase);
+        if (q_tile == 0) {
+            dv_dk_mmac_owner16_read4x2_mq64_semantic_half<Tile, true, 0>(
+                lds, page, p0, ds0, dv_acc, dk_acc);
+        } else {
+            dv_dk_mmac_owner16_read4x2_mq64_semantic_half<Tile, false, 0>(
+                lds, page, p0, ds0, dv_acc, dk_acc);
+        }
+        dv_dk_mmac_owner16_read4x2_mq64_semantic_half<Tile, false, 1>(
+            lds, page, p1, ds1, dv_acc, dk_acc);
+        arrive_raw_used_page<Wdra>(page);
     }
 
     store_dkv_owner16<Tile>(
@@ -2917,6 +3316,108 @@ fa3_bwd_dkv_mmac12_mq64_kernel(const __half* __restrict__ dout,
 #endif
 }
 
+__global__ void __launch_bounds__(
+    dkv::DkvTileD128Mq64SemanticNk128W12::kThreadsPerCta, 1)
+    __attribute__((hcu_wdra_waves_per_tg(12)))
+fa3_bwd_dkv_mmac12_mq64_semantic_kernel(
+    const __half* __restrict__ dout,
+    const __half* __restrict__ q,
+    const __half* __restrict__ k,
+    const __half* __restrict__ v,
+    const __half* __restrict__ q_t_source,
+    const __half* __restrict__ dout_t_source,
+    const float* __restrict__ packed_sidecar,
+    float* __restrict__ dk,
+    float* __restrict__ dv,
+    int heads,
+    int seqlen,
+    int dim,
+    int causal,
+    float softmax_scale) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    using Tile = dkv::DkvTileD128Mq64SemanticNk128W12;
+    using Bar = dkv::DkvBarrierLedger;
+    using Vgpr = dkv::WdraResourceWindows;
+    using Layout = DkvSemanticMq64LdsLayout<Tile>;
+    static_assert(Layout::kBytes == Tile::kLdsBudgetBytes,
+                  "Mq64 semantic-page LDS plan should fill 128KB");
+
+    __shared__ __half lds[Layout::kBytes / sizeof(__half)];
+
+    const uint32_t wave_id = __builtin_hcu_get_wave_id();
+    const int wave_local = static_cast<int>(wave_id & 3u);
+
+    if (wave_id == 0) {
+        __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Filled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw1Filled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw1Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kAllDone, 12);
+    }
+    __builtin_hcu_s_ebarrier_sync(0);
+
+    const int k_tile = blockIdx.x;
+    const int h = blockIdx.y;
+    const int b = blockIdx.z;
+    const int bh = b * heads + h;
+    const int k_base = k_tile * Tile::kResidentNk;
+    const int64_t tensor_base =
+        (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
+    const int64_t row_base =
+        (static_cast<int64_t>(b) * heads + h) * seqlen;
+
+    if (wave_id < 4) {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducer12Vgprs);
+        producer_all_loop_mq64_semantic<Tile, Bar>(
+            q + tensor_base, k + tensor_base, v + tensor_base,
+            dout + tensor_base, q_t_source, dout_t_source, lds, bh,
+            k_base, seqlen, dim, wave_local);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    } else if (wave_id < 8) {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerMq64Vgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
+        consumer_dkv_mmac_loop_mq64_semantic<Tile, Bar, 0>(
+            lds, packed_sidecar, dk, dv, tensor_base, row_base, seqlen,
+            k_base, causal, softmax_scale, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    } else {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerMq64Vgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
+        consumer_dkv_mmac_loop_mq64_semantic<Tile, Bar, 1>(
+            lds, packed_sidecar, dk, dv, tensor_base, row_base, seqlen,
+            k_base, causal, softmax_scale, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    }
+
+    int done_phase = 0;
+    ins::abarrier_try_wait<false>(Bar::kAllDone, done_phase);
+    __syncthreads();
+    __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw1Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw1Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
+    __syncthreads();
+#else
+    (void)dout;
+    (void)q;
+    (void)k;
+    (void)v;
+    (void)q_t_source;
+    (void)dout_t_source;
+    (void)packed_sidecar;
+    (void)dk;
+    (void)dv;
+    (void)heads;
+    (void)seqlen;
+    (void)dim;
+    (void)causal;
+    (void)softmax_scale;
+#endif
+}
+
 __global__ void fa3_bwd_dkv_ref_softmax_kernel(
     const __half* __restrict__ q,
     const __half* __restrict__ k,
@@ -3235,7 +3736,9 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
          params->dkv_path ==
              dkv::kDkvPathWaspDkvMmac12WaveSidecarOverlay ||
          params->dkv_path ==
-             dkv::kDkvPathWaspDkvMmac12WaveScoreDpBrick) &&
+             dkv::kDkvPathWaspDkvMmac12WaveScoreDpBrick ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveMq64Semantic) &&
         (dk == nullptr || dv == nullptr ||
          params->reserved_ptr[1] == nullptr ||
          params->reserved_ptr[2] == nullptr)) {
@@ -3245,7 +3748,9 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
          params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave ||
          params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64 ||
          params->dkv_path ==
-             dkv::kDkvPathWaspDkvMmac12WaveScoreDpBrick) &&
+             dkv::kDkvPathWaspDkvMmac12WaveScoreDpBrick ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveMq64Semantic) &&
         params->reserved_ptr[3] == nullptr) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
@@ -3268,11 +3773,24 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
          params->dkv_path ==
              dkv::kDkvPathWaspDkvMmac12WaveSidecarOverlay ||
          params->dkv_path ==
-             dkv::kDkvPathWaspDkvMmac12WaveScoreDpBrick)
+             dkv::kDkvPathWaspDkvMmac12WaveScoreDpBrick ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveMq64Semantic)
             ? dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta
             : dkv::DkvTileD128Mq32Nk128::kThreadsPerCta);
 
-    if (params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64) {
+    if (params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64Semantic) {
+        hipLaunchKernelGGL(
+            fa3_bwd_dkv_mmac12_mq64_semantic_kernel, grid, block, 0, 0,
+            static_cast<const __half*>(dout), static_cast<const __half*>(q),
+            static_cast<const __half*>(k), static_cast<const __half*>(v),
+            static_cast<const __half*>(params->reserved_ptr[1]),
+            static_cast<const __half*>(params->reserved_ptr[2]),
+            static_cast<const float*>(params->reserved_ptr[3]),
+            static_cast<float*>(dk), static_cast<float*>(dv),
+            params->num_heads_q, params->seqlen_k, params->head_dim_qk,
+            params->causal, params->softmax_scale);
+    } else if (params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64) {
         hipLaunchKernelGGL(
             fa3_bwd_dkv_mmac12_mq64_kernel, grid, block, 0, 0,
             static_cast<const __half*>(dout), static_cast<const __half*>(q),
@@ -3785,9 +4303,13 @@ int main(int argc, char** argv) {
     const int mmac12_mq64_check = arg_int(
         argc, argv, "--dkv-mmac12-mq64-check",
         env_int("CHECK_WASP_DKV_MMAC12_MQ64", 0));
+    const int mmac12_mq64_semantic_check = arg_int(
+        argc, argv, "--dkv-mmac12-mq64-semantic-check",
+        env_int("CHECK_WASP_DKV_MMAC12_MQ64_SEMANTIC", 0));
     const int full_mmac_check =
         mmac_check || mmac12_check || mmac12_overlay_check ||
-        mmac12_score_brick_check || mmac12_mq64_check;
+        mmac12_score_brick_check || mmac12_mq64_check ||
+        mmac12_mq64_semantic_check;
     const int batch = arg_int(argc, argv, "--B", env_int("B", kDefaultBatch));
     const int heads = arg_int(argc, argv, "--H", env_int("H", kDefaultHeads));
     const int default_seq =
@@ -3836,12 +4358,17 @@ int main(int argc, char** argv) {
     if (mmac12_mq64_check) {
         params.dkv_path = dkv::kDkvPathWaspDkvMmac12WaveMq64;
     }
+    if (mmac12_mq64_semantic_check) {
+        params.dkv_path =
+            dkv::kDkvPathWaspDkvMmac12WaveMq64Semantic;
+    }
     if (check) {
         params.dkv_path = dkv::kDkvPathReferenceCorrectness;
     }
     params.block_threads =
         (mmac12_check || mmac12_overlay_check ||
-         mmac12_score_brick_check || mmac12_mq64_check)
+         mmac12_score_brick_check || mmac12_mq64_check ||
+         mmac12_mq64_semantic_check)
             ? dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta
             : dkv::DkvTileD128Mq32Nk128::kThreadsPerCta;
     params.sync_after_launch = 1;
@@ -4068,15 +4595,17 @@ int main(int argc, char** argv) {
             "workspace_bytes=%zu dk_max_abs=%g dk_mean_abs=%g dk_rmse=%g "
             "dk_rel_l2=%g dv_max_abs=%g dv_mean_abs=%g dv_rmse=%g "
             "dv_rel_l2=%g bad=%d pass=%d\n",
-            full_mmac_check ? (mmac12_mq64_check
-                                   ? "fa3_bwd_dkv_mmac12_mq64_correctness"
-                                   : (mmac12_overlay_check
+            full_mmac_check ? (mmac12_mq64_semantic_check
+                                   ? "fa3_bwd_dkv_mmac12_mq64_semantic_correctness"
+                                   : (mmac12_mq64_check
+                                          ? "fa3_bwd_dkv_mmac12_mq64_correctness"
+                                          : (mmac12_overlay_check
                                           ? "fa3_bwd_dkv_mmac12_overlay_correctness"
                                           : (mmac12_score_brick_check
                                                  ? "fa3_bwd_dkv_mmac12_score_brick_correctness"
                                                  : (mmac12_check
                                                         ? "fa3_bwd_dkv_mmac12_correctness"
-                                                        : "fa3_bwd_dkv_mmac_correctness"))))
+                                                        : "fa3_bwd_dkv_mmac_correctness")))))
                             : "fa3_bwd_dkv_correctness",
             shaobo_fa3_status_string(status), batch, heads, seqlen, dim,
             params.causal, workspace_bytes, dk_metrics.max_abs, dk_metrics.mean_abs,

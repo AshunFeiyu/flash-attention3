@@ -13,6 +13,7 @@ inline constexpr int kDkvPathWaspDkvMmac12Wave = 5;
 inline constexpr int kDkvPathWaspDkvMmac12WaveMq64 = 6;
 inline constexpr int kDkvPathWaspDkvMmac12WaveSidecarOverlay = 7;
 inline constexpr int kDkvPathWaspDkvMmac12WaveScoreDpBrick = 8;
+inline constexpr int kDkvPathWaspDkvMmac12WaveMq64Semantic = 9;
 
 struct DkvTileD128Mq32Nk128 {
     static constexpr int kHeadDim = 128;
@@ -149,6 +150,22 @@ struct DkvTileD128Mq64Nk128W12 {
                   "Mq64 dKV consumer should issue 128 MMAC per q tile");
     static_assert(kPlannedLdsBytes == kLdsBudgetBytes,
                   "Mq64 single-buffer plan intentionally fills 128KB LDS");
+};
+
+struct DkvTileD128Mq64SemanticNk128W12 : DkvTileD128Mq64Nk128W12 {
+    static constexpr int kSemanticPages = 2;
+    static constexpr int kSemanticMatrixBytes =
+        kBlockMq * kHeadDim * kHalfBytes;
+    static constexpr int kSemanticPageBytes = 2 * kSemanticMatrixBytes;
+    static constexpr int kSemanticLdsBytes =
+        kKvBytes + kSemanticPages * kSemanticPageBytes;
+
+    static_assert(kSemanticMatrixBytes == 16 * 1024,
+                  "Mq64 semantic matrix page should be 16KB");
+    static_assert(kSemanticPageBytes == 32 * 1024,
+                  "Mq64 semantic page should hold Q/dO or QT/dOT");
+    static_assert(kSemanticLdsBytes == kLdsBudgetBytes,
+                  "Mq64 semantic-page conveyor intentionally fills 128KB LDS");
 };
 
 struct DkvBarrierLedger {

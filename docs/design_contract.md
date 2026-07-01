@@ -163,6 +163,18 @@ tokens when the fragments are always consumed together.  That shape can create
 `abarrier -> abarrier` chains in SQTT and should be replaced by coarse producer
 packet ownership unless a later multi-packet proof needs finer lifetimes.
 
+Semantic page reuse boundary:
+
+```text
+raw generation:    page = Q/dO
+source generation: page = Q^T/dO^T
+```
+
+This is legal and was verified in the Mq64 semantic-page path, but it regressed
+H1/S1024 ticks because it adds a second RawFilled/RawUsed generation per q tile.
+Do not repeat this topology as a promotion attempt unless the source generation
+replaces an existing barrier turn instead of adding one.
+
 ## Bring-Up Sequence
 
 The clean implementation moves in guarded cuts:

@@ -1,5 +1,50 @@
 # Source Status
 
+## 2026-07-02 Mq64 Semantic-Page Conveyor
+
+Status: `REJECT_PERF_STATS_ONLY`
+
+The clean repo now has an opt-in Mq64 semantic-page dKV path:
+
+- API path: `kDkvPathWaspDkvMmac12WaveMq64Semantic`
+- standalone flag: `--dkv-mmac12-mq64-semantic-check=1`
+- script flag: `WAVES=12 MQ64_SEMANTIC=1 scripts/run_dkv_mmac_correctness.sh`
+- kernel symbol: `fa3_bwd_dkv_mmac12_mq64_semantic_kernel`
+- LDS layout: K/V resident 64KB plus two 32KB semantic pages
+- page meaning:
+  - raw generation: matrix0=`Q`, matrix1=`dO`
+  - source generation: matrix0=`Q^T`, matrix1=`dO^T`
+- main matrix path remains `matrix_load ... bps lds`, `ds_read_matrix`, and
+  `v_mmac_*lit`; no raw LDS transpose writer was added.
+
+Verified evidence:
+
+- Static/source gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=90`, `vgpr_count=144`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- Branch-local compiler pressure:
+  producer `1/16`, consumer `180/208`.
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_074704`.
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_074725`.
+- H1/S1024 stats:
+  `simTicks=76933675`, `kernel_ticks=73320065`, MMAC active avg `21.7509%`,
+  VOP active avg `22.6370%`, coissue `23374/16882`, `MMOP=131072`,
+  `ldsBankConflict=0`.
+- Same-build W12 baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_075046`
+  with `kernel_ticks=70974995`, MMAC active avg `21.7125%`,
+  coissue `28477/21603`, `ldsBankConflict=0`.
+
+Conclusion:
+
+Do not promote this path.  It proves Mq64 semantic page reuse can be made
+correct and resource-clean, but adding a second raw/source ABarrier generation
+regresses ticks.  The next path must reduce barrier/control turns, not add
+another page lifecycle.
+
 ## 2026-07-01 Clean dKV WASP Probe
 
 Status: `BRINGUP_ONLY`

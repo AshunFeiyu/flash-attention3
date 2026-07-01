@@ -1457,3 +1457,62 @@ The 60% MMAC-active gap is not primarily score/dP read granularity.  The next
 design should stop stacking local read scheduling tweaks and instead change
 the packet ownership/conveyor so producer and consumer waves avoid the exposed
 ABarrier/control path.
+
+### Mq64 Semantic-Page Conveyor
+
+Hypothesis:
+
+- The Mq64 seed-fix path doubles the per-q-tile MMAC island but keeps raw and
+  source operands resident at the same time, filling the full 128KB LDS.
+- A semantic page could reuse the same 32KB page as raw `Q/dO` first, then as
+  source-layout `Q^T/dO^T` after consumers finish score/dP on both Mq64 halves.
+- This should let producer source publication overlap with consumer
+  softmax/dS while retaining `MLS/BPS + ds_read_matrix + MMAC` on the matrix
+  path and avoiding raw-to-trans LDS writers.
+
+Change tested:
+
+- Added opt-in path `kDkvPathWaspDkvMmac12WaveMq64Semantic`.
+- LDS plan: K/V resident 64KB plus two 32KB semantic pages, exactly 128KB.
+- Producer publishes raw `Q/dO`, then waits for raw used and overwrites the
+  same page with source-layout `Q^T/dO^T`.
+- Consumer waits raw, computes both Mq64 score/dP halves, releases raw,
+  computes both softmax/dS halves, waits source, then runs dV/dK MMAC.
+
+Evidence:
+
+- Workbook rows were added under `Mq64 semantic-page conveyor`.
+- Build/static/metadata passed for symbol
+  `fa3_bwd_dkv_mmac12_mq64_semantic`:
+  `private=0`, `sgpr_count=90`, `vgpr_count=144`, no SGPR/VGPR spill.
+- Branch-local consumer pressure was `180/208`.
+- H1/S128 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_074704`.
+- H1/S1024 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_074725`.
+- H1/S1024 semantic stats:
+  `simTicks=76933675`, `kernel_ticks=73320065`, MMAC active avg `21.7509%`,
+  VOP active avg `22.6370%`, coissue success/fail `23374/16882`,
+  total MMOP instr `131072`, `ldsBankConflict=0`.
+- Same-build W12 baseline stats:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_075046`
+  with `simTicks=74588605`, `kernel_ticks=70974995`, MMAC active avg
+  `21.7125%`, VOP active avg `25.0507%`, coissue `28477/21603`,
+  total MMOP instr `131072`, `ldsBankConflict=0`.
+- Both baseline and semantic printed a PMD `read vgpr... before writing`
+  warning while passing numerics, so this warning is not unique to the new
+  semantic path.
+
+Decision:
+
+`REJECT_PERF_STATS_ONLY`.  The semantic-page path is correct and resource-clean,
+and it lowers VOP active share, but the extra raw/source ABarrier generation
+reduces coissue and regresses ticks versus the same-build W12 baseline.
+
+Conclusion:
+
+The experiment confirms that page reuse alone is not enough; the extra
+ownership generation is too expensive in the current conveyor.  The next
+FWD-style redesign should reduce barrier/control turns or move source
+publication into an existing packet generation, rather than adding another
+raw/source page lifecycle.
