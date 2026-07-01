@@ -1176,3 +1176,33 @@ share.  The next sidecar design must reduce representation or live range, such
 as computing/fetching fewer fields per fragment, compressing sidecar state, or
 moving sidecar generation to a path that does not extend consumer critical
 live ranges.
+
+### Noncausal Diagnostic Boundary
+
+Hypothesis:
+
+- The leader suggested using `causal=false` to remove mask/predicate work during
+  pipeline tuning.
+- This would be useful only if the same kernel passes correctness at the
+  diagnostic shape; otherwise performance counters are not valid evidence.
+
+Evidence:
+
+- After rebuilding the reverted zero-seed baseline, W12 metadata returned to
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no spill.
+- H1/S128, `CAUSAL=0`, correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_053747`.
+- H1/S1024, `CAUSAL=0`, correctness FAIL:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_053811`.
+- Failure signal:
+  `dk_rel_l2=0.0199722`, `dv_rel_l2=0.002617`, `bad=0`, `pass=0`.
+
+Decision:
+
+`REJECT_CORRECTNESS_DIAGNOSTIC`.
+
+Conclusion:
+
+Do not use `CAUSAL=0` H1/S1024 metrics to guide MMAC-active tuning yet.  The
+mainline remains `causal=true`; if noncausal is needed for isolated mask/predicate
+studies, first resolve the numerical threshold or the noncausal math path.

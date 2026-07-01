@@ -817,3 +817,18 @@ Rejected sidecar prefetch:
 Rule: sidecar latency should still be addressed, but not by carrying all
 24 sidecar floats across the score/dP MMAC island.  Future sidecar work must
 shorten live range or reduce representation before adding registers.
+
+Noncausal diagnostic boundary:
+
+- after rebuilding the reverted zero-seed baseline, metadata returned to
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no spill
+- `CAUSAL=0`, H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_053747`
+- `CAUSAL=0`, H1/S1024 correctness FAIL:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_053811`
+- failure signal:
+  `dk_rel_l2=0.0199722`, `dv_rel_l2=0.002617`, `bad=0`, `pass=0`
+
+Rule: do not use noncausal H1/S1024 performance counters to guide MMAC active
+tuning until the noncausal correctness/tolerance boundary is resolved.  Continue
+the primary mainline with `causal=true`.

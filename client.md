@@ -415,3 +415,12 @@ must either shrink sidecar live state or move useful producer/control work
 without consuming the last consumer VGPR slack.  A broader path is to revisit
 the algorithm/resource workbook for a sidecar representation that avoids both
 global-use-point latency and 24-float live ranges.
+
+Noncausal diagnostic boundary:
+
+- after rebuilding the reverted zero-seed baseline, `CAUSAL=0` H1/S128 passed
+  correctness, but H1/S1024 failed numerical comparison
+- failing run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_053811`
+- decision: do not use `CAUSAL=0` H1/S1024 as a perf diagnosis path until its
+  correctness/tolerance is resolved; keep the active mainline on `causal=true`
