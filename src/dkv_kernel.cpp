@@ -45,6 +45,8 @@ inline int arg_int(int argc, char** argv, const char* name, int fallback) {
 inline bool valid_dkv_shape(const ShaoboFa3Params* p) {
     return p != nullptr && p->batch > 0 && p->seqlen_q > 0 &&
            p->seqlen_k > 0 && p->num_heads_q > 0 &&
+           p->seqlen_q == dkv::DkvTileD128Mq32Nk128::kProbeSeqLen &&
+           p->seqlen_k % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
            p->head_dim_qk == dkv::DkvTileD128Mq32Nk128::kHeadDim &&
            p->head_dim_v == dkv::DkvTileD128Mq32Nk128::kHeadDim &&
            p->dtype == SHAOBO_FA3_DTYPE_FP16 &&
@@ -54,24 +56,82 @@ inline bool valid_dkv_shape(const ShaoboFa3Params* p) {
 template <typename Tile>
 struct DkvLdsLayout {
     static constexpr int kBlockBytes = 32 * 32 * Tile::kHalfBytes;
+    static constexpr int kRawPages = 2;
+    static constexpr int kBlocksPerMqTile = Tile::kHeadDim / 32;
+    static constexpr int kBlocksPerKvTile =
+        Tile::kResidentNk / 32 * Tile::kHeadDim / 32;
     static constexpr int kQBase = 0;
-    static constexpr int kDoutBase = kQBase + 4 * kBlockBytes;
-    static constexpr int kKBase = kDoutBase + 4 * kBlockBytes;
-    static constexpr int kVBase = kKBase + 16 * kBlockBytes;
-    static constexpr int kBytes = kVBase + 16 * kBlockBytes;
+    static constexpr int kDoutBase =
+        kQBase + kRawPages * kBlocksPerMqTile * kBlockBytes;
+    static constexpr int kKBase =
+        kDoutBase + kRawPages * kBlocksPerMqTile * kBlockBytes;
+    static constexpr int kVBase = kKBase + kBlocksPerKvTile * kBlockBytes;
+    static constexpr int kBytes = kVBase + kBlocksPerKvTile * kBlockBytes;
     static_assert(kBytes <= Tile::kLdsBudgetBytes,
                   "dKV bringup probe LDS plan must fit 128KB");
 };
 
 template <typename Tile>
-__device__ __forceinline__ int q_or_dout_block_offset(int d_block) {
-    return d_block * DkvLdsLayout<Tile>::kBlockBytes;
+__device__ __forceinline__ int raw_page_block_offset(int page, int d_block) {
+    return (page * DkvLdsLayout<Tile>::kBlocksPerMqTile + d_block) *
+           DkvLdsLayout<Tile>::kBlockBytes;
 }
 
 template <typename Tile>
 __device__ __forceinline__ int kv_block_offset(int row_block, int d_block) {
     return (row_block * 4 + d_block) *
            DkvLdsLayout<Tile>::kBlockBytes;
+}
+
+template <typename Wdra>
+__device__ __forceinline__ void seq_raw_filled_page(int page) {
+    if (page == 0) {
+        ins::abarrier_seq<false>(Wdra::kRaw0Filled);
+    } else {
+        ins::abarrier_seq<false>(Wdra::kRaw1Filled);
+    }
+}
+
+template <typename Wdra>
+__device__ __forceinline__ void arrive_raw_filled_page(int page) {
+    if (page == 0) {
+        ins::abarrier_arrive_cnt<false>(Wdra::kRaw0Filled, 1);
+    } else {
+        ins::abarrier_arrive_cnt<false>(Wdra::kRaw1Filled, 1);
+    }
+}
+
+template <typename Wdra>
+__device__ __forceinline__ void wait_raw_used_page(
+    int page,
+    int& phase0,
+    int& phase1) {
+    if (page == 0) {
+        ins::abarrier_try_wait<true>(Wdra::kRaw0Used, phase0);
+    } else {
+        ins::abarrier_try_wait<true>(Wdra::kRaw1Used, phase1);
+    }
+}
+
+template <typename Wdra>
+__device__ __forceinline__ void wait_raw_filled_page(
+    int page,
+    int& phase0,
+    int& phase1) {
+    if (page == 0) {
+        ins::abarrier_try_wait<true>(Wdra::kRaw0Filled, phase0);
+    } else {
+        ins::abarrier_try_wait<true>(Wdra::kRaw1Filled, phase1);
+    }
+}
+
+template <typename Wdra>
+__device__ __forceinline__ void arrive_raw_used_page(int page) {
+    if (page == 0) {
+        ins::abarrier_arrive_cnt<false>(Wdra::kRaw0Used, 1);
+    } else {
+        ins::abarrier_arrive_cnt<false>(Wdra::kRaw1Used, 1);
+    }
 }
 
 template <typename Tile>
@@ -81,12 +141,13 @@ __device__ __forceinline__ void publish_mq32_tile(
     const __half* src,
     int row_stride,
     int q_base,
+    int page,
     int wave_local) {
     const __half* src_tile =
         src + static_cast<int64_t>(q_base) * row_stride + wave_local * 32;
     ins::Vec4U32 srsrc = ins::prepare_matrix_src(src_tile, row_stride);
     ins::matrix_load_32x32_b16_bps_lds(
-        lds, srsrc, lds_base + q_or_dout_block_offset<Tile>(wave_local),
+        lds, srsrc, lds_base + raw_page_block_offset<Tile>(page, wave_local),
         true);
 }
 
@@ -121,18 +182,27 @@ __device__ __forceinline__ void producer_qk_loop(
     int row_stride,
     int wave_local) {
     using Layout = DkvLdsLayout<Tile>;
-    int packet_used_phase = 0;
+    int raw0_used_phase = 0;
+    int raw1_used_phase = 0;
 
-    ins::abarrier_seq<false>(Wdra::kPacketAFilled);
-    publish_mq32_tile<Tile>(
-        lds, Layout::kQBase, q_base_ptr, row_stride, q_base, wave_local);
+    ins::abarrier_seq<false>(Wdra::kResidentFilled);
     publish_nk128_tile<Tile>(
         lds, Layout::kKBase, k_base_ptr, row_stride, k_base, wave_local);
+    ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
 
-    // One packet fence covers Q + K publication.  Consumers perform their own
-    // ds_read_matrix readiness wait before first MMAC use.
-    ins::abarrier_arrive_cnt<false>(Wdra::kPacketAFilled, 1);
-    ins::abarrier_try_wait<false>(Wdra::kPacketAUsed, packet_used_phase);
+#pragma clang loop unroll(disable)
+    for (int q_tile = 0; q_tile < Tile::kQTilesPerCta; ++q_tile) {
+        const int page = q_tile & 1;
+        if (q_tile >= 2) {
+            wait_raw_used_page<Wdra>(
+                page, raw0_used_phase, raw1_used_phase);
+        }
+        seq_raw_filled_page<Wdra>(page);
+        publish_mq32_tile<Tile>(
+            lds, Layout::kQBase, q_base_ptr, row_stride,
+            q_base + q_tile * Tile::kBlockMq, page, wave_local);
+        arrive_raw_filled_page<Wdra>(page);
+    }
 }
 
 template <typename Tile, typename Wdra>
@@ -145,23 +215,34 @@ __device__ __forceinline__ void producer_dout_v_loop(
     int row_stride,
     int wave_local) {
     using Layout = DkvLdsLayout<Tile>;
-    int packet_used_phase = 0;
+    int raw0_used_phase = 0;
+    int raw1_used_phase = 0;
 
-    ins::abarrier_seq<false>(Wdra::kPacketBFilled);
-    publish_mq32_tile<Tile>(
-        lds, Layout::kDoutBase, dout_base_ptr, row_stride, q_base, wave_local);
+    ins::abarrier_seq<false>(Wdra::kResidentFilled);
     publish_nk128_tile<Tile>(
         lds, Layout::kVBase, v_base_ptr, row_stride, k_base, wave_local);
+    ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
 
-    // One packet fence covers dO + V publication.
-    ins::abarrier_arrive_cnt<false>(Wdra::kPacketBFilled, 1);
-    ins::abarrier_try_wait<false>(Wdra::kPacketBUsed, packet_used_phase);
+#pragma clang loop unroll(disable)
+    for (int q_tile = 0; q_tile < Tile::kQTilesPerCta; ++q_tile) {
+        const int page = q_tile & 1;
+        if (q_tile >= 2) {
+            wait_raw_used_page<Wdra>(
+                page, raw0_used_phase, raw1_used_phase);
+        }
+        seq_raw_filled_page<Wdra>(page);
+        publish_mq32_tile<Tile>(
+            lds, Layout::kDoutBase, dout_base_ptr, row_stride,
+            q_base + q_tile * Tile::kBlockMq, page, wave_local);
+        arrive_raw_filled_page<Wdra>(page);
+    }
 }
 
 template <typename Tile>
 __device__ __forceinline__ void score_dp_mmac_probe(
     __half* lds,
     int consumer_group,
+    int page,
     int wave_local,
     ins::F32x4& score,
     ins::F32x4& dp) {
@@ -185,9 +266,9 @@ __device__ __forceinline__ void score_dp_mmac_probe(
         ins::F16x8 v0;
         ins::F16x8 v1;
         const int q_off =
-            Layout::kQBase + q_or_dout_block_offset<Tile>(d_block);
+            Layout::kQBase + raw_page_block_offset<Tile>(page, d_block);
         const int dout_off =
-            Layout::kDoutBase + q_or_dout_block_offset<Tile>(d_block);
+            Layout::kDoutBase + raw_page_block_offset<Tile>(page, d_block);
         const int k_off =
             Layout::kKBase + kv_block_offset<Tile>(row_block, d_block);
         const int v_off =
@@ -221,22 +302,31 @@ __device__ __forceinline__ void consumer_score_dp_loop(
     int consumer_group,
     int wave_local,
     int lane) {
-    int packet_a_phase = 0;
-    int packet_b_phase = 0;
+    int resident_phase = 0;
+    int raw0_filled_phase = 0;
+    int raw1_filled_phase = 0;
 
-    ins::abarrier_try_wait<true>(Wdra::kPacketAFilled, packet_a_phase);
-    ins::abarrier_try_wait<true>(Wdra::kPacketBFilled, packet_b_phase);
+    ins::abarrier_try_wait<true>(Wdra::kResidentFilled, resident_phase);
 
-    ins::F32x4 score;
-    ins::F32x4 dp;
-    score_dp_mmac_probe<Tile>(lds, consumer_group, wave_local, score, dp);
+    float diag_accum = 0.0f;
+#pragma clang loop unroll(disable)
+    for (int q_tile = 0; q_tile < Tile::kQTilesPerCta; ++q_tile) {
+        const int page = q_tile & 1;
+        wait_raw_filled_page<Wdra>(
+            page, raw0_filled_phase, raw1_filled_phase);
 
-    ins::abarrier_arrive_cnt<false>(Wdra::kPacketAUsed, 1);
-    ins::abarrier_arrive_cnt<false>(Wdra::kPacketBUsed, 1);
+        ins::F32x4 score;
+        ins::F32x4 dp;
+        score_dp_mmac_probe<Tile>(
+            lds, consumer_group, page, wave_local, score, dp);
+        diag_accum += score.scalar[0] + dp.scalar[0];
+
+        arrive_raw_used_page<Wdra>(page);
+    }
 
     if (lane == 0 && diag != nullptr) {
         diag[diag_index * 8 + consumer_group * 4 + wave_local] =
-            score.scalar[0] + dp.scalar[0];
+            diag_accum;
     }
 }
 
@@ -269,10 +359,11 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     const int lane = static_cast<int>(threadIdx.x % 64);
 
     if (wave_id == 0) {
-        __builtin_hcu_s_abarrier_init(Bar::kPacketAFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kPacketAUsed, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kPacketBFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kPacketBUsed, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Filled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw1Filled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw1Used, 8);
         __builtin_hcu_s_abarrier_init(Bar::kAllDone, 16);
     }
     __builtin_hcu_s_ebarrier_sync(0);
@@ -316,10 +407,11 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     int done_phase = 0;
     ins::abarrier_try_wait<false>(Bar::kAllDone, done_phase);
     __syncthreads();
-    __builtin_hcu_s_abarrier_inv(Bar::kPacketAFilled);
-    __builtin_hcu_s_abarrier_inv(Bar::kPacketAUsed);
-    __builtin_hcu_s_abarrier_inv(Bar::kPacketBFilled);
-    __builtin_hcu_s_abarrier_inv(Bar::kPacketBUsed);
+    __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw1Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw1Used);
     __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
     __syncthreads();
 #else

@@ -143,3 +143,68 @@ ticks, but it does not solve the pipeline.  The one-shot probe still naturally
 ends with producer/consumer/all-done barrier idle.  The next useful cut must add
 a real multi-packet q-loop so producers can do next-packet work while consumers
 execute MMAC/VALU islands.
+
+## 2026-07-01 Add Stream q-loop Probe
+
+Decision: `OBSERVE_PIPELINE`
+
+Hypothesis:
+
+`The one-shot score+dP probe exaggerates end-of-kernel barrier idle.  A fixed
+S1024 q-loop with resident K/V and double-buffered Q/dO raw pages should expose
+the real conveyor bottleneck and show whether producer work can recur during
+consumer MMAC islands.`
+
+Implemented:
+
+- Added fixed probe shape guard for `S=1024`, `D=128`.
+- Kept K and V resident in LDS for the CTA.
+- Changed Q and dO to two raw LDS pages each.
+- Producer A publishes K once, then streams Q pages over 32 q tiles.
+- Producer B publishes V once, then streams dO pages over 32 q tiles.
+- Consumers wait the resident token once, then loop over raw pages and run the
+  score+dP MMAC probe for each q tile.
+- Disabled outer q-loop unrolling to avoid code-size/SQC bloat.
+- Used literal ABarrier helper wrappers for page 0/page 1, because dynamic
+  barrier IDs do not satisfy the instruction immediate constraint.
+- Used inline-asm ABarrier wait for producer `RawUsed` waits to avoid a
+  compiler-generated private segment on the builtin phase path.
+
+Verified:
+
+- Local source gate PASS:
+  `python3 scripts/check_dkv_kernel_gate.py`
+- Remote build PASS with asm.
+- Remote static gate PASS.
+- Remote symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=38`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD stats smoke:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_235037`
+- PMD stats:
+  `simTicks=28497105`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=28497105`, `ldsBankConflict=0`, `MMOP=65536`,
+  average per-active-CU `mmopRunTimeCounter/activeTimeCounter=30.072%`,
+  coissue `1882/887`.
+- TT/Perf capture:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_235316`
+- XCU first-pass:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2012739_fa3_bwd_wasp_clean_20260701_235458`
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260701_235316_clean_stream_qloop_probe`
+- XCU detail:
+  dispatch duration `54540`, inst issues `352336`, waves `128`, MMAC share
+  `31.37%`, SALU32 `21.56%`, `lds_matrix` `15.68%`, `immed` `12.00%`.
+- XCU bubbles:
+  top bubble is now `abarrier -> salu_32`, `43.80%`; `lds_matrix -> immed`
+  remains `6.74%`.
+
+Conclusion:
+
+This confirms the real next bottleneck: the kernel is no longer dominated by a
+single `abarrier -> abarrier` tail, but the q-loop still pays too much
+ABarrier/SALU page-control cost and still fragments `ds_read_matrix` before the
+first MMAC.  The next implementation should keep this stream q-loop shape and
+make the consumer read/MMAC island more FWD-like: batch operand reads, delay
+`s_waitcnt` until true first use, and minimize immediate/control instructions
+between `lds_matrix` and `mmop`.

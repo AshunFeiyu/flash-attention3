@@ -127,3 +127,55 @@ Remaining before promotion:
 - treat this as protocol evidence only; the one-shot probe still has unavoidable
   producer/consumer/all-done idle.  Promotion requires a multi-packet q-loop
   where producer work can continue during consumer MMAC/VALU islands.
+
+## 2026-07-01 Stream q-loop Probe
+
+Status: `OBSERVE_PIPELINE`
+
+The single-packet probe was extended into a fixed `S=1024`, `Mq=32` q-loop:
+
+```text
+producer A: K resident once, then double-buffer Q raw pages
+producer B: V resident once, then double-buffer dO raw pages
+consumers: wait resident once, then stream 32 Q/dO pages through score+dP MMAC
+```
+
+This is still not full dKV.  It intentionally omits softmax/dS, dV/dK
+accumulation, and stores so the packet conveyor can be measured without the old
+phase-stack noise.
+
+Evidence:
+
+- Local source gate PASS:
+  `python3 scripts/check_dkv_kernel_gate.py`
+- Remote build/static/symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=38`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD stats smoke:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_235037`
+- Stats:
+  `simTicks=28497105`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=28497105`, `ldsBankConflict=0`, `MMOP=65536`,
+  average per-active-CU `mmopRunTimeCounter/activeTimeCounter=30.072%`,
+  coissue `1882/887`.
+- TT/Perf capture:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_235316`
+- XCU first-pass:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2012739_fa3_bwd_wasp_clean_20260701_235458`
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260701_235316_clean_stream_qloop_probe`
+- XCU observation:
+  dispatch duration `54540`, inst issues `352336`, waves `128`, MMAC share
+  `31.37%`, SALU32 `21.56%`, `lds_matrix` `15.68%`, `immed` `12.00%`.
+  Top bubble changed from `abarrier -> abarrier` to
+  `abarrier -> salu_32` at `43.80%`; `lds_matrix -> immed` remains visible at
+  `6.74%`.
+
+Conclusion:
+
+The multi-packet conveyor is a better diagnostic shape than the one-shot probe:
+MMAC active evidence improved and the dominant bubble changed.  The remaining
+gap is not "missing MMAC"; it is control/barrier overhead around page ownership
+and a fragmented `ds_read_matrix -> first MMAC` path.  The next code cut should
+keep this q-loop but batch operand reads into longer FWD-style MMAC islands, then
+add softmax/dS and dV/dK only after the read-to-use gap is measurable.

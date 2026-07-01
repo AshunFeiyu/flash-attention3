@@ -110,13 +110,21 @@ Current FA3 BWD clean design workbook:
 
 ## Current Next Step
 
-Current state is probe `BRINGUP_ONLY`:
+Current state is stream q-loop probe `OBSERVE_PIPELINE`:
 
-- producer0 publishes a Q+K packet with MLS/BPS
-- producer1 publishes a dO+V packet with MLS/BPS
-- two consumer groups wait the two coarse packet ownership tokens and execute a score+dP
-  `ds_read_matrix + v_mmac_*lit` probe
+- producer0 publishes resident K once, then streams double-buffered Q raw pages
+- producer1 publishes resident V once, then streams double-buffered dO raw pages
+- two consumer groups wait resident K/V once, then stream 32 `Mq=32` pages
+  through a score+dP `ds_read_matrix + v_mmac_*lit` probe
 - standalone now allocates real Q/K/V/dO buffers before running PMD
 
-Next step: replace the probe with a real q-loop body, add sidecar loading, then
-connect softmax+dS before adding dV/dK accumulation and stores.
+Latest evidence archive:
+
+```text
+/Volumes/172.20.68.76/共享/shaobo/perf/20260701_235316_clean_stream_qloop_probe
+```
+
+Next step: keep this q-loop shape and make the consumer read/MMAC island more
+FWD-like.  Batch same-family `ds_read_matrix` reads, delay `s_waitcnt` until the
+true first use, and reduce immediate/control work between `lds_matrix` and
+`mmop`; then add softmax+dS before adding dV/dK accumulation and stores.

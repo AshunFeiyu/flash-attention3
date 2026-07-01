@@ -7,6 +7,8 @@ namespace shaobo::fa3::bwd::dkv {
 struct DkvTileD128Mq32Nk128 {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = 32;
+    static constexpr int kProbeSeqLen = 1024;
+    static constexpr int kQTilesPerCta = kProbeSeqLen / kBlockMq;
     static constexpr int kNkPerConsumerWave = 16;
     static constexpr int kConsumerGroups = 2;
     static constexpr int kWavesPerConsumerGroup = 4;
@@ -57,11 +59,12 @@ struct DkvTileD128Mq32Nk128 {
 };
 
 struct DkvBarrierLedger {
-    static constexpr int kPacketAFilled = 0;
-    static constexpr int kPacketAUsed = 1;
-    static constexpr int kPacketBFilled = 2;
-    static constexpr int kPacketBUsed = 3;
-    static constexpr int kAllDone = 4;
+    static constexpr int kResidentFilled = 0;
+    static constexpr int kRaw0Filled = 1;
+    static constexpr int kRaw0Used = 2;
+    static constexpr int kRaw1Filled = 3;
+    static constexpr int kRaw1Used = 4;
+    static constexpr int kAllDone = 5;
 };
 
 enum class WaveRole : int {

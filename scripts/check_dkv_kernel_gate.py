@@ -49,14 +49,18 @@ def main() -> int:
             "missing_producer_vgpr_window")
     require(source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)", failures,
             "missing_consumer_vgpr_window")
-    require(source, r"s_abarrier_init\(Bar::kPacketAFilled,\s*4\)", failures,
-            "missing_packet_a_filled_count")
-    require(source, r"s_abarrier_init\(Bar::kPacketAUsed,\s*8\)", failures,
-            "missing_packet_a_used_count")
-    require(source, r"s_abarrier_init\(Bar::kPacketBFilled,\s*4\)", failures,
-            "missing_packet_b_filled_count")
-    require(source, r"s_abarrier_init\(Bar::kPacketBUsed,\s*8\)", failures,
-            "missing_packet_b_used_count")
+    require(source, r"s_abarrier_init\(Bar::kResidentFilled,\s*8\)",
+            failures, "missing_resident_filled_count")
+    require(source, r"s_abarrier_init\(Bar::kRaw0Filled,\s*8\)", failures,
+            "missing_raw0_filled_count")
+    require(source, r"s_abarrier_init\(Bar::kRaw0Used,\s*8\)", failures,
+            "missing_raw0_used_count")
+    require(source, r"s_abarrier_init\(Bar::kRaw1Filled,\s*8\)", failures,
+            "missing_raw1_filled_count")
+    require(source, r"s_abarrier_init\(Bar::kRaw1Used,\s*8\)", failures,
+            "missing_raw1_used_count")
+    require(source, r"q_tile\s*<\s*Tile::kQTilesPerCta", failures,
+            "missing_q_tile_stream_loop")
     require(source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
             "missing_all_done_wait")
     require(source, r"matrix_load_32x32_b16_bps_lds", failures,
@@ -80,6 +84,8 @@ def main() -> int:
     forbid(source, r"kRawFilled|kRawUsed|kTransFilled|kTransUsed|"
            r"kKv0Filled|kKv0Used|kKv1Filled|kKv1Used",
            failures, "legacy_fragment_barrier_tokens")
+    forbid(source, r"kPacketAFilled|kPacketAUsed|kPacketBFilled|kPacketBUsed",
+           failures, "single_packet_probe_barrier_tokens")
 
     if asm:
         require(asm, r"s_set_vgpr_size", failures, "asm_missing_s_set_vgpr_size")
