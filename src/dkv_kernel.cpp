@@ -24,6 +24,7 @@ constexpr int kDefaultBatch = 1;
 constexpr int kDefaultHeads = 1;
 constexpr int kDefaultSeq = 1024;
 constexpr int kDefaultDim = 128;
+constexpr float kLog2E = 1.44269504088896340736f;
 
 inline int ceil_div(int x, int y) {
     return (x + y - 1) / y;
@@ -57,7 +58,8 @@ inline bool valid_dkv_shape(const ShaoboFa3Params* p) {
 inline bool valid_probe_shape(const ShaoboFa3Params* p) {
     return valid_dkv_shape(p) &&
            (p->dkv_path == dkv::kDkvPathWaspProbe ||
-            p->dkv_path == dkv::kDkvPathWaspSoftmaxDsSidecar) &&
+            p->dkv_path == dkv::kDkvPathWaspSoftmaxDsSidecar ||
+            p->dkv_path == dkv::kDkvPathWaspFragmentSidecar) &&
            p->seqlen_q % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
            p->seqlen_k == p->seqlen_q &&
            p->seqlen_k % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
@@ -200,6 +202,36 @@ __device__ __forceinline__ void publish_mq32_tile(
 }
 
 template <typename Tile>
+__device__ __forceinline__ void publish_sidecar_page(
+    float* sidecar_lds,
+    const float* scores_max,
+    const float* scores_sum,
+    const float* delta,
+    int64_t row_base,
+    int q_base,
+    int seqlen,
+    int page,
+    int wave_local,
+    int lane,
+    float softmax_scale_log2) {
+    if (sidecar_lds == nullptr || wave_local != 0 || lane >= Tile::kBlockMq) {
+        return;
+    }
+    const int q_row = q_base + lane;
+    const bool valid = q_row < seqlen;
+    const int64_t row = row_base + q_row;
+    const float row_max = valid && scores_max != nullptr ? scores_max[row] : 0.0f;
+    const float row_sum = valid && scores_sum != nullptr ? scores_sum[row] : 1.0f;
+    const float row_delta = valid && delta != nullptr ? delta[row] : 0.0f;
+    float* page_base = sidecar_lds + page * Tile::kSidecarFloats;
+    page_base[Tile::kSidecarMaxLog2Base + lane] =
+        row_max * softmax_scale_log2;
+    page_base[Tile::kSidecarInvSumBase + lane] =
+        row_sum != 0.0f ? 1.0f / row_sum : 0.0f;
+    page_base[Tile::kSidecarDeltaBase + lane] = row_delta;
+}
+
+template <typename Tile>
 __device__ __forceinline__ void publish_nk128_tile(
     __half* lds,
     int lds_base,
@@ -225,11 +257,20 @@ __device__ __forceinline__ void producer_qk_loop(
     const __half* q_base_ptr,
     const __half* k_base_ptr,
     __half* lds,
+    float* sidecar_lds,
+    const float* scores_max,
+    const float* scores_sum,
+    const float* delta,
+    int64_t row_base,
     int q_base,
     int k_base,
+    int seqlen,
     int row_stride,
     int q_tiles,
-    int wave_local) {
+    int wave_local,
+    int lane,
+    float softmax_scale_log2,
+    int fragment_sidecar_enabled) {
     using Layout = DkvLdsLayout<Tile>;
     int raw0_used_phase = 0;
     int raw1_used_phase = 0;
@@ -250,6 +291,12 @@ __device__ __forceinline__ void producer_qk_loop(
         publish_mq32_tile<Tile>(
             lds, Layout::kQBase, q_base_ptr, row_stride,
             q_base + q_tile * Tile::kBlockMq, page, wave_local);
+        if (fragment_sidecar_enabled) {
+            publish_sidecar_page<Tile>(
+                sidecar_lds, scores_max, scores_sum, delta, row_base,
+                q_base + q_tile * Tile::kBlockMq, seqlen, page, wave_local,
+                lane, softmax_scale_log2);
+        }
         arrive_raw_filled_page<Wdra>(page);
     }
 }
@@ -289,19 +336,17 @@ __device__ __forceinline__ void producer_dout_v_loop(
 }
 
 template <typename Tile>
-__device__ __forceinline__ void score_dp_mmac_probe(
+__device__ __forceinline__ void score_dp_mmac_fragments(
     __half* lds,
     int consumer_group,
     int page,
     int wave_local,
-    ins::F32x4& score,
-    ins::F32x4& dp) {
+    ins::F32x4 (&score)[4],
+    ins::F32x4 (&dp)[4]) {
     using Layout = DkvLdsLayout<Tile>;
 
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
-    score.f32 = zero.f32;
-    dp.f32 = zero.f32;
 
     const int row_block = (consumer_group * 2 + (wave_local & 1)) & 3;
     ins::raise_priority_2();
@@ -331,17 +376,113 @@ __device__ __forceinline__ void score_dp_mmac_probe(
         ins::ds_read_matrix_trans_pair(lds, v_off, v0.f16x8, v1.f16x8);
         ins::wait_lgkm(0);
 
-        score.f32 = ins::mmac_f16_lit(q0.f16x4[0], k0.f16x4[0], score.f32);
-        score.f32 = ins::mmac_f16_lit(q0.f16x4[1], k0.f16x4[1], score.f32);
-        score.f32 = ins::mmac_f16_lit(q1.f16x4[0], k1.f16x4[0], score.f32);
-        score.f32 = ins::mmac_f16_lit(q1.f16x4[1], k1.f16x4[1], score.f32);
-
-        dp.f32 = ins::mmac_f16_lit(dout0.f16x4[0], v0.f16x4[0], dp.f32);
-        dp.f32 = ins::mmac_f16_lit(dout0.f16x4[1], v0.f16x4[1], dp.f32);
-        dp.f32 = ins::mmac_f16_lit(dout1.f16x4[0], v1.f16x4[0], dp.f32);
-        dp.f32 = ins::mmac_f16_lit(dout1.f16x4[1], v1.f16x4[1], dp.f32);
+#pragma unroll
+        for (int n_idx = 0; n_idx < 2; ++n_idx) {
+#pragma unroll
+            for (int m_idx = 0; m_idx < 2; ++m_idx) {
+                const int frag = n_idx * 2 + m_idx;
+                const ins::Vec4F16 k_frag[2] = {
+                    n_idx == 0 ? k0.f16x4[0] : k1.f16x4[0],
+                    n_idx == 0 ? k0.f16x4[1] : k1.f16x4[1],
+                };
+                const ins::Vec4F16 q_frag[2] = {
+                    m_idx == 0 ? q0.f16x4[0] : q1.f16x4[0],
+                    m_idx == 0 ? q0.f16x4[1] : q1.f16x4[1],
+                };
+                const ins::Vec4F16 v_frag[2] = {
+                    n_idx == 0 ? v0.f16x4[0] : v1.f16x4[0],
+                    n_idx == 0 ? v0.f16x4[1] : v1.f16x4[1],
+                };
+                const ins::Vec4F16 dout_frag[2] = {
+                    m_idx == 0 ? dout0.f16x4[0] : dout1.f16x4[0],
+                    m_idx == 0 ? dout0.f16x4[1] : dout1.f16x4[1],
+                };
+#pragma unroll
+                for (int k_half = 0; k_half < 2; ++k_half) {
+                    const bool first = d_block == 0 && k_half == 0;
+                    if (first) {
+                        score[frag].f32 = ins::mmac_f16_lit(
+                            k_frag[k_half], q_frag[k_half], zero.f32);
+                        dp[frag].f32 = ins::mmac_f16_lit(
+                            v_frag[k_half], dout_frag[k_half], zero.f32);
+                    } else {
+                        score[frag].f32 = ins::mmac_f16_lit(
+                            k_frag[k_half], q_frag[k_half],
+                            score[frag].f32);
+                        dp[frag].f32 = ins::mmac_f16_lit(
+                            v_frag[k_half], dout_frag[k_half], dp[frag].f32);
+                    }
+                }
+            }
+        }
     }
     ins::lower_priority();
+}
+
+template <typename Tile>
+__device__ __forceinline__ void softmax_ds_fragment_from_sidecar(
+    const ins::F32x4 (&score)[4],
+    const ins::F32x4 (&dp)[4],
+    const float* sidecar_page,
+    int q_tile,
+    int k_base,
+    int row_block,
+    int lane,
+    int seqlen,
+    int causal,
+    float softmax_scale,
+    ins::Vec4F16 (&p_frag)[4],
+    ins::Vec4F16 (&ds_frag)[4]) {
+    const int lane_n = lane & 15;
+    const int lane_col_group = lane >> 4;
+    const int q_base = q_tile * Tile::kBlockMq;
+    const bool full_valid_tile =
+        q_base + Tile::kBlockMq <= seqlen &&
+        k_base + row_block * 32 + 31 < seqlen &&
+        (!causal || (k_base + row_block * 32 + 31 < q_base));
+
+#pragma unroll
+    for (int n_idx = 0; n_idx < 2; ++n_idx) {
+#pragma unroll
+        for (int m_idx = 0; m_idx < 2; ++m_idx) {
+            const int frag = n_idx * 2 + m_idx;
+            const int krow = k_base + row_block * 32 + n_idx * 16 + lane_n;
+            const int local_m_base = m_idx * 16 + lane_col_group * 4;
+            ins::Vec4F16 p_vec{};
+            ins::Vec4F16 ds_vec{};
+#pragma unroll
+            for (int vec_id = 0; vec_id < 4; ++vec_id) {
+                const int local_m = local_m_base + vec_id;
+                const int qrow = q_base + local_m;
+                const bool valid_pair =
+                    full_valid_tile ||
+                    (krow < seqlen && qrow < seqlen &&
+                     (!causal || krow <= qrow));
+                float p_val = 0.0f;
+                float ds_val = 0.0f;
+                if (valid_pair) {
+                    const float row_max_log2 =
+                        sidecar_page[Tile::kSidecarMaxLog2Base + local_m];
+                    const float row_inv_sum =
+                        sidecar_page[Tile::kSidecarInvSumBase + local_m];
+                    const float row_delta =
+                        sidecar_page[Tile::kSidecarDeltaBase + local_m];
+                    p_val =
+                        exp2f(score[frag].scalar[vec_id] *
+                                  softmax_scale * kLog2E -
+                              row_max_log2) *
+                        row_inv_sum;
+                    ds_val =
+                        p_val * (dp[frag].scalar[vec_id] - row_delta) *
+                        softmax_scale;
+                }
+                p_vec[vec_id] = static_cast<_Float16>(p_val);
+                ds_vec[vec_id] = static_cast<_Float16>(ds_val);
+            }
+            p_frag[frag] = p_vec;
+            ds_frag[frag] = ds_vec;
+        }
+    }
 }
 
 __device__ __forceinline__ void softmax_ds_pair_sidecar(
@@ -410,6 +551,7 @@ __device__ __forceinline__ void softmax_ds_pair_sidecar(
 template <typename Tile, typename Wdra>
 __device__ __forceinline__ void consumer_score_dp_loop(
     __half* lds,
+    const float* sidecar_lds,
     float* diag,
     int diag_index,
     const __half* q_head,
@@ -421,6 +563,7 @@ __device__ __forceinline__ void consumer_score_dp_loop(
     int k_base,
     int q_tiles,
     int sidecar_enabled,
+    int fragment_sidecar_enabled,
     int causal,
     float softmax_scale,
     int consumer_group,
@@ -439,11 +582,31 @@ __device__ __forceinline__ void consumer_score_dp_loop(
         wait_raw_filled_page<Wdra>(
             page, raw0_filled_phase, raw1_filled_phase);
 
-        ins::F32x4 score;
-        ins::F32x4 dp;
-        score_dp_mmac_probe<Tile>(
+        ins::F32x4 score[4];
+        ins::F32x4 dp[4];
+        score_dp_mmac_fragments<Tile>(
             lds, consumer_group, page, wave_local, score, dp);
-        diag_accum += score.scalar[0] + dp.scalar[0];
+        diag_accum += score[0].scalar[0] + dp[0].scalar[0];
+
+        const int row_block = (consumer_group * 2 + (wave_local & 1)) & 3;
+        if (fragment_sidecar_enabled && sidecar_lds != nullptr) {
+            const float* sidecar_page =
+                sidecar_lds + page * Tile::kSidecarFloats;
+            ins::Vec4F16 p_frag[4];
+            ins::Vec4F16 ds_frag[4];
+            softmax_ds_fragment_from_sidecar<Tile>(
+                score, dp, sidecar_page, q_tile, k_base, row_block, lane,
+                seqlen, causal, softmax_scale, p_frag, ds_frag);
+            if (lane == 0 && diag != nullptr && q_tile == row_block) {
+                const int slot = consumer_group * 4 + wave_local;
+                const int diag_base =
+                    diag_index * Tile::kProbeDiagFloatsPerBlock;
+                diag[diag_base + Tile::kProbeProbDiagBase + slot] =
+                    static_cast<float>(p_frag[0][0]);
+                diag[diag_base + Tile::kProbeDsDiagBase + slot] =
+                    static_cast<float>(ds_frag[0][0]);
+            }
+        }
 
         arrive_raw_used_page<Wdra>(page);
     }
@@ -453,7 +616,7 @@ __device__ __forceinline__ void consumer_score_dp_loop(
         const int diag_base =
             diag_index * Tile::kProbeDiagFloatsPerBlock;
         diag[diag_base + Tile::kProbeScoreDiagBase + slot] = diag_accum;
-        if (sidecar_enabled) {
+        if (sidecar_enabled && !fragment_sidecar_enabled) {
             const int k_idx = k_base + consumer_group * 64 + wave_local * 16;
             const int q_idx = k_idx < seqlen ? k_idx : seqlen - 1;
             float prob = 0.0f;
@@ -473,6 +636,9 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
                          const __half* __restrict__ q,
                          const __half* __restrict__ k,
                          const __half* __restrict__ v,
+                         const float* __restrict__ scores_max,
+                         const float* __restrict__ scores_sum,
+                         const float* __restrict__ delta,
                          float* __restrict__ diag,
                          int diag_stride,
                          int batch,
@@ -481,7 +647,8 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
                          int dim,
                          int causal,
                          float softmax_scale,
-                         int sidecar_enabled) {
+                         int sidecar_enabled,
+                         int fragment_sidecar_enabled) {
 #if defined(__gfx946__) || defined(__gfx92a__)
     using Tile = dkv::DkvTileD128Mq32Nk128;
     using Bar = dkv::DkvBarrierLedger;
@@ -492,7 +659,8 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
 
     (void)diag_stride;
     (void)batch;
-    __shared__ __half lds[Tile::kLdsBudgetBytes / sizeof(__half)];
+    __shared__ __half lds[Layout::kBytes / sizeof(__half)];
+    __shared__ float sidecar_lds[Tile::kRawBuffers * Tile::kSidecarFloats];
 
     const uint32_t wave_id = __builtin_hcu_get_wave_id();
     const int wave_local = static_cast<int>(wave_id & 3u);
@@ -515,6 +683,8 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     const int q_tiles = seqlen / Tile::kBlockMq;
     const int64_t tensor_base =
         (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
+    const int64_t row_base =
+        (static_cast<int64_t>(b) * heads + h) * seqlen;
     const __half* q_head = q + tensor_base;
     const __half* k_head = k + tensor_base;
     const __half* v_head = v + tensor_base;
@@ -524,24 +694,30 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
 
     if (wave_id < 4) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
         producer_qk_loop<Tile, Bar>(
-            q_head, k_head, lds, q_base, k_base, dim, q_tiles, wave_local);
+            q_head, k_head, lds, sidecar_lds, scores_max, scores_sum,
+            delta, row_base, q_base, k_base, seqlen, dim, q_tiles,
+            wave_local, lane, softmax_scale * kLog2E,
+            fragment_sidecar_enabled);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 8) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
         const int lane = static_cast<int>(threadIdx.x % 64);
         consumer_score_dp_loop<Tile, Bar>(
-            lds, diag, diag_index, q_head, k_head, v_head, dout_head,
-            seqlen, dim, k_base, q_tiles, sidecar_enabled, causal,
-            softmax_scale, 0, wave_local, lane);
+            lds, sidecar_lds, diag, diag_index, q_head, k_head, v_head,
+            dout_head, seqlen, dim, k_base, q_tiles, sidecar_enabled,
+            fragment_sidecar_enabled, causal, softmax_scale, 0, wave_local,
+            lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 12) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
         const int lane = static_cast<int>(threadIdx.x % 64);
         consumer_score_dp_loop<Tile, Bar>(
-            lds, diag, diag_index, q_head, k_head, v_head, dout_head,
-            seqlen, dim, k_base, q_tiles, sidecar_enabled, causal,
-            softmax_scale, 1, wave_local, lane);
+            lds, sidecar_lds, diag, diag_index, q_head, k_head, v_head,
+            dout_head, seqlen, dim, k_base, q_tiles, sidecar_enabled,
+            fragment_sidecar_enabled, causal, softmax_scale, 1, wave_local,
+            lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
@@ -566,6 +742,9 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     (void)q;
     (void)k;
     (void)v;
+    (void)scores_max;
+    (void)scores_sum;
+    (void)delta;
     (void)diag;
     (void)diag_stride;
     (void)batch;
@@ -575,6 +754,7 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     (void)causal;
     (void)softmax_scale;
     (void)sidecar_enabled;
+    (void)fragment_sidecar_enabled;
 #endif
 }
 
@@ -885,6 +1065,11 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
         params->workspace == nullptr) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
+    if (params->dkv_path == dkv::kDkvPathWaspFragmentSidecar &&
+        (softmax_aux0 == nullptr || softmax_aux1 == nullptr ||
+         params->reserved_ptr[0] == nullptr)) {
+        return SHAOBO_FA3_STATUS_INVALID_VALUE;
+    }
     if (params->workspace_bytes < shaobo_fa3_bwd_workspace_bytes(params)) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
@@ -898,10 +1083,17 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
         fa3_bwd_dkv_probe_kernel, grid, block, 0, 0,
         static_cast<const __half*>(dout), static_cast<const __half*>(q),
         static_cast<const __half*>(k), static_cast<const __half*>(v),
+        static_cast<const float*>(softmax_aux0),
+        static_cast<const float*>(softmax_aux1),
+        static_cast<const float*>(params->reserved_ptr[0]),
         static_cast<float*>(params->workspace), grid_x, params->batch,
         params->num_heads_q, params->seqlen_k, params->head_dim_qk,
         params->causal, params->softmax_scale,
-        params->dkv_path == dkv::kDkvPathWaspSoftmaxDsSidecar ? 1 : 0);
+        (params->dkv_path == dkv::kDkvPathWaspSoftmaxDsSidecar ||
+         params->dkv_path == dkv::kDkvPathWaspFragmentSidecar)
+            ? 1
+            : 0,
+        params->dkv_path == dkv::kDkvPathWaspFragmentSidecar ? 1 : 0);
     hipError_t err = hipGetLastError();
     if (err != hipSuccess) {
         return SHAOBO_FA3_STATUS_HIP_ERROR;
@@ -1161,6 +1353,93 @@ void cpu_pair_prob_ds(const std::vector<__half>& q,
     ds_out = prob * (target_dp - delta) * scale;
 }
 
+void cpu_softmax_aux_delta(const std::vector<__half>& q,
+                           const std::vector<__half>& k,
+                           const std::vector<__half>& v,
+                           const std::vector<__half>& dout,
+                           std::vector<float>& scores_max,
+                           std::vector<float>& scores_sum,
+                           std::vector<float>& delta,
+                           int batch,
+                           int heads,
+                           int seqlen,
+                           int dim,
+                           int causal,
+                           float scale) {
+    const float scale_log2 = scale * kLog2E;
+    std::fill(scores_max.begin(), scores_max.end(), 0.0f);
+    std::fill(scores_sum.begin(), scores_sum.end(), 1.0f);
+    std::fill(delta.begin(), delta.end(), 0.0f);
+
+    for (int b = 0; b < batch; ++b) {
+        for (int h = 0; h < heads; ++h) {
+            for (int q_idx = 0; q_idx < seqlen; ++q_idx) {
+                const int row = (b * heads + h) * seqlen + q_idx;
+                float max_qk = -std::numeric_limits<float>::infinity();
+                for (int k_idx = 0; k_idx < seqlen; ++k_idx) {
+                    if (causal && k_idx > q_idx) {
+                        continue;
+                    }
+                    float dot = 0.0f;
+                    for (int d = 0; d < dim; ++d) {
+                        dot += __half2float(
+                                   q[tensor_offset(
+                                       b, h, q_idx, d, heads, seqlen, dim)]) *
+                               __half2float(
+                                   k[tensor_offset(
+                                       b, h, k_idx, d, heads, seqlen, dim)]);
+                    }
+                    max_qk = std::max(max_qk, dot);
+                }
+
+                double denom = 0.0;
+                std::vector<float> probs(seqlen, 0.0f);
+                for (int k_idx = 0; k_idx < seqlen; ++k_idx) {
+                    if (causal && k_idx > q_idx) {
+                        continue;
+                    }
+                    float dot = 0.0f;
+                    for (int d = 0; d < dim; ++d) {
+                        dot += __half2float(
+                                   q[tensor_offset(
+                                       b, h, q_idx, d, heads, seqlen, dim)]) *
+                               __half2float(
+                                   k[tensor_offset(
+                                       b, h, k_idx, d, heads, seqlen, dim)]);
+                    }
+                    const float p_num = std::exp2((dot - max_qk) * scale_log2);
+                    probs[k_idx] = p_num;
+                    denom += p_num;
+                }
+                const float inv_sum =
+                    denom != 0.0 ? 1.0f / static_cast<float>(denom) : 0.0f;
+                scores_max[row] = max_qk;
+                scores_sum[row] = static_cast<float>(denom);
+
+                float delta_row = 0.0f;
+                for (int d = 0; d < dim; ++d) {
+                    float out_d = 0.0f;
+                    for (int k_idx = 0; k_idx < seqlen; ++k_idx) {
+                        if (causal && k_idx > q_idx) {
+                            continue;
+                        }
+                        out_d += probs[k_idx] * inv_sum *
+                                 __half2float(
+                                     v[tensor_offset(
+                                         b, h, k_idx, d, heads, seqlen, dim)]);
+                    }
+                    delta_row +=
+                        __half2float(
+                            dout[tensor_offset(
+                                b, h, q_idx, d, heads, seqlen, dim)]) *
+                        out_d;
+                }
+                delta[row] = delta_row;
+            }
+        }
+    }
+}
+
 DkvCompareMetrics compare_vectors(const std::vector<float>& actual,
                                   const std::vector<float>& expected) {
     DkvCompareMetrics m;
@@ -1198,9 +1477,11 @@ int main(int argc, char** argv) {
         argc, argv, "--check", env_int("CHECK_DKV", 0));
     const int probe_check = arg_int(
         argc, argv, "--probe-check", env_int("CHECK_WASP_SIDECAR", 0));
+    const int fragment_check = arg_int(
+        argc, argv, "--fragment-check", env_int("CHECK_WASP_FRAGMENT", 0));
     const int batch = arg_int(argc, argv, "--B", env_int("B", kDefaultBatch));
     const int heads = arg_int(argc, argv, "--H", env_int("H", kDefaultHeads));
-    const int default_seq = (check || probe_check) ? 128 : kDefaultSeq;
+    const int default_seq = (check || probe_check || fragment_check) ? 128 : kDefaultSeq;
     const int seqlen = arg_int(argc, argv, "--S", env_int("S", default_seq));
     const int dim = arg_int(argc, argv, "--D", env_int("D", kDefaultDim));
 
@@ -1220,8 +1501,10 @@ int main(int argc, char** argv) {
     params.softmax_aux_mode = SHAOBO_FA3_SOFTMAX_AUX_SMAX_SSUM;
     params.dkv_path =
         check ? dkv::kDkvPathReferenceCorrectness
-              : (probe_check ? dkv::kDkvPathWaspSoftmaxDsSidecar
-                             : dkv::kDkvPathWaspProbe);
+              : (fragment_check
+                     ? dkv::kDkvPathWaspFragmentSidecar
+                     : (probe_check ? dkv::kDkvPathWaspSoftmaxDsSidecar
+                                    : dkv::kDkvPathWaspProbe));
     params.block_threads = dkv::DkvTileD128Mq32Nk128::kThreadsPerCta;
     params.sync_after_launch = 1;
 
@@ -1238,6 +1521,9 @@ int main(int argc, char** argv) {
     float* dk_dev = nullptr;
     float* dv_dev = nullptr;
     float* workspace = nullptr;
+    float* scores_max_dev = nullptr;
+    float* scores_sum_dev = nullptr;
+    float* delta_dev = nullptr;
     hipError_t err = hipMalloc(reinterpret_cast<void**>(&q_dev), tensor_bytes);
     if (err == hipSuccess) {
         err = hipMalloc(reinterpret_cast<void**>(&k_dev), tensor_bytes);
@@ -1259,6 +1545,19 @@ int main(int argc, char** argv) {
         err = hipMalloc(reinterpret_cast<void**>(&workspace),
                         std::max<size_t>(workspace_bytes, sizeof(float)));
     }
+    const size_t sidecar_rows =
+        static_cast<size_t>(batch) * static_cast<size_t>(heads) *
+        static_cast<size_t>(seqlen);
+    const size_t sidecar_bytes = sidecar_rows * sizeof(float);
+    if (fragment_check && err == hipSuccess) {
+        err = hipMalloc(reinterpret_cast<void**>(&scores_max_dev), sidecar_bytes);
+    }
+    if (fragment_check && err == hipSuccess) {
+        err = hipMalloc(reinterpret_cast<void**>(&scores_sum_dev), sidecar_bytes);
+    }
+    if (fragment_check && err == hipSuccess) {
+        err = hipMalloc(reinterpret_cast<void**>(&delta_dev), sidecar_bytes);
+    }
     if (err != hipSuccess) {
         std::fprintf(stderr, "hipMalloc failed: %s\n", hipGetErrorString(err));
         return 2;
@@ -1268,7 +1567,7 @@ int main(int argc, char** argv) {
     std::vector<__half> k_host(tensor_elems);
     std::vector<__half> v_host(tensor_elems);
     std::vector<__half> dout_host(tensor_elems);
-    if (check || probe_check) {
+    if (check || probe_check || fragment_check) {
         fill_dkv_inputs(q_host, k_host, v_host, dout_host);
         ignore_hip_status(
             hipMemcpy(q_dev, q_host.data(), tensor_bytes,
@@ -1286,6 +1585,25 @@ int main(int argc, char** argv) {
             ignore_hip_status(hipMemset(dk_dev, 0, output_bytes));
             ignore_hip_status(hipMemset(dv_dev, 0, output_bytes));
         }
+        if (fragment_check) {
+            std::vector<float> scores_max_host(sidecar_rows);
+            std::vector<float> scores_sum_host(sidecar_rows);
+            std::vector<float> delta_host(sidecar_rows);
+            cpu_softmax_aux_delta(
+                q_host, k_host, v_host, dout_host, scores_max_host,
+                scores_sum_host, delta_host, batch, heads, seqlen, dim,
+                params.causal, params.softmax_scale);
+            ignore_hip_status(
+                hipMemcpy(scores_max_dev, scores_max_host.data(),
+                          sidecar_bytes, hipMemcpyHostToDevice));
+            ignore_hip_status(
+                hipMemcpy(scores_sum_dev, scores_sum_host.data(),
+                          sidecar_bytes, hipMemcpyHostToDevice));
+            ignore_hip_status(
+                hipMemcpy(delta_dev, delta_host.data(), sidecar_bytes,
+                          hipMemcpyHostToDevice));
+            params.reserved_ptr[0] = delta_dev;
+        }
     } else {
         ignore_hip_status(hipMemset(q_dev, 0, tensor_bytes));
         ignore_hip_status(hipMemset(k_dev, 0, tensor_bytes));
@@ -1299,8 +1617,9 @@ int main(int argc, char** argv) {
     params.workspace_bytes = workspace_bytes;
 
     const int status =
-        shaobo_fa3_bwd(dout_dev, q_dev, k_dev, v_dev, nullptr, nullptr,
-                       nullptr, nullptr, dk_dev, dv_dev, &params);
+        shaobo_fa3_bwd(dout_dev, q_dev, k_dev, v_dev, nullptr,
+                       scores_max_dev, scores_sum_dev, nullptr, dk_dev,
+                       dv_dev, &params);
     if (check) {
         std::vector<float> dk_actual(tensor_elems);
         std::vector<float> dv_actual(tensor_elems);
@@ -1330,6 +1649,9 @@ int main(int argc, char** argv) {
             dk_metrics.rel_l2 <= 1.0e-4f &&
             dv_metrics.rel_l2 <= 1.0e-4f;
 
+        ignore_hip_status(hipFree(delta_dev));
+        ignore_hip_status(hipFree(scores_sum_dev));
+        ignore_hip_status(hipFree(scores_max_dev));
         ignore_hip_status(hipFree(workspace));
         ignore_hip_status(hipFree(dv_dev));
         ignore_hip_status(hipFree(dk_dev));
@@ -1351,7 +1673,7 @@ int main(int argc, char** argv) {
         return pass ? 0 : 1;
     }
 
-    if (probe_check) {
+    if (probe_check || fragment_check) {
         const size_t workspace_floats = workspace_bytes / sizeof(float);
         std::vector<float> workspace_host(workspace_floats, 0.0f);
         ignore_hip_status(
@@ -1384,8 +1706,17 @@ int main(int argc, char** argv) {
                         for (int wave_local = 0; wave_local < 4;
                              ++wave_local) {
                             const int slot = consumer_group * 4 + wave_local;
-                            const int k_idx = k_base + consumer_group * 64 +
-                                              wave_local * 16;
+                            const int row_block =
+                                fragment_check
+                                    ? ((consumer_group * 2 +
+                                        (wave_local & 1)) &
+                                       3)
+                                    : 0;
+                            const int k_idx =
+                                fragment_check
+                                    ? k_base + row_block * 32
+                                    : k_base + consumer_group * 64 +
+                                          wave_local * 16;
                             const int q_idx =
                                 k_idx < seqlen ? k_idx : seqlen - 1;
                             float p_ref = 0.0f;
@@ -1419,14 +1750,18 @@ int main(int argc, char** argv) {
             compare_vectors(prob_actual, prob_expected);
         const DkvCompareMetrics ds_metrics =
             compare_vectors(ds_actual, ds_expected);
+        const float ds_rel_l2_limit = fragment_check ? 5.0e-4f : 1.0e-5f;
         const bool pass =
             status == SHAOBO_FA3_STATUS_SUCCESS &&
             p_metrics.bad_count == 0 && ds_metrics.bad_count == 0 &&
             p_metrics.max_abs <= 1.0e-5f &&
             ds_metrics.max_abs <= 1.0e-5f &&
             p_metrics.rel_l2 <= 1.0e-5f &&
-            ds_metrics.rel_l2 <= 1.0e-5f;
+            ds_metrics.rel_l2 <= ds_rel_l2_limit;
 
+        ignore_hip_status(hipFree(delta_dev));
+        ignore_hip_status(hipFree(scores_sum_dev));
+        ignore_hip_status(hipFree(scores_max_dev));
         ignore_hip_status(hipFree(workspace));
         ignore_hip_status(hipFree(dv_dev));
         ignore_hip_status(hipFree(dk_dev));
@@ -1436,10 +1771,12 @@ int main(int argc, char** argv) {
         ignore_hip_status(hipFree(q_dev));
 
         std::printf(
-            "fa3_bwd_dkv_sidecar status=%s B=%d H=%d S=%d D=%d "
+            "%s status=%s B=%d H=%d S=%d D=%d "
             "workspace_bytes=%zu p_max_abs=%g p_mean_abs=%g p_rmse=%g "
             "p_rel_l2=%g ds_max_abs=%g ds_mean_abs=%g ds_rmse=%g "
             "ds_rel_l2=%g bad=%d pass=%d\n",
+            fragment_check ? "fa3_bwd_dkv_fragment_sidecar"
+                           : "fa3_bwd_dkv_sidecar",
             shaobo_fa3_status_string(status), batch, heads, seqlen, dim,
             workspace_bytes, p_metrics.max_abs, p_metrics.mean_abs,
             p_metrics.rmse, p_metrics.rel_l2, ds_metrics.max_abs,
@@ -1458,6 +1795,9 @@ int main(int argc, char** argv) {
         }
     }
 
+    ignore_hip_status(hipFree(delta_dev));
+    ignore_hip_status(hipFree(scores_sum_dev));
+    ignore_hip_status(hipFree(scores_max_dev));
     ignore_hip_status(hipFree(workspace));
     ignore_hip_status(hipFree(dv_dev));
     ignore_hip_status(hipFree(dk_dev));

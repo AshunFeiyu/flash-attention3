@@ -45,6 +45,10 @@ def main() -> int:
             "missing_softmax_ds_sidecar")
     require(source, r"fa3_bwd_dkv_sidecar", failures,
             "missing_sidecar_status_line")
+    require(source, r"softmax_ds_fragment_from_sidecar", failures,
+            "missing_fragment_sidecar_helper")
+    require(source, r"fa3_bwd_dkv_fragment_sidecar", failures,
+            "missing_fragment_sidecar_status_line")
     require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_wdra_attribute")
     require(source, r"producer_qk_loop", failures, "missing_producer_qk_loop")
@@ -52,8 +56,8 @@ def main() -> int:
             "missing_producer_dout_v_loop")
     require(source, r"consumer_score_dp_loop", failures,
             "missing_consumer_score_dp_loop")
-    require(source, r"score_dp_mmac_probe", failures,
-            "missing_score_dp_mmac_probe")
+    require(source, r"score_dp_mmac_fragments", failures,
+            "missing_score_dp_mmac_fragments")
     require(source, r"wave_id\s*<\s*4", failures, "missing_producer_a_branch")
     require(source, r"wave_id\s*<\s*8", failures, "missing_consumer0_branch")
     require(source, r"wave_id\s*<\s*12", failures, "missing_consumer1_branch")
@@ -87,6 +91,8 @@ def main() -> int:
             "missing_reference_path_contract")
     require(contract, r"kDkvPathWaspSoftmaxDsSidecar\s*=\s*2", failures,
             "missing_sidecar_path_contract")
+    require(contract, r"kDkvPathWaspFragmentSidecar\s*=\s*3", failures,
+            "missing_fragment_sidecar_path_contract")
     require(contract, r"kProbeProbDiagBase\s*=\s*8", failures,
             "missing_prob_diag_contract")
     require(contract, r"kProbeDsDiagBase\s*=\s*16", failures,

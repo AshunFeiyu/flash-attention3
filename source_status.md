@@ -321,3 +321,62 @@ Next:
 Implement from the workbook, not from the old phase stack: keep the current
 sidecar as oracle, then move fragment-local `P/dS`, dV MMAC, dK MMAC, and the
 store epilogue into the clean WASP path.
+
+## 2026-07-02 WASP Fragment Sidecar
+
+Status: `FRAGMENT_SIDECAR_PASS`
+
+The clean WASP path now has a fragment-level P/dS validation cut:
+
+```text
+params.dkv_path = kDkvPathWaspFragmentSidecar
+standalone: --fragment-check=1
+```
+
+Implemented:
+
+- Added `kDkvPathWaspFragmentSidecar = 3`.
+- Reduced the main LDS allocation from full 128KB to actual `Layout::kBytes`,
+  leaving room for shared sidecar pages.
+- Added double-buffered sidecar rows:
+  `max_log2`, `inv_sum`, and `delta`.
+- Producer A publishes sidecar rows with the Q raw page and the existing raw
+  page ABarrier ownership.
+- Consumer score/dP now keeps four fragment accumulators instead of one
+  checksum accumulator.
+- The first MMAC for each score/dP fragment uses a FWD-style `mmac_zeros`
+  accumulator seed; later MMACs accumulate into the fragment.
+- Consumer computes fragment-local `P` and `dS` from the score/dP fragments and
+  sidecar rows, then writes a diagnostic pair for correctness.
+
+Evidence:
+
+- Remote build PASS with asm.
+- Static gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=88`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD fragment sidecar correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_fragment_sidecar_correctness_20260702_012111`
+- Numeric result:
+  `p_max_abs=6.34603e-06`, `p_rel_l2=6.92507e-06`,
+  `ds_max_abs=2.66919e-08`, `ds_rel_l2=0.000359523`,
+  `bad=0`, `pass=1`.
+- Stats:
+  `simTicks=10138765`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=10138765`, `MMOP=512` on active CU,
+  `ldsBankConflict=0`, coissue `45/12`.
+- Regression smoke PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260702_012136`
+  with `simTicks=27633970`, `ldsBankConflict=0`.
+- Scalar sidecar regression PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_sidecar_correctness_20260702_012150`.
+- Workbook experiment ledger updated:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx`.
+
+Boundary:
+
+This still does not store dK/dV.  It proves the FWD-style score/dP fragment
+layout can feed sidecar-based fragment P/dS under PMD with no spill, no scratch,
+and no LDS bank conflict.  Next, wire `p_frag` into dV MMAC and `ds_frag` into
+dK MMAC.

@@ -371,3 +371,68 @@ This is a design gate, not a performance candidate.  The next code cut should
 implement exactly the workbook path: fragment-local `P/dS` in the consumer
 mainloop, then dV MMAC, dK MMAC, and stores, with correctness/resource gates
 before any perf claim.
+
+## 2026-07-02 Add WASP Fragment Sidecar
+
+Decision: `FRAGMENT_SIDECAR_PASS`
+
+Hypothesis:
+
+`Before wiring dV/dK MMAC, the clean kernel must prove that score/dP MMAC
+fragments can be converted into fragment-local P/dS using sidecar row metadata.
+This also gives a clean place to adopt the FWD mmac_zeros accumulator seed
+style.`
+
+Implemented:
+
+- Added `kDkvPathWaspFragmentSidecar = 3` and standalone
+  `--fragment-check=1`.
+- Added host generation of `scores_max`, `scores_sum`, and `delta`; passed them
+  through `softmax_aux0`, `softmax_aux1`, and `reserved_ptr[0]`.
+- Added shared sidecar pages for `max_log2`, `inv_sum`, and `delta`.
+- Producer A publishes sidecar metadata with Q raw pages under the existing raw
+  page ABarrier.
+- Replaced the one-accumulator score/dP checksum with four MMAC fragments.
+- Used `mmac_zeros` as the first MMAC accumulator seed for each fragment.
+- Added fragment-local `P/dS` conversion and a diagnostic compare path.
+- Reduced kernel LDS allocation from the whole 128KB budget to actual
+  `Layout::kBytes`, because sidecar storage made the previous allocation
+  exceed the 128KB hardware limit.
+- Added `scripts/run_dkv_fragment_sidecar_correctness.sh`.
+- Added `results/perf_ledger.csv`.
+
+Verified:
+
+- Remote build PASS with asm.
+- Static gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=88`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD fragment correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_fragment_sidecar_correctness_20260702_012111`
+- Shape:
+  `B=1,H=1,S=128,D=128,causal=true,fp16,GPU_CHIP=sb,GPU_ARGS=['--SQCIPfLines=7']`
+- Result:
+  `fa3_bwd_dkv_fragment_sidecar status=success ... p_max_abs=6.34603e-06
+  p_rel_l2=6.92507e-06 ds_max_abs=2.66919e-08
+  ds_rel_l2=0.000359523 bad=0 pass=1`.
+- Stats:
+  `simTicks=10138765`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=10138765`, `MMOP=512` on the active CU,
+  `ldsBankConflict=0`, coissue `45/12`.
+- Default S1024 score/dP smoke regression:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260702_012136`
+  reported success with `simTicks=27633970`, `ldsBankConflict=0`.
+- Scalar sidecar regression:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_sidecar_correctness_20260702_012150`
+  reported `pass=1`.
+- Workbook experiment ledger updated:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx`.
+
+Boundary:
+
+This is still not full dK/dV and not a performance promotion.  It proves the
+fragment P/dS handoff is correct and resource-clean.  Next implementation cut:
+wire `p_frag` into dV MMAC accumulation, wire `ds_frag` into dK MMAC
+accumulation, then add the store epilogue and compare against the reference
+dK/dV oracle.

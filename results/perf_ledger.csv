@@ -1,0 +1,4 @@
+date,phase,shape,decision,simTicks,firstWaveStartTick,lastWaveEndTick,MMOP,ldsBankConflict,coissueSuccess,coissueFailed,metadata,evidence,next
+2026-07-02,fragment_sidecar,H1/S128,FRAGMENT_SIDECAR_PASS,10138765,3613610,10138765,512/CU00,0,45,12,"private=0 sgpr=88 vgpr=84 sgpr_spill=0 vgpr_spill=0","/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_fragment_sidecar_correctness_20260702_012111","connect P/dS fragments to dV/dK MMAC"
+2026-07-02,score_dp_probe_regression,H1/S1024,REGRESSION_PASS,27633970,3613610,27633970,4096/active-CU,0,123/CU00,9/CU00,"private=0 sgpr=88 vgpr=84 sgpr_spill=0 vgpr_spill=0","/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260702_012136","use as post-fragment smoke only"
+2026-07-02,scalar_sidecar_regression,H1/S128,REGRESSION_PASS,1298109540,3613610,1298109540,512/CU00,0,21,1,"private=0 sgpr=88 vgpr=84 sgpr_spill=0 vgpr_spill=0","/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_sidecar_correctness_20260702_012150","keep as scalar oracle"

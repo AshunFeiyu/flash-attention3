@@ -154,14 +154,26 @@ WASP softmax/dS sidecar `PASS`:
 - latest PMD S128 evidence:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_sidecar_correctness_20260702_005025`
 
+WASP fragment sidecar `PASS`:
+
+- enabled by `params.dkv_path = kDkvPathWaspFragmentSidecar` or standalone
+  `--fragment-check=1`
+- producer A publishes row sidecar into double-buffered shared sidecar pages
+  together with Q raw pages
+- consumer score/dP now keeps four MMAC fragments and computes fragment-local
+  `P/dS` from sidecar max/sum/delta
+- first MMAC in each fragment uses the FWD-style `mmac_zeros` seed instead of
+  pre-zeroing every accumulator
+- latest PMD S128 evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_fragment_sidecar_correctness_20260702_012111`
+  with `p_max_abs=6.34603e-06`, `ds_max_abs=2.66919e-08`, `pass=1`
+
 Latest evidence archive:
 
 ```text
 /Volumes/172.20.68.76/共享/shaobo/perf/20260701_235316_clean_stream_qloop_probe
 ```
 
-Next step: keep the sidecar as the correctness oracle while moving from scalar
-diagnostic `dS` to fragment-local `dS`/`P` in the consumer mainloop, then add
-dV MMAC accumulation, dK MMAC accumulation, and store epilogue.  Keep batching
-same-family `ds_read_matrix` reads and delaying `s_waitcnt` until true first
-use.
+Next step: connect the verified fragment-local `P/dS` to dV MMAC accumulation,
+then dK MMAC accumulation and store epilogue.  Keep batching same-family
+`ds_read_matrix` reads and delaying `s_waitcnt` until true first use.

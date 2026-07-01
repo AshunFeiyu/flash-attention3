@@ -7,6 +7,7 @@ namespace shaobo::fa3::bwd::dkv {
 inline constexpr int kDkvPathWaspProbe = 0;
 inline constexpr int kDkvPathReferenceCorrectness = 1;
 inline constexpr int kDkvPathWaspSoftmaxDsSidecar = 2;
+inline constexpr int kDkvPathWaspFragmentSidecar = 3;
 
 struct DkvTileD128Mq32Nk128 {
     static constexpr int kHeadDim = 128;
@@ -50,13 +51,18 @@ struct DkvTileD128Mq32Nk128 {
     static constexpr int kRawBuffers = 2;
     static constexpr int kRawBytes =
         kRawBuffers * 2 * kBlockMq * kHeadDim * kHalfBytes;
-    static constexpr int kDoutTBuffers = 2;
-    static constexpr int kDoutTBytes =
-        kDoutTBuffers * kBlockMq * kHeadDim * kHalfBytes;
+    static constexpr int kSidecarRows = kBlockMq;
+    static constexpr int kSidecarMaxLog2Base = 0;
+    static constexpr int kSidecarInvSumBase =
+        kSidecarMaxLog2Base + kSidecarRows;
+    static constexpr int kSidecarDeltaBase =
+        kSidecarInvSumBase + kSidecarRows;
+    static constexpr int kSidecarFloats =
+        kSidecarDeltaBase + kSidecarRows;
     static constexpr int kSidecarBytes =
-        kRawBuffers * 3 * kBlockMq * static_cast<int>(sizeof(float));
+        kRawBuffers * kSidecarFloats * static_cast<int>(sizeof(float));
     static constexpr int kPlannedLdsBytes =
-        kKvBytes + kRawBytes + kDoutTBytes + kSidecarBytes;
+        kKvBytes + kRawBytes + kSidecarBytes;
     static constexpr int kLdsBudgetBytes = 128 * 1024;
 
     static_assert(kResidentNk == 128, "dKV clean lane expects Nk=128");
