@@ -1,0 +1,32 @@
+# Build artifacts
+build/
+*.o
+*.so
+*.a
+*.out
+*.asm
+*.ll
+*.bc
+fa3_bwd_wasp
+fa3_bwd_wasp.*
+
+# PMD / XCompute / run outputs. Keep these outside the clean repo.
+m5out*/
+perf/
+logs/
+archive/
+remote_summaries/
+run_outputs/
+*.perf
+*.csv
+*.jsonl
+*.stdout
+*.stderr
+*.log
+
+# Local/editor noise
+.DS_Store
+._*
+__pycache__/
+*.pyc
+
