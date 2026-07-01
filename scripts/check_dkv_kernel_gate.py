@@ -41,6 +41,10 @@ def main() -> int:
             "missing_cpu_reference_dkv")
     require(source, r"fa3_bwd_dkv_correctness", failures,
             "missing_correctness_status_line")
+    require(source, r"softmax_ds_pair_sidecar", failures,
+            "missing_softmax_ds_sidecar")
+    require(source, r"fa3_bwd_dkv_sidecar", failures,
+            "missing_sidecar_status_line")
     require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_wdra_attribute")
     require(source, r"producer_qk_loop", failures, "missing_producer_qk_loop")
@@ -67,7 +71,7 @@ def main() -> int:
             "missing_raw1_filled_count")
     require(source, r"s_abarrier_init\(Bar::kRaw1Used,\s*8\)", failures,
             "missing_raw1_used_count")
-    require(source, r"q_tile\s*<\s*Tile::kQTilesPerCta", failures,
+    require(source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
     require(source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
             "missing_all_done_wait")
@@ -81,6 +85,12 @@ def main() -> int:
             "missing_barrier_ledger")
     require(contract, r"kDkvPathReferenceCorrectness\s*=\s*1", failures,
             "missing_reference_path_contract")
+    require(contract, r"kDkvPathWaspSoftmaxDsSidecar\s*=\s*2", failures,
+            "missing_sidecar_path_contract")
+    require(contract, r"kProbeProbDiagBase\s*=\s*8", failures,
+            "missing_prob_diag_contract")
+    require(contract, r"kProbeDsDiagBase\s*=\s*16", failures,
+            "missing_ds_diag_contract")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,
             "missing_active_share_target")
     require(contract, r"kForbidDuplicateScoreDp\s*=\s*true", failures,

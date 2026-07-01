@@ -56,8 +56,9 @@ inline bool valid_dkv_shape(const ShaoboFa3Params* p) {
 
 inline bool valid_probe_shape(const ShaoboFa3Params* p) {
     return valid_dkv_shape(p) &&
-           p->dkv_path == dkv::kDkvPathWaspProbe &&
-           p->seqlen_q == dkv::DkvTileD128Mq32Nk128::kProbeSeqLen &&
+           (p->dkv_path == dkv::kDkvPathWaspProbe ||
+            p->dkv_path == dkv::kDkvPathWaspSoftmaxDsSidecar) &&
+           p->seqlen_q % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
            p->seqlen_k == p->seqlen_q &&
            p->seqlen_k % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
            p->num_heads_kv == p->num_heads_q;
@@ -91,7 +92,8 @@ inline size_t probe_workspace_bytes(const ShaoboFa3Params* p) {
     const size_t blocks = static_cast<size_t>(grid_x) *
                           static_cast<size_t>(p->num_heads_q) *
                           static_cast<size_t>(p->batch);
-    return blocks * 8 * sizeof(float);
+    return blocks * dkv::DkvTileD128Mq32Nk128::kProbeDiagFloatsPerBlock *
+           sizeof(float);
 }
 
 inline int64_t tensor_offset(
@@ -226,6 +228,7 @@ __device__ __forceinline__ void producer_qk_loop(
     int q_base,
     int k_base,
     int row_stride,
+    int q_tiles,
     int wave_local) {
     using Layout = DkvLdsLayout<Tile>;
     int raw0_used_phase = 0;
@@ -237,7 +240,7 @@ __device__ __forceinline__ void producer_qk_loop(
     ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
 
 #pragma clang loop unroll(disable)
-    for (int q_tile = 0; q_tile < Tile::kQTilesPerCta; ++q_tile) {
+    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
         const int page = q_tile & 1;
         if (q_tile >= 2) {
             wait_raw_used_page<Wdra>(
@@ -259,6 +262,7 @@ __device__ __forceinline__ void producer_dout_v_loop(
     int q_base,
     int k_base,
     int row_stride,
+    int q_tiles,
     int wave_local) {
     using Layout = DkvLdsLayout<Tile>;
     int raw0_used_phase = 0;
@@ -270,7 +274,7 @@ __device__ __forceinline__ void producer_dout_v_loop(
     ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
 
 #pragma clang loop unroll(disable)
-    for (int q_tile = 0; q_tile < Tile::kQTilesPerCta; ++q_tile) {
+    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
         const int page = q_tile & 1;
         if (q_tile >= 2) {
             wait_raw_used_page<Wdra>(
@@ -340,11 +344,85 @@ __device__ __forceinline__ void score_dp_mmac_probe(
     ins::lower_priority();
 }
 
+__device__ __forceinline__ void softmax_ds_pair_sidecar(
+    const __half* q_head,
+    const __half* k_head,
+    const __half* v_head,
+    const __half* dout_head,
+    int q_idx,
+    int k_idx,
+    int seqlen,
+    int dim,
+    int causal,
+    float scale,
+    float& prob_out,
+    float& ds_out) {
+    if (causal && k_idx > q_idx) {
+        prob_out = 0.0f;
+        ds_out = 0.0f;
+        return;
+    }
+
+    float max_score = -3.4028234663852886e38f;
+    for (int kk = 0; kk < seqlen; ++kk) {
+        if (causal && kk > q_idx) {
+            continue;
+        }
+        float score = 0.0f;
+        for (int d = 0; d < dim; ++d) {
+            score += __half2float(q_head[q_idx * dim + d]) *
+                     __half2float(k_head[kk * dim + d]);
+        }
+        max_score = fmaxf(max_score, score * scale);
+    }
+
+    float denom = 0.0f;
+    float target_unscaled_prob = 0.0f;
+    float target_dp = 0.0f;
+    float delta_numer = 0.0f;
+    for (int kk = 0; kk < seqlen; ++kk) {
+        if (causal && kk > q_idx) {
+            continue;
+        }
+        float score = 0.0f;
+        float dp = 0.0f;
+        for (int d = 0; d < dim; ++d) {
+            score += __half2float(q_head[q_idx * dim + d]) *
+                     __half2float(k_head[kk * dim + d]);
+            dp += __half2float(dout_head[q_idx * dim + d]) *
+                  __half2float(v_head[kk * dim + d]);
+        }
+        const float unscaled_prob = expf(score * scale - max_score);
+        denom += unscaled_prob;
+        delta_numer += unscaled_prob * dp;
+        if (kk == k_idx) {
+            target_unscaled_prob = unscaled_prob;
+            target_dp = dp;
+        }
+    }
+    const float inv_denom = 1.0f / denom;
+    const float prob = target_unscaled_prob * inv_denom;
+    const float delta = delta_numer * inv_denom;
+    prob_out = prob;
+    ds_out = prob * (target_dp - delta) * scale;
+}
+
 template <typename Tile, typename Wdra>
 __device__ __forceinline__ void consumer_score_dp_loop(
     __half* lds,
     float* diag,
     int diag_index,
+    const __half* q_head,
+    const __half* k_head,
+    const __half* v_head,
+    const __half* dout_head,
+    int seqlen,
+    int dim,
+    int k_base,
+    int q_tiles,
+    int sidecar_enabled,
+    int causal,
+    float softmax_scale,
     int consumer_group,
     int wave_local,
     int lane) {
@@ -356,7 +434,7 @@ __device__ __forceinline__ void consumer_score_dp_loop(
 
     float diag_accum = 0.0f;
 #pragma clang loop unroll(disable)
-    for (int q_tile = 0; q_tile < Tile::kQTilesPerCta; ++q_tile) {
+    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
         const int page = q_tile & 1;
         wait_raw_filled_page<Wdra>(
             page, raw0_filled_phase, raw1_filled_phase);
@@ -371,8 +449,21 @@ __device__ __forceinline__ void consumer_score_dp_loop(
     }
 
     if (lane == 0 && diag != nullptr) {
-        diag[diag_index * 8 + consumer_group * 4 + wave_local] =
-            diag_accum;
+        const int slot = consumer_group * 4 + wave_local;
+        const int diag_base =
+            diag_index * Tile::kProbeDiagFloatsPerBlock;
+        diag[diag_base + Tile::kProbeScoreDiagBase + slot] = diag_accum;
+        if (sidecar_enabled) {
+            const int k_idx = k_base + consumer_group * 64 + wave_local * 16;
+            const int q_idx = k_idx < seqlen ? k_idx : seqlen - 1;
+            float prob = 0.0f;
+            float ds = 0.0f;
+            softmax_ds_pair_sidecar(
+                q_head, k_head, v_head, dout_head, q_idx, k_idx, seqlen,
+                dim, causal, softmax_scale, prob, ds);
+            diag[diag_base + Tile::kProbeProbDiagBase + slot] = prob;
+            diag[diag_base + Tile::kProbeDsDiagBase + slot] = ds;
+        }
     }
 }
 
@@ -387,7 +478,10 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
                          int batch,
                          int heads,
                          int seqlen,
-                         int dim) {
+                         int dim,
+                         int causal,
+                         float softmax_scale,
+                         int sidecar_enabled) {
 #if defined(__gfx946__) || defined(__gfx92a__)
     using Tile = dkv::DkvTileD128Mq32Nk128;
     using Bar = dkv::DkvBarrierLedger;
@@ -402,7 +496,6 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
 
     const uint32_t wave_id = __builtin_hcu_get_wave_id();
     const int wave_local = static_cast<int>(wave_id & 3u);
-    const int lane = static_cast<int>(threadIdx.x % 64);
 
     if (wave_id == 0) {
         __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 8);
@@ -419,6 +512,7 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     const int b = blockIdx.z;
     const int q_base = 0;
     const int k_base = k_tile * Tile::kResidentNk;
+    const int q_tiles = seqlen / Tile::kBlockMq;
     const int64_t tensor_base =
         (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
     const __half* q_head = q + tensor_base;
@@ -431,22 +525,29 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     if (wave_id < 4) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
         producer_qk_loop<Tile, Bar>(
-            q_head, k_head, lds, q_base, k_base, dim, wave_local);
+            q_head, k_head, lds, q_base, k_base, dim, q_tiles, wave_local);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 8) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
         consumer_score_dp_loop<Tile, Bar>(
-            lds, diag, diag_index, 0, wave_local, lane);
+            lds, diag, diag_index, q_head, k_head, v_head, dout_head,
+            seqlen, dim, k_base, q_tiles, sidecar_enabled, causal,
+            softmax_scale, 0, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 12) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
         consumer_score_dp_loop<Tile, Bar>(
-            lds, diag, diag_index, 1, wave_local, lane);
+            lds, diag, diag_index, q_head, k_head, v_head, dout_head,
+            seqlen, dim, k_base, q_tiles, sidecar_enabled, causal,
+            softmax_scale, 1, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
         producer_dout_v_loop<Tile, Bar>(
-            dout_head, v_head, lds, q_base, k_base, dim, wave_local);
+            dout_head, v_head, lds, q_base, k_base, dim, q_tiles,
+            wave_local);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     }
 
@@ -471,6 +572,9 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     (void)heads;
     (void)seqlen;
     (void)dim;
+    (void)causal;
+    (void)softmax_scale;
+    (void)sidecar_enabled;
 #endif
 }
 
@@ -795,7 +899,9 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
         static_cast<const __half*>(dout), static_cast<const __half*>(q),
         static_cast<const __half*>(k), static_cast<const __half*>(v),
         static_cast<float*>(params->workspace), grid_x, params->batch,
-        params->num_heads_q, params->seqlen_k, params->head_dim_qk);
+        params->num_heads_q, params->seqlen_k, params->head_dim_qk,
+        params->causal, params->softmax_scale,
+        params->dkv_path == dkv::kDkvPathWaspSoftmaxDsSidecar ? 1 : 0);
     hipError_t err = hipGetLastError();
     if (err != hipSuccess) {
         return SHAOBO_FA3_STATUS_HIP_ERROR;
@@ -980,6 +1086,81 @@ void cpu_reference_dkv(const std::vector<__half>& q,
     }
 }
 
+void cpu_pair_prob_ds(const std::vector<__half>& q,
+                      const std::vector<__half>& k,
+                      const std::vector<__half>& v,
+                      const std::vector<__half>& dout,
+                      int batch,
+                      int heads,
+                      int seqlen,
+                      int dim,
+                      int causal,
+                      float scale,
+                      int b,
+                      int h,
+                      int q_idx,
+                      int k_idx,
+                      float& prob_out,
+                      float& ds_out) {
+    if (causal && k_idx > q_idx) {
+        prob_out = 0.0f;
+        ds_out = 0.0f;
+        return;
+    }
+
+    float max_score = -std::numeric_limits<float>::infinity();
+    for (int kk = 0; kk < seqlen; ++kk) {
+        if (causal && kk > q_idx) {
+            continue;
+        }
+        float score = 0.0f;
+        for (int d = 0; d < dim; ++d) {
+            score += __half2float(
+                         q[tensor_offset(b, h, q_idx, d, heads, seqlen,
+                                         dim)]) *
+                     __half2float(
+                         k[tensor_offset(b, h, kk, d, heads, seqlen, dim)]);
+        }
+        max_score = std::max(max_score, score * scale);
+    }
+
+    float denom = 0.0f;
+    float target_unscaled_prob = 0.0f;
+    float target_dp = 0.0f;
+    float delta_numer = 0.0f;
+    for (int kk = 0; kk < seqlen; ++kk) {
+        if (causal && kk > q_idx) {
+            continue;
+        }
+        float score = 0.0f;
+        float dp = 0.0f;
+        for (int d = 0; d < dim; ++d) {
+            score += __half2float(
+                         q[tensor_offset(b, h, q_idx, d, heads, seqlen,
+                                         dim)]) *
+                     __half2float(
+                         k[tensor_offset(b, h, kk, d, heads, seqlen, dim)]);
+            dp += __half2float(
+                      dout[tensor_offset(b, h, q_idx, d, heads, seqlen,
+                                         dim)]) *
+                  __half2float(
+                      v[tensor_offset(b, h, kk, d, heads, seqlen, dim)]);
+        }
+        const float unscaled_prob = std::exp(score * scale - max_score);
+        denom += unscaled_prob;
+        delta_numer += unscaled_prob * dp;
+        if (kk == k_idx) {
+            target_unscaled_prob = unscaled_prob;
+            target_dp = dp;
+        }
+    }
+    const float inv_denom = 1.0f / denom;
+    const float prob = target_unscaled_prob * inv_denom;
+    const float delta = delta_numer * inv_denom;
+    prob_out = prob;
+    ds_out = prob * (target_dp - delta) * scale;
+}
+
 DkvCompareMetrics compare_vectors(const std::vector<float>& actual,
                                   const std::vector<float>& expected) {
     DkvCompareMetrics m;
@@ -1015,9 +1196,11 @@ inline void ignore_hip_status(hipError_t err) {
 int main(int argc, char** argv) {
     const int check = arg_int(
         argc, argv, "--check", env_int("CHECK_DKV", 0));
+    const int probe_check = arg_int(
+        argc, argv, "--probe-check", env_int("CHECK_WASP_SIDECAR", 0));
     const int batch = arg_int(argc, argv, "--B", env_int("B", kDefaultBatch));
     const int heads = arg_int(argc, argv, "--H", env_int("H", kDefaultHeads));
-    const int default_seq = check ? 128 : kDefaultSeq;
+    const int default_seq = (check || probe_check) ? 128 : kDefaultSeq;
     const int seqlen = arg_int(argc, argv, "--S", env_int("S", default_seq));
     const int dim = arg_int(argc, argv, "--D", env_int("D", kDefaultDim));
 
@@ -1036,7 +1219,9 @@ int main(int argc, char** argv) {
     params.layout = SHAOBO_FA3_LAYOUT_BHSD;
     params.softmax_aux_mode = SHAOBO_FA3_SOFTMAX_AUX_SMAX_SSUM;
     params.dkv_path =
-        check ? dkv::kDkvPathReferenceCorrectness : dkv::kDkvPathWaspProbe;
+        check ? dkv::kDkvPathReferenceCorrectness
+              : (probe_check ? dkv::kDkvPathWaspSoftmaxDsSidecar
+                             : dkv::kDkvPathWaspProbe);
     params.block_threads = dkv::DkvTileD128Mq32Nk128::kThreadsPerCta;
     params.sync_after_launch = 1;
 
@@ -1083,7 +1268,7 @@ int main(int argc, char** argv) {
     std::vector<__half> k_host(tensor_elems);
     std::vector<__half> v_host(tensor_elems);
     std::vector<__half> dout_host(tensor_elems);
-    if (check) {
+    if (check || probe_check) {
         fill_dkv_inputs(q_host, k_host, v_host, dout_host);
         ignore_hip_status(
             hipMemcpy(q_dev, q_host.data(), tensor_bytes,
@@ -1097,8 +1282,10 @@ int main(int argc, char** argv) {
         ignore_hip_status(
             hipMemcpy(dout_dev, dout_host.data(), tensor_bytes,
                       hipMemcpyHostToDevice));
-        ignore_hip_status(hipMemset(dk_dev, 0, output_bytes));
-        ignore_hip_status(hipMemset(dv_dev, 0, output_bytes));
+        if (check) {
+            ignore_hip_status(hipMemset(dk_dev, 0, output_bytes));
+            ignore_hip_status(hipMemset(dv_dev, 0, output_bytes));
+        }
     } else {
         ignore_hip_status(hipMemset(q_dev, 0, tensor_bytes));
         ignore_hip_status(hipMemset(k_dev, 0, tensor_bytes));
@@ -1161,6 +1348,103 @@ int main(int argc, char** argv) {
             dk_metrics.rmse, dk_metrics.rel_l2, dv_metrics.max_abs,
             dv_metrics.mean_abs, dv_metrics.rmse, dv_metrics.rel_l2,
             dk_metrics.bad_count + dv_metrics.bad_count, pass ? 1 : 0);
+        return pass ? 0 : 1;
+    }
+
+    if (probe_check) {
+        const size_t workspace_floats = workspace_bytes / sizeof(float);
+        std::vector<float> workspace_host(workspace_floats, 0.0f);
+        ignore_hip_status(
+            hipMemcpy(workspace_host.data(), workspace, workspace_bytes,
+                      hipMemcpyDeviceToHost));
+
+        const int grid_x =
+            ceil_div(seqlen, dkv::DkvTileD128Mq32Nk128::kResidentNk);
+        std::vector<float> prob_actual;
+        std::vector<float> prob_expected;
+        std::vector<float> ds_actual;
+        std::vector<float> ds_expected;
+        prob_actual.reserve(static_cast<size_t>(batch) * heads * grid_x * 8);
+        prob_expected.reserve(prob_actual.capacity());
+        ds_actual.reserve(prob_actual.capacity());
+        ds_expected.reserve(prob_actual.capacity());
+
+        for (int b = 0; b < batch; ++b) {
+            for (int h = 0; h < heads; ++h) {
+                for (int k_tile = 0; k_tile < grid_x; ++k_tile) {
+                    const int diag_index =
+                        b * heads * grid_x + h * grid_x + k_tile;
+                    const int diag_base =
+                        diag_index *
+                        dkv::DkvTileD128Mq32Nk128::kProbeDiagFloatsPerBlock;
+                    const int k_base =
+                        k_tile * dkv::DkvTileD128Mq32Nk128::kResidentNk;
+                    for (int consumer_group = 0; consumer_group < 2;
+                         ++consumer_group) {
+                        for (int wave_local = 0; wave_local < 4;
+                             ++wave_local) {
+                            const int slot = consumer_group * 4 + wave_local;
+                            const int k_idx = k_base + consumer_group * 64 +
+                                              wave_local * 16;
+                            const int q_idx =
+                                k_idx < seqlen ? k_idx : seqlen - 1;
+                            float p_ref = 0.0f;
+                            float ds_ref = 0.0f;
+                            cpu_pair_prob_ds(
+                                q_host, k_host, v_host, dout_host, batch,
+                                heads, seqlen, dim, params.causal,
+                                params.softmax_scale, b, h, q_idx, k_idx,
+                                p_ref, ds_ref);
+                            prob_actual.push_back(
+                                workspace_host[
+                                    diag_base +
+                                    dkv::DkvTileD128Mq32Nk128::
+                                        kProbeProbDiagBase +
+                                    slot]);
+                            prob_expected.push_back(p_ref);
+                            ds_actual.push_back(
+                                workspace_host[
+                                    diag_base +
+                                    dkv::DkvTileD128Mq32Nk128::
+                                        kProbeDsDiagBase +
+                                    slot]);
+                            ds_expected.push_back(ds_ref);
+                        }
+                    }
+                }
+            }
+        }
+
+        const DkvCompareMetrics p_metrics =
+            compare_vectors(prob_actual, prob_expected);
+        const DkvCompareMetrics ds_metrics =
+            compare_vectors(ds_actual, ds_expected);
+        const bool pass =
+            status == SHAOBO_FA3_STATUS_SUCCESS &&
+            p_metrics.bad_count == 0 && ds_metrics.bad_count == 0 &&
+            p_metrics.max_abs <= 1.0e-5f &&
+            ds_metrics.max_abs <= 1.0e-5f &&
+            p_metrics.rel_l2 <= 1.0e-5f &&
+            ds_metrics.rel_l2 <= 1.0e-5f;
+
+        ignore_hip_status(hipFree(workspace));
+        ignore_hip_status(hipFree(dv_dev));
+        ignore_hip_status(hipFree(dk_dev));
+        ignore_hip_status(hipFree(dout_dev));
+        ignore_hip_status(hipFree(v_dev));
+        ignore_hip_status(hipFree(k_dev));
+        ignore_hip_status(hipFree(q_dev));
+
+        std::printf(
+            "fa3_bwd_dkv_sidecar status=%s B=%d H=%d S=%d D=%d "
+            "workspace_bytes=%zu p_max_abs=%g p_mean_abs=%g p_rmse=%g "
+            "p_rel_l2=%g ds_max_abs=%g ds_mean_abs=%g ds_rmse=%g "
+            "ds_rel_l2=%g bad=%d pass=%d\n",
+            shaobo_fa3_status_string(status), batch, heads, seqlen, dim,
+            workspace_bytes, p_metrics.max_abs, p_metrics.mean_abs,
+            p_metrics.rmse, p_metrics.rel_l2, ds_metrics.max_abs,
+            ds_metrics.mean_abs, ds_metrics.rmse, ds_metrics.rel_l2,
+            p_metrics.bad_count + ds_metrics.bad_count, pass ? 1 : 0);
         return pass ? 0 : 1;
     }
 

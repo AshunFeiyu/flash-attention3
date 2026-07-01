@@ -6,12 +6,17 @@ namespace shaobo::fa3::bwd::dkv {
 
 inline constexpr int kDkvPathWaspProbe = 0;
 inline constexpr int kDkvPathReferenceCorrectness = 1;
+inline constexpr int kDkvPathWaspSoftmaxDsSidecar = 2;
 
 struct DkvTileD128Mq32Nk128 {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = 32;
     static constexpr int kProbeSeqLen = 1024;
     static constexpr int kQTilesPerCta = kProbeSeqLen / kBlockMq;
+    static constexpr int kProbeDiagFloatsPerBlock = 24;
+    static constexpr int kProbeScoreDiagBase = 0;
+    static constexpr int kProbeProbDiagBase = 8;
+    static constexpr int kProbeDsDiagBase = 16;
     static constexpr int kNkPerConsumerWave = 16;
     static constexpr int kConsumerGroups = 2;
     static constexpr int kWavesPerConsumerGroup = 4;

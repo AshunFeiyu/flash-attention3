@@ -223,3 +223,59 @@ This does not mean the optimized WASP path computes/stores dK/dV yet.  It means
 the repo now has a verified dK/dV formula path and a reusable golden harness.
 The next step is to migrate `softmax/dS`, then dV MMAC, then dK MMAC and stores
 into the WASP path while comparing against this reference.
+
+## 2026-07-02 WASP Softmax/dS Sidecar
+
+Status: `SIDECAR_CORRECTNESS_PASS`
+
+The WASP probe now has an opt-in softmax/dS sidecar path:
+
+```text
+params.dkv_path = kDkvPathWaspSoftmaxDsSidecar
+standalone: --probe-check=1
+```
+
+Scope:
+
+- Keeps the existing MLS/BPS + `ds_read_matrix` + MMAC score/dP q-loop.
+- Adds one scalar `(P,dS)` diagnostic per consumer wave inside the consumer
+  role after the q-loop.
+- Writes diagnostics to workspace slots:
+  - `0..7`: score+dP probe diag
+  - `8..15`: `P` sidecar
+  - `16..23`: `dS` sidecar
+- Compares `P/dS` against host CPU golden.
+- This is correctness-only; the sidecar is scalar and intentionally not a perf
+  candidate.
+
+Evidence:
+
+- Remote build PASS with asm.
+- Static gate PASS.
+- Probe symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=80`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD sidecar correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_sidecar_correctness_20260702_005025`
+- Numeric result:
+  `p_max_abs=0`, `p_rel_l2=0`, `ds_max_abs=2.18279e-11`,
+  `ds_rel_l2=1.10949e-07`, `bad=0`, `pass=1`.
+- Stats:
+  `simTicks=1313879840`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=1313879840`, `ldsBankConflict=0`.
+- Default WASP probe regression PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260702_005132`
+  with `simTicks=28741440`, `ldsBankConflict=0`.
+
+Important fix:
+
+The first sidecar attempt produced zero diagnostics.  Moving `lane =
+threadIdx.x % 64` into the consumer role after `s_set_vgpr_size` fixed it.
+This reinforces the WDRA rule: values used for branch-local store predicates
+should be initialized inside the role window that uses them.
+
+Next:
+
+Move from scalar sidecar to fragment-local `P/dS` in the consumer mainloop.
+Only after that should dV and dK MMAC accumulation be connected to the store
+epilogue.

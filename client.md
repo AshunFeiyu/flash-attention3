@@ -129,13 +129,24 @@ WASP stream q-loop probe `OBSERVE_PIPELINE`:
   through a score+dP `ds_read_matrix + v_mmac_*lit` probe
 - standalone now allocates real Q/K/V/dO buffers before running PMD
 
+WASP softmax/dS sidecar `PASS`:
+
+- enabled by `params.dkv_path = kDkvPathWaspSoftmaxDsSidecar` or standalone
+  `--probe-check=1`
+- computes one scalar `(P,dS)` diagnostic per consumer wave inside the WASP
+  consumer role
+- compares against host CPU golden
+- latest PMD S128 evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_sidecar_correctness_20260702_005025`
+
 Latest evidence archive:
 
 ```text
 /Volumes/172.20.68.76/共享/shaobo/perf/20260701_235316_clean_stream_qloop_probe
 ```
 
-Next step: use the reference path as the correctness oracle while moving the
-math into the WASP path in this order: softmax/dS sidecar, dV MMAC accumulation,
-dK MMAC accumulation, store epilogue.  Keep batching same-family
-`ds_read_matrix` reads and delaying `s_waitcnt` until true first use.
+Next step: keep the sidecar as the correctness oracle while moving from scalar
+diagnostic `dS` to fragment-local `dS`/`P` in the consumer mainloop, then add
+dV MMAC accumulation, dK MMAC accumulation, and store epilogue.  Keep batching
+same-family `ds_read_matrix` reads and delaying `s_waitcnt` until true first
+use.

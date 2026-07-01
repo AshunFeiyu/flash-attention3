@@ -260,3 +260,68 @@ path.  The optimized WASP path remains a score+dP probe.  Next, migrate the
 reference math into the WASP path in narrow cuts: softmax/dS sidecar first,
 then dV MMAC accumulation, then dK MMAC accumulation and store epilogue, using
 the reference path as the correctness oracle after each cut.
+
+## 2026-07-02 Add WASP Softmax/dS Sidecar
+
+Decision: `SIDECAR_CORRECTNESS_PASS`
+
+Hypothesis:
+
+`Before implementing fragment-local softmax/dS and full dV/dK stores, the WASP
+consumer role should produce a small verifiable P/dS sidecar.  This checks
+formula wiring, role-local output ownership, and consumer-branch stores without
+turning the scalar diagnostic into a performance path.`
+
+Implemented:
+
+- Added `kDkvPathWaspSoftmaxDsSidecar = 2`.
+- Extended probe workspace from 8 to 24 floats per CTA:
+  score diag, `P` sidecar, `dS` sidecar.
+- Let the probe q-loop run from runtime `q_tiles`, so sidecar correctness can
+  use `S=128` instead of always `S=1024`.
+- Added `softmax_ds_pair_sidecar` in the consumer role.  It computes one
+  scalar diagnostic pair per consumer wave:
+  `q_idx = k_idx`, `P(q_idx,k_idx)`, and
+  `dS = P * (dP - delta) * softmax_scale`.
+- Added standalone `--probe-check=1` and
+  `scripts/run_dkv_sidecar_correctness.sh`.
+- Added host CPU golden comparison for sidecar `P/dS`.
+- Moved `lane = threadIdx.x % 64` into the consumer role after
+  `s_set_vgpr_size`.
+
+Verified:
+
+- Remote build PASS with asm.
+- Static gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=80`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD sidecar correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_sidecar_correctness_20260702_005025`
+- Shape:
+  `B=1,H=1,S=128,D=128,causal=true,fp16,GPU_CHIP=sb,GPU_ARGS=['--SQCIPfLines=7']`
+- Result:
+  `fa3_bwd_dkv_sidecar status=success ... p_max_abs=0 p_rel_l2=0
+  ds_max_abs=2.18279e-11 ds_rel_l2=1.10949e-07 bad=0 pass=1`.
+- Stats:
+  `simTicks=1313879840`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=1313879840`, `ldsBankConflict=0`.
+- Default WASP probe regression:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260702_005132`
+  reported success with `simTicks=28741440`, `ldsBankConflict=0`.
+
+Negative/lesson:
+
+The first sidecar run failed with `p_max_abs=1` because the sidecar store
+predicate used a `lane` value initialized before the role branch and before
+`s_set_vgpr_size`.  Recomputing lane inside the consumer branch fixed the
+diagnostic.  Keep branch-local store predicates and other VGPR values inside
+their WDRA role window.
+
+Conclusion:
+
+Softmax/dS is now wired into the WASP consumer role as a verified scalar
+sidecar.  It is not a performance candidate and should not be profiled as one;
+the high sidecar `simTicks` is expected.  Next, convert the sidecar into
+fragment-local `P/dS` in the mainloop, then connect dV and dK MMAC accumulation
+against the existing reference oracle.
