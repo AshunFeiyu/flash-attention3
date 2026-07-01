@@ -121,6 +121,29 @@ pipeline design, for example `ds_read_matrix -> s_waitcnt -> v_mmac`, VALU
 work not hidden by peer MMAC, barrier waits, instruction fetch/no-v gaps, or
 SIMD imbalance.
 
+## Bring-Up Sequence
+
+The clean implementation moves in four guarded cuts:
+
+```text
+S0 scaffold:
+  real HIP launch, 16-wave WDRA, four role branches, ABarrier ledger
+  no dV/dK math, no perf promotion
+
+S1 producer packets:
+  K/V resident load, raw Q/dO, source-layout Q^T/dO^T publication
+  no consumer math promotion until packet correctness is probed
+
+S2 first consumer island:
+  score+dP MMAC only, with MLS/BPS + ds_read_matrix + v_mmac evidence
+
+S3 full dKV:
+  softmax+dS, dV+dK, store publication, correctness and perf gates
+```
+
+Every cut must keep the source readable enough to map Wavefronts/SQTT rows
+back to a producer loop, consumer MMAC island, softmax/dS island, or epilogue.
+
 ## Done Metrics
 
 Hard gates:

@@ -35,7 +35,10 @@ This clean lane starts from the latest learned constraints:
 
 ## Current State
 
-The repo currently contains the FWD-style design scaffold.  The next step is to
-port the proven C125C semantics into this structure without copying the
-historical phase stack.
+The repo now contains a buildable FWD-style Stage61 dKV scaffold.  It has a
+real HIP kernel, standalone launcher, four explicit WDRA role branches, and
+ABarrier ownership gates.  It is `BRINGUP_ONLY`: it does not compute dV/dK yet.
 
+The next implementation step is to port producer packet publication, then one
+consumer MMAC island, while preserving the clean role topology and evidence
+chain.

@@ -91,7 +91,7 @@ Shared review artifacts go under:
 
 ## Current Next Step
 
-Create the first real kernel cut by porting C125C semantics into this clean
-structure without copying C125C's phase-stack plumbing.  The first promotion
-gate is not speed; it is a readable, buildable, no-spill kernel whose pipeline
-can be inspected.
+Run the clean scaffold gate and PMD smoke, then port producer packet
+publication into the scaffold.  The scaffold is `BRINGUP_ONLY`; the first
+math-bearing candidate begins when producer packets and one consumer MMAC
+island are present and correctness evidence exists.

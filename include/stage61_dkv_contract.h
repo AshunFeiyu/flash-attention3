@@ -56,6 +56,19 @@ struct DkvTileD128Mq32Nk128 {
                   "Stage61 clean LDS plan must fit 128KB");
 };
 
+struct DkvBarrierLedger {
+    static constexpr int kRawFilled = 0;
+    static constexpr int kRawUsed = 1;
+    static constexpr int kTransFilled = 2;
+    static constexpr int kTransUsed = 3;
+    static constexpr int kKv0Filled = 4;
+    static constexpr int kKv0Used = 5;
+    static constexpr int kKv1Filled = 6;
+    static constexpr int kKv1Used = 7;
+    static constexpr int kAllDone = 8;
+    static constexpr int kValuExec0 = 9;
+};
+
 enum class WaveRole : int {
     kProducerA = 0,
     kConsumerGroup0 = 1,
@@ -79,5 +92,11 @@ struct OptimizationTargets {
     static constexpr bool kForbidDuplicateScoreDp = true;
 };
 
-}  // namespace shaobo::fa3::bwd::stage61
+struct WdraResourceWindows {
+    static constexpr int kProducerVgprs = 8;
+    static constexpr int kConsumerVgprs = 160;
+    static constexpr int kConsumerTargetVgprs = 200;
+    static constexpr int kConsumerCeilingVgprs = 248;
+};
 
+}  // namespace shaobo::fa3::bwd::stage61
