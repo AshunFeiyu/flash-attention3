@@ -990,3 +990,54 @@ control/ownership cost and does not move enough independent work into the peer
 MMAC window.  The next structural candidate must either reduce ownership
 turns, thicken producer/helper work with data the consumer truly uses, or
 change the role split while preserving no-duplicate score/dP.
+
+### W12 Raw/Source Ownership Split Rejection
+
+Design basis:
+
+- Current read4x2 is over-synchronized: `RawFilled` is not released until raw
+  `Q/dO` and source-layout `Q^T/dO^T` have all been published.
+- Score/dP only needs raw `Q/dO`; dV/dK needs `Q^T/dO^T` later.
+- Splitting ownership should let consumers start score/dP while producer waves
+  publish source-layout operands, giving producer recurring useful work rather
+  than a pure wait/turnstile.
+
+Expected code shape:
+
+```text
+producer:
+  wait RawUsed(page) -> publish Q/dO -> arrive RawFilled(page)
+  wait SourceUsed(page) -> publish Q^T/dO^T -> arrive SourceFilled(page)
+
+consumer:
+  wait RawFilled(page) -> score/dP -> arrive RawUsed(page)
+  wait SourceFilled(page) -> read4x2 source -> softmax/dS -> dV/dK
+  arrive SourceUsed(page)
+```
+
+Evidence:
+
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_045658`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_045719`.
+- Static metadata stayed resource-clean:
+  `private=0`, `sgpr_count=86`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Read4x2 baseline:
+  `kernel_ticks=71508255`, MMAC active avg `21.5678%`,
+  coissue `30929/20971`.
+- Raw/source split result:
+  `kernel_ticks=75607805`, MMAC active avg `20.5505%`,
+  coissue `31554/23826`, `ldsBankConflict=0`.
+
+Decision:
+
+`REJECT_PERF`; the code was reverted.
+
+Conclusion:
+
+The design removed an over-synchronization on paper, but the additional
+SourceFilled/SourceUsed ownership turns increased control cost and failed
+coissue enough to lose.  Future attempts should reduce token count or combine
+the split with substantial useful producer work; do not add more ABarrier
+tokens for cleanliness alone.

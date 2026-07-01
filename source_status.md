@@ -717,3 +717,30 @@ Interpretation: explicit consumer phase gating adds control/wait cost unless it
 also moves real independent work into the peer's MMAC window.  Future phase
 alignment needs useful producer/helper work or a different ownership topology,
 not another pure turnstile.
+
+Rejected raw/source ownership split:
+
+```text
+producer: Raw(Q,dO) -> RawFilled -> Source(Q^T,dO^T) -> SourceFilled
+consumer: RawFilled -> score/dP -> RawUsed -> SourceFilled/read4x2
+          -> softmax/dS -> dV/dK -> SourceUsed
+```
+
+This targeted the current over-synchronization where raw score/dP is forced to
+wait for source-layout operands that are only used later.  It did not change
+the algorithm, tile, LDS bytes, output ownership, or matrixized main path.
+
+Evidence:
+
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_045658`
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_045719`
+- Static metadata:
+  `private=0`, `sgpr_count=86`, `vgpr_count=112`, no SGPR/VGPR spill
+- H1/S1024 `kernel_ticks=75607805` versus read4x2 `71508255`
+- MMAC active avg `20.5505%` versus read4x2 `21.5678%`
+- coissue `31554/23826` versus read4x2 `30929/20971`
+
+Decision: `REJECT_PERF`; source reverted to read4x2.  The more precise packet
+ownership did not pay for its extra ABarrier/control cost.

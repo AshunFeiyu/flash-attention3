@@ -340,3 +340,26 @@ Next step: do not keep polishing dV/dK read granularity and do not add pure
 turnstile waits.  The next workbook proposal must reduce ABarrier/control
 serialization through useful independent work, fewer ownership turns, or a
 different role split that preserves no-duplicate score/dP.
+
+Rejected raw/source ownership split:
+
+- current over-sync: one raw packet token covers both raw `Q/dO` and
+  source-layout `Q^T/dO^T`, so consumers cannot start score/dP until all four
+  MLS groups are published
+- candidate tried: publish raw `Q/dO` first and release `RawFilled`; publish
+  `Q^T/dO^T` under a separate `SourceFilled` token while consumers do
+  score/dP; consumers release `RawUsed` immediately after score/dP and
+  `SourceUsed` after dV/dK
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_045658`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_045719`
+- result: correctness PASS and no spill, but H1/S1024 `kernel_ticks`
+  regressed from `71508255` to `75607805`, MMAC active avg fell from
+  `21.5678%` to `20.5505%`, and failed coissue rose from `20971` to `23826`
+- decision: `REJECT_PERF`; code reverted
+
+Rule: splitting raw/source ownership is architecturally cleaner, but on this
+W12 topology it adds more ABarrier/SCA cost than it hides.  Do not add more
+tokens unless the design removes another ownership turn or moves substantial
+producer work into a proven critical window.
