@@ -744,3 +744,27 @@ Evidence:
 
 Decision: `REJECT_PERF`; source reverted to read4x2.  The more precise packet
 ownership did not pay for its extra ABarrier/control cost.
+
+Current source delta:
+
+`consumer_dkv_mmac_loop` is now specialized by template consumer group:
+
+```text
+consumer_dkv_mmac_loop<Tile, Bar, 0>(...)
+consumer_dkv_mmac_loop<Tile, Bar, 1>(...)
+```
+
+Evidence:
+
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_050701`
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_050727`
+- Static metadata unchanged for the W12 kernel:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill
+- H1/S1024 `kernel_ticks=71412705` versus read4x2 `71508255`
+- MMAC active avg `21.5708%` versus read4x2 `21.5678%`
+
+Decision: `ACCEPT_MICRO`.  This is the current source baseline, but it is only
+a codegen/control cleanup; it does not materially change the pipeline gap to
+60% MMAC active.

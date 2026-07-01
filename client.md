@@ -363,3 +363,17 @@ Rule: splitting raw/source ownership is architecturally cleaner, but on this
 W12 topology it adds more ABarrier/SCA cost than it hides.  Do not add more
 tokens unless the design removes another ownership turn or moves substantial
 producer work into a proven critical window.
+
+Consumer-group template cleanup `ACCEPT_MICRO`:
+
+- change: make `consumer_dkv_mmac_loop` a `ConsumerGroup` template and call
+  `<0>` / `<1>` from the two consumer branches
+- reason: align with FWD-style branch-local specialization and remove a small
+  runtime `consumer_group` address/control dependency
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_050701`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_050727`
+- result: H1/S1024 `kernel_ticks` improved from `71508255` to `71412705`;
+  MMAC active avg is essentially flat, `21.5678%` to `21.5708%`
+- decision: keep as a micro codegen/style cleanup, not a pipeline solution

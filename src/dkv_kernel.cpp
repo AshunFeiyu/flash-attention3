@@ -1175,7 +1175,7 @@ __device__ __forceinline__ void consumer_score_dp_loop(
     }
 }
 
-template <typename Tile, typename Wdra>
+template <typename Tile, typename Wdra, int ConsumerGroup>
 __device__ __forceinline__ void consumer_dkv_mmac_loop(
     __half* lds,
     const float* packed_sidecar,
@@ -1188,13 +1188,14 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     int q_tiles,
     int causal,
     float softmax_scale,
-    int consumer_group,
     int wave_local,
     int lane) {
     int resident_phase = 0;
     int raw0_filled_phase = 0;
     int raw1_filled_phase = 0;
-    const int owner_nblock = consumer_group * 4 + wave_local;
+    static_assert(ConsumerGroup == 0 || ConsumerGroup == 1,
+                  "dKV consumer group must be 0 or 1");
+    const int owner_nblock = ConsumerGroup * 4 + wave_local;
 
     ins::F32x4 dv_acc[8];
     ins::F32x4 dk_acc[8];
@@ -1432,10 +1433,10 @@ fa3_bwd_dkv_mmac_kernel(const __half* __restrict__ dout,
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         const int64_t row_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen;
-        consumer_dkv_mmac_loop<Tile, Bar>(
+        consumer_dkv_mmac_loop<Tile, Bar, 0>(
             lds, packed_sidecar, dk, dv, tensor_base, row_base,
             seqlen, k_base,
-            q_tiles, causal, softmax_scale, 0, wave_local, lane);
+            q_tiles, causal, softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 12) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
@@ -1444,10 +1445,10 @@ fa3_bwd_dkv_mmac_kernel(const __half* __restrict__ dout,
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         const int64_t row_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen;
-        consumer_dkv_mmac_loop<Tile, Bar>(
+        consumer_dkv_mmac_loop<Tile, Bar, 1>(
             lds, packed_sidecar, dk, dv, tensor_base, row_base,
             seqlen, k_base,
-            q_tiles, causal, softmax_scale, 1, wave_local, lane);
+            q_tiles, causal, softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
@@ -1552,10 +1553,9 @@ fa3_bwd_dkv_mmac12_kernel(const __half* __restrict__ dout,
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         const int64_t row_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen;
-        consumer_dkv_mmac_loop<Tile, Bar>(
+        consumer_dkv_mmac_loop<Tile, Bar, 0>(
             lds, packed_sidecar, dk, dv, tensor_base, row_base,
-            seqlen, k_base, q_tiles, causal, softmax_scale, 0,
-            wave_local, lane);
+            seqlen, k_base, q_tiles, causal, softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
@@ -1564,10 +1564,9 @@ fa3_bwd_dkv_mmac12_kernel(const __half* __restrict__ dout,
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         const int64_t row_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen;
-        consumer_dkv_mmac_loop<Tile, Bar>(
+        consumer_dkv_mmac_loop<Tile, Bar, 1>(
             lds, packed_sidecar, dk, dv, tensor_base, row_base,
-            seqlen, k_base, q_tiles, causal, softmax_scale, 1,
-            wave_local, lane);
+            seqlen, k_base, q_tiles, causal, softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     }
 

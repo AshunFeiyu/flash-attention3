@@ -1041,3 +1041,44 @@ SourceFilled/SourceUsed ownership turns increased control cost and failed
 coissue enough to lose.  Future attempts should reduce token count or combine
 the split with substantial useful producer work; do not add more ABarrier
 tokens for cleanliness alone.
+
+### W12 Consumer-Group Template Cleanup
+
+Hypothesis:
+
+- FWD-style code should keep role/group ownership as compile-time local as
+  possible.
+- Template-specializing `consumer_dkv_mmac_loop` by group should remove a small
+  amount of runtime owner/address/control work without changing the pipeline.
+
+Change:
+
+- `consumer_dkv_mmac_loop<Tile, Bar, ConsumerGroup>` now computes
+  `owner_nblock = ConsumerGroup * 4 + wave_local`.
+- Consumer branches call `<0>` and `<1>` explicitly.
+- No barrier, tile, LDS, MMAC count, output ownership, or math change.
+
+Evidence:
+
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_050701`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_050727`.
+- Metadata:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Read4x2 baseline:
+  `kernel_ticks=71508255`, MMAC active avg `21.5678%`,
+  coissue `30929/20971`.
+- Template result:
+  `kernel_ticks=71412705`, MMAC active avg `21.5708%`,
+  coissue `31198/22312`, `ldsBankConflict=0`.
+
+Decision:
+
+`ACCEPT_MICRO`.
+
+Conclusion:
+
+This is a tiny but clean FWD-style codegen cleanup.  It should be kept because
+it simplifies ownership and does not hurt resources, but it does not address
+the dominant ABarrier/control and sidecar/global-read debt.
