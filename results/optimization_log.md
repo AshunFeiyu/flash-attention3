@@ -1082,3 +1082,49 @@ Conclusion:
 This is a tiny but clean FWD-style codegen cleanup.  It should be kept because
 it simplifies ownership and does not hurt resources, but it does not address
 the dominant ABarrier/control and sidecar/global-read debt.
+
+### W12 dV/dK Zero-Seed Cleanup
+
+Hypothesis:
+
+- dV/dK accumulators only need a zero seed for the first q tile.
+- The previous helper called `zero_f16x8` every q tile even when
+  `FirstQTile=false`; because the helper uses volatile asm, this created real
+  `v_mov` work that the compiler could not delete.
+
+Change:
+
+- Guard the dV/dK `zero_f16x8` call with `if constexpr (FirstQTile)` in both
+  dV/dK MMAC helpers.
+- No math, barrier, LDS, output ownership, or register-window change.
+
+Evidence:
+
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_051325`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_051343`.
+- Full perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_051513_clean_w12_zero_seed_h1s1024_sqc7`.
+- Metadata:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Template baseline:
+  `kernel_ticks=71412705`, MMAC active avg `21.5708%`,
+  coissue `31198/22312`.
+- Zero-seed result:
+  `kernel_ticks=70604625`, MMAC active avg `21.7988%`,
+  coissue `30594/21056`, `ldsBankConflict=0`.
+- xcu full perf:
+  `MMAC=23.68%`, `valu_32` hits `151648`, top bubbles remain
+  `abarrier -> salu_32=39.07%` and `flat_rd -> immed=15.03%`.
+
+Decision:
+
+`ACCEPT_MICRO`.
+
+Conclusion:
+
+This validates the user's observation about unnecessary register zeroing.
+The cleanup is real and should stay, but it only moves active share by about
+0.23 percentage points.  The next large move still needs to reduce
+barrier/control or hide sidecar global-read latency.

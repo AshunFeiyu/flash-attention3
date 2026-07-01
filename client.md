@@ -377,3 +377,23 @@ Consumer-group template cleanup `ACCEPT_MICRO`:
 - result: H1/S1024 `kernel_ticks` improved from `71508255` to `71412705`;
   MMAC active avg is essentially flat, `21.5678%` to `21.5708%`
 - decision: keep as a micro codegen/style cleanup, not a pipeline solution
+
+dV/dK zero-seed cleanup `ACCEPT_MICRO`:
+
+- change: only call `zero_f16x8` inside dV/dK MMAC helpers when
+  `FirstQTile=true`; for later q tiles the accumulator is already live and the
+  zero operand is unused
+- reason: this directly removes volatile `v_mov` zeroing before dV/dK MMAC,
+  matching the FWD `mmac_zeros` lesson
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_051325`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_051343`
+- full-perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_051513_clean_w12_zero_seed_h1s1024_sqc7`
+- result: stats-only H1/S1024 `kernel_ticks` improved from `71412705` to
+  `70604625`; MMAC active avg rose from `21.5708%` to `21.7988%`
+- xcu detail: `valu_32` hits dropped to `151648` and MMAC latency share rose
+  to `23.68%`; top bubbles remain `abarrier -> salu_32` and
+  `flat_rd -> immed`
+- decision: keep; this is a real cleanup but still far from the 60% active goal

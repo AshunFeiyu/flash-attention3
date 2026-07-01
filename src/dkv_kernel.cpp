@@ -897,7 +897,9 @@ __device__ __forceinline__ void dv_dk_mmac_owner16_read4x2(
     ins::F32x4 (&dk_acc)[8],
     int page) {
     ins::F16x8 zero_f16;
-    ins::zero_f16x8(zero_f16);
+    if constexpr (FirstQTile) {
+        ins::zero_f16x8(zero_f16);
+    }
 
     ins::wait_lgkm(0);
     DvDkSourceRegs4 high_src;
@@ -923,7 +925,9 @@ __device__ __forceinline__ void dv_dk_mmac_owner16(
     using Layout = DkvLdsLayout<Tile>;
 
     ins::F16x8 zero_f16;
-    ins::zero_f16x8(zero_f16);
+    if constexpr (FirstQTile) {
+        ins::zero_f16x8(zero_f16);
+    }
 
     ins::raise_priority_2();
     ins::F16x8 dout_t0;

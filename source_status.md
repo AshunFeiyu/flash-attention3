@@ -768,3 +768,32 @@ Evidence:
 Decision: `ACCEPT_MICRO`.  This is the current source baseline, but it is only
 a codegen/control cleanup; it does not materially change the pipeline gap to
 60% MMAC active.
+
+Current source delta:
+
+dV/dK MMAC helpers now skip volatile zero seed for non-first q tiles:
+
+```text
+if constexpr (FirstQTile) {
+    ins::zero_f16x8(zero_f16);
+}
+```
+
+Evidence:
+
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_051325`
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_051343`
+- Full perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_051513_clean_w12_zero_seed_h1s1024_sqc7`
+- Static metadata unchanged:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill
+- H1/S1024 stats-only `kernel_ticks=70604625` versus template baseline
+  `71412705`
+- MMAC active avg `21.7988%` versus `21.5708%`
+- xcu full perf: `MMAC=23.68%`, `valu_32` hits `151648`,
+  `abarrier -> salu_32=39.07%`, `flat_rd -> immed=15.03%`
+
+Decision: `ACCEPT_MICRO`.  This is the current source baseline.  Remaining
+dominant debts are barrier/control and sidecar global-read latency.
