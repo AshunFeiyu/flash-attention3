@@ -242,3 +242,16 @@ Late-source conveyor negative:
 Next design rule: do not add another per-page raw/source ownership epoch unless
 the workbook proves that the extra wait is hidden by a larger useful compute
 island.  Producer usefulness is necessary, but not sufficient.
+
+Producer early-exit negative:
+
+- tried to remove the long thin producer tail by letting producer waves return
+  after `producer_all_loop`
+- producer VGPR `80` failed WDRA branch-average granularity; producer VGPR
+  `76` passed static metadata
+- H1/S128 PMD then aborted with `vgpr81 is not init or has been freed` during
+  MMAC
+- decision: `REJECT_RUNTIME_PANIC`; code reverted
+
+Rule: keep producer waves alive through the existing tail until a focused probe
+proves an early-exit/cleanup ABI that PMD supports.

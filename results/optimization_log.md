@@ -714,3 +714,46 @@ epochs per page.  The extra producer/consumer phase waits cost more than the
 source-MLS overlap gained.  Do not keep the opt-in code in the clean repo.
 Future attempts should avoid adding per-page barrier epochs unless xcu shows
 the new work hides a larger critical section.
+
+## 2026-07-02 W12 Producer Early Exit
+
+Decision: `REJECT_RUNTIME_PANIC`
+
+Hypothesis:
+
+xcu shows producer waves (`WaveSlot 0`) execute only about `2.5k`
+instructions but remain active until the consumer tail, creating large
+`abarrier -> salu/immed` bubbles and diluting MMAC active share.  Letting the
+producer return after publishing all packets, while making `AllDone` a
+consumer-only barrier, might shrink the active-time denominator without
+changing score/dP/dV/dK math.
+
+Implementation attempt:
+
+- Added an opt-in W12 producer-exit kernel.
+- Producer branch ran `producer_all_loop` then returned.
+- Consumers alone arrived/waited `AllDone` and performed barrier cleanup.
+- First try used producer VGPR window `80`, but compile failed because WDRA
+  branch-averaged VGPR size did not meet target granularity:
+  `80+160+160=400` over three branches is illegal.
+- Retried with producer VGPR window `76`, making
+  `76+160+160=396`, average `132`, which passed static metadata.
+
+Evidence:
+
+- Static metadata with producer `76` PASS:
+  `private=0`, `sgpr_count=84`, `vgpr_count=132`, no SGPR/VGPR spill.
+- H1/S128 PMD smoke aborted:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_034614`.
+- PMD panic:
+  `cu0 simd3 vgpr81 is not init or has been freed` during
+  `V_MMAC_F32_16X16X16_F16`.
+
+Conclusion:
+
+Producer early return is unsafe in this WDRA/PMD shape.  Even though the static
+resources pass with a legal branch-averaged VGPR window, PMD loses or frees
+state needed by remaining consumer MMAC waves.  Keep producer tail waits in the
+mainline.  Future tail work should avoid early wave exit and instead reduce
+what happens after the wait, or prove a PMD-supported parked/cleanup protocol
+with a focused probe first.

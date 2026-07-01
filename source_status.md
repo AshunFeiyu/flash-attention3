@@ -544,3 +544,27 @@ Conclusion:
 Late-source added useful producer work but also added another exposed page
 epoch.  The ownership latency outweighed the intended overlap.  The opt-in code
 was reverted; keep only the result in the log/workbook.
+
+## 2026-07-02 W12 Producer Early Exit Negative
+
+Status: `REJECT_RUNTIME_PANIC_REVERT_CODE`
+
+The producer early-exit attempt targeted the long thin producer wave tail seen
+in xcu.  It changed only the tail protocol: producer waves returned after
+`producer_all_loop`, while the eight consumer waves owned `AllDone` cleanup.
+
+Results:
+
+- Producer VGPR `80` failed compile due WDRA branch-average granularity.
+- Producer VGPR `76` compiled and passed metadata:
+  `private=0`, `sgpr=84`, `vgpr=132`, no spill.
+- H1/S128 PMD aborted:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_034614`.
+- Panic:
+  `vgpr81 is not init or has been freed` during MMAC.
+
+Conclusion:
+
+This topology is not safe to keep.  Producer waves should not return early
+while consumer waves continue MMAC in the same WDRA workgroup unless a focused
+probe proves a supported cleanup protocol.  The opt-in code was reverted.
