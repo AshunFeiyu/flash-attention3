@@ -37,6 +37,8 @@ Verified evidence:
   `vgpr_spill_count=0`, `sgpr_count=8`, `vgpr_count=84`
 - Runtime signal:
   `stage61_fwdstyle_scaffold status=success B=1 H=1 S=1024 D=128`
+- Design workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_stage61_cleanrepo_s0_20260701.xlsx`
 
 Next implementation hypothesis:
 

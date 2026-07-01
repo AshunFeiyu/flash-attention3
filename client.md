@@ -89,6 +89,12 @@ Shared review artifacts go under:
 /Volumes/172.20.68.76/共享/shaobo/perf
 ```
 
+Current Stage61 S0 design workbook:
+
+```text
+/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_stage61_cleanrepo_s0_20260701.xlsx
+```
+
 ## Current Next Step
 
 Run the clean scaffold gate and PMD smoke, then port producer packet
