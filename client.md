@@ -441,3 +441,28 @@ Rule: do not continue sidecar batching in full dKV without a focused
 sidecar-fragment correctness probe.  The active code remains the zero-seed
 baseline while the next MMAC-active push should look at structural ABarrier /
 producer-thinness / FWD-style pipeline gaps rather than more sidecar preload.
+
+Mq64 single-buffer boundary:
+
+- tried a structural `Mq=64` W12 path to double the consumer MMAC island and
+  halve q-loop control/barrier turns
+- unspecialized forms spilled; the final S1024/causal specialization became
+  resource-clean with `private=0`, `sgpr=100`, `vgpr=144`, no spill, and
+  consumer branch `171/208`
+- H1/S1024 correctness failed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_062758`
+- failure signal:
+  `dk_rel_l2=5680.1`, `dv_rel_l2=20.0452`, `pass=0`, PMD
+  `read vgpr268 before writing`
+- decision: `REJECT_CORRECTNESS`; full implementation is not a perf candidate
+
+Rule: a future Mq64 attempt must start as a focused layout/correctness probe,
+not as another full-kernel integration.  Prove score/dP, sidecar row mapping,
+source-layout `Q^T/dO^T`, dV/dK accumulation, and store ownership first.
+
+Post-revert baseline check:
+
+- remote build/static gate PASS after removing the Mq64 implementation
+- W12 metadata PASS with `private=0`, `sgpr=84`, `vgpr=112`, no spill
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_063709`

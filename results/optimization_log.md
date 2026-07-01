@@ -1251,3 +1251,48 @@ path under PMD/codegen.  Do not retry sidecar batching directly in the main dKV
 kernel.  If sidecar latency is attacked again, first build a focused
 sidecar-fragment correctness probe that checks packed sidecar load order,
 fragment placement, and VGPR initialization before reconnecting to dV/dK.
+
+### Mq64 Single-Buffer Structural Probe
+
+Hypothesis:
+
+- Increasing the q tile from `Mq=32` to `Mq=64` could double each consumer
+  MMAC island from 64 to 128 MMAC per q tile and halve q-loop
+  barrier/control turns.
+- A single-buffer Mq64 design fits only by using the full 128KB LDS budget:
+  `K/V 64KB + raw Q/dO 32KB + source Q^T/dO^T 32KB = 128KB`.
+
+Change tested:
+
+- Added an opt-in W12 Mq64 path with one producer group and two consumer
+  groups.
+- First implementation with four live M fragments spilled badly.
+- Half-sequential consumer phasing plus a 208-VGPR consumer window removed
+  VGPR spill but still had SGPR spill.
+- Specializing the candidate to the current diagnostic shape
+  `S=1024, causal=true` removed the remaining SGPR spill.
+
+Evidence:
+
+- Final static metadata after specialization:
+  `private=0`, `sgpr_count=100`, `sgpr_spill_count=0`, `vgpr_count=144`,
+  `vgpr_spill_count=0`.
+- Branch-local consumer pressure was `171/208`.
+- H1/S1024 causal correctness run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_062758`.
+- PMD completed the dispatch but numerical comparison failed:
+  `pass=0`, `dk_rel_l2=5680.1`, `dv_rel_l2=20.0452`.
+- PMD emitted `warn: read vgpr268 before writing` for this candidate.
+
+Decision:
+
+`REJECT_CORRECTNESS`; do not capture perf or use MMAC-active counters for this
+candidate.  Full Mq64 implementation is being reverted from the clean source.
+
+Conclusion:
+
+Mq64 is not ruled out as an algorithmic idea, but the current full-kernel path
+is not a valid implementation.  The next retry must first build a focused
+Mq64 layout/seed/store correctness probe that verifies score/dP, sidecar row
+mapping, source-layout `Q^T/dO^T`, dV/dK accumulation, and store ownership
+before reconnecting it to the full dKV pipeline.

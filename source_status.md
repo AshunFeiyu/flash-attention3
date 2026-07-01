@@ -852,3 +852,34 @@ Rejected sidecar pair-prefetch:
 Rule: sidecar read batching now needs a focused sidecar-fragment probe before
 touching the full dKV mainline again.  The current source baseline remains
 zero-seed cleanup, not any sidecar prefetch variant.
+
+Rejected Mq64 single-buffer structural probe:
+
+- design goal: double each consumer island from 64 to 128 MMAC per q tile and
+  halve q-loop barrier/control turns by moving from `Mq=32` to `Mq=64`
+- LDS arithmetic: `K/V 64KB + raw Q/dO 32KB + source Q^T/dO^T 32KB = 128KB`
+- resource stress result:
+  - four-fragment Mq64 spilled badly
+  - half-sequential Mq64 with consumer 208 VGPR removed VGPR spill but still
+    had SGPR spill
+  - S1024/causal specialization finally reached `private=0`, `sgpr=100`,
+    `sgpr_spill=0`, `vgpr=144`, `vgpr_spill=0`
+- correctness result:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_062758`
+  reported status success but `pass=0`, `dk_rel_l2=5680.1`,
+  `dv_rel_l2=20.0452`, with PMD `read vgpr268 before writing`
+- decision: `REJECT_CORRECTNESS`; do not capture perf because MMAC active is
+  meaningless without correctness
+
+Rule: Mq64 is still a possible future structure, but only after a focused
+layout/correctness probe proves the Mq64 raw/source sidecar, dV/dK accumulator,
+and store path.  Do not reintroduce the exact-128KB full-kernel Mq64 path as a
+performance candidate directly.
+
+Post-revert baseline check:
+
+- remote build/static gate PASS after removing the Mq64 implementation
+- W12 metadata PASS:
+  `private=0`, `sgpr=84`, `sgpr_spill=0`, `vgpr=112`, `vgpr_spill=0`
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_063709`
