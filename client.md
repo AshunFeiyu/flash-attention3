@@ -424,3 +424,20 @@ Noncausal diagnostic boundary:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_053811`
 - decision: do not use `CAUSAL=0` H1/S1024 as a perf diagnosis path until its
   correctness/tolerance is resolved; keep the active mainline on `causal=true`
+
+Sidecar pair-prefetch boundary:
+
+- a smaller two-row sidecar batching attempt stayed resource clean
+  (`private=0`, `sgpr_count=82`, `vgpr_count=112`, consumer branch `144/160`)
+  but failed H1/S128 correctness before stats/perf
+- failing run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_055216`
+- signal:
+  `dk_rel_l2=8244.1`, `dv_rel_l2=30.6025`, `pass=0`, with PMD
+  `read vgpr111 before writing`
+- decision: `REJECT_CORRECTNESS`; code reverted
+
+Rule: do not continue sidecar batching in full dKV without a focused
+sidecar-fragment correctness probe.  The active code remains the zero-seed
+baseline while the next MMAC-active push should look at structural ABarrier /
+producer-thinness / FWD-style pipeline gaps rather than more sidecar preload.

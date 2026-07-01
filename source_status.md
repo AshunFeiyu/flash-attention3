@@ -832,3 +832,23 @@ Noncausal diagnostic boundary:
 Rule: do not use noncausal H1/S1024 performance counters to guide MMAC active
 tuning until the noncausal correctness/tolerance boundary is resolved.  Continue
 the primary mainline with `causal=true`.
+
+Rejected sidecar pair-prefetch:
+
+- candidate: inside `softmax_ds_owner16_from_global_sidecar`, group sidecar
+  reads two q rows at a time instead of prefetching all 8 rows across score/dP
+- static result: metadata clean, `private=0`, `sgpr_count=82`,
+  `vgpr_count=112`, no spill; consumer branch pressure `144/160`
+- correctness result: H1/S128 failed numerical comparison before stats/perf
+  promotion
+- failing run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_055216`
+- failure signal:
+  `dk_rel_l2=8244.1`, `dv_rel_l2=30.6025`, `pass=0`, plus PMD
+  `read vgpr111 before writing`
+- decision: `REJECT_CORRECTNESS`; code reverted and remote source restored to
+  the zero-seed baseline
+
+Rule: sidecar read batching now needs a focused sidecar-fragment probe before
+touching the full dKV mainline again.  The current source baseline remains
+zero-seed cleanup, not any sidecar prefetch variant.

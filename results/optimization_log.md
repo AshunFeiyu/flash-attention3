@@ -1206,3 +1206,48 @@ Conclusion:
 Do not use `CAUSAL=0` H1/S1024 metrics to guide MMAC-active tuning yet.  The
 mainline remains `causal=true`; if noncausal is needed for isolated mask/predicate
 studies, first resolve the numerical threshold or the noncausal math path.
+
+### Sidecar Pair-Prefetch Negative
+
+Hypothesis:
+
+- The full sidecar prefetch failed because it carried 24 sidecar floats across
+  score/dP and exhausted consumer branch slack.
+- A smaller pair-prefetch inside `softmax_ds_owner16_from_global_sidecar` might
+  group two q-row sidecar triplets at a time, increasing flat-read distance
+  without extending live range across score/dP.
+
+Change tested and reverted:
+
+- Replaced the per-lane `vec_id=0..3` sidecar load-use loop with two
+  two-row groups.
+- Each group loaded at most six sidecar floats
+  (`max_log2`, `inv_sum`, `delta` for two q rows), then computed the two
+  corresponding P/dS elements.
+- No math, output ownership, MMAC count, LDS plan, or barrier change.
+
+Evidence:
+
+- Static metadata stayed clean:
+  `private=0`, `sgpr_count=82`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Branch-local consumer pressure was `144/160`, better than the zero-seed
+  baseline `150/160` and much better than the rejected all-sidecar prefetch
+  `158/160`.
+- H1/S128 correctness failed before any performance run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_055216`.
+- Failure signal:
+  `pass=0`, `dk_rel_l2=8244.1`, `dv_rel_l2=30.6025`.
+- PMD also emitted `warn: read vgpr111 before writing` in this candidate.
+
+Decision:
+
+`REJECT_CORRECTNESS`; code reverted and remote source restored to the
+zero-seed baseline.
+
+Conclusion:
+
+This reduced-register sidecar batching does not preserve the full dKV numerical
+path under PMD/codegen.  Do not retry sidecar batching directly in the main dKV
+kernel.  If sidecar latency is attacked again, first build a focused
+sidecar-fragment correctness probe that checks packed sidecar load order,
+fragment placement, and VGPR initialization before reconnecting to dV/dK.
