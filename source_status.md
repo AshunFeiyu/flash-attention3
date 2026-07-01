@@ -638,3 +638,28 @@ improves both ticks and MMAC active.  It is still a micro optimization.  The
 remaining gap to the 60% MMAC active target is now clearly dominated by
 ABarrier/control and phase alignment, not by missing dV/dK MMAC or LDS bank
 conflict.
+
+## 2026-07-02 W12 Pre-Softmax dV/dK Read Negative
+
+Status: `REJECT_RESOURCE_REVERT_CODE`
+
+The attempted schedule moved all dV/dK `dO^T/Q^T` `ds_read_matrix` operations
+before softmax/dS so their LDS latency could overlap with VALU work:
+
+```text
+score/dP -> dO^T/Q^T reads -> softmax/dS -> wait -> dV/dK MMAC
+```
+
+The code built, but the metadata gate failed before PMD:
+
+- `private_segment_fixed_size=24`
+- `vgpr_spill_count=10`
+- `sgpr_count=84`
+- `vgpr_count=112`
+
+Conclusion:
+
+The schedule expands live ranges too much in the current helper structure.  The
+source is reverted to the W12 dV/dK read-all baseline.  Future read-early
+experiments must split the source operands into smaller groups or first shrink
+the softmax/dS live range.

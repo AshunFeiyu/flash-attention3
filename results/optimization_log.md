@@ -858,3 +858,43 @@ or spilling.  It does not solve the main gap to the FWD target.  The dominant
 evidence remains barrier/control serialization and thin producer/consumer tail
 behavior, so the next structural work should target the ABarrier ledger and
 longer FWD-style phase alignment rather than more local address cleanups.
+
+## 2026-07-02 W12 Pre-Softmax dV/dK Read Negative
+
+Decision: `REJECT_RESOURCE`
+
+Hypothesis:
+
+Move the dV/dK `dO^T/Q^T` `ds_read_matrix` batch before
+`softmax_ds_owner16_from_global_sidecar`, then wait only before the MMAC island.
+The intended FWD-style schedule was:
+
+```text
+score/dP MMAC -> issue all dO^T/Q^T reads -> softmax/dS VALU -> wait -> dV/dK MMAC
+```
+
+This should hide source operand LDS latency under useful softmax/dS work.
+
+Implementation attempt:
+
+- Split `dv_dk_mmac_owner16` into source read and source consume helpers.
+- Held all eight `dO^T` and eight `Q^T` operand fragments live across
+  softmax/dS.
+- Kept math, barriers, source-layout ABI, and output ownership unchanged.
+
+Evidence:
+
+- Remote build completed, but metadata gate failed before PMD:
+  `private_segment_fixed_size=24`, `vgpr_spill_count=10`,
+  `sgpr_count=84`, `vgpr_count=112`.
+- Consumer branch availability was still `160`, so the failure is live-range
+  pressure from carrying all source operands through the softmax/dS helper, not
+  a tile-size or LDS-budget issue.
+
+Conclusion:
+
+Direct "read all before softmax" is not viable in the current code shape.  The
+idea is still algorithmically sound, but it needs a smaller live range: either
+4+4 source read groups, a slimmer softmax/dS helper, or a more FWD-like
+register ledger before retrying.  Code was reverted to the W12 dV/dK read-all
+baseline.

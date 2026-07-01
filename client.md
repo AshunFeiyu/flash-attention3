@@ -294,3 +294,15 @@ Next step: keep W12 dV/dK read-all as the current clean baseline.  The next
 structural change should be workbook-first and focus on the ABarrier/control
 ledger and producer/consumer phase alignment, because local dV/dK read
 batching is now proven but insufficient.
+
+Pre-softmax dV/dK read negative:
+
+- tried to issue all eight `dO^T/Q^T` source operand reads before softmax/dS,
+  then wait only before dV/dK MMAC
+- build passed but metadata failed:
+  `private_segment_fixed_size=24`, `vgpr_spill_count=10`
+- decision: `REJECT_RESOURCE`; code reverted
+
+Rule: read-early/wait-late is still the right latency-hiding pattern, but this
+kernel cannot keep all source operands live across softmax/dS.  Future retries
+must use a smaller 4+4 source grouping or reduce softmax live range first.
