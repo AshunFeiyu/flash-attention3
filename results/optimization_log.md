@@ -954,3 +954,39 @@ is bounded.  It is still a micro optimization: matrix-read bubbles improved,
 but MMAC active barely moved because the dominant gap is now ABarrier/control
 serialization.  Keep this as the current clean baseline and move the next
 structural work to barrier/control and consumer phase alignment.
+
+### W12 ValuExec0 Turnstile Rejection
+
+Hypothesis:
+
+- Borrow FWD's turnstile idea and add a consumer-local `ValuExec0` token.
+- Let consumer1 arrive before softmax and make consumer0 wait before softmax,
+  aiming to break lockstep and create VALU/MMAC overlap without artificial
+  delay.
+
+Evidence:
+
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_044441`.
+- H1/S1024 correctness/perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_044502`.
+- Static metadata stayed clean:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Read4x2 baseline:
+  `kernel_ticks=71508255`, MMAC active avg `21.5678%`,
+  coissue `30929/20971`.
+- Turnstile result:
+  `kernel_ticks=73908835`, MMAC active avg `20.8817%`,
+  coissue `29516/19583`, `ldsBankConflict=0`.
+
+Decision:
+
+`REJECT_PERF`; the code was reverted.
+
+Conclusion:
+
+A pure consumer turnstile is legal but not useful here.  It increases explicit
+control/ownership cost and does not move enough independent work into the peer
+MMAC window.  The next structural candidate must either reduce ownership
+turns, thicken producer/helper work with data the consumer truly uses, or
+change the role split while preserving no-duplicate score/dP.

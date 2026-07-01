@@ -699,3 +699,21 @@ This is now the current source baseline.  It proves bounded read-early/wait-late
 helps hide source operand LDS latency, but it also proves that the remaining
 large gap to 60% MMAC active is not dV/dK read granularity.  The next target is
 ABarrier/control serialization and consumer phase alignment.
+
+ValuExec0 turnstile retry:
+
+```text
+group1 softmax arrive -> group0 wait before softmax -> both continue
+```
+
+The retry was correctness-clean and resource-clean, but performance regressed:
+
+- H1/S1024 `kernel_ticks=73908835` versus read4x2 `71508255`
+- MMAC active avg `20.8817%` versus read4x2 `21.5678%`
+- coissue `29516/19583` versus read4x2 `30929/20971`
+
+Decision: `REJECT_PERF`; the source was reverted to the read4x2 baseline.
+Interpretation: explicit consumer phase gating adds control/wait cost unless it
+also moves real independent work into the peer's MMAC window.  Future phase
+alignment needs useful producer/helper work or a different ownership topology,
+not another pure turnstile.

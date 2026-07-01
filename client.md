@@ -322,7 +322,21 @@ W12 dV/dK read4x2 micro baseline `ACCEPT_MICRO`:
   matrix-read latency is now much less exposed; top bubble remains
   `abarrier -> salu_32` at `39.00%`
 
-Next step: do not keep polishing dV/dK read granularity.  The next workbook
-proposal should attack ABarrier/control serialization and consumer phase
-alignment, borrowing FWD's `ValuExec0`/phase-turnstile idea if the resource
-ledger supports it.
+Rejected consumer turnstile retry:
+
+- hypothesis: add a FWD-like `ValuExec0` token so consumer1 reaches softmax
+  first and consumer0 waits before softmax, hoping to create a useful VALU/MMAC
+  phase offset
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_044441`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_044502`
+- result: H1/S128 and H1/S1024 correctness pass, metadata clean, but
+  `kernel_ticks` regressed from `71508255` to `73908835`, MMAC active avg fell
+  from `21.5678%` to `20.8817%`, and coissue also fell
+- decision: `REJECT_PERF`; code reverted
+
+Next step: do not keep polishing dV/dK read granularity and do not add pure
+turnstile waits.  The next workbook proposal must reduce ABarrier/control
+serialization through useful independent work, fewer ownership turns, or a
+different role split that preserves no-duplicate score/dP.
