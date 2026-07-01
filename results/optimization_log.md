@@ -559,3 +559,33 @@ is the current evidence baseline, but it is nowhere near the `>=60%` MMAC-active
 target.  The next redesign must attack the ABarrier/control bubble and producer
 recurring-work problem, not simply reduce wave count again.  FWD-style means
 longer compute islands with fewer ownership turns, not just a smaller CTA.
+
+## 2026-07-02 W12 Tail AllDone Removal Probe
+
+Decision: `REJECT_STATIC`
+
+Hypothesis:
+
+xcu shows the largest issue gaps are `abarrier -> salu/immed`, and the top
+wavefront rows include thin producer waves with long tail bubbles.  Removing
+the W12 CTA-wide `AllDone` wait/invalidate path might let producers exit
+earlier and reduce the active-time denominator.
+
+Result:
+
+- Removing W12 `kAllDone` init/arrive/wait/invalidate and final
+  `__syncthreads()` caused the W12 producer branch to exceed its WDRA resource
+  window.
+- Adding explicit role-local `return` did not fix it.
+- Remote build produced:
+  `BranchNumVGPRs[0] = 67`, `BranchAvailableVGPRs[0] = 16`.
+- Symbol metadata failed:
+  `private_segment_fixed_size=204`, `vgpr_spill_count=50`.
+
+Conclusion:
+
+The tail barrier is a real bubble source, but in the current generated CFG it
+also helps keep WDRA branch resources bounded.  Do not remove it directly.
+Next attempts must either preserve the role-merge/resource shape or reduce
+barrier cost inside the steady loop rather than deleting the final convergence
+path.
