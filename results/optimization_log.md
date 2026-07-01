@@ -1351,3 +1351,58 @@ and consumer progress enough that doubling the per-turn MMAC island does not
 raise active share.  The next FWD-style design should keep the correctness
 lesson but restore LDS slack or double-buffering, rather than promoting this
 exact single-buffer topology.
+
+### Raw-Page Sidecar Overlay
+
+Hypothesis:
+
+- The W12 zero-seed path still pays a visible sidecar/global-read debt in the
+  consumer softmax/dS island.
+- A producer could publish sidecar values into the raw Q LDS page after both
+  consumers have finished score/dP on that page.  This might remove
+  consumer-side global sidecar loads and give the producer useful recurring
+  q-loop work without increasing LDS footprint.
+
+Change tested:
+
+- Added an opt-in W12 sidecar-overlay path.
+- Producer publishes the matrix packet first, then waits for the raw matrix
+  generation to be released before overlaying sidecar values into the raw Q
+  page.
+- Consumers compute score/dP, release raw matrix use, wait for the sidecar
+  generation, then compute softmax/dS and dV/dK as before.
+- Main matrix operands still use the existing MLS/BPS + `ds_read_matrix` +
+  MMAC path; no raw LDS transpose writer was introduced.
+
+Evidence:
+
+- Workbook rows were added under `Raw-page sidecar overlay result`.
+- Build/static/metadata passed for symbol
+  `fa3_bwd_dkv_mmac12_sidecar_overlay`:
+  `private=0`, `sgpr_count=86`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Branch-local pressure was `producer=9/16`, `consumer=146/160`.
+- H1/S128 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_070805`.
+- H1/S1024 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_070829`.
+- H1/S1024 stats:
+  `simTicks=76727560`, `kernel_ticks=73113950`, MMAC active avg `18.9185%`,
+  coissue success/fail `39007/29043`, total MMOP instr `131072`,
+  `ldsBankConflict=0`.
+- Current zero-seed W12 baseline remains better:
+  `kernel_ticks=70604625`, MMAC active avg `21.7988%`.
+
+Decision:
+
+`REJECT_PERF_STATS_ONLY`.  The overlay lifetime protocol is numerically valid
+and resource-clean, but the extra raw-page sidecar ownership generation
+increases control/barrier cost enough that both ticks and MMAC active regress.
+Coissue success increases, but failed coissue also increases; this is a useful
+negative example that coissue count alone is not a promotion signal.
+
+Conclusion:
+
+Sidecar latency remains a real debt, but fixing it by adding another
+RawFilled/RawUsed generation is the wrong direction for the current topology.
+Future FWD-style work should reduce barrier/control turns first, or move
+sidecar generation into a protocol that does not add a page-ownership cycle.

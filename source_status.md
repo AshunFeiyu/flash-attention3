@@ -908,3 +908,32 @@ Decision: `OBSERVE_CORRECTNESS_REJECT_PERF`.  Keep the seed lesson and the
 opt-in path only as a diagnostic/future Mq64 basis; do not promote this
 single-buffer exact-128KB topology.  The next FWD-style design needs LDS slack
 or real producer/consumer overlap, not only a larger per-q-tile MMAC island.
+
+Raw-page sidecar overlay diagnostic:
+
+- workbook updated first with `Raw-page sidecar overlay` design, then with
+  `Raw-page sidecar overlay result`
+- opt-in path:
+  `kDkvPathWaspDkvMmac12WaveSidecarOverlay` /
+  standalone `--dkv-mmac12-overlay-check=1`
+- producer publishes matrix packets, then after raw matrix use is released
+  overlays sidecar values into the raw Q LDS page; consumers wait for this
+  second generation before softmax/dS
+- build/static/metadata PASS:
+  `private=0`, `sgpr=86`, `vgpr=112`, no spills, branch pressure
+  `producer=9/16`, `consumer=146/160`
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_070805`
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_070829`
+- H1/S1024 stats:
+  `simTicks=76727560`, `kernel_ticks=73113950`, MMAC active avg `18.9185%`,
+  coissue `39007/29043`, total MMOP `131072`, `ldsBankConflict=0`
+- comparison:
+  zero-seed W12 baseline remains better at `kernel_ticks=70604625` and
+  MMAC active avg `21.7988%`
+
+Decision: `REJECT_PERF_STATS_ONLY`.  This path may remain as an opt-in
+diagnostic, but it is not a mainline optimization.  The result confirms that
+sidecar/global-read latency is real, yet adding another RawFilled/RawUsed
+generation makes the ABarrier/control path heavier than the load it removes.

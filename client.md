@@ -125,6 +125,18 @@ Current FA3 BWD clean design workbook:
 
 ## Current Next Step
 
+Current promotion baseline:
+
+- The best clean W12 evidence remains the zero-seed/read4x2 line, with
+  H1/S1024 causal `kernel_ticks=70604625` and MMAC active avg `21.7988%`.
+- Mq64 seed-fix and raw-page sidecar overlay are correctness/resource-clean
+  diagnostics, not promoted performance baselines:
+  - Mq64 seed-fix: `kernel_ticks=79595880`, active `19.8279%`.
+  - raw-page sidecar overlay: `kernel_ticks=73113950`, active `18.9185%`.
+- The next FWD-style redesign must raise MMAC active share by reducing
+  ABarrier/control and exposed matrix-read/sidecar latency.  More coissue
+  count is not enough unless active share and same-shape ticks move with it.
+
 Current state has two paths:
 
 Reference correctness path `PASS`:

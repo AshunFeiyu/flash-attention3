@@ -62,7 +62,9 @@ inline bool valid_probe_shape(const ShaoboFa3Params* p) {
             p->dkv_path == dkv::kDkvPathWaspFragmentSidecar ||
             p->dkv_path == dkv::kDkvPathWaspDkvMmac ||
             p->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave ||
-            p->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64) &&
+            p->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64 ||
+            p->dkv_path ==
+                dkv::kDkvPathWaspDkvMmac12WaveSidecarOverlay) &&
            p->seqlen_q % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
            p->seqlen_k == p->seqlen_q &&
            p->seqlen_k % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
@@ -169,6 +171,18 @@ template <typename Tile>
 __device__ __forceinline__ int kv_block_offset(int row_block, int d_block) {
     return (row_block * 4 + d_block) *
            DkvLdsLayout<Tile>::kBlockBytes;
+}
+
+template <typename Tile>
+__device__ __forceinline__ float* raw_q_sidecar_overlay_page(
+    __half* lds,
+    int page) {
+    char* base = reinterpret_cast<char*>(lds);
+    const int byte_offset =
+        DkvLdsLayout<Tile>::kQBase +
+        page * DkvLdsLayout<Tile>::kBlocksPerMqTile *
+            DkvLdsLayout<Tile>::kBlockBytes;
+    return reinterpret_cast<float*>(base + byte_offset);
 }
 
 template <typename Wdra>
@@ -535,6 +549,99 @@ __device__ __forceinline__ void producer_all_loop(
             lds, Layout::kDoutTBase, dout_t_source, Tile::kBlockMq,
             tile_base, page, wave_local);
         arrive_raw_filled_page<Wdra>(page);
+    }
+}
+
+template <typename Tile, typename Wdra>
+__device__ __forceinline__ void producer_all_loop_sidecar_overlay(
+    const __half* q_base_ptr,
+    const __half* k_base_ptr,
+    const __half* v_base_ptr,
+    const __half* dout_base_ptr,
+    const __half* q_t_source,
+    const __half* dout_t_source,
+    const float* scores_max,
+    const float* scores_sum,
+    const float* delta,
+    __half* lds,
+    int64_t row_base,
+    int bh,
+    int q_base,
+    int k_base,
+    int seqlen,
+    int row_stride,
+    int q_tiles,
+    int wave_local,
+    int lane,
+    float softmax_scale_log2) {
+    using Layout = DkvLdsLayout<Tile>;
+    int raw0_used_phase = 0;
+    int raw1_used_phase = 0;
+
+    ins::abarrier_seq<false>(Wdra::kResidentFilled);
+    publish_nk128_tile<Tile>(
+        lds, Layout::kKBase, k_base_ptr, row_stride, k_base, wave_local);
+    publish_nk128_tile<Tile>(
+        lds, Layout::kVBase, v_base_ptr, row_stride, k_base, wave_local);
+    ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
+
+#pragma clang loop unroll(disable)
+    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
+        const int page = q_tile & 1;
+        if (q_tile >= 2) {
+            wait_raw_used_page<Wdra>(
+                page, raw0_used_phase, raw1_used_phase);
+        }
+        seq_raw_filled_page<Wdra>(page);
+        publish_mq32_tile<Tile>(
+            lds, Layout::kQBase, q_base_ptr, row_stride,
+            q_base + q_tile * Tile::kBlockMq, page, wave_local);
+        publish_mq32_tile<Tile>(
+            lds, Layout::kDoutBase, dout_base_ptr, row_stride,
+            q_base + q_tile * Tile::kBlockMq, page, wave_local);
+
+        const int source_q_tile = q_base / Tile::kBlockMq + q_tile;
+        const size_t tile_base =
+            (static_cast<size_t>(bh) * static_cast<size_t>(q_tiles) +
+             static_cast<size_t>(source_q_tile)) *
+            static_cast<size_t>(Tile::kHeadDim) * Tile::kBlockMq;
+        publish_mq32_source_layout_tile<Tile>(
+            lds, Layout::kQtBase, q_t_source, Tile::kBlockMq,
+            tile_base, page, wave_local);
+        publish_mq32_source_layout_tile<Tile>(
+            lds, Layout::kDoutTBase, dout_t_source, Tile::kBlockMq,
+            tile_base, page, wave_local);
+        arrive_raw_filled_page<Wdra>(page);
+
+        if (q_tile >= 1) {
+            const int sidecar_q_tile = q_tile - 1;
+            const int sidecar_page_id = sidecar_q_tile & 1;
+            wait_raw_used_page<Wdra>(
+                sidecar_page_id, raw0_used_phase, raw1_used_phase);
+            seq_raw_filled_page<Wdra>(sidecar_page_id);
+            float* sidecar_page =
+                raw_q_sidecar_overlay_page<Tile>(lds, sidecar_page_id);
+            publish_sidecar_page<Tile>(
+                sidecar_page, scores_max, scores_sum, delta, row_base,
+                q_base + sidecar_q_tile * Tile::kBlockMq, seqlen, 0,
+                wave_local, lane, softmax_scale_log2);
+            arrive_raw_filled_page<Wdra>(sidecar_page_id);
+        }
+    }
+
+    if (q_tiles > 0) {
+        const int sidecar_q_tile = q_tiles - 1;
+        const int sidecar_page_id = sidecar_q_tile & 1;
+        wait_raw_used_page<Wdra>(
+            sidecar_page_id, raw0_used_phase, raw1_used_phase);
+        seq_raw_filled_page<Wdra>(sidecar_page_id);
+        float* sidecar_page =
+            raw_q_sidecar_overlay_page<Tile>(lds, sidecar_page_id);
+        publish_sidecar_page<Tile>(
+            sidecar_page, scores_max, scores_sum, delta, row_base,
+            q_base + sidecar_q_tile * Tile::kBlockMq, seqlen, 0, wave_local,
+            lane, softmax_scale_log2);
+        arrive_raw_filled_page<Wdra>(sidecar_page_id);
     }
 }
 
@@ -1829,6 +1936,69 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
 }
 
 template <typename Tile, typename Wdra, int ConsumerGroup>
+__device__ __forceinline__ void consumer_dkv_mmac_loop_sidecar_overlay(
+    __half* lds,
+    float* dk,
+    float* dv,
+    int64_t tensor_base,
+    int seqlen,
+    int k_base,
+    int q_tiles,
+    int causal,
+    float softmax_scale,
+    int wave_local,
+    int lane) {
+    int resident_phase = 0;
+    int raw0_filled_phase = 0;
+    int raw1_filled_phase = 0;
+    static_assert(ConsumerGroup == 0 || ConsumerGroup == 1,
+                  "dKV consumer group must be 0 or 1");
+    const int owner_nblock = ConsumerGroup * 4 + wave_local;
+
+    ins::F32x4 dv_acc[8];
+    ins::F32x4 dk_acc[8];
+
+    ins::abarrier_try_wait<true>(Wdra::kResidentFilled, resident_phase);
+
+#pragma clang loop unroll(disable)
+    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
+        const int page = q_tile & 1;
+        wait_raw_filled_page<Wdra>(
+            page, raw0_filled_phase, raw1_filled_phase);
+
+        ins::F32x4 score[2];
+        ins::F32x4 dp[2];
+        score_dp_mmac_owner16<Tile>(lds, owner_nblock, page, score, dp);
+        arrive_raw_used_page<Wdra>(page);
+
+        DvDkSourceRegs4 dvdk_low;
+        dv_dk_read_owner16_sources4<Tile, 0>(lds, page, dvdk_low);
+
+        wait_raw_filled_page<Wdra>(
+            page, raw0_filled_phase, raw1_filled_phase);
+        const float* sidecar_page = raw_q_sidecar_overlay_page<Tile>(lds, page);
+        ins::Vec4F16 p_frag[2];
+        ins::Vec4F16 ds_frag[2];
+        softmax_ds_owner16_from_sidecar<Tile>(
+            score, dp, sidecar_page, q_tile, k_base, owner_nblock, lane,
+            seqlen, causal, softmax_scale, p_frag, ds_frag);
+
+        if (q_tile == 0) {
+            dv_dk_mmac_owner16_read4x2<Tile, true>(
+                lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+        } else {
+            dv_dk_mmac_owner16_read4x2<Tile, false>(
+                lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+        }
+        arrive_raw_used_page<Wdra>(page);
+    }
+
+    store_dkv_owner16<Tile>(
+        dk, dv, dk_acc, dv_acc, lane, k_base, owner_nblock, seqlen,
+        tensor_base);
+}
+
+template <typename Tile, typename Wdra, int ConsumerGroup>
 __device__ __forceinline__ void consumer_dkv_mmac_loop_mq64_single(
     __half* lds,
     const float* packed_sidecar,
@@ -2265,6 +2435,115 @@ fa3_bwd_dkv_mmac12_kernel(const __half* __restrict__ dout,
 #endif
 }
 
+__global__ void __launch_bounds__(dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta, 1)
+    __attribute__((hcu_wdra_waves_per_tg(12)))
+fa3_bwd_dkv_mmac12_sidecar_overlay_kernel(
+    const __half* __restrict__ dout,
+    const __half* __restrict__ q,
+    const __half* __restrict__ k,
+    const __half* __restrict__ v,
+    const __half* __restrict__ q_t_source,
+    const __half* __restrict__ dout_t_source,
+    const float* __restrict__ scores_max,
+    const float* __restrict__ scores_sum,
+    const float* __restrict__ delta,
+    float* __restrict__ dk,
+    float* __restrict__ dv,
+    int heads,
+    int seqlen,
+    int dim,
+    int causal,
+    float softmax_scale) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    using Tile = dkv::DkvTileD128Mq32Nk128W12;
+    using Bar = dkv::DkvBarrierLedger;
+    using Vgpr = dkv::WdraResourceWindows;
+    using Layout = DkvLdsLayout<Tile>;
+    static_assert(Layout::kBytes <= Tile::kLdsBudgetBytes,
+                  "dKV overlay LDS budget overflow");
+
+    __shared__ __half lds[Layout::kBytes / sizeof(__half)];
+
+    const uint32_t wave_id = __builtin_hcu_get_wave_id();
+    const int wave_local = static_cast<int>(wave_id & 3u);
+
+    if (wave_id == 0) {
+        __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Filled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw1Filled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw1Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kAllDone, 12);
+    }
+    __builtin_hcu_s_ebarrier_sync(0);
+
+    const int k_tile = blockIdx.x;
+    const int h = blockIdx.y;
+    const int b = blockIdx.z;
+    const int q_base = 0;
+    const int k_base = k_tile * Tile::kResidentNk;
+    const int q_tiles = seqlen / Tile::kBlockMq;
+    const int bh = b * heads + h;
+    const int64_t tensor_base =
+        (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
+
+    if (wave_id < 4) {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducer12Vgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
+        producer_all_loop_sidecar_overlay<Tile, Bar>(
+            q + tensor_base, k + tensor_base, v + tensor_base,
+            dout + tensor_base, q_t_source, dout_t_source, scores_max,
+            scores_sum, delta, lds,
+            (static_cast<int64_t>(b) * heads + h) * seqlen, bh, q_base,
+            k_base, seqlen, dim, q_tiles, wave_local, lane,
+            softmax_scale * kLog2E);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    } else if (wave_id < 8) {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
+        consumer_dkv_mmac_loop_sidecar_overlay<Tile, Bar, 0>(
+            lds, dk, dv, tensor_base, seqlen, k_base, q_tiles, causal,
+            softmax_scale, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    } else {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
+        consumer_dkv_mmac_loop_sidecar_overlay<Tile, Bar, 1>(
+            lds, dk, dv, tensor_base, seqlen, k_base, q_tiles, causal,
+            softmax_scale, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    }
+
+    int done_phase = 0;
+    ins::abarrier_try_wait<false>(Bar::kAllDone, done_phase);
+    __syncthreads();
+    __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw1Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw1Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
+    __syncthreads();
+#else
+    (void)dout;
+    (void)q;
+    (void)k;
+    (void)v;
+    (void)q_t_source;
+    (void)dout_t_source;
+    (void)scores_max;
+    (void)scores_sum;
+    (void)delta;
+    (void)dk;
+    (void)dv;
+    (void)heads;
+    (void)seqlen;
+    (void)dim;
+    (void)causal;
+    (void)softmax_scale;
+#endif
+}
+
 __global__ void __launch_bounds__(dkv::DkvTileD128Mq64Nk128W12::kThreadsPerCta, 1)
     __attribute__((hcu_wdra_waves_per_tg(12)))
 fa3_bwd_dkv_mmac12_mq64_kernel(const __half* __restrict__ dout,
@@ -2688,11 +2967,24 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
     }
     if ((params->dkv_path == dkv::kDkvPathWaspDkvMmac ||
          params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave ||
-         params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64) &&
+         params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64 ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveSidecarOverlay) &&
         (dk == nullptr || dv == nullptr ||
          params->reserved_ptr[1] == nullptr ||
-         params->reserved_ptr[2] == nullptr ||
-         params->reserved_ptr[3] == nullptr)) {
+         params->reserved_ptr[2] == nullptr)) {
+        return SHAOBO_FA3_STATUS_INVALID_VALUE;
+    }
+    if ((params->dkv_path == dkv::kDkvPathWaspDkvMmac ||
+         params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave ||
+         params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64) &&
+        params->reserved_ptr[3] == nullptr) {
+        return SHAOBO_FA3_STATUS_INVALID_VALUE;
+    }
+    if (params->dkv_path ==
+            dkv::kDkvPathWaspDkvMmac12WaveSidecarOverlay &&
+        (softmax_aux0 == nullptr || softmax_aux1 == nullptr ||
+         params->reserved_ptr[0] == nullptr)) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
     if (params->workspace_bytes < shaobo_fa3_bwd_workspace_bytes(params)) {
@@ -2704,7 +2996,9 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
     dim3 grid(grid_x, params->num_heads_q, params->batch);
     dim3 block(
         (params->dkv_path == dkv::kDkvPathWaspDkvMmac12Wave ||
-         params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64)
+         params->dkv_path == dkv::kDkvPathWaspDkvMmac12WaveMq64 ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveSidecarOverlay)
             ? dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta
             : dkv::DkvTileD128Mq32Nk128::kThreadsPerCta);
 
@@ -2716,6 +3010,21 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
             static_cast<const __half*>(params->reserved_ptr[1]),
             static_cast<const __half*>(params->reserved_ptr[2]),
             static_cast<const float*>(params->reserved_ptr[3]),
+            static_cast<float*>(dk), static_cast<float*>(dv),
+            params->num_heads_q, params->seqlen_k, params->head_dim_qk,
+            params->causal, params->softmax_scale);
+    } else if (
+        params->dkv_path ==
+        dkv::kDkvPathWaspDkvMmac12WaveSidecarOverlay) {
+        hipLaunchKernelGGL(
+            fa3_bwd_dkv_mmac12_sidecar_overlay_kernel, grid, block, 0, 0,
+            static_cast<const __half*>(dout), static_cast<const __half*>(q),
+            static_cast<const __half*>(k), static_cast<const __half*>(v),
+            static_cast<const __half*>(params->reserved_ptr[1]),
+            static_cast<const __half*>(params->reserved_ptr[2]),
+            static_cast<const float*>(softmax_aux0),
+            static_cast<const float*>(softmax_aux1),
+            static_cast<const float*>(params->reserved_ptr[0]),
             static_cast<float*>(dk), static_cast<float*>(dv),
             params->num_heads_q, params->seqlen_k, params->head_dim_qk,
             params->causal, params->softmax_scale);
@@ -3184,11 +3493,15 @@ int main(int argc, char** argv) {
     const int mmac12_check = arg_int(
         argc, argv, "--dkv-mmac12-check",
         env_int("CHECK_WASP_DKV_MMAC12", 0));
+    const int mmac12_overlay_check = arg_int(
+        argc, argv, "--dkv-mmac12-overlay-check",
+        env_int("CHECK_WASP_DKV_MMAC12_OVERLAY", 0));
     const int mmac12_mq64_check = arg_int(
         argc, argv, "--dkv-mmac12-mq64-check",
         env_int("CHECK_WASP_DKV_MMAC12_MQ64", 0));
     const int full_mmac_check =
-        mmac_check || mmac12_check || mmac12_mq64_check;
+        mmac_check || mmac12_check || mmac12_overlay_check ||
+        mmac12_mq64_check;
     const int batch = arg_int(argc, argv, "--B", env_int("B", kDefaultBatch));
     const int heads = arg_int(argc, argv, "--H", env_int("H", kDefaultHeads));
     const int default_seq =
@@ -3213,22 +3526,31 @@ int main(int argc, char** argv) {
     params.dtype = SHAOBO_FA3_DTYPE_FP16;
     params.layout = SHAOBO_FA3_LAYOUT_BHSD;
     params.softmax_aux_mode = SHAOBO_FA3_SOFTMAX_AUX_SMAX_SSUM;
-    params.dkv_path =
-        check ? dkv::kDkvPathReferenceCorrectness
-              : (mmac12_mq64_check
-                     ? dkv::kDkvPathWaspDkvMmac12WaveMq64
-                     : (mmac12_check
-                            ? dkv::kDkvPathWaspDkvMmac12Wave
-                            : (mmac_check
-                                   ? dkv::kDkvPathWaspDkvMmac
-                                   : (fragment_check
-                                          ? dkv::kDkvPathWaspFragmentSidecar
-                                          : (probe_check
-                                                 ? dkv::
-                                                       kDkvPathWaspSoftmaxDsSidecar
-                                                 : dkv::kDkvPathWaspProbe)))));
+    params.dkv_path = dkv::kDkvPathWaspProbe;
+    if (probe_check) {
+        params.dkv_path = dkv::kDkvPathWaspSoftmaxDsSidecar;
+    }
+    if (fragment_check) {
+        params.dkv_path = dkv::kDkvPathWaspFragmentSidecar;
+    }
+    if (mmac_check) {
+        params.dkv_path = dkv::kDkvPathWaspDkvMmac;
+    }
+    if (mmac12_check) {
+        params.dkv_path = dkv::kDkvPathWaspDkvMmac12Wave;
+    }
+    if (mmac12_overlay_check) {
+        params.dkv_path =
+            dkv::kDkvPathWaspDkvMmac12WaveSidecarOverlay;
+    }
+    if (mmac12_mq64_check) {
+        params.dkv_path = dkv::kDkvPathWaspDkvMmac12WaveMq64;
+    }
+    if (check) {
+        params.dkv_path = dkv::kDkvPathReferenceCorrectness;
+    }
     params.block_threads =
-        (mmac12_check || mmac12_mq64_check)
+        (mmac12_check || mmac12_overlay_check || mmac12_mq64_check)
             ? dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta
             : dkv::DkvTileD128Mq32Nk128::kThreadsPerCta;
     params.sync_after_launch = 1;
@@ -3457,9 +3779,11 @@ int main(int argc, char** argv) {
             "dv_rel_l2=%g bad=%d pass=%d\n",
             full_mmac_check ? (mmac12_mq64_check
                                    ? "fa3_bwd_dkv_mmac12_mq64_correctness"
-                                   : (mmac12_check
-                                          ? "fa3_bwd_dkv_mmac12_correctness"
-                                          : "fa3_bwd_dkv_mmac_correctness"))
+                                   : (mmac12_overlay_check
+                                          ? "fa3_bwd_dkv_mmac12_overlay_correctness"
+                                          : (mmac12_check
+                                                 ? "fa3_bwd_dkv_mmac12_correctness"
+                                                 : "fa3_bwd_dkv_mmac_correctness")))
                             : "fa3_bwd_dkv_correctness",
             shaobo_fa3_status_string(status), batch, heads, seqlen, dim,
             params.causal, workspace_bytes, dk_metrics.max_abs, dk_metrics.mean_abs,
