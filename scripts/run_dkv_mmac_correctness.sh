@@ -30,7 +30,12 @@ export H="\${H:-1}"
 export S="\${S:-128}"
 export D="\${D:-128}"
 export CAUSAL="\${CAUSAL:-1}"
-./build/fa3_bwd_wasp_clean --dkv-mmac-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
+export WAVES="\${WAVES:-16}"
+if [[ "\${WAVES}" == "12" ]]; then
+  ./build/fa3_bwd_wasp_clean --dkv-mmac12-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
+else
+  ./build/fa3_bwd_wasp_clean --dkv-mmac-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
+fi
 EOF
 chmod +x "${case_script}"
 
@@ -48,7 +53,7 @@ if grep -Eiq 'panic|Program aborted|core dumped|Aborted' "${stdout_log}"; then
   exit 1
 fi
 
-if ! grep -q 'fa3_bwd_dkv_mmac_correctness status=success' "${stdout_log}"; then
+if ! grep -Eq 'fa3_bwd_dkv_mmac(12)?_correctness status=success' "${stdout_log}"; then
   echo "PMD dKV MMAC correctness did not report successful status" >&2
   exit 1
 fi

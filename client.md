@@ -183,14 +183,32 @@ Full dK/dV MMAC baseline `PASS_BUT_LOW_ACTIVE`:
   splitting raw and source ownership regressed to MMAC active `18.1123%` and
   `kernel_ticks=86912280`, so keep coarse page ownership for now
 
+12-wave single-producer candidate `ACCEPT_CANDIDATE_BUT_LOW_ACTIVE`:
+
+- enabled by `params.dkv_path = kDkvPathWaspDkvMmac12Wave` or standalone
+  `--dkv-mmac12-check=1`
+- smoke command:
+  `SKIP_BUILD=1 GPU_CHIP=sb GPU_ARGS="['--SQCIPfLines=7']" B=1 H=1 S=1024 D=128 CAUSAL=1 WAVES=12 scripts/run_dkv_mmac_correctness.sh`
+- latest H1/S1024 causal=true evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_024903`
+  with `pass=1`, `kernel_ticks=78751400`, MMAC active avg `20.2578%`,
+  coissue `23301/12740`, and `ldsBankConflict=0`
+- improvement over 16-wave baseline:
+  `kernel_ticks` down `5.45%`, MMAC active up from `18.7606%` to `20.2578%`
+- perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_025324_clean_w12_dkv_mmac12_h1s1024_sqc7`
+- xcu conclusion:
+  MMAC is present but the pipeline is still dominated by
+  `abarrier -> salu_32` bubble (`38.85%`) and large `abarrier -> immed` gaps
+  around `15.8k` cycles.  Producer waves remain thin, just fewer than before.
+
 Latest evidence archive:
 
 ```text
-/Volumes/172.20.68.76/共享/shaobo/perf/20260701_235316_clean_stream_qloop_probe
+/Volumes/172.20.68.76/共享/shaobo/perf/20260702_025324_clean_w12_dkv_mmac12_h1s1024_sqc7
 ```
 
-Next step: use xcu evidence on the full dKV baseline to explain why MMAC active
-is still only about `18.8%`.  Current suspects are packed-sidecar flat-read
-duplication, softmax/dS VALU that is not hidden under peer MMAC, and remaining
-ABarrier/control bubbles.  Do not chase causal mask first: causal=false did not
-improve active share on H1/S1024.
+Next step: keep W12 as the current evidence baseline and redesign the
+ABarrier/pipeline protocol toward the FA3 FWD pattern.  The target is still
+MMAC active `>=60%`, so the next implementation must reduce ownership turns
+and grow continuous MMAC islands rather than only changing wave count.

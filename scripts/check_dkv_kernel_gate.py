@@ -57,6 +57,12 @@ def main() -> int:
             "missing_owner16_dv_dk_mmac")
     require(source, r"fa3_bwd_dkv_mmac_correctness", failures,
             "missing_dkv_mmac_status_line")
+    require(source, r"fa3_bwd_dkv_mmac12_kernel", failures,
+            "missing_dkv_mmac12_kernel")
+    require(source, r"hcu_wdra_waves_per_tg\(12\)", failures,
+            "missing_wdra12_attribute")
+    require(source, r"producer_all_loop", failures,
+            "missing_12wave_combined_producer")
     require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_wdra_attribute")
     require(source, r"producer_qk_loop", failures, "missing_producer_qk_loop")
@@ -103,6 +109,10 @@ def main() -> int:
             "missing_fragment_sidecar_path_contract")
     require(contract, r"kDkvPathWaspDkvMmac\s*=\s*4", failures,
             "missing_dkv_mmac_path_contract")
+    require(contract, r"kDkvPathWaspDkvMmac12Wave\s*=\s*5", failures,
+            "missing_dkv_mmac12_path_contract")
+    require(contract, r"DkvTileD128Mq32Nk128W12", failures,
+            "missing_w12_tile_contract")
     require(contract, r"kProbeProbDiagBase\s*=\s*8", failures,
             "missing_prob_diag_contract")
     require(contract, r"kProbeDsDiagBase\s*=\s*16", failures,

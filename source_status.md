@@ -437,3 +437,56 @@ Keep the coarse-packet baseline.  Use xcu on the accepted perf capture to
 target the next bottleneck: packed-sidecar flat reads, necessary softmax/dS
 VALU, and remaining ABarrier/control bubbles.  Do not reintroduce source
 ownership tokens without a larger resource/pipeline redesign.
+
+## 2026-07-02 12-Wave Single Producer Candidate
+
+Status: `ACCEPT_CANDIDATE_BUT_LOW_ACTIVE`
+
+The clean repo now has an opt-in 12-wave dKV kernel:
+
+```text
+params.dkv_path = kDkvPathWaspDkvMmac12Wave
+standalone: --dkv-mmac12-check=1
+script: WAVES=12 scripts/run_dkv_mmac_correctness.sh
+```
+
+Current design:
+
+- 12-wave CTA, 768 threads, explicit WDRA branch windows.
+- waves0-3 are the only producer group.  They publish resident K/V once and
+  stream Q/dO/Q^T/dO^T packets for both consumer groups.
+- waves4-7 and waves8-11 are heavy consumers.  Each group owns a different
+  `Nk=16,D=128` output slice and computes score, dP, dV, and dK.
+- The math, source-layout ABI, and coarse packet ownership are the same as the
+  accepted 16-wave baseline.
+
+Evidence:
+
+- Build/static/symbol metadata PASS:
+  `private=0`, `sgpr_count=82`, `vgpr_count=112`, no spill.
+- H1/S1024 causal=true correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_024903`.
+- PMD stats:
+  `kernel_ticks=78751400`, MMAC active avg `20.2578%`,
+  coissue `23301/12740`, `ldsBankConflict=0`.
+- Compared to 16-wave baseline:
+  ticks improved `5.45%`, active share improved `+1.50` percentage points.
+- Full perf and xcu output:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_025324_clean_w12_dkv_mmac12_h1s1024_sqc7`.
+
+Observed bottleneck:
+
+xcu confirms the main remaining debt is not missing MMAC.  The hot mix is
+`MMAC 22.67%`, `SALU32 20.30%`, `VALU32 17.49%`, `VALU64 11.80%`, and
+`LDS_MATRIX 8.50%`.  The dominant issue bubble is still
+`abarrier -> salu_32` (`38.85%`), with top `abarrier -> immed` gaps around
+`15.8k` cycles.  Producer wavefronts are less numerous than in the 16-wave
+kernel but still thin (`~2.5k` instructions versus `13k-16k` consumer
+instructions).
+
+Next:
+
+Use W12 as the next evidence baseline, then redesign the barrier/pipeline
+protocol toward the FWD pattern: fewer packet ownership turns, longer
+continuous MMAC islands, and useful recurring producer work.  Do not treat W12
+as the final FWD-style kernel; it only removes one visible source of dilution.

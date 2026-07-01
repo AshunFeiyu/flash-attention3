@@ -505,3 +505,57 @@ The extra source ABarrier ledger cost is larger than the benefit from earlier
 raw page reuse.  The code was reverted to the coarse-packet baseline.  Do not
 reintroduce split source tokens unless a new design also removes a larger
 barrier/flat-read debt.
+
+## 2026-07-02 12-Wave Single Producer dK/dV MMAC
+
+Decision: `ACCEPT_CANDIDATE`
+
+Hypothesis:
+
+The 16-wave full-dKV baseline spends half of its waves on producers.  XCompute
+shows producer waves are still thin after startup, so the MMAC-active
+denominator is diluted.  A 12-wave topology with one four-wave producer group
+and two four-wave consumer groups should reduce thin-wave residency without
+changing the math or output ownership.
+
+Implemented:
+
+- Added opt-in `kDkvPathWaspDkvMmac12Wave = 5` and standalone
+  `--dkv-mmac12-check=1`.
+- Added `DkvTileD128Mq32Nk128W12` with 768 threads and
+  `hcu_wdra_waves_per_tg(12)`.
+- Replaced the two producer groups with one producer group:
+  waves0-3 publish resident K/V and stream Q/dO/Q^T/dO^T packets.
+- Kept two consumer groups: waves4-7 own group0 `Nk=16,D=128`, waves8-11 own
+  group1 `Nk=16,D=128`.
+- Kept the same coarse packet ownership and source-layout ABI.  No extra
+  source ABarrier token was added.
+
+Evidence:
+
+- Remote build/static/symbol metadata PASS:
+  `private=0`, `sgpr_count=82`, `vgpr_count=112`, no SGPR/VGPR spill.
+- H1/S1024 causal=true correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_024903`.
+- PMD stats:
+  `simTicks=82365010`, `kernel_ticks=78751400`,
+  MMAC active avg/min/max `20.2578%/17.4713%/23.5448%`,
+  coissue `23301/12740`, `ldsBankConflict=0`.
+- Same-shape improvement over the accepted 16-wave baseline:
+  `kernel_ticks` improved from `83290480` to `78751400` (`5.45%`), and
+  average MMAC active rose from `18.7606%` to `20.2578%`.
+- Full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_025324_clean_w12_dkv_mmac12_h1s1024_sqc7`.
+- xcu first-pass:
+  `MMAC/mmop_fp16` hot latency share `22.67%`, `salu_32` `20.30%`,
+  `valu_32` `17.49%`, `valu_64` `11.80%`, `lds_matrix` `8.50%`.
+  The dominant bubble is still `abarrier -> salu_32` at `38.85%`, with
+  `abarrier -> immed` max gaps around `15.8k` cycles.
+
+Conclusion:
+
+The single-producer 12-wave topology validates the thin-producer hypothesis and
+is the current evidence baseline, but it is nowhere near the `>=60%` MMAC-active
+target.  The next redesign must attack the ABarrier/control bubble and producer
+recurring-work problem, not simply reduce wave count again.  FWD-style means
+longer compute islands with fewer ownership turns, not just a smaller CTA.

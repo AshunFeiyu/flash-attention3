@@ -9,6 +9,7 @@ inline constexpr int kDkvPathReferenceCorrectness = 1;
 inline constexpr int kDkvPathWaspSoftmaxDsSidecar = 2;
 inline constexpr int kDkvPathWaspFragmentSidecar = 3;
 inline constexpr int kDkvPathWaspDkvMmac = 4;
+inline constexpr int kDkvPathWaspDkvMmac12Wave = 5;
 
 struct DkvTileD128Mq32Nk128 {
     static constexpr int kHeadDim = 128;
@@ -76,6 +77,11 @@ struct DkvTileD128Mq32Nk128 {
                   "dKV clean LDS plan must fit 128KB");
 };
 
+struct DkvTileD128Mq32Nk128W12 : DkvTileD128Mq32Nk128 {
+    static constexpr int kWavesPerCta = 12;
+    static constexpr int kThreadsPerCta = kWaveSize * kWavesPerCta;
+};
+
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
     static constexpr int kRaw0Filled = 1;
@@ -110,6 +116,7 @@ struct OptimizationTargets {
 
 struct WdraResourceWindows {
     static constexpr int kProducerVgprs = 8;
+    static constexpr int kProducer12Vgprs = 16;
     static constexpr int kConsumerVgprs = 160;
     static constexpr int kConsumerTargetVgprs = 200;
     static constexpr int kConsumerCeilingVgprs = 248;
