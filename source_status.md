@@ -76,3 +76,54 @@ Conclusion:
 This validates the protocol on the current probe but does not prove a speedup.
 The single-packet probe has little overlap opportunity, so performance should
 be judged again after the real multi-packet q-loop exists.
+
+## 2026-07-01 Coarse Packet Barrier Cut
+
+Status: `OBSERVE_PROTOCOL`
+
+The probe barrier ledger was collapsed from four fragment-level packet tokens
+to two producer packet tokens:
+
+```text
+producer A: Q + K  -> PacketAFilled / PacketAUsed
+producer B: dO + V -> PacketBFilled / PacketBUsed
+consumer: wait PacketA + PacketB -> score+dP MMAC -> arrive PacketA/B Used
+```
+
+This directly targets the BWD SQTT symptom where the old path produced large
+`abarrier -> abarrier` chains.  The cut is intentionally protocol-only: no
+math ownership, tile shape, MLS/BPS, `ds_read_matrix`, or MMAC path was changed.
+
+Evidence:
+
+- `python3 scripts/check_dkv_kernel_gate.py` PASS.
+- Remote build PASS with asm.
+- Static gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=30`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD smoke PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_232821`
+- Stats:
+  `simTicks=7177170`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=7177170`, `ldsBankConflict=0`,
+  per-active-CU `MMOP=256`.
+- Short TT/Perf capture completed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_233020`
+- XCU first-pass:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2010209_fa3_bwd_wasp_clean_20260701_233432`
+- XCU top-bubble window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/packet_barrier_probe_window_20260701_233020`
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260701_233020_clean_packet_barrier_probe`
+- XCU observation:
+  dispatch duration `7852`, inst issues `20648`, MMAC share `18.05%`,
+  SALU32 share `35.95%`, top bubble remains `abarrier -> abarrier` at
+  `23.50%` with max duration `3696` cycles.  The selected top-bubble window is
+  a 100% bubble window with no issued instructions.
+
+Remaining before promotion:
+
+- treat this as protocol evidence only; the one-shot probe still has unavoidable
+  producer/consumer/all-done idle.  Promotion requires a multi-packet q-loop
+  where producer work can continue during consumer MMAC/VALU islands.

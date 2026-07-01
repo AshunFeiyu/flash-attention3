@@ -83,3 +83,63 @@ Conclusion:
 This is a synchronization cleanup, not a promoted performance win on the
 single-packet probe.  It should matter once the q-loop has overlapping packets;
 until then, keep the result as protocol evidence.
+
+## 2026-07-01 Collapse Fragment Barriers To Producer Packets
+
+Decision: `OBSERVE_PROTOCOL`
+
+Hypothesis:
+
+The SQTT gap analysis showed that BWD C125C spends a large fraction of issue-gap
+time in `abarrier -> abarrier`.  The clean probe should not repeat that protocol
+shape.  Q+K and dO+V are producer-level packets in this bring-up cut, so each
+producer should publish one packet token rather than separate raw/trans/K/V
+fragment tokens.
+
+Implemented:
+
+- Replaced `RawFilled/RawUsed`, `TransFilled/TransUsed`, `Kv0Filled/Kv0Used`,
+  and `Kv1Filled/Kv1Used` with `PacketAFilled/PacketAUsed` and
+  `PacketBFilled/PacketBUsed`.
+- Moved `abarrier_seq` and `abarrier_arrive` out of the individual Q/K/dO/V
+  publication helpers and into the producer packet loops.
+- Consumer groups now wait two packet tokens and arrive two used tokens before
+  and after the score+dP MMAC probe.
+- Updated the static gate to reject the legacy fragment barrier names.
+
+Verified:
+
+- Local source gate PASS:
+  `python3 scripts/check_dkv_kernel_gate.py`
+- Remote build PASS with asm.
+- Remote static gate PASS.
+- Remote symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=30`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD smoke PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_232821`
+- PMD stats:
+  `simTicks=7177170`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=7177170`, `ldsBankConflict=0`.
+- TT/Perf capture completed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_233020`
+- XCU first-pass:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2010209_fa3_bwd_wasp_clean_20260701_233432`
+- XCU top-bubble window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/packet_barrier_probe_window_20260701_233020`
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260701_233020_clean_packet_barrier_probe`
+- XCU detail:
+  dispatch duration `7852`, inst issues `20648`, MMAC share `18.05%`,
+  SALU32 share `35.95%`, LDS matrix share `9.02%`.
+- XCU bubbles:
+  top bubble remains `abarrier -> abarrier`, `23.50%`, max duration `3696`.
+  The selected top-bubble window is 100% bubble with no issued instructions.
+
+Conclusion:
+
+This cut reduces the source-level token chain and is mildly better in stats-only
+ticks, but it does not solve the pipeline.  The one-shot probe still naturally
+ends with producer/consumer/all-done barrier idle.  The next useful cut must add
+a real multi-packet q-loop so producers can do next-packet work while consumers
+execute MMAC/VALU islands.

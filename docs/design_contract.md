@@ -130,14 +130,19 @@ SIMD imbalance.
 MLS/BPS publication rule:
 
 ```text
-producer: matrix_load_32x32_b16 ... bps lds -> ABarrier Filled
-consumer: ABarrier wait Filled -> ds_read_matrix -> wait before first MMAC use
+producer: matrix_load_32x32_b16 ... bps lds for a whole producer packet
+producer: ABarrier PacketFilled
+consumer: ABarrier wait PacketFilled -> ds_read_matrix -> wait before first MMAC use
 ```
 
 Do not put `wait_lgkm(0)` immediately after producer `matrix_load`; that drains
 the producer instead of letting the ABarrier token carry packet ownership.
 Use explicit waits only before a wave consumes its own LDS read result or before
 an actual overwrite/reuse hazard that the ownership ledger does not cover.
+Avoid fragment-level barrier ledgers such as separate Raw, Trans, K, and V
+tokens when the fragments are always consumed together.  That shape can create
+`abarrier -> abarrier` chains in SQTT and should be replaced by coarse producer
+packet ownership unless a later multi-packet proof needs finer lifetimes.
 
 ## Bring-Up Sequence
 

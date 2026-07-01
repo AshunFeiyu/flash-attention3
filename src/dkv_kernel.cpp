@@ -76,34 +76,28 @@ __device__ __forceinline__ int kv_block_offset(int row_block, int d_block) {
 
 template <typename Tile>
 __device__ __forceinline__ void publish_mq32_tile(
-    int barrier_id,
     __half* lds,
     int lds_base,
     const __half* src,
     int row_stride,
     int q_base,
     int wave_local) {
-    ins::abarrier_seq<false>(barrier_id);
     const __half* src_tile =
         src + static_cast<int64_t>(q_base) * row_stride + wave_local * 32;
     ins::Vec4U32 srsrc = ins::prepare_matrix_src(src_tile, row_stride);
     ins::matrix_load_32x32_b16_bps_lds(
         lds, srsrc, lds_base + q_or_dout_block_offset<Tile>(wave_local),
         true);
-    // ABarrier is the packet publication fence between MLS and ds_read_matrix.
-    ins::abarrier_arrive_cnt<false>(barrier_id, 1);
 }
 
 template <typename Tile>
 __device__ __forceinline__ void publish_nk128_tile(
-    int barrier_id,
     __half* lds,
     int lds_base,
     const __half* src,
     int row_stride,
     int k_base,
     int wave_local) {
-    ins::abarrier_seq<false>(barrier_id);
 #pragma unroll
     for (int row_block = 0; row_block < 4; ++row_block) {
         const __half* src_tile =
@@ -115,8 +109,6 @@ __device__ __forceinline__ void publish_nk128_tile(
             lds, srsrc,
             lds_base + kv_block_offset<Tile>(row_block, wave_local), true);
     }
-    // Do not drain MLS here; consumers wait on the publication token.
-    ins::abarrier_arrive_cnt<false>(barrier_id, 1);
 }
 
 template <typename Tile, typename Wdra>
@@ -129,18 +121,18 @@ __device__ __forceinline__ void producer_qk_loop(
     int row_stride,
     int wave_local) {
     using Layout = DkvLdsLayout<Tile>;
-    int raw_used_phase = 0;
-    int kv_used_phase = 0;
+    int packet_used_phase = 0;
 
+    ins::abarrier_seq<false>(Wdra::kPacketAFilled);
     publish_mq32_tile<Tile>(
-        Wdra::kRawFilled, lds, Layout::kQBase, q_base_ptr, row_stride, q_base,
-        wave_local);
+        lds, Layout::kQBase, q_base_ptr, row_stride, q_base, wave_local);
     publish_nk128_tile<Tile>(
-        Wdra::kKv0Filled, lds, Layout::kKBase, k_base_ptr, row_stride, k_base,
-        wave_local);
+        lds, Layout::kKBase, k_base_ptr, row_stride, k_base, wave_local);
 
-    ins::abarrier_try_wait<false>(Wdra::kRawUsed, raw_used_phase);
-    ins::abarrier_try_wait<false>(Wdra::kKv0Used, kv_used_phase);
+    // One packet fence covers Q + K publication.  Consumers perform their own
+    // ds_read_matrix readiness wait before first MMAC use.
+    ins::abarrier_arrive_cnt<false>(Wdra::kPacketAFilled, 1);
+    ins::abarrier_try_wait<false>(Wdra::kPacketAUsed, packet_used_phase);
 }
 
 template <typename Tile, typename Wdra>
@@ -153,18 +145,17 @@ __device__ __forceinline__ void producer_dout_v_loop(
     int row_stride,
     int wave_local) {
     using Layout = DkvLdsLayout<Tile>;
-    int dout_used_phase = 0;
-    int v_used_phase = 0;
+    int packet_used_phase = 0;
 
+    ins::abarrier_seq<false>(Wdra::kPacketBFilled);
     publish_mq32_tile<Tile>(
-        Wdra::kTransFilled, lds, Layout::kDoutBase, dout_base_ptr,
-        row_stride, q_base, wave_local);
+        lds, Layout::kDoutBase, dout_base_ptr, row_stride, q_base, wave_local);
     publish_nk128_tile<Tile>(
-        Wdra::kKv1Filled, lds, Layout::kVBase, v_base_ptr, row_stride, k_base,
-        wave_local);
+        lds, Layout::kVBase, v_base_ptr, row_stride, k_base, wave_local);
 
-    ins::abarrier_try_wait<false>(Wdra::kTransUsed, dout_used_phase);
-    ins::abarrier_try_wait<false>(Wdra::kKv1Used, v_used_phase);
+    // One packet fence covers dO + V publication.
+    ins::abarrier_arrive_cnt<false>(Wdra::kPacketBFilled, 1);
+    ins::abarrier_try_wait<false>(Wdra::kPacketBUsed, packet_used_phase);
 }
 
 template <typename Tile>
@@ -230,24 +221,18 @@ __device__ __forceinline__ void consumer_score_dp_loop(
     int consumer_group,
     int wave_local,
     int lane) {
-    int raw_phase = 0;
-    int dout_phase = 0;
-    int kv0_phase = 0;
-    int kv1_phase = 0;
+    int packet_a_phase = 0;
+    int packet_b_phase = 0;
 
-    ins::abarrier_try_wait<true>(Wdra::kRawFilled, raw_phase);
-    ins::abarrier_try_wait<true>(Wdra::kTransFilled, dout_phase);
-    ins::abarrier_try_wait<true>(Wdra::kKv0Filled, kv0_phase);
-    ins::abarrier_try_wait<true>(Wdra::kKv1Filled, kv1_phase);
+    ins::abarrier_try_wait<true>(Wdra::kPacketAFilled, packet_a_phase);
+    ins::abarrier_try_wait<true>(Wdra::kPacketBFilled, packet_b_phase);
 
     ins::F32x4 score;
     ins::F32x4 dp;
     score_dp_mmac_probe<Tile>(lds, consumer_group, wave_local, score, dp);
 
-    ins::abarrier_arrive_cnt<false>(Wdra::kRawUsed, 1);
-    ins::abarrier_arrive_cnt<false>(Wdra::kTransUsed, 1);
-    ins::abarrier_arrive_cnt<false>(Wdra::kKv0Used, 1);
-    ins::abarrier_arrive_cnt<false>(Wdra::kKv1Used, 1);
+    ins::abarrier_arrive_cnt<false>(Wdra::kPacketAUsed, 1);
+    ins::abarrier_arrive_cnt<false>(Wdra::kPacketBUsed, 1);
 
     if (lane == 0 && diag != nullptr) {
         diag[diag_index * 8 + consumer_group * 4 + wave_local] =
@@ -284,16 +269,11 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     const int lane = static_cast<int>(threadIdx.x % 64);
 
     if (wave_id == 0) {
-        __builtin_hcu_s_abarrier_init(Bar::kRawFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kRawUsed, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kTransFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kTransUsed, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kKv0Filled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kKv0Used, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kKv1Filled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kKv1Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kPacketAFilled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kPacketAUsed, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kPacketBFilled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kPacketBUsed, 8);
         __builtin_hcu_s_abarrier_init(Bar::kAllDone, 16);
-        __builtin_hcu_s_abarrier_init(Bar::kValuExec0, 4);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
@@ -336,16 +316,11 @@ fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
     int done_phase = 0;
     ins::abarrier_try_wait<false>(Bar::kAllDone, done_phase);
     __syncthreads();
-    __builtin_hcu_s_abarrier_inv(Bar::kRawFilled);
-    __builtin_hcu_s_abarrier_inv(Bar::kRawUsed);
-    __builtin_hcu_s_abarrier_inv(Bar::kTransFilled);
-    __builtin_hcu_s_abarrier_inv(Bar::kTransUsed);
-    __builtin_hcu_s_abarrier_inv(Bar::kKv0Filled);
-    __builtin_hcu_s_abarrier_inv(Bar::kKv0Used);
-    __builtin_hcu_s_abarrier_inv(Bar::kKv1Filled);
-    __builtin_hcu_s_abarrier_inv(Bar::kKv1Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kPacketAFilled);
+    __builtin_hcu_s_abarrier_inv(Bar::kPacketAUsed);
+    __builtin_hcu_s_abarrier_inv(Bar::kPacketBFilled);
+    __builtin_hcu_s_abarrier_inv(Bar::kPacketBUsed);
     __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
-    __builtin_hcu_s_abarrier_inv(Bar::kValuExec0);
     __syncthreads();
 #else
     (void)dout;

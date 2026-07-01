@@ -57,16 +57,11 @@ struct DkvTileD128Mq32Nk128 {
 };
 
 struct DkvBarrierLedger {
-    static constexpr int kRawFilled = 0;
-    static constexpr int kRawUsed = 1;
-    static constexpr int kTransFilled = 2;
-    static constexpr int kTransUsed = 3;
-    static constexpr int kKv0Filled = 4;
-    static constexpr int kKv0Used = 5;
-    static constexpr int kKv1Filled = 6;
-    static constexpr int kKv1Used = 7;
-    static constexpr int kAllDone = 8;
-    static constexpr int kValuExec0 = 9;
+    static constexpr int kPacketAFilled = 0;
+    static constexpr int kPacketAUsed = 1;
+    static constexpr int kPacketBFilled = 2;
+    static constexpr int kPacketBUsed = 3;
+    static constexpr int kAllDone = 4;
 };
 
 enum class WaveRole : int {

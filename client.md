@@ -112,9 +112,9 @@ Current FA3 BWD clean design workbook:
 
 Current state is probe `BRINGUP_ONLY`:
 
-- producer0 publishes Q + K with MLS/BPS
-- producer1 publishes dO + V with MLS/BPS
-- two consumer groups wait packet ownership tokens and execute a score+dP
+- producer0 publishes a Q+K packet with MLS/BPS
+- producer1 publishes a dO+V packet with MLS/BPS
+- two consumer groups wait the two coarse packet ownership tokens and execute a score+dP
   `ds_read_matrix + v_mmac_*lit` probe
 - standalone now allocates real Q/K/V/dO buffers before running PMD
 
