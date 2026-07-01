@@ -568,3 +568,30 @@ Conclusion:
 This topology is not safe to keep.  Producer waves should not return early
 while consumer waves continue MMAC in the same WDRA workgroup unless a focused
 probe proves a supported cleanup protocol.  The opt-in code was reverted.
+
+## 2026-07-02 W12 Full-Valid Softmax Fast Path Negative
+
+Status: `REJECT_CORRECTNESS_REVERT_CODE`
+
+The full-valid fast path tried to remove per-element `valid_pair` and causal
+mask checks from `softmax_ds_owner16_from_global_sidecar` for tiles where every
+owner16 pair should be valid.  Two variants were tested:
+
+- early-return branch after filling `p_frag/ds_frag`
+- structured `if/else` branch with the original slow path in the `else`
+
+Both variants passed static metadata for `fa3_bwd_dkv_mmac12_kernel`
+(`private=0`, `sgpr=80`, `vgpr=112`, no spill) but failed H1/S128 causal
+correctness:
+
+- `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_035820`
+- `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_035954`
+
+Representative result: `dK rel_l2=0.000361379`, but
+`dV rel_l2=14.7566`.  The source is reverted to the W12 sidecar-address
+baseline.
+
+Rule: do not remove causal/predicate work from the global-sidecar owner16
+helper by local branching alone.  Prove any future mask fast path with a
+focused owner16 sidecar probe, because this branch specifically corrupts the
+`P`/dV path while leaving dK close.

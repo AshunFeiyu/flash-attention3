@@ -255,3 +255,20 @@ Producer early-exit negative:
 
 Rule: keep producer waves alive through the existing tail until a focused probe
 proves an early-exit/cleanup ABI that PMD supports.
+
+Full-valid softmax fast-path negative:
+
+- tried to skip per-element causal/predicate checks in
+  `softmax_ds_owner16_from_global_sidecar` when an owner16 tile is fully valid
+- early-return and `if/else` variants both passed static metadata but failed
+  H1/S128 causal correctness
+- representative result:
+  `dK rel_l2=0.000361379`, `dV rel_l2=14.7566`
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_035820`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_035954`
+- decision: `REJECT_CORRECTNESS`; code reverted
+
+Rule: do not optimize away owner16/global-sidecar mask work by local branching
+unless a focused sidecar probe proves the `P`/dV fragment mapping first.

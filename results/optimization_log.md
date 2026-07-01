@@ -757,3 +757,46 @@ state needed by remaining consumer MMAC waves.  Keep producer tail waits in the
 mainline.  Future tail work should avoid early wave exit and instead reduce
 what happens after the wait, or prove a PMD-supported parked/cleanup protocol
 with a focused probe first.
+
+## 2026-07-02 W12 Full-Valid Softmax Fast Path
+
+Decision: `REJECT_CORRECTNESS`
+
+Hypothesis:
+
+The current W12 sidecar-address baseline still spends SCA/VALU on per-element
+`valid_pair` and causal-mask checks inside
+`softmax_ds_owner16_from_global_sidecar`.  For a tile where every
+`Mq32 x Nk16` pair is provably valid, a fast path that loads row sidecar and
+computes `P/dS` directly should remove predicate work without changing matrix
+math, barriers, or output ownership.
+
+Implementation attempt:
+
+- Added a `full_valid_tile` branch inside the global-sidecar owner16 helper.
+- First variant used an early `return`; second variant used structured
+  `if/else` to rule out a helper-return CFG issue.
+- The LDS sidecar helper and matrix path were left unchanged.
+
+Evidence:
+
+- Both variants built and passed static metadata for
+  `fa3_bwd_dkv_mmac12_kernel`:
+  `private=0`, `sgpr_count=80`, `vgpr_count=112`, no SGPR/VGPR spill.
+- H1/S128 causal PMD smoke failed numerical comparison in both variants:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_035820`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_035954`.
+- Representative correctness result:
+  `dK rel_l2=0.000361379`, but `dV rel_l2=14.7566` and
+  `dv_max_abs=0.495472`.
+- PMD also reported `warn: read vgpr120 before writing` in this shape.
+
+Conclusion:
+
+This local fast path is not safe in the current owner16/global-sidecar calling
+context.  The fact that dK remains close while dV breaks means the issue is not
+a broad MMAC/store failure; it is specifically the `P`/dV path produced by the
+fast branch.  Do not retry causal-mask removal by splitting this helper unless
+a focused owner16 sidecar probe proves the row/fragment mapping and PMD CFG
+behavior first.  Code was reverted to the W12 sidecar-address baseline.
