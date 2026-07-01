@@ -8,6 +8,7 @@ inline constexpr int kDkvPathWaspProbe = 0;
 inline constexpr int kDkvPathReferenceCorrectness = 1;
 inline constexpr int kDkvPathWaspSoftmaxDsSidecar = 2;
 inline constexpr int kDkvPathWaspFragmentSidecar = 3;
+inline constexpr int kDkvPathWaspDkvMmac = 4;
 
 struct DkvTileD128Mq32Nk128 {
     static constexpr int kHeadDim = 128;
@@ -59,10 +60,13 @@ struct DkvTileD128Mq32Nk128 {
         kSidecarInvSumBase + kSidecarRows;
     static constexpr int kSidecarFloats =
         kSidecarDeltaBase + kSidecarRows;
+    static constexpr int kPackedSidecarFields = 3;
     static constexpr int kSidecarBytes =
         kRawBuffers * kSidecarFloats * static_cast<int>(sizeof(float));
+    static constexpr int kSourceLayoutBytes =
+        kRawBuffers * 2 * kBlockMq * kHeadDim * kHalfBytes;
     static constexpr int kPlannedLdsBytes =
-        kKvBytes + kRawBytes + kSidecarBytes;
+        kKvBytes + kRawBytes + kSourceLayoutBytes;
     static constexpr int kLdsBudgetBytes = 128 * 1024;
 
     static_assert(kResidentNk == 128, "dKV clean lane expects Nk=128");

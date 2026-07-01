@@ -49,6 +49,14 @@ def main() -> int:
             "missing_fragment_sidecar_helper")
     require(source, r"fa3_bwd_dkv_fragment_sidecar", failures,
             "missing_fragment_sidecar_status_line")
+    require(source, r"consumer_dkv_mmac_loop", failures,
+            "missing_dkv_mmac_consumer_loop")
+    require(source, r"score_dp_mmac_owner16", failures,
+            "missing_owner16_score_dp_mmac")
+    require(source, r"dv_dk_mmac_owner16", failures,
+            "missing_owner16_dv_dk_mmac")
+    require(source, r"fa3_bwd_dkv_mmac_correctness", failures,
+            "missing_dkv_mmac_status_line")
     require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_wdra_attribute")
     require(source, r"producer_qk_loop", failures, "missing_producer_qk_loop")
@@ -93,6 +101,8 @@ def main() -> int:
             "missing_sidecar_path_contract")
     require(contract, r"kDkvPathWaspFragmentSidecar\s*=\s*3", failures,
             "missing_fragment_sidecar_path_contract")
+    require(contract, r"kDkvPathWaspDkvMmac\s*=\s*4", failures,
+            "missing_dkv_mmac_path_contract")
     require(contract, r"kProbeProbDiagBase\s*=\s*8", failures,
             "missing_prob_diag_contract")
     require(contract, r"kProbeDsDiagBase\s*=\s*16", failures,
@@ -112,6 +122,9 @@ def main() -> int:
            failures, "legacy_fragment_barrier_tokens")
     forbid(source, r"kPacketAFilled|kPacketAUsed|kPacketBFilled|kPacketBUsed",
            failures, "single_packet_probe_barrier_tokens")
+    forbid(source + contract,
+           r"kSourceFilled|kSourceUsed|wait_source_|arrive_source_",
+           failures, "source_layout_must_share_page_packet_token")
 
     if asm:
         require(asm, r"s_set_vgpr_size", failures, "asm_missing_s_set_vgpr_size")

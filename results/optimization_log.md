@@ -436,3 +436,72 @@ fragment P/dS handoff is correct and resource-clean.  Next implementation cut:
 wire `p_frag` into dV MMAC accumulation, wire `ds_frag` into dK MMAC
 accumulation, then add the store epilogue and compare against the reference
 dK/dV oracle.
+
+## 2026-07-02 Full dK/dV MMAC Coarse Packet
+
+Decision: `FULL_DKV_CORRECTNESS_PASS_BASELINE`
+
+Implemented:
+
+- Added `kDkvPathWaspDkvMmac = 4` and standalone
+  `--dkv-mmac-check=1`.
+- Consumer waves own different `Nk=16` blocks over full `D=128`; score and dP
+  are not recomputed across D halves.
+- Added source-layout ABI buffers for `Q^T` and `dO^T`.
+- Added dV and dK MMAC accumulation plus float store epilogue.
+- Packed sidecar `[max_log2, inv_sum, delta]` into one pointer to remove the
+  earlier SGPR spill.
+- Kept the coarse page token: producers publish raw Q/dO and source-layout
+  Q^T/dO^T under the same raw page ownership; consumers release the page after
+  dV/dK.
+- Added `--causal` / `CAUSAL` to the standalone smoke script for controlled
+  mask diagnostics.
+
+Verified:
+
+- Remote build/static/symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=76`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_021025`.
+- H1/S1024 causal=true correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_022300`.
+- H1/S1024 stats:
+  `simTicks=86904090`, `kernel_ticks=83290480`,
+  average MMAC active share `18.7606%`, min/max `16.4951%/21.4893%`,
+  coissue `36070/20048`, `ldsBankConflict=0`.
+
+Conclusion:
+
+This is the current clean full-dKV baseline.  It is correct and resource-clean
+but far below the `>=60%` MMAC-active target.  Removing causal masks did not
+help: the H1/S1024 causal=false diagnostic had only tiny absolute error but did
+not meet the relative-L2 gate, and MMAC active fell to `15.7263%`.
+
+## 2026-07-02 Split Source Ownership Probe
+
+Decision: `REJECT`
+
+Hypothesis:
+
+Split raw Q/dO ownership from source-layout Q^T/dO^T ownership so producers can
+start the next raw MLS packet after score/dP, rather than waiting for dV/dK to
+finish.
+
+Result:
+
+- Correctness PASS on H1/S1024 causal=true:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_023309`.
+- Resource metadata stayed clean:
+  `private=0`, `sgpr_count=78`, `vgpr_count=84`, no spills.
+- Performance regressed:
+  `kernel_ticks=86912280` vs coarse-packet `83290480`,
+  average MMAC active share `18.1123%` vs `18.7606%`,
+  coissue `31084/16965`, `ldsBankConflict=0`.
+
+Conclusion:
+
+The extra source ABarrier ledger cost is larger than the benefit from earlier
+raw page reuse.  The code was reverted to the coarse-packet baseline.  Do not
+reintroduce split source tokens unless a new design also removes a larger
+barrier/flat-read debt.

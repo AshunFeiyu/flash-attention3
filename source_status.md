@@ -380,3 +380,60 @@ This still does not store dK/dV.  It proves the FWD-style score/dP fragment
 layout can feed sidecar-based fragment P/dS under PMD with no spill, no scratch,
 and no LDS bank conflict.  Next, wire `p_frag` into dV MMAC and `ds_frag` into
 dK MMAC.
+
+## 2026-07-02 Full dK/dV MMAC Baseline
+
+Status: `FULL_DKV_CORRECTNESS_PASS_BASELINE`
+
+The clean path now computes and stores both dK and dV:
+
+```text
+params.dkv_path = kDkvPathWaspDkvMmac
+standalone: --dkv-mmac-check=1
+script: scripts/run_dkv_mmac_correctness.sh
+```
+
+Current design:
+
+- 16-wave CTA, four explicit roles:
+  waves0-3 producer Q/K/Q^T, waves4-7 consumer group0, waves8-11 consumer
+  group1, waves12-15 producer dO/V/dO^T.
+- Each consumer wave owns one `Nk=16,D=128` output slice and accumulates dV and
+  dK across the q-loop.
+- `score`, `dP`, `dV`, and `dK` each issue 16 MMAC per consumer wave per
+  q tile; total 64 MMAC per consumer wave per q tile.
+- No duplicate score/dP across D halves.
+- LDS is fully budgeted at 128KB:
+  resident K/V 64KB, raw Q/dO double buffer 32KB, source-layout Q^T/dO^T
+  double buffer 32KB.
+- Packed sidecar `[max_log2, inv_sum, delta]` comes from global memory through
+  one pointer.  This removed SGPR spill but is now a visible flat-read/VALU
+  hotspot.
+
+Evidence:
+
+- Remote build/static/symbol metadata PASS:
+  `private=0`, `sgpr_count=76`, `vgpr_count=84`, no SGPR/VGPR spill.
+- H1/S1024 causal=true correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_022300`
+  with `dk_max_abs=1.49356e-07`, `dk_rel_l2=0.0025563`,
+  `dv_max_abs=2.87902e-05`, `dv_rel_l2=0.000337571`, `pass=1`.
+- H1/S1024 stats:
+  `simTicks=86904090`, `kernel_ticks=83290480`,
+  MMAC active share avg/min/max `18.7606%/16.4951%/21.4893%`,
+  coissue `36070/20048`, `ldsBankConflict=0`.
+- Causal=false diagnostic:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_022345`
+  did not improve pipeline: MMAC active avg `15.7263%`,
+  `kernel_ticks=87759035`.  It is diagnostic-only because dK relative L2 did
+  not meet the formal gate despite tiny absolute error.
+- Split raw/source ownership was tested and rejected:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_023309`
+  regressed to `kernel_ticks=86912280` and MMAC active avg `18.1123%`.
+
+Next:
+
+Keep the coarse-packet baseline.  Use xcu on the accepted perf capture to
+target the next bottleneck: packed-sidecar flat reads, necessary softmax/dS
+VALU, and remaining ABarrier/control bubbles.  Do not reintroduce source
+ownership tokens without a larger resource/pipeline redesign.

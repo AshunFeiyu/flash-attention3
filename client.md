@@ -168,12 +168,29 @@ WASP fragment sidecar `PASS`:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_fragment_sidecar_correctness_20260702_012111`
   with `p_max_abs=6.34603e-06`, `ds_max_abs=2.66919e-08`, `pass=1`
 
+Full dK/dV MMAC baseline `PASS_BUT_LOW_ACTIVE`:
+
+- enabled by `params.dkv_path = kDkvPathWaspDkvMmac` or standalone
+  `--dkv-mmac-check=1`
+- computes score, dP, softmax/dS, dV MMAC, dK MMAC, and float stores
+- no duplicate score/dP across D halves; each consumer wave owns `Nk=16,D=128`
+- source-layout `Q^T/dO^T` comes from the host ABI, not LDS transpose
+- latest H1/S1024 causal=true evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_022300`
+  with `pass=1`, `kernel_ticks=83290480`, MMAC active avg `18.7606%`,
+  coissue `36070/20048`, and `ldsBankConflict=0`
+- rejected negative result:
+  splitting raw and source ownership regressed to MMAC active `18.1123%` and
+  `kernel_ticks=86912280`, so keep coarse page ownership for now
+
 Latest evidence archive:
 
 ```text
 /Volumes/172.20.68.76/共享/shaobo/perf/20260701_235316_clean_stream_qloop_probe
 ```
 
-Next step: connect the verified fragment-local `P/dS` to dV MMAC accumulation,
-then dK MMAC accumulation and store epilogue.  Keep batching same-family
-`ds_read_matrix` reads and delaying `s_waitcnt` until true first use.
+Next step: use xcu evidence on the full dKV baseline to explain why MMAC active
+is still only about `18.8%`.  Current suspects are packed-sidecar flat-read
+duplication, softmax/dS VALU that is not hidden under peer MMAC, and remaining
+ABarrier/control bubbles.  Do not chase causal mask first: causal=false did not
+improve active share on H1/S1024.
