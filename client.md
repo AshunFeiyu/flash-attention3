@@ -208,7 +208,24 @@ Latest evidence archive:
 /Volumes/172.20.68.76/共享/shaobo/perf/20260702_025324_clean_w12_dkv_mmac12_h1s1024_sqc7
 ```
 
-Next step: keep W12 as the current evidence baseline and redesign the
-ABarrier/pipeline protocol toward the FA3 FWD pattern.  The target is still
-MMAC active `>=60%`, so the next implementation must reduce ownership turns
-and grow continuous MMAC islands rather than only changing wave count.
+W12 sidecar-address micro baseline `ACCEPT_MICRO`:
+
+- current source keeps W12 and hoists the global sidecar q-tile base out of
+  the inner softmax/dS vector loop
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_031634`
+- full-perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_031634_clean_w12_sidecar_addr_h1s1024_sqc7`
+- same full-perf W12 comparison:
+  `kernel_ticks` down from `78625365` to `75964525`;
+  MMAC active up from `19.9522%` to `20.3523%`
+- xcu conclusion:
+  the top bubble is still `abarrier -> salu_32` (`38.33%`), and
+  `flat_rd -> immed` did not materially fall, so this is a micro cleanup, not
+  the FWD-style pipeline answer
+
+Next step: keep W12 sidecar-address as the current clean baseline and redesign
+the ABarrier/control protocol toward the FA3 FWD pattern.  The target is still
+MMAC active `>=60%`; the next implementation must create longer continuous
+MMAC islands and reduce ownership/control bubbles, not just improve local
+address arithmetic.

@@ -490,3 +490,33 @@ Use W12 as the next evidence baseline, then redesign the barrier/pipeline
 protocol toward the FWD pattern: fewer packet ownership turns, longer
 continuous MMAC islands, and useful recurring producer work.  Do not treat W12
 as the final FWD-style kernel; it only removes one visible source of dilution.
+
+## 2026-07-02 W12 Sidecar Address Hoist
+
+Status: `ACCEPT_MICRO`
+
+The current source includes a small W12-compatible cleanup in
+`softmax_ds_owner16_from_global_sidecar`: the q-tile sidecar base pointer is
+computed once, and the inner vector loop indexes it by local row.  The same
+patch hoists `krow` out of the `m_idx` loop in both sidecar helpers.
+
+Evidence:
+
+- Static/symbol metadata PASS for `fa3_bwd_dkv_mmac12_kernel`:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no spill.
+- H1/S1024 causal=true correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_031634`.
+- Full-perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_031634_clean_w12_sidecar_addr_h1s1024_sqc7`.
+- Same full-perf baseline comparison:
+  W12 `kernel_ticks=78625365`, active `19.9522%`;
+  sidecar hoist `kernel_ticks=75964525`, active `20.3523%`.
+- xcu still shows the dominant issue gap as `abarrier -> salu_32`
+  (`38.33%`), so this is not a pipeline solution.
+
+Next:
+
+Treat the hoist as the current W12 micro-clean baseline.  The next real
+FWD-style step must redesign the ABarrier/control protocol and consumer
+compute islands; raising MMAC active from `~20%` to `60%` will not come from
+more sidecar address cleanups.

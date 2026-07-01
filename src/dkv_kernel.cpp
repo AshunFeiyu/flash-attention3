@@ -689,6 +689,7 @@ __device__ __forceinline__ void softmax_ds_owner16_from_sidecar(
     const int lane_n = lane & 15;
     const int lane_col_group = lane >> 4;
     const int q_base = q_tile * Tile::kBlockMq;
+    const int krow = k_base + owner_nblock * 16 + lane_n;
     const bool full_valid_tile =
         q_base + Tile::kBlockMq <= seqlen &&
         k_base + owner_nblock * 16 + 15 < seqlen &&
@@ -696,7 +697,6 @@ __device__ __forceinline__ void softmax_ds_owner16_from_sidecar(
 
 #pragma unroll
     for (int m_idx = 0; m_idx < 2; ++m_idx) {
-        const int krow = k_base + owner_nblock * 16 + lane_n;
         const int local_m_base = m_idx * 16 + lane_col_group * 4;
         ins::Vec4F16 p_vec{};
         ins::Vec4F16 ds_vec{};
@@ -752,6 +752,10 @@ __device__ __forceinline__ void softmax_ds_owner16_from_global_sidecar(
     const int lane_n = lane & 15;
     const int lane_col_group = lane >> 4;
     const int q_base = q_tile * Tile::kBlockMq;
+    const int krow = k_base + owner_nblock * 16 + lane_n;
+    const float* sidecar_tile =
+        packed_sidecar +
+        (row_base + q_base) * Tile::kPackedSidecarFields;
     const bool full_valid_tile =
         q_base + Tile::kBlockMq <= seqlen &&
         k_base + owner_nblock * 16 + 15 < seqlen &&
@@ -759,7 +763,6 @@ __device__ __forceinline__ void softmax_ds_owner16_from_global_sidecar(
 
 #pragma unroll
     for (int m_idx = 0; m_idx < 2; ++m_idx) {
-        const int krow = k_base + owner_nblock * 16 + lane_n;
         const int local_m_base = m_idx * 16 + lane_col_group * 4;
         ins::Vec4F16 p_vec{};
         ins::Vec4F16 ds_vec{};
@@ -774,12 +777,11 @@ __device__ __forceinline__ void softmax_ds_owner16_from_global_sidecar(
             float p_val = 0.0f;
             float ds_val = 0.0f;
             if (valid_pair) {
-                const int64_t row = row_base + qrow;
-                const int64_t sidecar_base =
-                    row * Tile::kPackedSidecarFields;
-                const float row_max_log2 = packed_sidecar[sidecar_base + 0];
-                const float row_inv_sum = packed_sidecar[sidecar_base + 1];
-                const float row_delta = packed_sidecar[sidecar_base + 2];
+                const int sidecar_base =
+                    local_m * Tile::kPackedSidecarFields;
+                const float row_max_log2 = sidecar_tile[sidecar_base + 0];
+                const float row_inv_sum = sidecar_tile[sidecar_base + 1];
+                const float row_delta = sidecar_tile[sidecar_base + 2];
                 p_val =
                     exp2f(score[m_idx].scalar[vec_id] *
                               softmax_scale * kLog2E -

@@ -624,3 +624,50 @@ pages were filled, damaging producer/consumer overlap.  The higher coissue rate
 W12 single-page.  Next attempts should keep single-page streaming and focus on
 consumer instruction scheduling or useful producer work rather than batching
 two pages behind one barrier.
+
+## 2026-07-02 W12 Sidecar Address Hoist
+
+Decision: `ACCEPT_MICRO`
+
+Hypothesis:
+
+The W12 xcu baseline still showed a visible `flat_rd -> immed` bubble
+(`13.29%`) and a large scalar/control footprint.  The global sidecar helper was
+recomputing the absolute row pointer inside the inner `m_idx/vec_id` loop.
+Hoisting the q-tile sidecar base and k-row base should reduce address work
+without changing the math or LDS ownership protocol.
+
+Change:
+
+- In `softmax_ds_owner16_from_global_sidecar`, compute `sidecar_tile` once per
+  q-tile and use `local_m * kPackedSidecarFields` inside the vector loop.
+- Also hoist `krow` out of the `m_idx` loop in both sidecar helpers.
+- No algorithm, output ownership, barrier, tile, or matrix path change.
+
+Evidence:
+
+- Static metadata PASS for `fa3_bwd_dkv_mmac12_kernel`:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- H1/S1024 causal=true correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_031634`.
+- Same-shape full-perf comparison against W12 full-perf baseline:
+  - W12 baseline: `kernel_ticks=78625365`, MMAC active avg `19.9522%`.
+  - Sidecar hoist: `kernel_ticks=75964525`, MMAC active avg `20.3523%`.
+  - Improvement: ticks down `3.38%`, active up `0.40` percentage points.
+- xcu detail:
+  - dispatch duration down from `172804` to `166956`;
+  - MMAC latency share up from `22.67%` to `23.33%`;
+  - top bubble remains `abarrier -> salu_32`, `38.33%`;
+  - `flat_rd -> immed` remains similar (`13.55%`), so this did not solve the
+    sidecar/global-read bubble class.
+- `ldsBankConflict=0`.
+- PMD still prints a `read vgpr...before writing` warning, but the W12 baseline
+  already had the same warning class (`vgpr115` baseline, `vgpr125` here).
+
+Conclusion:
+
+Keep the hoist as a small local cleanup because it is correct, resource-clean,
+and lowers same-shape ticks.  Do not count it as progress toward the
+FA-FWD-style 60% MMAC-active target.  The remaining high-order problem is still
+ABarrier/control serialization plus `lds_matrix/immed` and producer/consumer
+pipeline structure.
