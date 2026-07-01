@@ -12,10 +12,10 @@ fi
 python3 scripts/check_fwdstyle_scaffold_gate.py
 python3 scripts/check_symbol_metadata_gate.py \
   --asm build/fa3_bwd_wasp_fwdstyle_clean.asm \
-  --symbol-regex bwd_dkv_stage61_fwdstyle_scaffold
+  --symbol-regex bwd_dkv_stage61_fwdstyle_s2
 ./scripts/check_repo_clean.sh
 
-case_id="stage61_clean_scaffold_$(date +%Y%m%d_%H%M%S)"
+case_id="stage61_clean_s2_score_dp_probe_$(date +%Y%m%d_%H%M%S)"
 case_dir="${SHAOBO_RUN_ROOT}/${case_id}"
 mkdir -p "${case_dir}"
 
@@ -46,9 +46,9 @@ if grep -Eiq 'panic|Program aborted|core dumped|Aborted' "${stdout_log}"; then
   exit 1
 fi
 
-if ! grep -q 'stage61_fwdstyle_scaffold status=success' "${stdout_log}"; then
-  echo "PMD scaffold smoke did not report successful scaffold status" >&2
+if ! grep -q 'stage61_fwdstyle_s2 status=success' "${stdout_log}"; then
+  echo "PMD S2 smoke did not report successful status" >&2
   exit 1
 fi
 
-echo "scaffold smoke m5out: ${case_dir}/m5out"
+echo "S2 score/dP probe smoke m5out: ${case_dir}/m5out"

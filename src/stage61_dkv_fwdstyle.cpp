@@ -3,6 +3,7 @@
 
 #include "shaobo_fa3_api.h"
 #include "stage61_dkv_contract.h"
+#include "stage61_fwdstyle_instr.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include <string>
 
 namespace s61 = shaobo::fa3::bwd::stage61;
+namespace ins = shaobo::fa3::bwd::stage61::instr;
 
 namespace {
 
@@ -49,82 +51,313 @@ inline bool valid_stage61_shape(const ShaoboFa3Params* p) {
            p->layout == SHAOBO_FA3_LAYOUT_BHSD;
 }
 
+template <typename Tile>
+struct Stage61LdsLayout {
+    static constexpr int kBlockBytes = 32 * 32 * Tile::kHalfBytes;
+    static constexpr int kQBase = 0;
+    static constexpr int kDoutBase = kQBase + 4 * kBlockBytes;
+    static constexpr int kKBase = kDoutBase + 4 * kBlockBytes;
+    static constexpr int kVBase = kKBase + 16 * kBlockBytes;
+    static constexpr int kBytes = kVBase + 16 * kBlockBytes;
+    static_assert(kBytes <= Tile::kLdsBudgetBytes,
+                  "S2 FWD-style probe LDS plan must fit 128KB");
+};
+
+template <typename Tile>
+__device__ __forceinline__ int q_or_dout_block_offset(int d_block) {
+    return d_block * Stage61LdsLayout<Tile>::kBlockBytes;
+}
+
+template <typename Tile>
+__device__ __forceinline__ int kv_block_offset(int row_block, int d_block) {
+    return (row_block * 4 + d_block) *
+           Stage61LdsLayout<Tile>::kBlockBytes;
+}
+
+template <typename Tile>
+__device__ __forceinline__ void publish_mq32_tile(
+    int barrier_id,
+    __half* lds,
+    int lds_base,
+    const __half* src,
+    int row_stride,
+    int q_base,
+    int wave_local) {
+    ins::abarrier_seq<false>(barrier_id);
+    const __half* src_tile =
+        src + static_cast<int64_t>(q_base) * row_stride + wave_local * 32;
+    ins::Vec4U32 srsrc = ins::prepare_matrix_src(src_tile, row_stride);
+    ins::matrix_load_32x32_b16_bps_lds(
+        lds, srsrc, lds_base + q_or_dout_block_offset<Tile>(wave_local),
+        true);
+    ins::wait_lgkm(0);
+    ins::abarrier_arrive_cnt<false>(barrier_id, 1);
+}
+
+template <typename Tile>
+__device__ __forceinline__ void publish_nk128_tile(
+    int barrier_id,
+    __half* lds,
+    int lds_base,
+    const __half* src,
+    int row_stride,
+    int k_base,
+    int wave_local) {
+    ins::abarrier_seq<false>(barrier_id);
+#pragma unroll
+    for (int row_block = 0; row_block < 4; ++row_block) {
+        const __half* src_tile =
+            src + static_cast<int64_t>(k_base + row_block * 32) *
+                      row_stride +
+            wave_local * 32;
+        ins::Vec4U32 srsrc = ins::prepare_matrix_src(src_tile, row_stride);
+        ins::matrix_load_32x32_b16_bps_lds(
+            lds, srsrc,
+            lds_base + kv_block_offset<Tile>(row_block, wave_local), true);
+    }
+    ins::wait_lgkm(0);
+    ins::abarrier_arrive_cnt<false>(barrier_id, 1);
+}
+
+template <typename Tile, typename Wdra>
+__device__ __forceinline__ void producer_qk_loop(
+    const __half* q_base_ptr,
+    const __half* k_base_ptr,
+    __half* lds,
+    int q_base,
+    int k_base,
+    int row_stride,
+    int wave_local) {
+    using Layout = Stage61LdsLayout<Tile>;
+    int raw_used_phase = 0;
+    int kv_used_phase = 0;
+
+    publish_mq32_tile<Tile>(
+        Wdra::kRawFilled, lds, Layout::kQBase, q_base_ptr, row_stride, q_base,
+        wave_local);
+    publish_nk128_tile<Tile>(
+        Wdra::kKv0Filled, lds, Layout::kKBase, k_base_ptr, row_stride, k_base,
+        wave_local);
+
+    ins::abarrier_try_wait<false>(Wdra::kRawUsed, raw_used_phase);
+    ins::abarrier_try_wait<false>(Wdra::kKv0Used, kv_used_phase);
+}
+
+template <typename Tile, typename Wdra>
+__device__ __forceinline__ void producer_dout_v_loop(
+    const __half* dout_base_ptr,
+    const __half* v_base_ptr,
+    __half* lds,
+    int q_base,
+    int k_base,
+    int row_stride,
+    int wave_local) {
+    using Layout = Stage61LdsLayout<Tile>;
+    int dout_used_phase = 0;
+    int v_used_phase = 0;
+
+    publish_mq32_tile<Tile>(
+        Wdra::kTransFilled, lds, Layout::kDoutBase, dout_base_ptr,
+        row_stride, q_base, wave_local);
+    publish_nk128_tile<Tile>(
+        Wdra::kKv1Filled, lds, Layout::kVBase, v_base_ptr, row_stride, k_base,
+        wave_local);
+
+    ins::abarrier_try_wait<false>(Wdra::kTransUsed, dout_used_phase);
+    ins::abarrier_try_wait<false>(Wdra::kKv1Used, v_used_phase);
+}
+
+template <typename Tile>
+__device__ __forceinline__ void score_dp_mmac_probe(
+    __half* lds,
+    int consumer_group,
+    int wave_local,
+    ins::F32x4& score,
+    ins::F32x4& dp) {
+    using Layout = Stage61LdsLayout<Tile>;
+
+    ins::F16x8 zero;
+    ins::zero_f16x8(zero);
+    score.f32 = zero.f32;
+    dp.f32 = zero.f32;
+
+    const int row_block = (consumer_group * 2 + (wave_local & 1)) & 3;
+    ins::raise_priority_2();
+#pragma unroll
+    for (int d_block = 0; d_block < 4; ++d_block) {
+        ins::F16x8 q0;
+        ins::F16x8 q1;
+        ins::F16x8 k0;
+        ins::F16x8 k1;
+        ins::F16x8 dout0;
+        ins::F16x8 dout1;
+        ins::F16x8 v0;
+        ins::F16x8 v1;
+        const int q_off =
+            Layout::kQBase + q_or_dout_block_offset<Tile>(d_block);
+        const int dout_off =
+            Layout::kDoutBase + q_or_dout_block_offset<Tile>(d_block);
+        const int k_off =
+            Layout::kKBase + kv_block_offset<Tile>(row_block, d_block);
+        const int v_off =
+            Layout::kVBase + kv_block_offset<Tile>(row_block, d_block);
+
+        ins::ds_read_matrix_trans_pair(lds, q_off, q0.f16x8, q1.f16x8);
+        ins::ds_read_matrix_trans_pair(lds, k_off, k0.f16x8, k1.f16x8);
+        ins::ds_read_matrix_trans_pair(
+            lds, dout_off, dout0.f16x8, dout1.f16x8);
+        ins::ds_read_matrix_trans_pair(lds, v_off, v0.f16x8, v1.f16x8);
+        ins::wait_lgkm(0);
+
+        score.f32 = ins::mmac_f16_lit(q0.f16x4[0], k0.f16x4[0], score.f32);
+        score.f32 = ins::mmac_f16_lit(q0.f16x4[1], k0.f16x4[1], score.f32);
+        score.f32 = ins::mmac_f16_lit(q1.f16x4[0], k1.f16x4[0], score.f32);
+        score.f32 = ins::mmac_f16_lit(q1.f16x4[1], k1.f16x4[1], score.f32);
+
+        dp.f32 = ins::mmac_f16_lit(dout0.f16x4[0], v0.f16x4[0], dp.f32);
+        dp.f32 = ins::mmac_f16_lit(dout0.f16x4[1], v0.f16x4[1], dp.f32);
+        dp.f32 = ins::mmac_f16_lit(dout1.f16x4[0], v1.f16x4[0], dp.f32);
+        dp.f32 = ins::mmac_f16_lit(dout1.f16x4[1], v1.f16x4[1], dp.f32);
+    }
+    ins::lower_priority();
+}
+
+template <typename Tile, typename Wdra>
+__device__ __forceinline__ void consumer_score_dp_loop(
+    __half* lds,
+    float* diag,
+    int diag_index,
+    int consumer_group,
+    int wave_local,
+    int lane) {
+    int raw_phase = 0;
+    int dout_phase = 0;
+    int kv0_phase = 0;
+    int kv1_phase = 0;
+
+    ins::abarrier_try_wait<true>(Wdra::kRawFilled, raw_phase);
+    ins::abarrier_try_wait<true>(Wdra::kTransFilled, dout_phase);
+    ins::abarrier_try_wait<true>(Wdra::kKv0Filled, kv0_phase);
+    ins::abarrier_try_wait<true>(Wdra::kKv1Filled, kv1_phase);
+
+    ins::F32x4 score;
+    ins::F32x4 dp;
+    score_dp_mmac_probe<Tile>(lds, consumer_group, wave_local, score, dp);
+
+    ins::abarrier_arrive_cnt<false>(Wdra::kRawUsed, 1);
+    ins::abarrier_arrive_cnt<false>(Wdra::kTransUsed, 1);
+    ins::abarrier_arrive_cnt<false>(Wdra::kKv0Used, 1);
+    ins::abarrier_arrive_cnt<false>(Wdra::kKv1Used, 1);
+
+    if (lane == 0 && diag != nullptr) {
+        diag[diag_index * 8 + consumer_group * 4 + wave_local] =
+            score.scalar[0] + dp.scalar[0];
+    }
+}
+
 __global__ void __launch_bounds__(s61::DkvTileD128Mq32Nk128::kThreadsPerCta, 1)
     __attribute__((hcu_wdra_waves_per_tg(16)))
-bwd_dkv_stage61_fwdstyle_scaffold_kernel(float* __restrict__ diag,
-                                         int diag_stride,
-                                         int seqlen) {
+bwd_dkv_stage61_fwdstyle_s2_kernel(const __half* __restrict__ dout,
+                                   const __half* __restrict__ q,
+                                   const __half* __restrict__ k,
+                                   const __half* __restrict__ v,
+                                   float* __restrict__ diag,
+                                   int diag_stride,
+                                   int batch,
+                                   int heads,
+                                   int seqlen,
+                                   int dim) {
 #if defined(__gfx946__) || defined(__gfx92a__)
     using Tile = s61::DkvTileD128Mq32Nk128;
     using Bar = s61::DkvBarrierLedger;
     using Vgpr = s61::WdraResourceWindows;
+    using Layout = Stage61LdsLayout<Tile>;
+    static_assert(Layout::kBytes <= Tile::kLdsBudgetBytes,
+                  "Stage61 S2 probe LDS budget overflow");
+
+    (void)diag_stride;
+    (void)batch;
+    __shared__ __half lds[Tile::kLdsBudgetBytes / sizeof(__half)];
 
     const uint32_t wave_id = __builtin_hcu_get_wave_id();
-    (void)diag;
-    (void)diag_stride;
-    (void)seqlen;
+    const int wave_local = static_cast<int>(wave_id & 3u);
+    const int lane = static_cast<int>(threadIdx.x % 64);
 
     if (wave_id == 0) {
-        __builtin_hcu_s_abarrier_init(Bar::kRawFilled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRawFilled, 4);
         __builtin_hcu_s_abarrier_init(Bar::kRawUsed, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kTransFilled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kTransFilled, 4);
         __builtin_hcu_s_abarrier_init(Bar::kTransUsed, 8);
         __builtin_hcu_s_abarrier_init(Bar::kKv0Filled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kKv0Used, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kKv0Used, 8);
         __builtin_hcu_s_abarrier_init(Bar::kKv1Filled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kKv1Used, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kKv1Used, 8);
         __builtin_hcu_s_abarrier_init(Bar::kAllDone, 16);
         __builtin_hcu_s_abarrier_init(Bar::kValuExec0, 4);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
+    const int k_tile = blockIdx.x;
+    const int h = blockIdx.y;
+    const int b = blockIdx.z;
+    const int q_base = 0;
+    const int k_base = k_tile * Tile::kResidentNk;
+    const int64_t tensor_base =
+        (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
+    const __half* q_head = q + tensor_base;
+    const __half* k_head = k + tensor_base;
+    const __half* v_head = v + tensor_base;
+    const __half* dout_head = dout + tensor_base;
+    const int diag_index = blockIdx.z * gridDim.y * gridDim.x +
+                           blockIdx.y * gridDim.x + blockIdx.x;
+
     if (wave_id < 4) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
-        __builtin_hcu_s_abarrier_seq(Bar::kKv0Filled);
-        __builtin_hcu_s_abarrier_arrive(Bar::kKv0Filled);
-        __builtin_hcu_s_abarrier_seq(Bar::kRawFilled);
-        __builtin_hcu_s_abarrier_arrive(Bar::kRawFilled);
-        __builtin_hcu_s_abarrier_seq(Bar::kTransFilled);
-        __builtin_hcu_s_abarrier_arrive(Bar::kTransFilled);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kRawUsed, 0);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kTransUsed, 0);
-        __builtin_hcu_s_abarrier_arrive(Bar::kAllDone);
+        producer_qk_loop<Tile, Bar>(
+            q_head, k_head, lds, q_base, k_base, dim, wave_local);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 8) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kKv0Filled, 0);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kRawFilled, 0);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kTransFilled, 0);
-        __builtin_hcu_s_abarrier_arrive(Bar::kKv0Used);
-        __builtin_hcu_s_abarrier_arrive(Bar::kRawUsed);
-        __builtin_hcu_s_abarrier_arrive(Bar::kTransUsed);
-        __builtin_hcu_s_abarrier_arrive(Bar::kAllDone);
+        consumer_score_dp_loop<Tile, Bar>(
+            lds, diag, diag_index, 0, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 12) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kKv1Filled, 0);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kRawFilled, 0);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kTransFilled, 0);
-        __builtin_hcu_s_abarrier_arrive(Bar::kKv1Used);
-        __builtin_hcu_s_abarrier_arrive(Bar::kRawUsed);
-        __builtin_hcu_s_abarrier_arrive(Bar::kTransUsed);
-        __builtin_hcu_s_abarrier_arrive(Bar::kAllDone);
+        consumer_score_dp_loop<Tile, Bar>(
+            lds, diag, diag_index, 1, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
-        __builtin_hcu_s_abarrier_seq(Bar::kKv1Filled);
-        __builtin_hcu_s_abarrier_arrive(Bar::kKv1Filled);
-        __builtin_hcu_s_abarrier_seq(Bar::kRawFilled);
-        __builtin_hcu_s_abarrier_arrive(Bar::kRawFilled);
-        __builtin_hcu_s_abarrier_seq(Bar::kTransFilled);
-        __builtin_hcu_s_abarrier_arrive(Bar::kTransFilled);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kRawUsed, 0);
-        __builtin_hcu_s_abarrier_try_wait(Bar::kTransUsed, 0);
-        __builtin_hcu_s_abarrier_arrive(Bar::kAllDone);
+        producer_dout_v_loop<Tile, Bar>(
+            dout_head, v_head, lds, q_base, k_base, dim, wave_local);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     }
 
-    __builtin_hcu_s_abarrier_try_wait(Bar::kAllDone, 0);
+    int done_phase = 0;
+    ins::abarrier_try_wait<false>(Bar::kAllDone, done_phase);
+    __syncthreads();
+    __builtin_hcu_s_abarrier_inv(Bar::kRawFilled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRawUsed);
+    __builtin_hcu_s_abarrier_inv(Bar::kTransFilled);
+    __builtin_hcu_s_abarrier_inv(Bar::kTransUsed);
+    __builtin_hcu_s_abarrier_inv(Bar::kKv0Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kKv0Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kKv1Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kKv1Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
+    __builtin_hcu_s_abarrier_inv(Bar::kValuExec0);
+    __syncthreads();
 #else
+    (void)dout;
+    (void)q;
+    (void)k;
+    (void)v;
     (void)diag;
     (void)diag_stride;
+    (void)batch;
+    (void)heads;
     (void)seqlen;
+    (void)dim;
 #endif
 }
 
@@ -157,7 +390,7 @@ extern "C" size_t shaobo_fa3_bwd_workspace_bytes(
     const size_t blocks = static_cast<size_t>(grid_x) *
                           static_cast<size_t>(params->num_heads_q) *
                           static_cast<size_t>(params->batch);
-    return blocks * sizeof(float);
+    return blocks * 8 * sizeof(float);
 }
 
 extern "C" int shaobo_fa3_bwd(const void* dout,
@@ -171,10 +404,6 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
                               void* dk,
                               void* dv,
                               const ShaoboFa3Params* params) {
-    (void)dout;
-    (void)q;
-    (void)k;
-    (void)v;
     (void)out;
     (void)softmax_aux0;
     (void)softmax_aux1;
@@ -185,20 +414,25 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
     if (!valid_stage61_shape(params)) {
         return SHAOBO_FA3_STATUS_UNSUPPORTED;
     }
-    if (params->workspace != nullptr &&
-        params->workspace_bytes < shaobo_fa3_bwd_workspace_bytes(params)) {
+    if (dout == nullptr || q == nullptr || k == nullptr || v == nullptr ||
+        params->workspace == nullptr) {
+        return SHAOBO_FA3_STATUS_INVALID_VALUE;
+    }
+    if (params->workspace_bytes < shaobo_fa3_bwd_workspace_bytes(params)) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
 
     const int grid_x =
         ceil_div(params->seqlen_k, s61::DkvTileD128Mq32Nk128::kResidentNk);
-    const int blocks = grid_x * params->num_heads_q * params->batch;
     dim3 grid(grid_x, params->num_heads_q, params->batch);
     dim3 block(s61::DkvTileD128Mq32Nk128::kThreadsPerCta);
 
-    hipLaunchKernelGGL(bwd_dkv_stage61_fwdstyle_scaffold_kernel, grid, block, 0,
-                       0, static_cast<float*>(params->workspace), blocks,
-                       params->seqlen_k);
+    hipLaunchKernelGGL(
+        bwd_dkv_stage61_fwdstyle_s2_kernel, grid, block, 0, 0,
+        static_cast<const __half*>(dout), static_cast<const __half*>(q),
+        static_cast<const __half*>(k), static_cast<const __half*>(v),
+        static_cast<float*>(params->workspace), grid_x, params->batch,
+        params->num_heads_q, params->seqlen_k, params->head_dim_qk);
     hipError_t err = hipGetLastError();
     if (err != hipSuccess) {
         return SHAOBO_FA3_STATUS_HIP_ERROR;
@@ -236,27 +470,47 @@ int main(int argc, char** argv) {
     params.block_threads = s61::DkvTileD128Mq32Nk128::kThreadsPerCta;
     params.sync_after_launch = 1;
 
+    const size_t tensor_elems =
+        static_cast<size_t>(batch) * static_cast<size_t>(heads) *
+        static_cast<size_t>(seqlen) * static_cast<size_t>(dim);
+    const size_t tensor_bytes = tensor_elems * sizeof(__half);
     const size_t workspace_bytes = shaobo_fa3_bwd_workspace_bytes(&params);
+
+    __half* q_dev = nullptr;
+    __half* k_dev = nullptr;
+    __half* v_dev = nullptr;
+    __half* dout_dev = nullptr;
     float* workspace = nullptr;
-    hipError_t err = hipMalloc(&workspace, std::max<size_t>(workspace_bytes, 4));
-    if (err != hipSuccess) {
-        std::fprintf(stderr, "hipMalloc workspace failed: %s\n",
-                     hipGetErrorString(err));
-        return 2;
+    hipError_t err = hipMalloc(reinterpret_cast<void**>(&q_dev), tensor_bytes);
+    if (err == hipSuccess) {
+        err = hipMalloc(reinterpret_cast<void**>(&k_dev), tensor_bytes);
     }
-    params.workspace = workspace;
-    params.workspace_bytes = workspace_bytes;
-    err = hipMemset(workspace, 0, std::max<size_t>(workspace_bytes, 4));
+    if (err == hipSuccess) {
+        err = hipMalloc(reinterpret_cast<void**>(&v_dev), tensor_bytes);
+    }
+    if (err == hipSuccess) {
+        err = hipMalloc(reinterpret_cast<void**>(&dout_dev), tensor_bytes);
+    }
+    if (err == hipSuccess) {
+        err = hipMalloc(reinterpret_cast<void**>(&workspace),
+                        std::max<size_t>(workspace_bytes, sizeof(float)));
+    }
     if (err != hipSuccess) {
-        std::fprintf(stderr, "hipMemset workspace failed: %s\n",
-                     hipGetErrorString(err));
-        static_cast<void>(hipFree(workspace));
+        std::fprintf(stderr, "hipMalloc failed: %s\n", hipGetErrorString(err));
         return 2;
     }
 
-    const int status = shaobo_fa3_bwd(nullptr, nullptr, nullptr, nullptr,
-                                     nullptr, nullptr, nullptr, nullptr,
-                                     nullptr, nullptr, &params);
+    hipMemset(q_dev, 0, tensor_bytes);
+    hipMemset(k_dev, 0, tensor_bytes);
+    hipMemset(v_dev, 0, tensor_bytes);
+    hipMemset(dout_dev, 0, tensor_bytes);
+    hipMemset(workspace, 0, std::max<size_t>(workspace_bytes, sizeof(float)));
+    params.workspace = workspace;
+    params.workspace_bytes = workspace_bytes;
+
+    const int status =
+        shaobo_fa3_bwd(dout_dev, q_dev, k_dev, v_dev, nullptr, nullptr,
+                       nullptr, nullptr, nullptr, nullptr, &params);
     float first_diag = 0.0f;
     if (workspace_bytes >= sizeof(float)) {
         err = hipMemcpy(&first_diag, workspace, sizeof(float),
@@ -264,19 +518,17 @@ int main(int argc, char** argv) {
         if (err != hipSuccess) {
             std::fprintf(stderr, "hipMemcpy workspace failed: %s\n",
                          hipGetErrorString(err));
-            static_cast<void>(hipFree(workspace));
-            return 2;
         }
     }
-    err = hipFree(workspace);
-    if (err != hipSuccess) {
-        std::fprintf(stderr, "hipFree workspace failed: %s\n",
-                     hipGetErrorString(err));
-        return 2;
-    }
+
+    hipFree(workspace);
+    hipFree(dout_dev);
+    hipFree(v_dev);
+    hipFree(k_dev);
+    hipFree(q_dev);
 
     std::printf(
-        "stage61_fwdstyle_scaffold status=%s B=%d H=%d S=%d D=%d "
+        "stage61_fwdstyle_s2 status=%s B=%d H=%d S=%d D=%d "
         "workspace_bytes=%zu first_diag=%g\n",
         shaobo_fa3_status_string(status), batch, heads, seqlen, dim,
         workspace_bytes, first_diag);

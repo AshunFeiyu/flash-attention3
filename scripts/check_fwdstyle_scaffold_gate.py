@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static gate for the clean Stage61 dKV FWD-style scaffold."""
+"""Static gate for the clean Stage61 dKV FWD-style implementation."""
 
 from __future__ import annotations
 
@@ -31,10 +31,17 @@ def main() -> int:
     asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
     failures: list[str] = []
 
-    require(source, r"bwd_dkv_stage61_fwdstyle_scaffold_kernel",
-            failures, "missing_kernel")
+    require(source, r"bwd_dkv_stage61_fwdstyle_s2_kernel",
+            failures, "missing_s2_kernel")
     require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_wdra_attribute")
+    require(source, r"producer_qk_loop", failures, "missing_producer_qk_loop")
+    require(source, r"producer_dout_v_loop", failures,
+            "missing_producer_dout_v_loop")
+    require(source, r"consumer_score_dp_loop", failures,
+            "missing_consumer_score_dp_loop")
+    require(source, r"score_dp_mmac_probe", failures,
+            "missing_score_dp_mmac_probe")
     require(source, r"wave_id\s*<\s*4", failures, "missing_producer_a_branch")
     require(source, r"wave_id\s*<\s*8", failures, "missing_consumer0_branch")
     require(source, r"wave_id\s*<\s*12", failures, "missing_consumer1_branch")
@@ -42,10 +49,22 @@ def main() -> int:
             "missing_producer_vgpr_window")
     require(source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)", failures,
             "missing_consumer_vgpr_window")
-    require(source, r"s_abarrier_init\(Bar::kRawFilled,\s*8\)", failures,
-            "missing_raw_filled_count")
-    require(source, r"s_abarrier_try_wait\(Bar::kAllDone,\s*0\)", failures,
+    require(source, r"s_abarrier_init\(Bar::kRawFilled,\s*4\)", failures,
+            "missing_q_filled_count")
+    require(source, r"s_abarrier_init\(Bar::kTransFilled,\s*4\)", failures,
+            "missing_dout_filled_count")
+    require(source, r"s_abarrier_init\(Bar::kKv0Filled,\s*4\)", failures,
+            "missing_k_filled_count")
+    require(source, r"s_abarrier_init\(Bar::kKv1Filled,\s*4\)", failures,
+            "missing_v_filled_count")
+    require(source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
             "missing_all_done_wait")
+    require(source, r"matrix_load_32x32_b16_bps_lds", failures,
+            "missing_mls_bps_helper")
+    require(source, r"ds_read_matrix_trans_pair", failures,
+            "missing_ds_read_matrix_helper")
+    require(source, r"mmac_f16_lit", failures, "missing_mmac_lit_helper")
+    require(source, r"raise_priority_2", failures, "missing_s_setprio_helper")
     require(contract, r"struct\s+DkvBarrierLedger", failures,
             "missing_barrier_ledger")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,
@@ -58,7 +77,13 @@ def main() -> int:
     if asm:
         require(asm, r"s_set_vgpr_size", failures, "asm_missing_s_set_vgpr_size")
         require(asm, r"s_abarrier", failures, "asm_missing_s_abarrier")
-        require(asm, r"bwd_dkv_stage61_fwdstyle_scaffold_kernel", failures,
+        require(asm, r"matrix_load_32x32_b16.*bps.*lds", failures,
+                "asm_missing_matrix_load_bps_lds")
+        require(asm, r"ds_read_matrix_.*format", failures,
+                "asm_missing_ds_read_matrix")
+        require(asm, r"v_mmac_.*lit", failures, "asm_missing_v_mmac_lit")
+        require(asm, r"s_setprio", failures, "asm_missing_s_setprio")
+        require(asm, r"bwd_dkv_stage61_fwdstyle_s2_kernel", failures,
                 "asm_missing_kernel_symbol")
 
     if failures:

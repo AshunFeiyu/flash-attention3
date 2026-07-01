@@ -97,7 +97,13 @@ Current Stage61 S0 design workbook:
 
 ## Current Next Step
 
-Run the clean scaffold gate and PMD smoke, then port producer packet
-publication into the scaffold.  The scaffold is `BRINGUP_ONLY`; the first
-math-bearing candidate begins when producer packets and one consumer MMAC
-island are present and correctness evidence exists.
+Current state is S2 `BRINGUP_ONLY`:
+
+- producer0 publishes Q + K with MLS/BPS
+- producer1 publishes dO + V with MLS/BPS
+- two consumer groups wait packet ownership tokens and execute a score+dP
+  `ds_read_matrix + v_mmac_*lit` probe
+- standalone now allocates real Q/K/V/dO buffers before running PMD
+
+Next step: replace the probe with a real q-loop body, add sidecar loading, then
+connect softmax+dS before adding dV/dK accumulation and stores.
