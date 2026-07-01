@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace shaobo::fa3::bwd::stage61 {
+namespace shaobo::fa3::bwd::dkv {
 
 struct DkvTileD128Mq32Nk128 {
     static constexpr int kHeadDim = 128;
@@ -49,11 +49,11 @@ struct DkvTileD128Mq32Nk128 {
         kKvBytes + kRawBytes + kDoutTBytes + kSidecarBytes;
     static constexpr int kLdsBudgetBytes = 128 * 1024;
 
-    static_assert(kResidentNk == 128, "Stage61 clean lane expects Nk=128");
+    static_assert(kResidentNk == 128, "dKV clean lane expects Nk=128");
     static_assert(kTotalMmacPerConsumer == 64,
                   "Balanced dKV consumer should issue 64 MMAC per q tile");
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
-                  "Stage61 clean LDS plan must fit 128KB");
+                  "dKV clean LDS plan must fit 128KB");
 };
 
 struct DkvBarrierLedger {
@@ -99,4 +99,4 @@ struct WdraResourceWindows {
     static constexpr int kConsumerCeilingVgprs = 248;
 };
 
-}  // namespace shaobo::fa3::bwd::stage61
+}  // namespace shaobo::fa3::bwd::dkv

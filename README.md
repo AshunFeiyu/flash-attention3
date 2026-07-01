@@ -1,21 +1,21 @@
-# Shaobo FA3 BWD dKV FWD-Style Clean Repo
+# Shaobo FA3 BWD dKV WASP
 
 This repo is the clean rewrite lane for Shaobo FA3 backward dKV.  It exists to
-avoid continuing the historical phase-stack in `fa3_bwd_wasp.cpp`.
+avoid continuing the historical phase stack in `fa3_bwd_wasp.cpp`.
 
 ## Goal
 
-- Match FA3 FWD coding style and pipeline discipline.
-- Optimize Stage61 dKV only; dQ remains frozen.
-- Primary performance target: MMAC active share, with FA3 FWD as the hard
-  reference.
+- Build the dKV kernel from first principles with a readable WASP structure.
+- Optimize FA3 BWD dKV only; dQ remains frozen.
+- Primary performance target: MMAC active share, with same-run FA3 forward as
+  the hard reference.
 - Keep algorithm design, resources, pipeline, and profiler evidence readable.
 
 ## Repo Rules
 
 - No `m5out`, `.perf`, logs, full PMD output, or temporary trace files in git.
 - Run outputs go under `${SHAOBO_RUN_ROOT}`.  On liuchang use:
-  `/zys/shaobo_runs/fa3_bwd_wasp_fwdstyle_clean`.
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean`.
 - Each accepted optimization is a git commit with a short evidence note.
 - Rejected experiments are documented, not kept as permanent phase branches.
 - Major changes update the shared workbook before implementation and update
@@ -35,10 +35,11 @@ This clean lane starts from the latest learned constraints:
 
 ## Current State
 
-The repo now contains a buildable FWD-style Stage61 dKV scaffold.  It has a
-real HIP kernel, standalone launcher, four explicit WDRA role branches, and
-ABarrier ownership gates.  It is `BRINGUP_ONLY`: it does not compute dV/dK yet.
+The repo now contains a buildable clean WASP FA3 BWD dKV probe.  It has a real
+HIP kernel, standalone launcher, four explicit WDRA role branches, ABarrier
+ownership gates, MLS/BPS packet publication, and a score+dP MMAC island.  It is
+`BRINGUP_ONLY`: it does not compute dV/dK yet.
 
-The next implementation step is to port producer packet publication, then one
-consumer MMAC island, while preserving the clean role topology and evidence
-chain.
+The next implementation step is to add the real q-loop, sidecar loading,
+softmax+dS, and dV/dK accumulation while preserving the clean role topology and
+evidence chain.

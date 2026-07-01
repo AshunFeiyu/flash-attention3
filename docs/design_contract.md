@@ -1,4 +1,4 @@
-# Stage61 dKV FWD-Style Design Contract
+# FA3 BWD dKV Clean WASP Design Contract
 
 ## Algorithm
 
@@ -69,7 +69,7 @@ waves 8-11:  consumer group 1, Nk rows 64..127, dV+dK full D ownership
 waves 12-15: producer B, K/V rows 64..127, dO raw, dO^T source-layout
 ```
 
-This is the FWD-style goal: two recurring producers, two heavy consumer groups,
+This is the clean WASP goal: two recurring producers, two heavy consumer groups,
 no one-time-only thin producer after startup.
 
 ## Pipeline Target
@@ -95,7 +95,8 @@ time3:
 
 Expected XCompute pattern:
 
-- MMAC islands are longer and more continuous than the old C125C trace.
+- MMAC islands are long enough to expose a real conveyor, not just a busy local
+  trace.
 - `ds_read_matrix -> s_waitcnt -> MMAC` gaps shrink because read batches and
   useful VALU are placed between issue and first use.
 - Producer waves have recurring work after K/V startup.
@@ -123,21 +124,21 @@ SIMD imbalance.
 
 ## Bring-Up Sequence
 
-The clean implementation moves in four guarded cuts:
+The clean implementation moves in guarded cuts:
 
 ```text
-S0 scaffold:
+Cut A, launch shell:
   real HIP launch, 16-wave WDRA, four role branches, ABarrier ledger
   no dV/dK math, no perf promotion
 
-S1 producer packets:
+Cut B, producer packets:
   K/V resident load, raw Q/dO, source-layout Q^T/dO^T publication
   no consumer math promotion until packet correctness is probed
 
-S2 first consumer island:
+Cut C, first consumer island:
   score+dP MMAC only, with MLS/BPS + ds_read_matrix + v_mmac evidence
 
-S3 full dKV:
+Cut D, full dKV:
   softmax+dS, dV+dK, store publication, correctness and perf gates
 ```
 
@@ -156,7 +157,7 @@ Hard gates:
 
 Performance gates:
 
-- primary: MMAC active share approaches or exceeds the same-run FA3 FWD
+- primary: MMAC active share approaches or exceeds the same-run FA3 forward
   reference
 - supporting: target-shape dKV ticks decrease, wait/barrier/no-v gaps reduce,
   `xcu` pipeline/SIMD CSV explains the pipeline

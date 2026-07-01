@@ -4,10 +4,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 TARGET_GFX="${TARGET_GFX:-946}"
-SRC="${SRC:-src/stage61_dkv_fwdstyle.cpp}"
+SRC="${SRC:-src/dkv_kernel.cpp}"
 BUILD_DIR="${BUILD_DIR:-build}"
-BIN="${BIN:-${BUILD_DIR}/fa3_bwd_wasp_fwdstyle_clean}"
-ASM="${ASM:-${BUILD_DIR}/fa3_bwd_wasp_fwdstyle_clean.asm}"
+BIN="${BIN:-${BUILD_DIR}/fa3_bwd_wasp_clean}"
+ASM="${ASM:-${BUILD_DIR}/fa3_bwd_wasp_clean.asm}"
 
 mkdir -p "${BUILD_DIR}"
 
@@ -23,7 +23,7 @@ COMMON_FLAGS=(
   -mcode-object-version=5
   -D__HIP_PLATFORM_AMD__
   -DTARGET="${TARGET_GFX}"
-  -DSHAOBO_FA3_BWD_FWDSTYLE_CLEAN=1
+  -DSHAOBO_FA3_BWD_WASP_CLEAN=1
 )
 
 SHAOBO_FLAGS=(

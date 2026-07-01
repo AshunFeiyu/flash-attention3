@@ -2,16 +2,16 @@
 
 ## Mission
 
-Build a clean FA3 BWD dKV kernel in FA3 FWD style.  The primary optimization
-target is MMAC active share, using same-run FA3 FWD as the benchmark.  dQ is
-frozen.
+Build and optimize a clean Shaobo FA3 BWD dKV WASP kernel from scratch.  The
+primary optimization target is MMAC active share, using same-run FA3 forward as
+the benchmark.  dQ is frozen.
 
 ## Code Plan
 
 Keep the repo small and modular:
 
-- `include/stage61_dkv_contract.h`: tile, role, resource, and target constants.
-- `src/stage61_dkv_fwdstyle.cpp`: one cohesive Stage61 dKV implementation.
+- `include/dkv_contract.h`: tile, role, resource, and target constants.
+- `src/dkv_kernel.cpp`: one cohesive FA3 BWD dKV implementation.
 - `scripts/`: build/run/check helpers only.
 - `docs/design_contract.md`: algorithm, resources, expected pipeline, gates.
 
@@ -79,7 +79,7 @@ Keep generated files out of git:
 Use `${SHAOBO_RUN_ROOT}` for runs.  On liuchang:
 
 ```bash
-export SHAOBO_RUN_ROOT=/zys/shaobo_runs/fa3_bwd_wasp_fwdstyle_clean
+export SHAOBO_RUN_ROOT=/zys/shaobo_runs/fa3_bwd_wasp_clean
 ```
 
 Shared review artifacts go under:
@@ -89,15 +89,15 @@ Shared review artifacts go under:
 /Volumes/172.20.68.76/共享/shaobo/perf
 ```
 
-Current Stage61 S0 design workbook:
+Current FA3 BWD clean design workbook:
 
 ```text
-/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_stage61_cleanrepo_s0_20260701.xlsx
+/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx
 ```
 
 ## Current Next Step
 
-Current state is S2 `BRINGUP_ONLY`:
+Current state is probe `BRINGUP_ONLY`:
 
 - producer0 publishes Q + K with MLS/BPS
 - producer1 publishes dO + V with MLS/BPS

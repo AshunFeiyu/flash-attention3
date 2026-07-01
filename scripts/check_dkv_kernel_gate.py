@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static gate for the clean Stage61 dKV FWD-style implementation."""
+"""Static gate for the clean FA3 BWD dKV implementation."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ def forbid(text: str, pattern: str, failures: list[str], name: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", default="src/stage61_dkv_fwdstyle.cpp")
-    parser.add_argument("--contract", default="include/stage61_dkv_contract.h")
-    parser.add_argument("--asm", default="build/fa3_bwd_wasp_fwdstyle_clean.asm")
+    parser.add_argument("--source", default="src/dkv_kernel.cpp")
+    parser.add_argument("--contract", default="include/dkv_contract.h")
+    parser.add_argument("--asm", default="build/fa3_bwd_wasp_clean.asm")
     args = parser.parse_args()
 
     source = Path(args.source).read_text(errors="ignore")
@@ -31,8 +31,8 @@ def main() -> int:
     asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
     failures: list[str] = []
 
-    require(source, r"bwd_dkv_stage61_fwdstyle_s2_kernel",
-            failures, "missing_s2_kernel")
+    require(source, r"fa3_bwd_dkv_probe_kernel",
+            failures, "missing_probe_kernel")
     require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_wdra_attribute")
     require(source, r"producer_qk_loop", failures, "missing_producer_qk_loop")
@@ -83,16 +83,16 @@ def main() -> int:
                 "asm_missing_ds_read_matrix")
         require(asm, r"v_mmac_.*lit", failures, "asm_missing_v_mmac_lit")
         require(asm, r"s_setprio", failures, "asm_missing_s_setprio")
-        require(asm, r"bwd_dkv_stage61_fwdstyle_s2_kernel", failures,
+        require(asm, r"fa3_bwd_dkv_probe_kernel", failures,
                 "asm_missing_kernel_symbol")
 
     if failures:
-        print("FWD-style scaffold gate: FAIL")
+        print("dKV kernel gate: FAIL")
         for failure in failures:
             print(f"  - {failure}")
         return 1
 
-    print("FWD-style scaffold gate: PASS")
+    print("dKV kernel gate: PASS")
     return 0
 
 

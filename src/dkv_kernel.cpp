@@ -2,8 +2,8 @@
 #include <hip/hip_runtime.h>
 
 #include "shaobo_fa3_api.h"
-#include "stage61_dkv_contract.h"
-#include "stage61_fwdstyle_instr.h"
+#include "dkv_contract.h"
+#include "shaobo_instr.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -12,8 +12,8 @@
 #include <cstring>
 #include <string>
 
-namespace s61 = shaobo::fa3::bwd::stage61;
-namespace ins = shaobo::fa3::bwd::stage61::instr;
+namespace dkv = shaobo::fa3::bwd::dkv;
+namespace ins = shaobo::fa3::bwd::dkv::instr;
 
 namespace {
 
@@ -42,17 +42,17 @@ inline int arg_int(int argc, char** argv, const char* name, int fallback) {
     return fallback;
 }
 
-inline bool valid_stage61_shape(const ShaoboFa3Params* p) {
+inline bool valid_dkv_shape(const ShaoboFa3Params* p) {
     return p != nullptr && p->batch > 0 && p->seqlen_q > 0 &&
            p->seqlen_k > 0 && p->num_heads_q > 0 &&
-           p->head_dim_qk == s61::DkvTileD128Mq32Nk128::kHeadDim &&
-           p->head_dim_v == s61::DkvTileD128Mq32Nk128::kHeadDim &&
+           p->head_dim_qk == dkv::DkvTileD128Mq32Nk128::kHeadDim &&
+           p->head_dim_v == dkv::DkvTileD128Mq32Nk128::kHeadDim &&
            p->dtype == SHAOBO_FA3_DTYPE_FP16 &&
            p->layout == SHAOBO_FA3_LAYOUT_BHSD;
 }
 
 template <typename Tile>
-struct Stage61LdsLayout {
+struct DkvLdsLayout {
     static constexpr int kBlockBytes = 32 * 32 * Tile::kHalfBytes;
     static constexpr int kQBase = 0;
     static constexpr int kDoutBase = kQBase + 4 * kBlockBytes;
@@ -60,18 +60,18 @@ struct Stage61LdsLayout {
     static constexpr int kVBase = kKBase + 16 * kBlockBytes;
     static constexpr int kBytes = kVBase + 16 * kBlockBytes;
     static_assert(kBytes <= Tile::kLdsBudgetBytes,
-                  "S2 FWD-style probe LDS plan must fit 128KB");
+                  "dKV bringup probe LDS plan must fit 128KB");
 };
 
 template <typename Tile>
 __device__ __forceinline__ int q_or_dout_block_offset(int d_block) {
-    return d_block * Stage61LdsLayout<Tile>::kBlockBytes;
+    return d_block * DkvLdsLayout<Tile>::kBlockBytes;
 }
 
 template <typename Tile>
 __device__ __forceinline__ int kv_block_offset(int row_block, int d_block) {
     return (row_block * 4 + d_block) *
-           Stage61LdsLayout<Tile>::kBlockBytes;
+           DkvLdsLayout<Tile>::kBlockBytes;
 }
 
 template <typename Tile>
@@ -128,7 +128,7 @@ __device__ __forceinline__ void producer_qk_loop(
     int k_base,
     int row_stride,
     int wave_local) {
-    using Layout = Stage61LdsLayout<Tile>;
+    using Layout = DkvLdsLayout<Tile>;
     int raw_used_phase = 0;
     int kv_used_phase = 0;
 
@@ -152,7 +152,7 @@ __device__ __forceinline__ void producer_dout_v_loop(
     int k_base,
     int row_stride,
     int wave_local) {
-    using Layout = Stage61LdsLayout<Tile>;
+    using Layout = DkvLdsLayout<Tile>;
     int dout_used_phase = 0;
     int v_used_phase = 0;
 
@@ -174,7 +174,7 @@ __device__ __forceinline__ void score_dp_mmac_probe(
     int wave_local,
     ins::F32x4& score,
     ins::F32x4& dp) {
-    using Layout = Stage61LdsLayout<Tile>;
+    using Layout = DkvLdsLayout<Tile>;
 
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
@@ -255,25 +255,25 @@ __device__ __forceinline__ void consumer_score_dp_loop(
     }
 }
 
-__global__ void __launch_bounds__(s61::DkvTileD128Mq32Nk128::kThreadsPerCta, 1)
+__global__ void __launch_bounds__(dkv::DkvTileD128Mq32Nk128::kThreadsPerCta, 1)
     __attribute__((hcu_wdra_waves_per_tg(16)))
-bwd_dkv_stage61_fwdstyle_s2_kernel(const __half* __restrict__ dout,
-                                   const __half* __restrict__ q,
-                                   const __half* __restrict__ k,
-                                   const __half* __restrict__ v,
-                                   float* __restrict__ diag,
-                                   int diag_stride,
-                                   int batch,
-                                   int heads,
-                                   int seqlen,
-                                   int dim) {
+fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
+                         const __half* __restrict__ q,
+                         const __half* __restrict__ k,
+                         const __half* __restrict__ v,
+                         float* __restrict__ diag,
+                         int diag_stride,
+                         int batch,
+                         int heads,
+                         int seqlen,
+                         int dim) {
 #if defined(__gfx946__) || defined(__gfx92a__)
-    using Tile = s61::DkvTileD128Mq32Nk128;
-    using Bar = s61::DkvBarrierLedger;
-    using Vgpr = s61::WdraResourceWindows;
-    using Layout = Stage61LdsLayout<Tile>;
+    using Tile = dkv::DkvTileD128Mq32Nk128;
+    using Bar = dkv::DkvBarrierLedger;
+    using Vgpr = dkv::WdraResourceWindows;
+    using Layout = DkvLdsLayout<Tile>;
     static_assert(Layout::kBytes <= Tile::kLdsBudgetBytes,
-                  "Stage61 S2 probe LDS budget overflow");
+                  "dKV bringup probe LDS budget overflow");
 
     (void)diag_stride;
     (void)batch;
@@ -382,11 +382,11 @@ extern "C" const char* shaobo_fa3_status_string(int status) {
 
 extern "C" size_t shaobo_fa3_bwd_workspace_bytes(
     const ShaoboFa3Params* params) {
-    if (!valid_stage61_shape(params)) {
+    if (!valid_dkv_shape(params)) {
         return 0;
     }
     const int grid_x =
-        ceil_div(params->seqlen_k, s61::DkvTileD128Mq32Nk128::kResidentNk);
+        ceil_div(params->seqlen_k, dkv::DkvTileD128Mq32Nk128::kResidentNk);
     const size_t blocks = static_cast<size_t>(grid_x) *
                           static_cast<size_t>(params->num_heads_q) *
                           static_cast<size_t>(params->batch);
@@ -411,7 +411,7 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
     (void)dk;
     (void)dv;
 
-    if (!valid_stage61_shape(params)) {
+    if (!valid_dkv_shape(params)) {
         return SHAOBO_FA3_STATUS_UNSUPPORTED;
     }
     if (dout == nullptr || q == nullptr || k == nullptr || v == nullptr ||
@@ -423,12 +423,12 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
     }
 
     const int grid_x =
-        ceil_div(params->seqlen_k, s61::DkvTileD128Mq32Nk128::kResidentNk);
+        ceil_div(params->seqlen_k, dkv::DkvTileD128Mq32Nk128::kResidentNk);
     dim3 grid(grid_x, params->num_heads_q, params->batch);
-    dim3 block(s61::DkvTileD128Mq32Nk128::kThreadsPerCta);
+    dim3 block(dkv::DkvTileD128Mq32Nk128::kThreadsPerCta);
 
     hipLaunchKernelGGL(
-        bwd_dkv_stage61_fwdstyle_s2_kernel, grid, block, 0, 0,
+        fa3_bwd_dkv_probe_kernel, grid, block, 0, 0,
         static_cast<const __half*>(dout), static_cast<const __half*>(q),
         static_cast<const __half*>(k), static_cast<const __half*>(v),
         static_cast<float*>(params->workspace), grid_x, params->batch,
@@ -467,7 +467,7 @@ int main(int argc, char** argv) {
     params.dtype = SHAOBO_FA3_DTYPE_FP16;
     params.layout = SHAOBO_FA3_LAYOUT_BHSD;
     params.softmax_aux_mode = SHAOBO_FA3_SOFTMAX_AUX_SMAX_SSUM;
-    params.block_threads = s61::DkvTileD128Mq32Nk128::kThreadsPerCta;
+    params.block_threads = dkv::DkvTileD128Mq32Nk128::kThreadsPerCta;
     params.sync_after_launch = 1;
 
     const size_t tensor_elems =
@@ -528,7 +528,7 @@ int main(int argc, char** argv) {
     hipFree(q_dev);
 
     std::printf(
-        "stage61_fwdstyle_s2 status=%s B=%d H=%d S=%d D=%d "
+        "fa3_bwd_dkv_probe status=%s B=%d H=%d S=%d D=%d "
         "workspace_bytes=%zu first_diag=%g\n",
         shaobo_fa3_status_string(status), batch, heads, seqlen, dim,
         workspace_bytes, first_diag);

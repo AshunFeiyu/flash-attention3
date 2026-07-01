@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-namespace shaobo::fa3::bwd::stage61::instr {
+namespace shaobo::fa3::bwd::dkv::instr {
 
 using Vec4U32 = __attribute__((__vector_size__(4 * sizeof(uint32_t)))) uint32_t;
 using Vec2F16 = __attribute__((__vector_size__(2 * sizeof(_Float16)))) _Float16;
@@ -204,4 +204,4 @@ __device__ __forceinline__ void lower_priority() {
 #endif
 }
 
-}  // namespace shaobo::fa3::bwd::stage61::instr
+}  // namespace shaobo::fa3::bwd::dkv::instr

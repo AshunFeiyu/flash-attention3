@@ -3,7 +3,7 @@ set -euo pipefail
 
 export GPU_CHIP="${GPU_CHIP:-sb}"
 export GPU_ARGS="${GPU_ARGS:-['--SQCIPfLines=7']}"
-export SHAOBO_RUN_ROOT="${SHAOBO_RUN_ROOT:-/zys/shaobo_runs/fa3_bwd_wasp_fwdstyle_clean}"
+export SHAOBO_RUN_ROOT="${SHAOBO_RUN_ROOT:-/zys/shaobo_runs/fa3_bwd_wasp_clean}"
 export ROCM_PATH="${ROCM_PATH:-/opt/rocm-6.3.3}"
 if [[ -z "${PMD_PATH:-}" ]]; then
   if [[ -f "${ROCM_PATH}/pmd/core/scripts/run.py" ]]; then
