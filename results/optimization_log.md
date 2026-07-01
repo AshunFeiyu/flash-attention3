@@ -45,3 +45,41 @@ Notes:
   should be investigated before relying on the probe for SQTT conclusions.
 - Next candidate should keep the clean WASP structure and add sidecar + real
   q-loop, then softmax+dS, then dV/dK accumulation and stores.
+
+## 2026-07-01 Remove Post-MLS Publication Wait
+
+Decision: `OBSERVE`
+
+Hypothesis:
+
+`matrix_load_32x32_b16 ... bps lds` should not be followed by producer-local
+`wait_lgkm(0)` when the data is handed to another wave through an ABarrier
+Filled token.  The ABarrier token is the producer/consumer ownership fence; the
+consumer still waits after `ds_read_matrix` before first MMAC use.
+
+Implemented:
+
+- Removed the immediate `wait_lgkm(0)` from Q/dO and K/V publisher helpers.
+- Added a static gate to reject `matrix_load -> wait_lgkm(0) -> ABarrier arrive`
+  in the clean dKV source.
+- Documented the publication rule in `client.md` and `docs/design_contract.md`.
+
+Verified:
+
+- Remote build PASS with asm.
+- Static gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=30`, `vgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- PMD smoke PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_212516`
+- PMD stats:
+  `simTicks=7250425`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=7250425`, `MMOP=2048`, `ldsBankConflict=0`,
+  `mmop_active_share=6.4353%`.
+
+Conclusion:
+
+This is a synchronization cleanup, not a promoted performance win on the
+single-packet probe.  It should matter once the q-loop has overlapping packets;
+until then, keep the result as protocol evidence.

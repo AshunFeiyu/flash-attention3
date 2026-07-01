@@ -43,3 +43,36 @@ Next implementation hypothesis:
 
 Add the real q-loop, sidecar loading, softmax+dS, then dV/dK accumulation and
 stores while preserving the clean file structure and evidence chain.
+
+## 2026-07-01 MLS Publication Wait Cleanup
+
+Status: `OBSERVE`
+
+The producer packet publishers no longer execute `wait_lgkm(0)` immediately
+after `matrix_load_32x32_b16 ... bps lds`.  The intended protocol is:
+
+```text
+producer matrix_load -> ABarrier Filled
+consumer wait Filled -> ds_read_matrix -> wait before first MMAC use
+```
+
+Verified evidence:
+
+- Remote repo: `/zys/shaobo/fa3_bwd_wasp_clean`
+- PMD smoke:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_score_dp_probe_20260701_212516`
+- Metadata gate:
+  `private_segment_fixed_size=0`, `sgpr_spill_count=0`,
+  `vgpr_spill_count=0`, `sgpr_count=30`, `vgpr_count=84`
+- Runtime signal:
+  `fa3_bwd_dkv_probe status=success B=1 H=1 S=1024 D=128`
+- Stats:
+  `simTicks=7250425`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=7250425`, `MMOP=2048`, `ldsBankConflict=0`,
+  `mmop_active_share=6.4353%`
+
+Conclusion:
+
+This validates the protocol on the current probe but does not prove a speedup.
+The single-packet probe has little overlap opportunity, so performance should
+be judged again after the real multi-packet q-loop exists.

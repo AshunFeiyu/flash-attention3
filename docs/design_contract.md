@@ -122,6 +122,18 @@ pipeline design, for example `ds_read_matrix -> s_waitcnt -> v_mmac`, VALU
 work not hidden by peer MMAC, barrier waits, instruction fetch/no-v gaps, or
 SIMD imbalance.
 
+MLS/BPS publication rule:
+
+```text
+producer: matrix_load_32x32_b16 ... bps lds -> ABarrier Filled
+consumer: ABarrier wait Filled -> ds_read_matrix -> wait before first MMAC use
+```
+
+Do not put `wait_lgkm(0)` immediately after producer `matrix_load`; that drains
+the producer instead of letting the ABarrier token carry packet ownership.
+Use explicit waits only before a wave consumes its own LDS read result or before
+an actual overwrite/reuse hazard that the ownership ledger does not cover.
+
 ## Bring-Up Sequence
 
 The clean implementation moves in guarded cuts:

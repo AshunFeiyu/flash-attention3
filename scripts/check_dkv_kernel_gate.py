@@ -73,6 +73,10 @@ def main() -> int:
             "missing_no_duplicate_contract")
     forbid(source, r"61C\d+|C1\d{2}", failures,
            "clean_source_must_not_define_cxx_phase_stack")
+    forbid(source,
+           r"matrix_load_32x32_b16_bps_lds\([\s\S]{0,360}?"
+           r"wait_lgkm\(0\)[\s\S]{0,160}?abarrier_arrive_cnt",
+           failures, "post_mls_wait_before_publication")
 
     if asm:
         require(asm, r"s_set_vgpr_size", failures, "asm_missing_s_set_vgpr_size")

@@ -90,7 +90,7 @@ __device__ __forceinline__ void publish_mq32_tile(
     ins::matrix_load_32x32_b16_bps_lds(
         lds, srsrc, lds_base + q_or_dout_block_offset<Tile>(wave_local),
         true);
-    ins::wait_lgkm(0);
+    // ABarrier is the packet publication fence between MLS and ds_read_matrix.
     ins::abarrier_arrive_cnt<false>(barrier_id, 1);
 }
 
@@ -115,7 +115,7 @@ __device__ __forceinline__ void publish_nk128_tile(
             lds, srsrc,
             lds_base + kv_block_offset<Tile>(row_block, wave_local), true);
     }
-    ins::wait_lgkm(0);
+    // Do not drain MLS here; consumers wait on the publication token.
     ins::abarrier_arrive_cnt<false>(barrier_id, 1);
 }
 

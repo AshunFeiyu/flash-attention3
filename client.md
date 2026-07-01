@@ -28,6 +28,9 @@ Do not port the old phase stack.  Port only proven pieces, one block at a time:
 - First eliminate duplicate score/dP and wrong output ownership.
 - Main matrix path must be MLS/BPS + `ds_read_matrix` + `v_mmac_*lit`.
 - `Q^T` and `dO^T` come from source-layout ABI, not LDS raw-to-trans scatter.
+- Producer MLS/BPS publication should not be followed by local
+  `wait_lgkm(0)`; ABarrier is the ownership fence to consumer
+  `ds_read_matrix`.  Keep waits near first use or true overwrite/reuse points.
 - LDS budget target is 115456 B with 15616 B slack under 128 KB.
 - Consumer work should be balanced: score, dP, dV, dK are each 16 MMAC per
   consumer wave per q tile.
