@@ -133,6 +133,7 @@ Current promotion baseline:
   diagnostics, not promoted performance baselines:
   - Mq64 seed-fix: `kernel_ticks=79595880`, active `19.8279%`.
   - raw-page sidecar overlay: `kernel_ticks=73113950`, active `18.9185%`.
+  - score/dP read2x brick: `kernel_ticks=70801640`, active `21.5465%`.
 - The next FWD-style redesign must raise MMAC active share by reducing
   ABarrier/control and exposed matrix-read/sidecar latency.  More coissue
   count is not enough unless active share and same-shape ticks move with it.

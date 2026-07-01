@@ -13,8 +13,11 @@ python3 scripts/check_dkv_kernel_gate.py
 export WAVES="${WAVES:-16}"
 export MQ64="${MQ64:-0}"
 export OVERLAY="${OVERLAY:-0}"
+export SCORE_BRICK="${SCORE_BRICK:-0}"
 if [[ "${WAVES}" == "12" && "${MQ64}" == "1" ]]; then
   metadata_regex="fa3_bwd_dkv_mmac12_mq64"
+elif [[ "${WAVES}" == "12" && "${SCORE_BRICK}" == "1" ]]; then
+  metadata_regex="fa3_bwd_dkv_mmac12_score_dp_brick"
 elif [[ "${WAVES}" == "12" && "${OVERLAY}" == "1" ]]; then
   metadata_regex="fa3_bwd_dkv_mmac12_sidecar_overlay"
 elif [[ "${WAVES}" == "12" ]]; then
@@ -44,8 +47,11 @@ export CAUSAL="\${CAUSAL:-1}"
 export WAVES="\${WAVES:-${WAVES}}"
 export MQ64="\${MQ64:-${MQ64}}"
 export OVERLAY="\${OVERLAY:-${OVERLAY}}"
+export SCORE_BRICK="\${SCORE_BRICK:-${SCORE_BRICK}}"
 if [[ "\${WAVES}" == "12" && "\${MQ64}" == "1" ]]; then
   ./build/fa3_bwd_wasp_clean --dkv-mmac12-mq64-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
+elif [[ "\${WAVES}" == "12" && "\${SCORE_BRICK}" == "1" ]]; then
+  ./build/fa3_bwd_wasp_clean --dkv-mmac12-score-brick-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
 elif [[ "\${WAVES}" == "12" && "\${OVERLAY}" == "1" ]]; then
   ./build/fa3_bwd_wasp_clean --dkv-mmac12-overlay-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
 elif [[ "\${WAVES}" == "12" ]]; then
@@ -70,7 +76,7 @@ if grep -Eiq 'panic|Program aborted|core dumped|Aborted' "${stdout_log}"; then
   exit 1
 fi
 
-if ! grep -Eq 'fa3_bwd_dkv_mmac(12(_mq64|_overlay)?)?_correctness status=success' "${stdout_log}"; then
+if ! grep -Eq 'fa3_bwd_dkv_mmac(12(_mq64|_overlay|_score_brick)?)?_correctness status=success' "${stdout_log}"; then
   echo "PMD dKV MMAC correctness did not report successful status" >&2
   exit 1
 fi

@@ -1406,3 +1406,54 @@ Sidecar latency remains a real debt, but fixing it by adding another
 RawFilled/RawUsed generation is the wrong direction for the current topology.
 Future FWD-style work should reduce barrier/control turns first, or move
 sidecar generation into a protocol that does not add a page-ownership cycle.
+
+### Score/dP Read2x Brick
+
+Hypothesis:
+
+- Current W12 score/dP still fragments the score+dP island by doing one
+  `d_block` at a time: read Q/K/dO/V, wait, then issue a small MMAC group.
+- FWD emits larger `ds_read_matrix` bricks before a long MMAC island.  Batching
+  two score/dP D-block operand families might reduce exposed
+  `lds_matrix -> immed/wait -> MMAC` gaps without changing algorithm
+  ownership or adding barriers.
+
+Change tested:
+
+- Added an opt-in W12 score/dP read-brick path.
+- `score_dp_mmac_owner16_read2x` reads two D-block families of Q/K/dO/V before
+  one `wait_lgkm(0)`, then issues the two D-block score+dP MMAC groups.
+- Producer packet publication, global sidecar softmax/dS, dV/dK read4x2,
+  zero-seed accumulator logic, and store ownership remain unchanged.
+
+Evidence:
+
+- Workbook rows were added under `Score/dP read2x brick result`.
+- Build/static/metadata passed for symbol
+  `fa3_bwd_dkv_mmac12_score_dp_brick`:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Branch-local consumer pressure stayed `150/160`.
+- H1/S128 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_072317`.
+- H1/S1024 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_072323`.
+- H1/S1024 stats:
+  `simTicks=74415250`, `kernel_ticks=70801640`, MMAC active avg `21.5465%`,
+  coissue success/fail `34543/22997`, total MMOP instr `131072`,
+  `ldsBankConflict=0`.
+- Current zero-seed W12 baseline remains better:
+  `kernel_ticks=70604625`, MMAC active avg `21.7988%`.
+
+Decision:
+
+`REJECT_PERF_STATS_ONLY`.  The FWD-style larger score/dP read brick is legal
+and resource-clean, but it does not improve the same-shape target.  It raises
+coissue success versus zero-seed, but MMAC active and ticks both move the wrong
+way.
+
+Conclusion:
+
+The 60% MMAC-active gap is not primarily score/dP read granularity.  The next
+design should stop stacking local read scheduling tweaks and instead change
+the packet ownership/conveyor so producer and consumer waves avoid the exposed
+ABarrier/control path.

@@ -937,3 +937,33 @@ Decision: `REJECT_PERF_STATS_ONLY`.  This path may remain as an opt-in
 diagnostic, but it is not a mainline optimization.  The result confirms that
 sidecar/global-read latency is real, yet adding another RawFilled/RawUsed
 generation makes the ABarrier/control path heavier than the load it removes.
+
+Score/dP read2x brick diagnostic:
+
+- workbook updated first with `Score/dP read2x brick` design, then with
+  `Score/dP read2x brick result`
+- opt-in path:
+  `kDkvPathWaspDkvMmac12WaveScoreDpBrick` /
+  standalone `--dkv-mmac12-score-brick-check=1`
+- change: the score/dP island reads two D-block operand families before a
+  single `wait_lgkm(0)`, then issues two score+dP MMAC groups
+- unchanged: producer packet protocol, global sidecar softmax/dS, dV/dK
+  read4x2, zero-seed accumulation, and store ownership
+- build/static/metadata PASS:
+  `private=0`, `sgpr=84`, `vgpr=112`, no spills, branch pressure
+  `consumer=150/160`
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_072317`
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_072323`
+- H1/S1024 stats:
+  `simTicks=74415250`, `kernel_ticks=70801640`, MMAC active avg `21.5465%`,
+  coissue `34543/22997`, total MMOP `131072`, `ldsBankConflict=0`
+- comparison:
+  zero-seed W12 baseline remains better at `kernel_ticks=70604625` and
+  MMAC active avg `21.7988%`
+
+Decision: `REJECT_PERF_STATS_ONLY`.  Larger local score/dP read bricks do not
+move the kernel toward 60% MMAC active.  The next main design must change the
+packet ownership/conveyor or producer/consumer role utility instead of adding
+more local read scheduling variants.
