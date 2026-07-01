@@ -49,16 +49,17 @@ Target LDS plan:
 ```text
 K/V resident, Nk=128,D=128:       2 * 128 * 128 * 2 = 65536 B
 raw Q/dO double buffer:           2 * 2 * 32 * 128 * 2 = 32768 B
-dO^T source-layout double buffer: 2 * 32 * 128 * 2 = 16384 B
-sidecar double buffer:            2 * 3 * 32 * 4 = 768 B
-planned total:                    115456 B
-slack under 128KB:                15616 B
+sidecar/slack seed:               about 512 B initially
+planned total:                    98816 B
+slack under 128KB:                about 28 KB
 ```
 
-`Q^T` should reuse the raw Q semantic pages after raw consumers release them,
-instead of allocating another full trans double buffer.  `Q^T` and `dO^T` are
-loaded from source-layout ABI via MLS/BPS; do not do LDS raw-to-trans scatter in
-the main path.
+Do not allocate another full LDS raw-to-trans scratch in the main path.  If
+`Q^T` or `dO^T` source-layout operands are needed for MMAC, they must be loaded
+through MLS/BPS into pages whose ownership/lifetime is explicit in the workbook,
+or reuse released raw-page capacity.  LDS raw-to-trans scatter remains rejected
+until a focused probe proves bank-conflict-free behavior and a resource row pays
+for it.
 
 ## Wave Roles
 
@@ -75,22 +76,31 @@ no one-time-only thin producer after startup.
 ## Pipeline Target
 
 ```text
-time0:
-  P0 loads K/V0 + Q_raw(0)
-  P1 loads K/V1 + dO_raw(0)
+T0:
+  P0 loads K resident + Q page0
+  P1 loads V resident + dO page0
 
-time1:
-  C0/C1 score+dP MMAC on raw(0)
-  P0 prepares Q_raw(1) or Q^T(0) after raw release
-  P1 prepares dO_raw(1) or dO^T(0)
+T1:
+  C0 score+dP MMAC on page0
+  C1 reads operands for page0
+  P0/P1 prefetch Q/dO page1 and sidecar metadata
 
-time2:
-  C0/C1 softmax+dS VALU for tile0
-  P0/P1 publish trans operands for tile0/1
+T2:
+  C0 softmax+dS VALU for page0 plus dV operand reads
+  C1 score+dP MMAC on page0
+  P0/P1 prepare next useful raw/source-layout pages
 
-time3:
-  C0/C1 dV+dK MMAC for tile0
-  producers prefetch next useful packet
+T3:
+  C0 dV MMAC page0
+  C1 softmax+dS VALU page0
+
+T4:
+  C0 dK MMAC page0
+  C1 dV MMAC page0
+
+T5:
+  C0 releases page0 and advances
+  C1 dK MMAC page0 and releases page0
 ```
 
 Expected XCompute pattern:
@@ -112,6 +122,15 @@ The current FWD/BWD SQTT gap analysis is recorded in
 `docs/sqtt_fwd_bwd_gap_20260701.md`.  Its main conclusion is that the BWD dKV
 trace already contains MMAC and `ds_read_matrix`, but fails to match FWD because
 barrier/control serialization and read-to-use latency break the conveyor.
+
+The current workbook source of truth is:
+
+```text
+/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx
+```
+
+The workbook must be updated before changing the tile shape, output ownership,
+ABarrier ledger, or source-layout operand budget.
 
 Required CLI sequence for a perf candidate:
 

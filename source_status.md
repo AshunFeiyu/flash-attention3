@@ -279,3 +279,45 @@ Next:
 Move from scalar sidecar to fragment-local `P/dS` in the consumer mainloop.
 Only after that should dV and dK MMAC accumulation be connected to the store
 epilogue.
+
+## 2026-07-02 FWD-style dKV Workbook Gate
+
+Status: `DESIGN_GATE_UPDATED`
+
+The shared workbook is now the source of truth for the next dKV cut:
+
+```text
+/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx
+```
+
+Updated sheets:
+
+- `FWD目标`
+- `算法DAG`
+- `资源预算`
+- `流水设计`
+- `指标门禁`
+- `实验记录`
+
+The design target is a FWD-style dKV path with no duplicate score/dP, explicit
+output ownership, LDS budget `98816 B` plus about `28 KB` slack, and a T0-T5
+expected conveyor that alternates score/dP MMAC, softmax/dS VALU, dV MMAC, and
+dK MMAC across the two consumer groups.  The primary performance target remains
+MMAC active share `>=60%`; ticks are supporting evidence, not the first tuning
+axis for the small diagnostic shape.
+
+Verification:
+
+- workbook exported successfully
+- backup written:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.codex_backup_20260702_fwdstyle_goal.xlsx`
+- inspect file reports no formula-error matches:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx.inspect.ndjson`
+- preview rendered:
+  `/tmp/shaobo_wb_update_20260702/previews/流水设计.png`
+
+Next:
+
+Implement from the workbook, not from the old phase stack: keep the current
+sidecar as oracle, then move fragment-local `P/dS`, dV MMAC, dK MMAC, and the
+store epilogue into the clean WASP path.

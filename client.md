@@ -31,7 +31,11 @@ Do not port the old phase stack.  Port only proven pieces, one block at a time:
 - Producer MLS/BPS publication should not be followed by local
   `wait_lgkm(0)`; ABarrier is the ownership fence to consumer
   `ds_read_matrix`.  Keep waits near first use or true overwrite/reuse points.
-- LDS budget target is 115456 B with 15616 B slack under 128 KB.
+- LDS budget target is 98816 B, leaving about 28 KB slack under 128 KB.
+  Do not reserve a separate LDS raw-to-trans scratch in the main path unless a
+  workbook row proves it.  Source-layout operands must come from MLS/BPS pages
+  that are reused after raw-page ownership is released, or be added explicitly
+  to the resource budget before code changes.
 - Consumer work should be balanced: score, dP, dV, dK are each 16 MMAC per
   consumer wave per q tile.
 - Producers must have recurring work after K/V startup; avoid thin producer
@@ -107,6 +111,17 @@ Current FA3 BWD clean design workbook:
 ```text
 /Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx
 ```
+
+2026-07-02 FWD-style dKV goal update:
+
+- Added sheets `FWD目标`, `算法DAG`, `资源预算`, `流水设计`, `指标门禁`,
+  and `实验记录`.
+- The workbook now records the hard target: full dK/dV WASP path, no duplicate
+  score/dP, no wrong output ownership, no spill/scratch, `ldsBankConflict=0`,
+  main matrix path through MLS/BPS + `ds_read_matrix` + MMAC, and MMAC active
+  share `>=60%` on the steady diagnostic shape.
+- The expected pipeline is written as `T0..T5`: producer packet publication,
+  score/dP MMAC, peer softmax/dS VALU overlap, dV/dK MMAC, and store epilogue.
 
 ## Current Next Step
 

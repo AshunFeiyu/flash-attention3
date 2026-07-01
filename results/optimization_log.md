@@ -325,3 +325,49 @@ sidecar.  It is not a performance candidate and should not be profiled as one;
 the high sidecar `simTicks` is expected.  Next, convert the sidecar into
 fragment-local `P/dS` in the mainloop, then connect dV and dK MMAC accumulation
 against the existing reference oracle.
+
+## 2026-07-02 Update FWD-style dKV Workbook Gate
+
+Decision: `DESIGN_GATE_UPDATED`
+
+Hypothesis:
+
+`The next dKV implementation must be constrained by a top-down FWD-style design
+before code changes.  The previous repo drifted because tile shape, output
+ownership, LDS budget, and expected Wavefronts pattern were not all in one
+reviewable artifact.`
+
+Implemented:
+
+- Updated the shared workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx`
+- Added or refreshed sheets for:
+  - FWD target and hard gates
+  - algorithm DAG and redundancy audit
+  - tile/resource/MMAC budget
+  - T0-T5 expected WASP conveyor
+  - promotion metrics
+  - experiment ledger
+- Aligned repo docs to the workbook:
+  - LDS target `98816 B` plus about `28 KB` slack
+  - no unbudgeted LDS raw-to-trans scratch
+  - no duplicate score/dP as the default architecture
+  - source-layout operands must be loaded by MLS/BPS with explicit lifetime
+
+Verified:
+
+- Workbook export PASS.
+- Backup:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.codex_backup_20260702_fwdstyle_goal.xlsx`
+- Inspect:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx.inspect.ndjson`
+  reported zero formula-error matches.
+- Preview:
+  `/tmp/shaobo_wb_update_20260702/previews/流水设计.png`
+
+Conclusion:
+
+This is a design gate, not a performance candidate.  The next code cut should
+implement exactly the workbook path: fragment-local `P/dS` in the consumer
+mainloop, then dV MMAC, dK MMAC, and stores, with correctness/resource gates
+before any perf claim.
