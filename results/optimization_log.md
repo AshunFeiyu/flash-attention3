@@ -671,3 +671,46 @@ and lowers same-shape ticks.  Do not count it as progress toward the
 FA-FWD-style 60% MMAC-active target.  The remaining high-order problem is still
 ABarrier/control serialization plus `lds_matrix/immed` and producer/consumer
 pipeline structure.
+
+## 2026-07-02 W12 Late-Source Conveyor
+
+Decision: `REJECT_PERF`
+
+Hypothesis:
+
+The W12 producer currently publishes raw `Q/dO` and source-layout `Q^T/dO^T`
+before releasing the packet.  That delays consumer score/dP start and leaves
+the producer thin later.  A FWD-style alternative is to publish raw first,
+let consumers run score/dP and release the page, then have the producer publish
+source-layout operands into the same page while consumers run softmax/dS.
+
+Implementation:
+
+- Added an opt-in late-source path using 12 waves and the same output
+  ownership as W12.
+- Reused the raw Q/dO pages for source-layout Q^T/dO^T instead of allocating
+  separate source pages.
+- Used the existing per-page Filled/Used ABarrier ids as two epochs:
+  raw-filled/raw-used followed by source-filled/source-used.
+
+Evidence:
+
+- Static metadata PASS:
+  `private=0`, `sgpr_count=86`, `vgpr_count=112`, no SGPR/VGPR spill.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_033544`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_033608`.
+- H1/S1024 stats:
+  `kernel_ticks=81165175`, MMAC active avg `19.1939%`,
+  coissue `20519/12669`, `ldsBankConflict=0`.
+- Current W12 sidecar-address baseline:
+  `kernel_ticks=75964525`, MMAC active avg `20.3523%`.
+
+Conclusion:
+
+The idea improved producer usefulness on paper but added two exposed ownership
+epochs per page.  The extra producer/consumer phase waits cost more than the
+source-MLS overlap gained.  Do not keep the opt-in code in the clean repo.
+Future attempts should avoid adding per-page barrier epochs unless xcu shows
+the new work hides a larger critical section.

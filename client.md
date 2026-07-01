@@ -229,3 +229,16 @@ the ABarrier/control protocol toward the FA3 FWD pattern.  The target is still
 MMAC active `>=60%`; the next implementation must create longer continuous
 MMAC islands and reduce ownership/control bubbles, not just improve local
 address arithmetic.
+
+Late-source conveyor negative:
+
+- tried to reuse raw pages for source-layout `Q^T/dO^T` after score/dP, so
+  producer MLS could overlap consumer softmax/dS
+- H1/S128 and H1/S1024 correctness both PASS, no spill, no LDS conflict
+- H1/S1024 regressed to `kernel_ticks=81165175`, MMAC active `19.1939%`
+  versus W12 sidecar baseline `75964525` and `20.3523%`
+- decision: `REJECT_PERF`; code reverted, lesson retained in workbook/log
+
+Next design rule: do not add another per-page raw/source ownership epoch unless
+the workbook proves that the extra wait is hidden by a larger useful compute
+island.  Producer usefulness is necessary, but not sufficient.

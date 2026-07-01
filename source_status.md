@@ -520,3 +520,27 @@ Treat the hoist as the current W12 micro-clean baseline.  The next real
 FWD-style step must redesign the ABarrier/control protocol and consumer
 compute islands; raising MMAC active from `~20%` to `60%` will not come from
 more sidecar address cleanups.
+
+## 2026-07-02 W12 Late-Source Conveyor Negative
+
+Status: `REJECT_PERF_REVERT_CODE`
+
+The late-source conveyor tried to publish raw `Q/dO` first, let consumers run
+score/dP, then publish source-layout `Q^T/dO^T` into the same raw page during
+consumer softmax/dS.  The path was resource-clean and correct, but slower:
+
+- metadata: `private=0`, `sgpr=86`, `vgpr=112`, no spill
+- H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_033544`
+- H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_033608`
+- H1/S1024 result:
+  `kernel_ticks=81165175`, MMAC active avg `19.1939%`
+- current W12 sidecar baseline:
+  `kernel_ticks=75964525`, MMAC active avg `20.3523%`
+
+Conclusion:
+
+Late-source added useful producer work but also added another exposed page
+epoch.  The ownership latency outweighed the intended overlap.  The opt-in code
+was reverted; keep only the result in the log/workbook.
