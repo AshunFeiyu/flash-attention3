@@ -17,6 +17,9 @@ logs/
 archive/
 remote_summaries/
 run_outputs/
+sqtt_csv/
+xcu_outputs/
+xcu_sidecar/
 *.perf
 *.csv
 *.jsonl
@@ -29,4 +32,3 @@ run_outputs/
 ._*
 __pycache__/
 *.pyc
-

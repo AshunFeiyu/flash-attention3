@@ -42,9 +42,29 @@ Do not port the old phase stack.  Port only proven pieces, one block at a time:
    conflict, expected instructions.
 4. Run correctness on `H1/S1024,D128`.
 5. Capture perf only after correctness/resource gates pass.
-6. Judge by MMAC active share first, then dKV ticks, wait/barrier, coissue,
-   Source CSV, and Wavefronts.
-7. Commit accepted changes with evidence; remove or document rejected code.
+6. Analyze SQTT with `xcu` CLI; GUI Wavefronts is only a fallback.
+7. Judge by MMAC active share first, then dKV ticks, wait/barrier, coissue,
+   SQTT pipeline/SIMD evidence, and any GUI observations.
+8. Commit accepted changes with evidence; remove or document rejected code.
+
+## SQTT Evidence
+
+Use `scripts/xcu_preflight.sh` before relying on `.perf` evidence.  It should
+find `xcu` or unpack the sidecar package into `${SHAOBO_RUN_ROOT}`.
+
+Use `scripts/analyze_sqtt_perf.sh` for every promoted perf run:
+
+```bash
+scripts/analyze_sqtt_perf.sh --perf case.perf --dispatch 1
+scripts/analyze_sqtt_perf.sh --perf case.perf --dispatch 1 \
+  --time-range 4148:10828 \
+  --location xcd=0,se=0,cu=6,simd=1,wave=1
+```
+
+Required evidence files live outside the repo: `detail.txt`,
+`wavefronts_bubbles.txt`, pipeline CSV, SIMD CSV, and `manifest.md`.
+Conclusions must cite these files when explaining MMAC active share, bubbles,
+waits, VALU/MMAC overlap, or SIMD imbalance.
 
 ## Artifact Rules
 
@@ -54,6 +74,7 @@ Keep generated files out of git:
 - no `.perf`
 - no full PMD logs
 - no temporary CSV exports
+- no `xcu` SQTT output directories
 
 Use `${SHAOBO_RUN_ROOT}` for runs.  On liuchang:
 
@@ -74,4 +95,3 @@ Create the first real kernel cut by porting C125C semantics into this clean
 structure without copying C125C's phase-stack plumbing.  The first promotion
 gate is not speed; it is a readable, buildable, no-spill kernel whose pipeline
 can be inspected.
-

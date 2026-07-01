@@ -102,6 +102,25 @@ Expected XCompute pattern:
 - Consumer groups should not show long lockstep wait bands on the same trans
   ownership token.
 
+## SQTT Evidence Contract
+
+Use XCompute CLI as the default Wavefronts/SQTT path.  GUI inspection is a
+fallback or human cross-check, not the primary evidence source.
+
+Required CLI sequence for a perf candidate:
+
+```bash
+xcu status -P case.perf --sqtt-sections detail
+xcu status -P case.perf --sqtt-sections wavefronts,bubbles --sqtt-dispatches 1 --sqtt-top 50
+xcu status -P case.perf --sqtt-sections pipeline --sqtt-dispatches 1 --sqtt-time-range <start:end> --sqtt-location <loc> -F csv -D <out>/pipeline
+xcu status -P case.perf --sqtt-sections simd --sqtt-dispatches 1 --sqtt-time-range <start:end> --sqtt-location <simd-loc> -F csv -D <out>/simd
+```
+
+The conclusion must identify the dominant bubble pattern and map it to the
+pipeline design, for example `ds_read_matrix -> s_waitcnt -> v_mmac`, VALU
+work not hidden by peer MMAC, barrier waits, instruction fetch/no-v gaps, or
+SIMD imbalance.
+
 ## Done Metrics
 
 Hard gates:
@@ -117,5 +136,4 @@ Performance gates:
 - primary: MMAC active share approaches or exceeds the same-run FA3 FWD
   reference
 - supporting: target-shape dKV ticks decrease, wait/barrier/no-v gaps reduce,
-  Source CSV and Wavefronts explain the pipeline
-
+  `xcu` pipeline/SIMD CSV explains the pipeline
