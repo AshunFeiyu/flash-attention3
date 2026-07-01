@@ -589,3 +589,38 @@ also helps keep WDRA branch resources bounded.  Do not remove it directly.
 Next attempts must either preserve the role-merge/resource shape or reduce
 barrier cost inside the steady loop rather than deleting the final convergence
 path.
+
+## 2026-07-02 W12C Pair-Packet Probe
+
+Decision: `REJECT`
+
+Hypothesis:
+
+Instead of deleting the tail barrier, keep the W12 convergence shape but reduce
+steady-loop raw ownership frequency.  The producer fills page0 and page1
+(`2 x Mq32`) before one `Raw0Filled`; consumers process both pages before one
+`Raw0Used`.  This uses the existing 128KB LDS layout and should create longer
+consumer compute islands.
+
+Result:
+
+- First pair implementation caused `sgpr_spill_count=3`; disabling the inner
+  two-page loop unroll fixed metadata.
+- Final static metadata PASS:
+  `private=0`, `sgpr_count=78`, `vgpr_count=112`, no SGPR/VGPR spill.
+- H1/S1024 causal=true correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_030656`.
+- Performance regressed:
+  `kernel_ticks=87062430`, MMAC active avg `18.1646%`,
+  coissue `13272/4944`, `ldsBankConflict=0`.
+- Compared with W12 single-page:
+  W12 was `kernel_ticks=78751400`, MMAC active avg `20.2578%`.
+
+Conclusion:
+
+Pair-packet reduced ownership frequency but delayed consumer start until both
+pages were filled, damaging producer/consumer overlap.  The higher coissue rate
+(`72.86%`) is not useful because ticks and active share regressed.  Reverted to
+W12 single-page.  Next attempts should keep single-page streaming and focus on
+consumer instruction scheduling or useful producer work rather than batching
+two pages behind one barrier.
