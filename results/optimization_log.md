@@ -898,3 +898,59 @@ idea is still algorithmically sound, but it needs a smaller live range: either
 4+4 source read groups, a slimmer softmax/dS helper, or a more FWD-like
 register ledger before retrying.  Code was reverted to the W12 dV/dK read-all
 baseline.
+
+## 2026-07-02 W12 dV/dK 4+4 Read-Early Island
+
+Decision: `ACCEPT_MICRO`
+
+Hypothesis:
+
+The rejected pre-softmax read-all schedule proved that hiding dV/dK source
+operand reads under softmax/dS is useful but too register-heavy when all
+sixteen source operands stay live across the softmax helper.  The bounded
+retry uses two groups:
+
+```text
+score/dP -> read low dO^T/Q^T group -> softmax/dS
+         -> wait low -> read high group -> MMAC low -> wait high -> MMAC high
+```
+
+This hides the first half of the source reads under softmax/dS and tries to
+hide the second half under the first dV/dK MMAC group.
+
+Implementation:
+
+- Added `DvDkSourceRegs4`, `dv_dk_read_owner16_sources4`, and
+  `dv_dk_mmac_four_out`.
+- Main consumer loop now reads the low source group before softmax/dS, then
+  starts the high source group immediately before the low MMAC group.
+- Math, source-layout ABI, ABarrier ownership, and output ownership are
+  unchanged.
+
+Evidence:
+
+- Static metadata PASS:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_043459`.
+- H1/S1024 correctness/perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_043641`.
+- Read-all baseline:
+  `kernel_ticks=72499700`, MMAC active avg `21.3054%`,
+  `lds_matrix -> immed=5.53%`.
+- 4+4 result:
+  `kernel_ticks=71508255`, MMAC active avg `21.5678%`,
+  coissue `30929/20971`, `ldsBankConflict=0`.
+- Perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_043641_clean_w12_dvdk_read4x2_h1s1024_sqc7`.
+- xcu detail:
+  `MMAC=23.59%`, `lds_matrix -> immed=2.46%`, but top bubble remains
+  `abarrier -> salu_32=39.00%`.
+
+Conclusion:
+
+This validates the FWD-style read-early/wait-late direction when the live range
+is bounded.  It is still a micro optimization: matrix-read bubbles improved,
+but MMAC active barely moved because the dominant gap is now ABarrier/control
+serialization.  Keep this as the current clean baseline and move the next
+structural work to barrier/control and consumer phase alignment.

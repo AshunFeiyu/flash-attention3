@@ -827,6 +827,91 @@ __device__ __forceinline__ void dv_dk_mmac_one_out(
     }
 }
 
+struct DvDkSourceRegs4 {
+    ins::F16x8 dout_t0;
+    ins::F16x8 dout_t1;
+    ins::F16x8 dout_t2;
+    ins::F16x8 dout_t3;
+    ins::F16x8 q_t0;
+    ins::F16x8 q_t1;
+    ins::F16x8 q_t2;
+    ins::F16x8 q_t3;
+};
+
+template <typename Tile, int DBlockBase>
+__device__ __forceinline__ void dv_dk_read_owner16_sources4(
+    __half* lds,
+    int page,
+    DvDkSourceRegs4& src) {
+    using Layout = DkvLdsLayout<Tile>;
+    static_assert(DBlockBase == 0 || DBlockBase == 2,
+                  "dV/dK source group must cover two D blocks");
+
+    const int dout_t_off0 =
+        Layout::kDoutTBase +
+        source_page_block_offset<Tile>(page, DBlockBase);
+    const int q_t_off0 =
+        Layout::kQtBase + source_page_block_offset<Tile>(page, DBlockBase);
+    const int dout_t_off1 =
+        Layout::kDoutTBase +
+        source_page_block_offset<Tile>(page, DBlockBase + 1);
+    const int q_t_off1 =
+        Layout::kQtBase +
+        source_page_block_offset<Tile>(page, DBlockBase + 1);
+
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off0, src.dout_t0.f16x8, src.dout_t1.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off0, src.q_t0.f16x8, src.q_t1.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off1, src.dout_t2.f16x8, src.dout_t3.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off1, src.q_t2.f16x8, src.q_t3.f16x8);
+}
+
+template <bool FirstQTile, int OutBase>
+__device__ __forceinline__ void dv_dk_mmac_four_out(
+    const ins::Vec4F16 (&p_frag)[2],
+    const ins::Vec4F16 (&ds_frag)[2],
+    const DvDkSourceRegs4& src,
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8],
+    const ins::F16x8& zero_f16) {
+    dv_dk_mmac_one_out<FirstQTile, OutBase + 0>(
+        p_frag, ds_frag, src.dout_t0, src.q_t0, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, OutBase + 1>(
+        p_frag, ds_frag, src.dout_t1, src.q_t1, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, OutBase + 2>(
+        p_frag, ds_frag, src.dout_t2, src.q_t2, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, OutBase + 3>(
+        p_frag, ds_frag, src.dout_t3, src.q_t3, dv_acc, dk_acc, zero_f16);
+}
+
+template <typename Tile, bool FirstQTile>
+__device__ __forceinline__ void dv_dk_mmac_owner16_read4x2(
+    __half* lds,
+    const ins::Vec4F16 (&p_frag)[2],
+    const ins::Vec4F16 (&ds_frag)[2],
+    const DvDkSourceRegs4& low_src,
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8],
+    int page) {
+    ins::F16x8 zero_f16;
+    ins::zero_f16x8(zero_f16);
+
+    ins::wait_lgkm(0);
+    DvDkSourceRegs4 high_src;
+    dv_dk_read_owner16_sources4<Tile, 2>(lds, page, high_src);
+
+    ins::raise_priority_2();
+    dv_dk_mmac_four_out<FirstQTile, 0>(
+        p_frag, ds_frag, low_src, dv_acc, dk_acc, zero_f16);
+    ins::wait_lgkm(0);
+    dv_dk_mmac_four_out<FirstQTile, 4>(
+        p_frag, ds_frag, high_src, dv_acc, dk_acc, zero_f16);
+    ins::lower_priority();
+}
+
 template <typename Tile, bool FirstQTile>
 __device__ __forceinline__ void dv_dk_mmac_owner16(
     __half* lds,
@@ -1126,6 +1211,9 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
         ins::F32x4 dp[2];
         score_dp_mmac_owner16<Tile>(lds, owner_nblock, page, score, dp);
 
+        DvDkSourceRegs4 dvdk_low;
+        dv_dk_read_owner16_sources4<Tile, 0>(lds, page, dvdk_low);
+
         ins::Vec4F16 p_frag[2];
         ins::Vec4F16 ds_frag[2];
         softmax_ds_owner16_from_global_sidecar<Tile>(
@@ -1134,11 +1222,11 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
             ds_frag);
 
         if (q_tile == 0) {
-            dv_dk_mmac_owner16<Tile, true>(
-                lds, p_frag, ds_frag, dv_acc, dk_acc, page);
+            dv_dk_mmac_owner16_read4x2<Tile, true>(
+                lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
         } else {
-            dv_dk_mmac_owner16<Tile, false>(
-                lds, p_frag, ds_frag, dv_acc, dk_acc, page);
+            dv_dk_mmac_owner16_read4x2<Tile, false>(
+                lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
         }
         arrive_raw_used_page<Wdra>(page);
     }

@@ -306,3 +306,23 @@ Pre-softmax dV/dK read negative:
 Rule: read-early/wait-late is still the right latency-hiding pattern, but this
 kernel cannot keep all source operands live across softmax/dS.  Future retries
 must use a smaller 4+4 source grouping or reduce softmax live range first.
+
+W12 dV/dK read4x2 micro baseline `ACCEPT_MICRO`:
+
+- current source keeps only the low half of `dO^T/Q^T` source operands live
+  across softmax/dS, then issues the high half before the low dV/dK MMAC group
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_043641`
+- full-perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_043641_clean_w12_dvdk_read4x2_h1s1024_sqc7`
+- same-shape comparison against read-all:
+  `kernel_ticks` down from `72499700` to `71508255`; MMAC active avg up from
+  `21.3054%` to `21.5678%`; `lds_matrix -> immed` down from `5.53%` to `2.46%`
+- xcu conclusion:
+  matrix-read latency is now much less exposed; top bubble remains
+  `abarrier -> salu_32` at `39.00%`
+
+Next step: do not keep polishing dV/dK read granularity.  The next workbook
+proposal should attack ABarrier/control serialization and consumer phase
+alignment, borrowing FWD's `ValuExec0`/phase-turnstile idea if the resource
+ledger supports it.
