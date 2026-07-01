@@ -797,3 +797,23 @@ Evidence:
 
 Decision: `ACCEPT_MICRO`.  This is the current source baseline.  Remaining
 dominant debts are barrier/control and sidecar global-read latency.
+
+Rejected sidecar prefetch:
+
+- candidate: prefetch all owner16 sidecar triplets into registers before
+  `RawFilled`/score-dP, so softmax/dS would not issue `packed_sidecar` global
+  reads at the use point
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_052854`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_052900`
+- archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_052900_clean_w12_sidecar_prefetch_reject_h1s1024_sqc7`
+- result: correctness PASS and static metadata clean, but consumer branch
+  pressure rose to `158/160`, H1/S1024 `kernel_ticks` regressed to
+  `75394410`, and MMAC active avg fell to `18.4182%`
+- decision: `REJECT_PERF_STATS_ONLY`; code reverted
+
+Rule: sidecar latency should still be addressed, but not by carrying all
+24 sidecar floats across the score/dP MMAC island.  Future sidecar work must
+shorten live range or reduce representation before adding registers.

@@ -1128,3 +1128,51 @@ This validates the user's observation about unnecessary register zeroing.
 The cleanup is real and should stay, but it only moves active share by about
 0.23 percentage points.  The next large move still needs to reduce
 barrier/control or hide sidecar global-read latency.
+
+### W12 Sidecar Prefetch Negative
+
+Hypothesis:
+
+- The latest xcu detail showed `flat_rd -> immed` at `15.03%`.
+- Prefetching each owner wave's 8 q-row sidecar triplets before
+  `RawFilled`/score-dP might let existing wait and score/dP MMAC hide the
+  global-read latency without adding LDS or ABarrier tokens.
+
+Change tested and reverted:
+
+- Added a `SidecarOwner16Regs` packet with 24 float values per lane
+  (`max_log2`, `inv_sum`, `delta` for 8 q rows).
+- Loaded it before `wait_raw_filled_page`, then made softmax/dS use the
+  prefetched registers.
+- No math, output ownership, MMAC count, LDS plan, or barrier change.
+
+Evidence:
+
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_052854`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_052900`.
+- Stats-only archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_052900_clean_w12_sidecar_prefetch_reject_h1s1024_sqc7`.
+- Metadata remained clean:
+  `private=0`, `sgpr_count=93`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Branch-local consumer pressure rose to `158/160`.
+- H1/S1024 result:
+  `kernel_ticks=75394410`, MMAC active avg `18.4182%`,
+  coissue `40984/31390`, `ldsBankConflict=0`.
+- Baseline zero-seed:
+  `kernel_ticks=70604625`, MMAC active avg `21.7988%`,
+  coissue `30594/21056`.
+
+Decision:
+
+`REJECT_PERF_STATS_ONLY`; code reverted.
+
+Conclusion:
+
+The sidecar latency is real, but carrying all 24 sidecar floats across the
+score/dP MMAC island consumes nearly all consumer VGPR slack and worsens active
+share.  The next sidecar design must reduce representation or live range, such
+as computing/fetching fewer fields per fragment, compressing sidecar state, or
+moving sidecar generation to a path that does not extend consumer critical
+live ranges.

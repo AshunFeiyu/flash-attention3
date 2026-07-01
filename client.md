@@ -397,3 +397,21 @@ dV/dK zero-seed cleanup `ACCEPT_MICRO`:
   to `23.68%`; top bubbles remain `abarrier -> salu_32` and
   `flat_rd -> immed`
 - decision: keep; this is a real cleanup but still far from the 60% active goal
+
+Sidecar prefetch attempt `REJECT_PERF_STATS_ONLY`:
+
+- tried to prefetch all 8 q-row sidecar triplets into consumer registers before
+  `RawFilled`/score-dP to hide the xcu `flat_rd -> immed` bubble
+- correctness and metadata passed, but consumer branch pressure reached
+  `158/160`; H1/S1024 regressed to `kernel_ticks=75394410`, MMAC active avg
+  `18.4182%`
+- archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_052900_clean_w12_sidecar_prefetch_reject_h1s1024_sqc7`
+- decision: code reverted; do not repeat "prefetch all sidecar fields into
+  long-lived registers" without a new resource proof
+
+Next step: sidecar/global-read latency remains a target, but the next design
+must either shrink sidecar live state or move useful producer/control work
+without consuming the last consumer VGPR slack.  A broader path is to revisit
+the algorithm/resource workbook for a sidecar representation that avoids both
+global-use-point latency and 24-float live ranges.
