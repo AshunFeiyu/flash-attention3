@@ -108,6 +108,11 @@ Expected XCompute pattern:
 Use XCompute CLI as the default Wavefronts/SQTT path.  GUI inspection is a
 fallback or human cross-check, not the primary evidence source.
 
+The current FWD/BWD SQTT gap analysis is recorded in
+`docs/sqtt_fwd_bwd_gap_20260701.md`.  Its main conclusion is that the BWD dKV
+trace already contains MMAC and `ds_read_matrix`, but fails to match FWD because
+barrier/control serialization and read-to-use latency break the conveyor.
+
 Required CLI sequence for a perf candidate:
 
 ```bash

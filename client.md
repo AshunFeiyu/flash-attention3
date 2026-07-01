@@ -69,6 +69,16 @@ Required evidence files live outside the repo: `detail.txt`,
 Conclusions must cite these files when explaining MMAC active share, bubbles,
 waits, VALU/MMAC overlap, or SIMD imbalance.
 
+Current FWD/BWD reference analysis:
+
+```text
+docs/sqtt_fwd_bwd_gap_20260701.md
+```
+
+The key lesson is that BWD already has MMAC and `ds_read_matrix`; the gap is
+barrier/control serialization and matrix-read latency not hidden under peer
+work.  Optimize the packet conveyor before chasing more MMAC instructions.
+
 ## Artifact Rules
 
 Keep generated files out of git:
