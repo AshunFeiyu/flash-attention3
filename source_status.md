@@ -595,3 +595,46 @@ Rule: do not remove causal/predicate work from the global-sidecar owner16
 helper by local branching alone.  Prove any future mask fast path with a
 focused owner16 sidecar probe, because this branch specifically corrupts the
 `P`/dV path while leaving dK close.
+
+## 2026-07-02 W12 dV/dK Read-All MMAC Island
+
+Status: `ACCEPT_MICRO_CURRENT_BASELINE`
+
+The current source keeps the 12-wave single-producer topology and W12
+sidecar-address cleanup, then changes only the dV/dK consumer island:
+
+```text
+old: repeat 4x { ds_read_matrix dO^T/Q^T pair -> wait -> small MMAC island }
+new: issue all 8 dO^T/Q^T ds_read_matrix pairs -> wait once -> longer MMAC island
+```
+
+The code uses explicit `dout_t0..7` and `q_t0..7` registers plus a small
+`dv_dk_mmac_one_out` helper, avoiding private memory arrays.
+
+Evidence:
+
+- Remote source: `/zys/shaobo/fa3_bwd_wasp_clean`
+- Static metadata:
+  `private_segment_fixed_size=0`, `sgpr_count=88`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_041233`
+- H1/S1024 correctness/perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_041545`
+- Perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_041545_clean_w12_dvdk_readall_h1s1024_sqc7`
+- Metrics versus W12 sidecar-address:
+  `kernel_ticks=72499700` versus `75964525`,
+  MMAC active avg `21.3054%` versus `20.3523%`,
+  coissue `30904/22164`, `ldsBankConflict=0`
+- xcu detail:
+  `MMAC=23.64%`, `lds_matrix -> immed=5.53%` versus previous `9.38%`,
+  but top bubble remains `abarrier -> salu_32=38.64%`
+
+Conclusion:
+
+This is the current source baseline because it is correct, resource-clean, and
+improves both ticks and MMAC active.  It is still a micro optimization.  The
+remaining gap to the 60% MMAC active target is now clearly dominated by
+ABarrier/control and phase alignment, not by missing dV/dK MMAC or LDS bank
+conflict.

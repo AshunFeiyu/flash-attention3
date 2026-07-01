@@ -799,6 +799,34 @@ __device__ __forceinline__ void softmax_ds_owner16_from_global_sidecar(
     }
 }
 
+template <bool FirstQTile, int OutIdx>
+__device__ __forceinline__ void dv_dk_mmac_one_out(
+    const ins::Vec4F16 (&p_frag)[2],
+    const ins::Vec4F16 (&ds_frag)[2],
+    const ins::F16x8& dout_t,
+    const ins::F16x8& q_t,
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8],
+    const ins::F16x8& zero_f16) {
+#pragma unroll
+    for (int m_half = 0; m_half < 2; ++m_half) {
+        if constexpr (FirstQTile) {
+            dv_acc[OutIdx].f32 = ins::mmac_f16_lit(
+                p_frag[m_half], dout_t.f16x4[m_half],
+                m_half == 0 ? zero_f16.f32 : dv_acc[OutIdx].f32);
+            dk_acc[OutIdx].f32 = ins::mmac_f16_lit(
+                ds_frag[m_half], q_t.f16x4[m_half],
+                m_half == 0 ? zero_f16.f32 : dk_acc[OutIdx].f32);
+        } else {
+            dv_acc[OutIdx].f32 = ins::mmac_f16_lit(
+                p_frag[m_half], dout_t.f16x4[m_half],
+                dv_acc[OutIdx].f32);
+            dk_acc[OutIdx].f32 = ins::mmac_f16_lit(
+                ds_frag[m_half], q_t.f16x4[m_half], dk_acc[OutIdx].f32);
+        }
+    }
+}
+
 template <typename Tile, bool FirstQTile>
 __device__ __forceinline__ void dv_dk_mmac_owner16(
     __half* lds,
@@ -813,48 +841,74 @@ __device__ __forceinline__ void dv_dk_mmac_owner16(
     ins::zero_f16x8(zero_f16);
 
     ins::raise_priority_2();
-#pragma unroll
-    for (int d_block = 0; d_block < 4; ++d_block) {
-        ins::F16x8 dout_t0;
-        ins::F16x8 dout_t1;
-        ins::F16x8 q_t0;
-        ins::F16x8 q_t1;
-        const int dout_t_off =
-            Layout::kDoutTBase +
-            source_page_block_offset<Tile>(page, d_block);
-        const int q_t_off =
-            Layout::kQtBase + source_page_block_offset<Tile>(page, d_block);
-        ins::ds_read_matrix_trans_pair(
-            lds, dout_t_off, dout_t0.f16x8, dout_t1.f16x8);
-        ins::ds_read_matrix_trans_pair(
-            lds, q_t_off, q_t0.f16x8, q_t1.f16x8);
-        ins::wait_lgkm(0);
+    ins::F16x8 dout_t0;
+    ins::F16x8 dout_t1;
+    ins::F16x8 dout_t2;
+    ins::F16x8 dout_t3;
+    ins::F16x8 dout_t4;
+    ins::F16x8 dout_t5;
+    ins::F16x8 dout_t6;
+    ins::F16x8 dout_t7;
+    ins::F16x8 q_t0;
+    ins::F16x8 q_t1;
+    ins::F16x8 q_t2;
+    ins::F16x8 q_t3;
+    ins::F16x8 q_t4;
+    ins::F16x8 q_t5;
+    ins::F16x8 q_t6;
+    ins::F16x8 q_t7;
 
-#pragma unroll
-        for (int d_sub = 0; d_sub < 2; ++d_sub) {
-            const int out_idx = d_block * 2 + d_sub;
-            const ins::F16x8& dout_t = d_sub == 0 ? dout_t0 : dout_t1;
-            const ins::F16x8& q_t = d_sub == 0 ? q_t0 : q_t1;
-#pragma unroll
-            for (int m_half = 0; m_half < 2; ++m_half) {
-                if constexpr (FirstQTile) {
-                    dv_acc[out_idx].f32 = ins::mmac_f16_lit(
-                        p_frag[m_half], dout_t.f16x4[m_half],
-                        m_half == 0 ? zero_f16.f32 : dv_acc[out_idx].f32);
-                    dk_acc[out_idx].f32 = ins::mmac_f16_lit(
-                        ds_frag[m_half], q_t.f16x4[m_half],
-                        m_half == 0 ? zero_f16.f32 : dk_acc[out_idx].f32);
-                } else {
-                    dv_acc[out_idx].f32 = ins::mmac_f16_lit(
-                        p_frag[m_half], dout_t.f16x4[m_half],
-                        dv_acc[out_idx].f32);
-                    dk_acc[out_idx].f32 = ins::mmac_f16_lit(
-                        ds_frag[m_half], q_t.f16x4[m_half],
-                        dk_acc[out_idx].f32);
-                }
-            }
-        }
-    }
+    const int dout_t_off0 =
+        Layout::kDoutTBase + source_page_block_offset<Tile>(page, 0);
+    const int q_t_off0 =
+        Layout::kQtBase + source_page_block_offset<Tile>(page, 0);
+    const int dout_t_off1 =
+        Layout::kDoutTBase + source_page_block_offset<Tile>(page, 1);
+    const int q_t_off1 =
+        Layout::kQtBase + source_page_block_offset<Tile>(page, 1);
+    const int dout_t_off2 =
+        Layout::kDoutTBase + source_page_block_offset<Tile>(page, 2);
+    const int q_t_off2 =
+        Layout::kQtBase + source_page_block_offset<Tile>(page, 2);
+    const int dout_t_off3 =
+        Layout::kDoutTBase + source_page_block_offset<Tile>(page, 3);
+    const int q_t_off3 =
+        Layout::kQtBase + source_page_block_offset<Tile>(page, 3);
+
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off0, dout_t0.f16x8, dout_t1.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off0, q_t0.f16x8, q_t1.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off1, dout_t2.f16x8, dout_t3.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off1, q_t2.f16x8, q_t3.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off2, dout_t4.f16x8, dout_t5.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off2, q_t4.f16x8, q_t5.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, dout_t_off3, dout_t6.f16x8, dout_t7.f16x8);
+    ins::ds_read_matrix_trans_pair(
+        lds, q_t_off3, q_t6.f16x8, q_t7.f16x8);
+    ins::wait_lgkm(0);
+
+    dv_dk_mmac_one_out<FirstQTile, 0>(
+        p_frag, ds_frag, dout_t0, q_t0, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, 1>(
+        p_frag, ds_frag, dout_t1, q_t1, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, 2>(
+        p_frag, ds_frag, dout_t2, q_t2, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, 3>(
+        p_frag, ds_frag, dout_t3, q_t3, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, 4>(
+        p_frag, ds_frag, dout_t4, q_t4, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, 5>(
+        p_frag, ds_frag, dout_t5, q_t5, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, 6>(
+        p_frag, ds_frag, dout_t6, q_t6, dv_acc, dk_acc, zero_f16);
+    dv_dk_mmac_one_out<FirstQTile, 7>(
+        p_frag, ds_frag, dout_t7, q_t7, dv_acc, dk_acc, zero_f16);
     ins::lower_priority();
 }
 

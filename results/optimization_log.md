@@ -800,3 +800,61 @@ a broad MMAC/store failure; it is specifically the `P`/dV path produced by the
 fast branch.  Do not retry causal-mask removal by splitting this helper unless
 a focused owner16 sidecar probe proves the row/fragment mapping and PMD CFG
 behavior first.  Code was reverted to the W12 sidecar-address baseline.
+
+## 2026-07-02 W12 dV/dK Read-All MMAC Island
+
+Decision: `ACCEPT_MICRO`
+
+Hypothesis:
+
+The W12 sidecar-address baseline still issued dV/dK source operands as four
+small groups:
+
+```text
+read dO^T/Q^T block -> wait_lgkm(0) -> small dV/dK MMAC island
+```
+
+That leaves repeated `lds_matrix -> wait/immed -> MMAC` gaps.  The FWD-style
+variant keeps the same math, barriers, source-layout ABI, and output ownership,
+but reads all eight dO^T/Q^T operand fragments for the owner16 dV/dK island
+first, waits once immediately before first use, then runs one longer MMAC
+island.
+
+Implementation:
+
+- Added `dv_dk_mmac_one_out<FirstQTile, OutIdx>` to keep the repeated MMAC
+  body compact.
+- Replaced the four-block read/wait/MMAC loop in `dv_dk_mmac_owner16` with
+  explicit `dout_t0..7` and `q_t0..7` registers.
+- Kept explicit registers instead of arrays to avoid private memory.
+- Did not change score/dP, softmax/dS, ABarrier ownership, store layout, or
+  source-layout `Q^T/dO^T` ABI.
+
+Evidence:
+
+- Static metadata PASS:
+  `private=0`, `sgpr_count=88`, `vgpr_count=112`, no SGPR/VGPR spill.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_041233`.
+- H1/S1024 correctness/perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_041545`.
+- W12 sidecar-address baseline:
+  `kernel_ticks=75964525`, MMAC active avg `20.3523%`.
+- Read-all result:
+  `kernel_ticks=72499700`, MMAC active avg `21.3054%`,
+  coissue `30904/22164`, `ldsBankConflict=0`.
+- Perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_041545_clean_w12_dvdk_readall_h1s1024_sqc7`.
+- xcu detail:
+  `MMAC=23.64%`, `lds_matrix=8.86%`, top bubble remains
+  `abarrier -> salu_32 = 38.64%`; `lds_matrix -> immed` falls to `5.53%`
+  from the baseline `9.38%`.
+
+Conclusion:
+
+The read-all island is a valid local cleanup: it reduces the exposed
+matrix-read gap and improves ticks/MMAC active without increasing LDS conflict
+or spilling.  It does not solve the main gap to the FWD target.  The dominant
+evidence remains barrier/control serialization and thin producer/consumer tail
+behavior, so the next structural work should target the ABarrier ledger and
+longer FWD-style phase alignment rather than more local address cleanups.

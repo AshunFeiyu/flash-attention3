@@ -272,3 +272,25 @@ Full-valid softmax fast-path negative:
 
 Rule: do not optimize away owner16/global-sidecar mask work by local branching
 unless a focused sidecar probe proves the `P`/dV fragment mapping first.
+
+W12 dV/dK read-all micro baseline `ACCEPT_MICRO`:
+
+- current source batches all eight source-layout `dO^T/Q^T` operand fragments
+  for the owner16 dV/dK island, then does one `wait_lgkm(0)` before the longer
+  MMAC island
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_041545`
+- full-perf/xcu archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_041545_clean_w12_dvdk_readall_h1s1024_sqc7`
+- same-shape comparison against W12 sidecar-address:
+  `kernel_ticks` down from `75964525` to `72499700`; MMAC active avg up from
+  `20.3523%` to `21.3054%`; `ldsBankConflict=0`
+- xcu conclusion:
+  `lds_matrix -> immed` falls from `9.38%` to `5.53%`, so the local read-use
+  gap improved; top bubble remains `abarrier -> salu_32` at `38.64%`, so this
+  is not the 60% MMAC active solution
+
+Next step: keep W12 dV/dK read-all as the current clean baseline.  The next
+structural change should be workbook-first and focus on the ABarrier/control
+ledger and producer/consumer phase alignment, because local dV/dK read
+batching is now proven but insufficient.
