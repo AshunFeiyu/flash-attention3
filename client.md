@@ -139,6 +139,9 @@ Current promotion baseline:
   - causal whole-tile skip: `kernel_ticks=72881900`, active `16.7128%`,
     versus same-build W12 baseline `kernel_ticks=71006845`, active
     `21.6777%`; it removes MMOP but worsens tail/SIMD balance on H1/S1024.
+  - mixed score/dP brick: same-build `kernel_ticks=71663865`, active
+    `21.1732%`, versus W12 baseline `kernel_ticks=71312605`, active
+    `21.5931%`; it raises coissue but lowers active share and regresses ticks.
 - The next FWD-style redesign must raise MMAC active share by reducing
   ABarrier/control and exposed matrix-read/sidecar latency.  More coissue
   count is not enough unless active share and same-shape ticks move with it.
@@ -147,6 +150,9 @@ Current promotion baseline:
   The causal-skip negative result additionally says not to judge by MMOP count
   alone: deleting upper-triangle work can make the conveyor thinner and reduce
   MMAC active share on the diagnostic shape.
+  The mixed-score negative result adds that local consumer schedule asymmetry
+  is not enough; do not combine already-rejected score/dP bricks just to make
+  Wavefronts look less synchronized.
 
 Current state has two paths:
 

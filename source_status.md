@@ -1059,3 +1059,36 @@ Decision: `REJECT_PERF_STATS_ONLY`.  Larger local score/dP read bricks do not
 move the kernel toward 60% MMAC active.  The next main design must change the
 packet ownership/conveyor or producer/consumer role utility instead of adding
 more local read scheduling variants.
+
+Mixed score/dP brick diagnostic:
+
+- workbook updated first with `Mixed score brick` design and result rows
+- opt-in path:
+  `kDkvPathWaspDkvMmac12WaveMixedScoreBrick` /
+  standalone `--dkv-mmac12-mixed-score-brick-check=1`
+- design: group0 keeps the baseline consumer schedule while group1 uses the
+  existing score/dP read2x brick schedule; producer, LDS pages, ABarrier ledger,
+  dV/dK read4x2, zero-seed accumulation, and output ownership are unchanged
+- build/static/metadata PASS:
+  `private=0`, `sgpr=84`, `vgpr=112`, no spill, branch pressure
+  group0 `150/160`, group1 `158/160`
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_084709`
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_084734`
+- H1/S1024 stats:
+  `kernel_ticks=71663865`, MMAC active avg `21.1732%`, coissue
+  `33504/24695`, total MMOP `131072`, `ldsBankConflict=0`
+- same-build W12 baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_084834`
+  with `kernel_ticks=71312605`, MMAC active avg `21.5931%`, coissue
+  `30130/20996`
+
+Decision: `REJECT_PERF_STATS_ONLY`.  Keep only as an opt-in diagnostic.  The
+result is another concrete reminder that higher coissue count is not enough:
+MMAC active fell and ticks regressed by about `0.49%`.
+
+Rule: local consumer schedule asymmetry alone does not solve the W12 lockstep
+problem.  The next useful candidate should change the conveyor or operand
+readiness/control path with workbook-backed resource reasoning, not just mix
+two already-rejected score/dP read schedules.

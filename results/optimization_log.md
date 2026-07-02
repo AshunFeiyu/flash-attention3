@@ -1574,3 +1574,59 @@ The current bottleneck is still conveyor shape and exposed barrier/control
 latency, not raw MMOP count.  If this idea is revisited, it should be tested
 only as part of a topology that preserves balanced CTA/SIMD work, or on an
 H4/H2048 steady workload with explicit tail-analysis evidence.
+
+### Mixed Score/dP Brick
+
+Hypothesis:
+
+- Keep the same W12 output ownership, LDS pages, ABarrier ledger, dV/dK
+  read4x2 island, and zero-seed accumulation.
+- Run group0 with the baseline consumer schedule and group1 with the already
+  verified score/dP read2x brick schedule.
+- If the old timeline is dominated by C0/C1 lockstep, this asymmetric real-work
+  schedule should de-lockstep the two heavy consumers without adding artificial
+  delay.
+
+Change tested:
+
+- Added opt-in path `kDkvPathWaspDkvMmac12WaveMixedScoreBrick`.
+- The kernel keeps one producer group, group0 baseline consumer, and group1
+  `consumer_dkv_mmac_loop_score_dp_brick`.
+- No new LDS page, no new ABarrier token, no output ownership change, and no
+  external API change beyond the standalone diagnostic flag.
+
+Evidence:
+
+- Static and metadata gates passed for symbol
+  `fa3_bwd_dkv_mmac12_mixed_score_brick`:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Branch pressure from build evidence:
+  producer `1/16`, group0 `150/160`, group1 `158/160`.
+- H1/S128 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_084709`.
+- H1/S1024 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_084734`.
+- H1/S1024 mixed stats:
+  `kernel_ticks=71663865`, MMAC active share `21.1732%`,
+  VOP share `24.6598%`, total MMOP instr `131072`,
+  coissue `33504/24695`, `ldsBankConflict=0`.
+- Same-build W12 baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_084834`
+  with `kernel_ticks=71312605`, MMAC active share `21.5931%`,
+  VOP share `25.1072%`, total MMOP instr `131072`,
+  coissue `30130/20996`, `ldsBankConflict=0`.
+- Both mixed and baseline print PMD `read vgpr111 before writing` while passing
+  numerics, so this warning is not unique to the mixed path.
+
+Decision:
+
+`REJECT_PERF_STATS_ONLY`.  Coissue rises, but the kernel is slower by about
+`0.49%` and MMAC active share falls.  This is not a promotion candidate and
+does not justify full perf capture.
+
+Conclusion:
+
+The consumer schedules need more than local score/dP shape asymmetry.  The
+important open problem remains the conveyor structure: reducing exposed
+ABarrier/control and `ds_read_matrix -> wait -> MMAC` gaps while keeping both
+consumers' MMAC islands long and useful.
