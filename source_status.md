@@ -1092,3 +1092,22 @@ Rule: local consumer schedule asymmetry alone does not solve the W12 lockstep
 problem.  The next useful candidate should change the conveyor or operand
 readiness/control path with workbook-backed resource reasoning, not just mix
 two already-rejected score/dP read schedules.
+
+Dedicated LDS sidecar resource rejection:
+
+- workbook design attempted to move packed sidecar from consumer global reads
+  into a dedicated packet-local LDS sidecar page under the existing
+  `RawFilled` token
+- intended benefit: reduce xcu `flat_rd -> immed` and give producer recurring
+  useful work without adding a new ABarrier generation
+- resource correction: current W12 `DkvLdsLayout` is already exactly 128KB:
+  `Q 16KB + dO 16KB + K 32KB + V 32KB + Q^T 16KB + dO^T 16KB`
+- adding two sidecar pages costs only 768B, but total becomes
+  `131840B > 131072B`
+- remote build failed at static resource gate before PMD; code was removed
+- no correctness/perf row exists because the candidate never passed build
+
+Decision: `REJECT_RESOURCE_DESIGN`.  Do not add sidecar/scratch LDS by
+appending bytes to the current W12 layout.  A future sidecar-in-LDS design must
+free or reuse an existing page/lifetime; raw-overlay is already a negative
+example for adding an extra ownership generation.

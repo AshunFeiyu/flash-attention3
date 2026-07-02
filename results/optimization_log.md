@@ -1630,3 +1630,41 @@ The consumer schedules need more than local score/dP shape asymmetry.  The
 important open problem remains the conveyor structure: reducing exposed
 ABarrier/control and `ds_read_matrix -> wait -> MMAC` gaps while keeping both
 consumers' MMAC islands long and useful.
+
+### Dedicated LDS Sidecar Resource Check
+
+Hypothesis:
+
+- Move row sidecar from repeated consumer global reads into packet-local LDS.
+- Producer would copy packed `(max_log2, inv_sum, delta)` once per q row while
+  publishing Q/dO/QT/dOT under the existing `RawFilled` token.
+- Consumers would read sidecar from LDS after `RawFilled`, avoiding
+  `flat_rd -> immed` in the softmax/dS hot path without adding a new ABarrier
+  generation.
+
+Resource audit result:
+
+- Workbook initially assumed the W12 base LDS left about 28KB slack.  Remote
+  build proved that assumption false.
+- Current W12 LDS layout is already exactly 128KB:
+  `Q 16KB + dO 16KB + K 32KB + V 32KB + Q^T 16KB + dO^T 16KB`.
+- A dedicated two-page sidecar requires only `768B`, but the total would be
+  `131840B > 131072B`.
+- Remote build failed before PMD with static assertion:
+  `Layout::kBytes + Tile::kSidecarBytes <= Tile::kLdsBudgetBytes`,
+  evaluated as `131840 <= 131072`.
+- The failing implementation was removed; only the resource lesson and a small
+  mixed-path API validation fix remain.
+
+Decision:
+
+`REJECT_RESOURCE_DESIGN`.  Do not implement dedicated sidecar LDS by appending
+bytes to the current W12 layout.
+
+Conclusion:
+
+Sidecar-in-LDS remains conceptually attractive for `flat_rd -> immed`, but it
+must replace an existing LDS lifetime or be paired with a topology that frees
+space.  The raw-overlay attempt already showed that adding another ownership
+generation is expensive, so the next version needs a real page/lifetime swap,
+not an appended page and not a second RawFilled/RawUsed epoch.

@@ -4104,7 +4104,9 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
          params->dkv_path ==
              dkv::kDkvPathWaspDkvMmac12WaveMq64Semantic ||
          params->dkv_path ==
-             dkv::kDkvPathWaspDkvMmac12WaveCausalSkip) &&
+             dkv::kDkvPathWaspDkvMmac12WaveCausalSkip ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick) &&
         (dk == nullptr || dv == nullptr ||
          params->reserved_ptr[1] == nullptr ||
          params->reserved_ptr[2] == nullptr)) {
@@ -4118,7 +4120,9 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
          params->dkv_path ==
              dkv::kDkvPathWaspDkvMmac12WaveMq64Semantic ||
          params->dkv_path ==
-             dkv::kDkvPathWaspDkvMmac12WaveCausalSkip) &&
+             dkv::kDkvPathWaspDkvMmac12WaveCausalSkip ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick) &&
         params->reserved_ptr[3] == nullptr) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }

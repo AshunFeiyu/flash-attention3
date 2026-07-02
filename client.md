@@ -31,11 +31,12 @@ Do not port the old phase stack.  Port only proven pieces, one block at a time:
 - Producer MLS/BPS publication should not be followed by local
   `wait_lgkm(0)`; ABarrier is the ownership fence to consumer
   `ds_read_matrix`.  Keep waits near first use or true overwrite/reuse points.
-- LDS budget target is 98816 B, leaving about 28 KB slack under 128 KB.
-  Do not reserve a separate LDS raw-to-trans scratch in the main path unless a
-  workbook row proves it.  Source-layout operands must come from MLS/BPS pages
-  that are reused after raw-page ownership is released, or be added explicitly
-  to the resource budget before code changes.
+- Current W12 LDS plan is already full 128 KB:
+  `Q 16KB + dO 16KB + K 32KB + V 32KB + Q^T 16KB + dO^T 16KB`.
+  Do not add a dedicated LDS sidecar/scratch page unless another page/lifetime
+  is removed or reused.  Source-layout operands must come from MLS/BPS pages
+  already in this budget, or a workbook row must show which existing bytes are
+  freed before code changes.
 - Consumer work should be balanced: score, dP, dV, dK are each 16 MMAC per
   consumer wave per q tile.
 - Producers must have recurring work after K/V startup; avoid thin producer
@@ -153,6 +154,9 @@ Current promotion baseline:
   The mixed-score negative result adds that local consumer schedule asymmetry
   is not enough; do not combine already-rejected score/dP bricks just to make
   Wavefronts look less synchronized.
+  The dedicated-LDS-sidecar design was rejected at resource gate: current W12
+  LDS is already 128KB, so sidecar-in-LDS must replace an existing page/lifetime
+  rather than append another 768B page.
 
 Current state has two paths:
 
