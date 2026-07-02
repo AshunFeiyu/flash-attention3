@@ -162,6 +162,18 @@ Current promotion baseline:
   score/dP with the current `ds_read_matrix` mapping.  Keep raw `Q/dO` pages
   for score/dP unless a smaller instruction-layout probe proves a different
   mapping.
+- The raw-dVdK layout probe was also rejected at correctness gate: raw `Q/dO`
+  pages are not drop-in replacements for source-layout `dO^T/Q^T` operands in
+  the current dV/dK `ds_read_matrix` mapping.
+- The early RawUsed release path is correct/resource-clean and slightly
+  improves same-build H1/S1024 ticks and mid-window xcu bubbles, but it remains
+  a micro observation: full-perf MMAC active share is still about `21.74%`, far
+  from the `>=60%` FWD-style target, and dispatch-level xcu still reports
+  `abarrier -> salu_32` plus `flat_rd -> immed` as dominant gaps.
+- Next structural target: reduce page ownership/control debt or sidecar/global
+  read debt.  Do not stack more consumer-order micro patches unless the
+  workbook first shows how they shorten producer waits or expose a longer MMAC
+  island.
 
 Current state has two paths:
 

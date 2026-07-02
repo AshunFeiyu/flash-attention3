@@ -1750,3 +1750,67 @@ The current W12 design still needs both raw `Q/dO` for score/dP and
 source-layout `Q^T/dO^T` for dV/dK.  The simple 32KB-LDS-freeing route is
 closed unless a smaller instruction probe proves another documented
 `matrix_load`/`ds_read_matrix` pairing.
+
+### Early RawUsed Release
+
+Hypothesis:
+
+- xcu windows showed producer wave0 spending about 92% of steady 15k-cycle
+  windows in `abarrier -> salu_32` gaps while consumers still had 36-38%
+  bubble.
+- In the W12 read4x2 path, once the consumer has read both low/high
+  source-layout operands into VGPR and waited for them, the raw/source LDS page
+  no longer needs to stay owned by the consumer.
+- Releasing RawUsed before the high dV/dK MMAC should let producer overwrite
+  the next page during useful high-half MMAC work, without adding a new token or
+  increasing the source live range across softmax.
+
+Implementation:
+
+- Added opt-in API path `kDkvPathWaspDkvMmac12WaveEarlyRelease`.
+- Added standalone/script flag `EARLY_RELEASE=1`.
+- Added `dv_dk_mmac_owner16_read4x2_early_release`, which releases RawUsed
+  after the high source `wait_lgkm(0)` and before high dV/dK MMAC.
+- Baseline W12 remains the default path.
+
+Evidence:
+
+- Static/resource gate PASS:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_103428`.
+- H1/S1024 causal stats-only PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_103518`.
+- Same-build stats-only delta versus W12 baseline:
+  `kernel_ticks=70869890` versus `70883085`, about 0.019% faster;
+  MMAC active avg `21.9267%` versus `21.7746%`; coissue
+  `31524/20411` versus `29244/21070`.
+- Full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_104215_clean_w12_early_release_h1s1024_sqc7_fullperf`.
+- Full perf whole-dispatch delta versus zero-seed full perf:
+  `kernel_ticks=70507255` versus `70841680`, MMAC active share
+  `21.7393%` versus `21.6629%`, coissue success rate `60.32%` versus
+  `59.15%`, `ldsBankConflict=0` in both.
+- xcu window comparison:
+  - early 20k:35k producer bubble `92.17% -> 91.22%`, but consumer bubble
+    `36.33% -> 37.80%` and local SIMD MMAC `10.39% -> 9.85%`.
+  - mid 50k:65k producer bubble `92.06% -> 90.45%`, consumer bubble
+    `38.27% -> 36.01%`, local SIMD bubble `58.46% -> 57.22%`.
+  - tail producer remains AllDone/page-wait dominated:
+    `99.67% -> 99.70%` bubble, local SIMD MMAC unchanged at `2.92%`.
+- Dispatch-level xcu top bubbles are still dominated by barrier/control:
+  `abarrier -> salu_32` is `39.21%` of issue bubble latency, with
+  `flat_rd -> immed` still `15.31%`.
+
+Decision:
+
+`ACCEPT_MICRO_OBSERVE_PIPELINE`.  Keep the opt-in path because it is correct,
+resource-clean, and slightly improves mid-window/page-release evidence.  Do not
+promote it as the structural path to 60% MMAC active.
+
+Conclusion:
+
+Early release proves the page lifetime matters, but the current page topology
+still forces producer waves into long ABarrier gaps.  The next candidate should
+redesign ownership/topology or reduce sidecar/global-read debt; more consumer
+micro-scheduling will likely stay in the sub-1% range.

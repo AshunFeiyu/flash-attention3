@@ -72,7 +72,9 @@ inline bool valid_probe_shape(const ShaoboFa3Params* p) {
             p->dkv_path ==
                 dkv::kDkvPathWaspDkvMmac12WaveCausalSkip ||
             p->dkv_path ==
-                dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick) &&
+                dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick ||
+            p->dkv_path ==
+                dkv::kDkvPathWaspDkvMmac12WaveEarlyRelease) &&
            p->seqlen_q % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
            p->seqlen_k == p->seqlen_q &&
            p->seqlen_k % dkv::DkvTileD128Mq32Nk128::kResidentNk == 0 &&
@@ -2102,6 +2104,34 @@ __device__ __forceinline__ void dv_dk_mmac_owner16_read4x2(
     ins::lower_priority();
 }
 
+template <typename Tile, typename Wdra, bool FirstQTile>
+__device__ __forceinline__ void dv_dk_mmac_owner16_read4x2_early_release(
+    __half* lds,
+    const ins::Vec4F16 (&p_frag)[2],
+    const ins::Vec4F16 (&ds_frag)[2],
+    const DvDkSourceRegs4& low_src,
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8],
+    int page) {
+    ins::F16x8 zero_f16;
+    if constexpr (FirstQTile) {
+        ins::zero_f16x8(zero_f16);
+    }
+
+    ins::wait_lgkm(0);
+    DvDkSourceRegs4 high_src;
+    dv_dk_read_owner16_sources4<Tile, 2>(lds, page, high_src);
+
+    ins::raise_priority_2();
+    dv_dk_mmac_four_out<FirstQTile, 0>(
+        p_frag, ds_frag, low_src, dv_acc, dk_acc, zero_f16);
+    ins::wait_lgkm(0);
+    arrive_raw_used_page<Wdra>(page);
+    dv_dk_mmac_four_out<FirstQTile, 4>(
+        p_frag, ds_frag, high_src, dv_acc, dk_acc, zero_f16);
+    ins::lower_priority();
+}
+
 template <typename Tile, bool FirstQTile>
 __device__ __forceinline__ void dv_dk_mmac_owner16(
     __half* lds,
@@ -2367,7 +2397,10 @@ __device__ __forceinline__ void consumer_score_dp_loop(
     }
 }
 
-template <typename Tile, typename Wdra, int ConsumerGroup>
+template <typename Tile,
+          typename Wdra,
+          int ConsumerGroup,
+          bool EarlyReleasePage = false>
 __device__ __forceinline__ void consumer_dkv_mmac_loop(
     __half* lds,
     const float* packed_sidecar,
@@ -2414,14 +2447,24 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
             owner_nblock, lane, seqlen, causal, softmax_scale, p_frag,
             ds_frag);
 
-        if (q_tile == 0) {
-            dv_dk_mmac_owner16_read4x2<Tile, true>(
-                lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+        if constexpr (EarlyReleasePage) {
+            if (q_tile == 0) {
+                dv_dk_mmac_owner16_read4x2_early_release<Tile, Wdra, true>(
+                    lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+            } else {
+                dv_dk_mmac_owner16_read4x2_early_release<Tile, Wdra, false>(
+                    lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+            }
         } else {
-            dv_dk_mmac_owner16_read4x2<Tile, false>(
-                lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+            if (q_tile == 0) {
+                dv_dk_mmac_owner16_read4x2<Tile, true>(
+                    lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+            } else {
+                dv_dk_mmac_owner16_read4x2<Tile, false>(
+                    lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+            }
+            arrive_raw_used_page<Wdra>(page);
         }
-        arrive_raw_used_page<Wdra>(page);
     }
 
     store_dkv_owner16<Tile>(
@@ -3102,6 +3145,115 @@ fa3_bwd_dkv_mmac12_kernel(const __half* __restrict__ dout,
         const int64_t row_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen;
         consumer_dkv_mmac_loop<Tile, Bar, 1>(
+            lds, packed_sidecar, dk, dv, tensor_base, row_base,
+            seqlen, k_base, q_tiles, causal, softmax_scale, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    }
+
+    int done_phase = 0;
+    ins::abarrier_try_wait<false>(Bar::kAllDone, done_phase);
+    __syncthreads();
+    __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw0Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw1Filled);
+    __builtin_hcu_s_abarrier_inv(Bar::kRaw1Used);
+    __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
+    __syncthreads();
+#else
+    (void)dout;
+    (void)q;
+    (void)k;
+    (void)v;
+    (void)q_t_source;
+    (void)dout_t_source;
+    (void)packed_sidecar;
+    (void)dk;
+    (void)dv;
+    (void)heads;
+    (void)seqlen;
+    (void)dim;
+    (void)causal;
+    (void)softmax_scale;
+#endif
+}
+
+__global__ void __launch_bounds__(dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta, 1)
+    __attribute__((hcu_wdra_waves_per_tg(12)))
+fa3_bwd_dkv_mmac12_early_release_kernel(
+    const __half* __restrict__ dout,
+    const __half* __restrict__ q,
+    const __half* __restrict__ k,
+    const __half* __restrict__ v,
+    const __half* __restrict__ q_t_source,
+    const __half* __restrict__ dout_t_source,
+    const float* __restrict__ packed_sidecar,
+    float* __restrict__ dk,
+    float* __restrict__ dv,
+    int heads,
+    int seqlen,
+    int dim,
+    int causal,
+    float softmax_scale) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    using Tile = dkv::DkvTileD128Mq32Nk128W12;
+    using Bar = dkv::DkvBarrierLedger;
+    using Vgpr = dkv::WdraResourceWindows;
+    using Layout = DkvLdsLayout<Tile>;
+    static_assert(Layout::kBytes <= Tile::kLdsBudgetBytes,
+                  "dKV MMAC12 early release LDS budget overflow");
+
+    __shared__ __half lds[Layout::kBytes / sizeof(__half)];
+
+    const uint32_t wave_id = __builtin_hcu_get_wave_id();
+    const int wave_local = static_cast<int>(wave_id & 3u);
+
+    if (wave_id == 0) {
+        __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Filled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw0Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw1Filled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRaw1Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kAllDone, 12);
+    }
+    __builtin_hcu_s_ebarrier_sync(0);
+
+    const int k_tile = blockIdx.x;
+    const int h = blockIdx.y;
+    const int b = blockIdx.z;
+    const int q_base = 0;
+    const int k_base = k_tile * Tile::kResidentNk;
+    const int q_tiles = seqlen / Tile::kBlockMq;
+    const int bh = b * heads + h;
+
+    if (wave_id < 4) {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducer12Vgprs);
+        const int64_t tensor_base =
+            (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
+        producer_all_loop<Tile, Bar>(
+            q + tensor_base, k + tensor_base, v + tensor_base,
+            dout + tensor_base, q_t_source, dout_t_source, lds, bh,
+            q_base, k_base, seqlen, dim, q_tiles, wave_local);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    } else if (wave_id < 8) {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
+        const int64_t tensor_base =
+            (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
+        const int64_t row_base =
+            (static_cast<int64_t>(b) * heads + h) * seqlen;
+        consumer_dkv_mmac_loop<Tile, Bar, 0, true>(
+            lds, packed_sidecar, dk, dv, tensor_base, row_base,
+            seqlen, k_base, q_tiles, causal, softmax_scale, wave_local, lane);
+        ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
+    } else {
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
+        const int lane = static_cast<int>(threadIdx.x % 64);
+        const int64_t tensor_base =
+            (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
+        const int64_t row_base =
+            (static_cast<int64_t>(b) * heads + h) * seqlen;
+        consumer_dkv_mmac_loop<Tile, Bar, 1, true>(
             lds, packed_sidecar, dk, dv, tensor_base, row_base,
             seqlen, k_base, q_tiles, causal, softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
@@ -4106,7 +4258,9 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
          params->dkv_path ==
              dkv::kDkvPathWaspDkvMmac12WaveCausalSkip ||
          params->dkv_path ==
-             dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick) &&
+             dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveEarlyRelease) &&
         (dk == nullptr || dv == nullptr ||
          params->reserved_ptr[1] == nullptr ||
          params->reserved_ptr[2] == nullptr)) {
@@ -4122,7 +4276,9 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
          params->dkv_path ==
              dkv::kDkvPathWaspDkvMmac12WaveCausalSkip ||
          params->dkv_path ==
-             dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick) &&
+             dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveEarlyRelease) &&
         params->reserved_ptr[3] == nullptr) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
@@ -4151,7 +4307,9 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
          params->dkv_path ==
              dkv::kDkvPathWaspDkvMmac12WaveCausalSkip ||
          params->dkv_path ==
-             dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick)
+             dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick ||
+         params->dkv_path ==
+             dkv::kDkvPathWaspDkvMmac12WaveEarlyRelease)
             ? dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta
             : dkv::DkvTileD128Mq32Nk128::kThreadsPerCta);
 
@@ -4184,6 +4342,19 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
         dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick) {
         hipLaunchKernelGGL(
             fa3_bwd_dkv_mmac12_mixed_score_brick_kernel, grid, block, 0, 0,
+            static_cast<const __half*>(dout), static_cast<const __half*>(q),
+            static_cast<const __half*>(k), static_cast<const __half*>(v),
+            static_cast<const __half*>(params->reserved_ptr[1]),
+            static_cast<const __half*>(params->reserved_ptr[2]),
+            static_cast<const float*>(params->reserved_ptr[3]),
+            static_cast<float*>(dk), static_cast<float*>(dv),
+            params->num_heads_q, params->seqlen_k, params->head_dim_qk,
+            params->causal, params->softmax_scale);
+    } else if (
+        params->dkv_path ==
+        dkv::kDkvPathWaspDkvMmac12WaveEarlyRelease) {
+        hipLaunchKernelGGL(
+            fa3_bwd_dkv_mmac12_early_release_kernel, grid, block, 0, 0,
             static_cast<const __half*>(dout), static_cast<const __half*>(q),
             static_cast<const __half*>(k), static_cast<const __half*>(v),
             static_cast<const __half*>(params->reserved_ptr[1]),
@@ -4714,11 +4885,14 @@ int main(int argc, char** argv) {
     const int mmac12_mixed_score_brick_check = arg_int(
         argc, argv, "--dkv-mmac12-mixed-score-brick-check",
         env_int("CHECK_WASP_DKV_MMAC12_MIXED_SCORE_BRICK", 0));
+    const int mmac12_early_release_check = arg_int(
+        argc, argv, "--dkv-mmac12-early-release-check",
+        env_int("CHECK_WASP_DKV_MMAC12_EARLY_RELEASE", 0));
     const int full_mmac_check =
         mmac_check || mmac12_check || mmac12_overlay_check ||
         mmac12_score_brick_check || mmac12_mq64_check ||
         mmac12_mq64_semantic_check || mmac12_causal_skip_check ||
-        mmac12_mixed_score_brick_check;
+        mmac12_mixed_score_brick_check || mmac12_early_release_check;
     const int batch = arg_int(argc, argv, "--B", env_int("B", kDefaultBatch));
     const int heads = arg_int(argc, argv, "--H", env_int("H", kDefaultHeads));
     const int default_seq =
@@ -4779,6 +4953,10 @@ int main(int argc, char** argv) {
         params.dkv_path =
             dkv::kDkvPathWaspDkvMmac12WaveMixedScoreBrick;
     }
+    if (mmac12_early_release_check) {
+        params.dkv_path =
+            dkv::kDkvPathWaspDkvMmac12WaveEarlyRelease;
+    }
     if (check) {
         params.dkv_path = dkv::kDkvPathReferenceCorrectness;
     }
@@ -4786,7 +4964,7 @@ int main(int argc, char** argv) {
         (mmac12_check || mmac12_overlay_check ||
          mmac12_score_brick_check || mmac12_mq64_check ||
          mmac12_mq64_semantic_check || mmac12_causal_skip_check ||
-         mmac12_mixed_score_brick_check)
+         mmac12_mixed_score_brick_check || mmac12_early_release_check)
             ? dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta
             : dkv::DkvTileD128Mq32Nk128::kThreadsPerCta;
     params.sync_after_launch = 1;
@@ -5015,6 +5193,8 @@ int main(int argc, char** argv) {
             full_label = "fa3_bwd_dkv_mmac12_causal_skip_correctness";
         } else if (mmac12_mixed_score_brick_check) {
             full_label = "fa3_bwd_dkv_mmac12_mixed_score_brick_correctness";
+        } else if (mmac12_early_release_check) {
+            full_label = "fa3_bwd_dkv_mmac12_early_release_correctness";
         } else if (mmac12_mq64_check) {
             full_label = "fa3_bwd_dkv_mmac12_mq64_correctness";
         } else if (mmac12_overlay_check) {

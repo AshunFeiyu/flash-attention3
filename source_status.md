@@ -1,5 +1,48 @@
 # Source Status
 
+## 2026-07-02 Early RawUsed Release
+
+Status: `ACCEPT_MICRO_OBSERVE_PIPELINE`
+
+The clean repo now has an opt-in early page-release W12 path:
+
+- API path: `kDkvPathWaspDkvMmac12WaveEarlyRelease`
+- standalone flag: `--dkv-mmac12-early-release-check=1`
+- script flag:
+  `WAVES=12 EARLY_RELEASE=1 scripts/run_dkv_mmac_correctness.sh`
+- kernel symbol: `fa3_bwd_dkv_mmac12_early_release_kernel`
+- change: consumer releases RawUsed after high source operands are read and
+  `wait_lgkm(0)` has passed, before the high dV/dK MMAC island
+
+Verified evidence:
+
+- Static/source gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=84`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_103428`.
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_103518`.
+- Same-build stats-only delta versus W12 baseline:
+  `kernel_ticks=70869890` versus `70883085`, MMAC active avg
+  `21.9267%` versus `21.7746%`, coissue `31524/20411` versus
+  `29244/21070`.
+- Full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260702_104215_clean_w12_early_release_h1s1024_sqc7_fullperf`.
+- Full perf/xcu evidence:
+  `kernel_ticks=70507255`, whole-dispatch MMAC active share `21.7393%`,
+  `ldsBankConflict=0`; mid-loop producer bubble improves from `92.06%` to
+  `90.45%`, but early-window SIMD MMAC slightly worsens and tail remains
+  `99%+` bubble.
+
+Conclusion:
+
+Keep this as an opt-in micro path and evidence that page lifetime matters.  It
+does not solve the main 60% MMAC-active gap.  The next optimization should
+change page ownership/topology or reduce sidecar/global-read latency instead of
+only moving consumer instructions around.
+
 ## 2026-07-02 Source-Score Layout Probe
 
 Status: `REJECT_LAYOUT_PROBE`
