@@ -1,5 +1,52 @@
 # Source Status
 
+## 2026-07-02 Causal Whole-Tile Skip
+
+Status: `REJECT_PERF_H1S1024`
+
+The clean repo now has an opt-in W12 causal whole-tile skip path:
+
+- API path: `kDkvPathWaspDkvMmac12WaveCausalSkip`
+- standalone flag: `--dkv-mmac12-causal-skip-check=1`
+- script flag:
+  `WAVES=12 CAUSAL_SKIP=1 scripts/run_dkv_mmac_correctness.sh`
+- kernel symbol: `fa3_bwd_dkv_mmac12_causal_skip_kernel`
+- skip rule:
+  `causal && q_tile * Mq + Mq - 1 < k_base`
+- packet page rule:
+  `packet_idx` advances only for non-skipped q tiles, keeping producer and
+  consumer double-buffer ownership aligned
+- partial causal tiles are still handled by the existing softmax/dS mask path
+
+Verified evidence:
+
+- Static/source gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=88`, `vgpr_count=144`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- Branch-local consumer pressure: `194/208`.
+- H1/S128 noncausal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_081433`.
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_081455`.
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_081517`.
+- H1/S1024 stats:
+  `kernel_ticks=72881900`, MMAC active share `16.7128%`, VOP share
+  `29.4950%`, `MMOP=73728`, coissue `14760/11291`,
+  `ldsBankConflict=0`.
+- Same-build W12 baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_081604`
+  with `kernel_ticks=71006845`, MMAC active share `21.6777%`,
+  `MMOP=131072`, coissue `30195/21487`, `ldsBankConflict=0`.
+
+Conclusion:
+
+Do not promote this path.  It proves the whole-tile causal skip can be made
+correct and resource-clean, but reducing MMOP alone makes H1/S1024 thinner and
+more tail-limited.  The next optimization should improve the conveyor and MMAC
+active share, not simply delete upper-triangle work in the current topology.
+
 ## 2026-07-02 Mq64 Semantic-Page Conveyor
 
 Status: `REJECT_PERF_STATS_ONLY`

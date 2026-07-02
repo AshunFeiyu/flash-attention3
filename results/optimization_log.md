@@ -1516,3 +1516,61 @@ ownership generation is too expensive in the current conveyor.  The next
 FWD-style redesign should reduce barrier/control turns or move source
 publication into an existing packet generation, rather than adding another
 raw/source page lifecycle.
+
+### Causal Whole-Tile Skip
+
+Hypothesis:
+
+- For causal dKV, if a `Mq=32` q tile is completely before the current
+  `Nk=128` k tile, all score, dP, softmax/dS, dV, and dK contributions are
+  zero.
+- Skipping those whole q tiles should reduce redundant MMOP and VALU work
+  without changing output ownership.
+
+Change tested:
+
+- Added opt-in path `kDkvPathWaspDkvMmac12WaveCausalSkip`.
+- Producer and consumers both maintain a `packet_idx` that advances only for
+  non-skipped q tiles, so double-buffer page ownership stays aligned.
+- The final accepted correctness version skips only whole q tiles.  Per-owner
+  causal block skipping was dropped because it requires dynamic accumulator
+  seed state and first produced incorrect numerics after a zero-initialization
+  rewrite.
+- Existing softmax/dS causal masking still handles partial tiles inside the
+  first non-skipped packet.
+
+Evidence:
+
+- Build/static/metadata passed for symbol
+  `fa3_bwd_dkv_mmac12_causal_skip`:
+  `private=0`, `sgpr_count=88`, `vgpr_count=144`, no SGPR/VGPR spill.
+- Branch-local consumer pressure is high but legal: `194/208`.
+- H1/S128 noncausal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_081433`.
+- H1/S128 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_081455`.
+- H1/S1024 causal correctness passed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_081517`.
+- H1/S1024 causal-skip stats:
+  `kernel_ticks=72881900`, MMAC active share `16.7128%`, VOP share
+  `29.4950%`, total MMOP instr `73728`, coissue `14760/11291`,
+  `ldsBankConflict=0`.
+- Same-build W12 baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_081604`
+  with `kernel_ticks=71006845`, MMAC active share `21.6777%`, VOP share
+  `25.2075%`, total MMOP instr `131072`, coissue `30195/21487`,
+  `ldsBankConflict=0`.
+
+Decision:
+
+`REJECT_PERF_H1S1024`.  The skip path removes MMOP but does not shorten the
+critical path on the diagnostic shape.  It lowers active SIMD work, increases
+imbalance/tail exposure, and reduces MMAC active share.
+
+Conclusion:
+
+Do not optimize by simply deleting upper-triangle work in this W12 topology.
+The current bottleneck is still conveyor shape and exposed barrier/control
+latency, not raw MMOP count.  If this idea is revisited, it should be tested
+only as part of a topology that preserves balanced CTA/SIMD work, or on an
+H4/H2048 steady workload with explicit tail-analysis evidence.

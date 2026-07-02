@@ -175,6 +175,21 @@ H1/S1024 ticks because it adds a second RawFilled/RawUsed generation per q tile.
 Do not repeat this topology as a promotion attempt unless the source generation
 replaces an existing barrier turn instead of adding one.
 
+Causal skip boundary:
+
+```text
+whole-tile skip condition:
+  causal && q_tile * Mq + Mq - 1 < k_base
+```
+
+This is algorithmically valid and was verified in the W12 causal-skip path, but
+it regressed H1/S1024 performance.  MMOP dropped from `131072` to `73728`,
+while `kernel_ticks` worsened from `71006845` to `72881900` and MMAC active
+share fell from `21.6777%` to `16.7128%`.  The lesson is that deleting
+upper-triangle work can make the conveyor thinner and more tail-limited.  Any
+future causal pruning must prove that SIMD balance and MMAC active share
+improve, not merely that total instruction count decreases.
+
 ## Bring-Up Sequence
 
 The clean implementation moves in guarded cuts:

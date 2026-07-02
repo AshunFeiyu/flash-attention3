@@ -136,11 +136,17 @@ Current promotion baseline:
   - score/dP read2x brick: `kernel_ticks=70801640`, active `21.5465%`.
   - Mq64 semantic-page conveyor: same-build `kernel_ticks=73320065`,
     active `21.7509%`, versus W12 baseline `kernel_ticks=70974995`.
+  - causal whole-tile skip: `kernel_ticks=72881900`, active `16.7128%`,
+    versus same-build W12 baseline `kernel_ticks=71006845`, active
+    `21.6777%`; it removes MMOP but worsens tail/SIMD balance on H1/S1024.
 - The next FWD-style redesign must raise MMAC active share by reducing
   ABarrier/control and exposed matrix-read/sidecar latency.  More coissue
   count is not enough unless active share and same-shape ticks move with it.
   The semantic-page negative result specifically says not to add another
   raw/source ABarrier generation unless it replaces an existing one.
+  The causal-skip negative result additionally says not to judge by MMOP count
+  alone: deleting upper-triangle work can make the conveyor thinner and reduce
+  MMAC active share on the diagnostic shape.
 
 Current state has two paths:
 

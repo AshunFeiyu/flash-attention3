@@ -14,6 +14,7 @@ inline constexpr int kDkvPathWaspDkvMmac12WaveMq64 = 6;
 inline constexpr int kDkvPathWaspDkvMmac12WaveSidecarOverlay = 7;
 inline constexpr int kDkvPathWaspDkvMmac12WaveScoreDpBrick = 8;
 inline constexpr int kDkvPathWaspDkvMmac12WaveMq64Semantic = 9;
+inline constexpr int kDkvPathWaspDkvMmac12WaveCausalSkip = 10;
 
 struct DkvTileD128Mq32Nk128 {
     static constexpr int kHeadDim = 128;
