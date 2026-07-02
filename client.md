@@ -170,6 +170,10 @@ Current promotion baseline:
   a micro observation: full-perf MMAC active share is still about `21.74%`, far
   from the `>=60%` FWD-style target, and dispatch-level xcu still reports
   `abarrier -> salu_32` plus `flat_rd -> immed` as dominant gaps.
+- The sidecar lane-broadcast idea was rejected even though correctness and
+  resource gates passed: `lane_n==0 + __shfl` regressed H1/S1024 ticks from
+  `71209320` to `86765770` and MMAC active from `21.5636%` to `15.8550%`.
+  Do not use wave shuffle/bpermute as the main sidecar latency fix.
 - Next structural target: reduce page ownership/control debt or sidecar/global
   read debt.  Do not stack more consumer-order micro patches unless the
   workbook first shows how they shorten producer waits or expose a longer MMAC

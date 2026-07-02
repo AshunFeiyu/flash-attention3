@@ -1814,3 +1814,54 @@ Early release proves the page lifetime matters, but the current page topology
 still forces producer waves into long ABarrier gaps.  The next candidate should
 redesign ownership/topology or reduce sidecar/global-read debt; more consumer
 micro-scheduling will likely stay in the sub-1% range.
+
+### Sidecar Lane-Broadcast Negative
+
+Hypothesis:
+
+- Dispatch-level xcu still showed `flat_rd -> immed` at about 15% of issue
+  bubble latency.
+- In `softmax_ds_owner16_from_global_sidecar`, each q-row sidecar triplet is
+  uniform across the 16 lanes with the same `lane_col_group`.
+- Loading sidecar only on `lane_n == 0` and broadcasting with `__shfl` could
+  reduce redundant global sidecar reads without allocating LDS or adding a new
+  ABarrier token.
+
+Change tested and removed:
+
+- Added a temporary `softmax_ds_owner16_from_global_sidecar_broadcast` helper.
+- Each sidecar triplet was initialized to zero on all lanes, loaded only by
+  the subgroup source lane, then broadcast from `lane_col_group * 16`.
+- Matrix path, score/dP, dV/dK, store ownership, and ABarrier ledger were
+  unchanged.
+
+Evidence:
+
+- Static/resource gate passed:
+  `private=0`, `sgpr_count=82`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Branch-local consumer pressure was `146/160`.
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_110454`.
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_110521`.
+- Same-build W12 baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_110630`.
+- Stats-only result:
+  - sidecar broadcast `kernel_ticks=86765770`, MMAC active `15.8550%`,
+    VOP active `23.1711%`, coissue `40501/30454`.
+  - same-build W12 baseline `kernel_ticks=71209320`, MMAC active `21.5636%`,
+    VOP active `25.0698%`, coissue `29217/22022`.
+- Despite correctness and lower VGPR pressure, the active-time denominator
+  grew sharply and ticks regressed by about 21.8%.
+
+Decision:
+
+`REJECT_PERF_STATS_ONLY`.  The temporary code was removed.
+
+Conclusion:
+
+Do not use wave shuffle/bpermute broadcast to attack sidecar global-read
+latency in the main dKV kernel.  It trades visible flat-read debt for larger
+control/VALU/bpermute scheduling cost and makes the conveyor much slower.  The
+remaining sidecar/global-read debt needs either a different representation or a
+producer/page-topology solution, not per-wave broadcast.

@@ -1,5 +1,38 @@
 # Source Status
 
+## 2026-07-02 Sidecar Lane-Broadcast Negative
+
+Status: `REJECT_PERF_STATS_ONLY`
+
+A workbook-first opt-in path tested whether sidecar global-read latency could
+be reduced by loading each q-row sidecar triplet only on `lane_n == 0` and
+broadcasting it with `__shfl`.
+
+Verified evidence:
+
+- Static/source gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=82`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_110454`.
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_110521`.
+- Same-build W12 baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_110630`.
+- Sidecar broadcast H1/S1024:
+  `kernel_ticks=86765770`, MMAC active `15.8550%`, coissue `40501/30454`.
+- Same-build baseline H1/S1024:
+  `kernel_ticks=71209320`, MMAC active `21.5636%`, coissue `29217/22022`.
+
+Conclusion:
+
+The code was removed.  `__shfl`/bpermute broadcast is not a good sidecar fix in
+the current dKV conveyor: it preserves correctness but greatly increases the
+effective active-time cost and drops MMAC active share.  Future sidecar work
+should change representation or page ownership, not broadcast each row inside
+the consumer wave.
+
 ## 2026-07-02 Early RawUsed Release
 
 Status: `ACCEPT_MICRO_OBSERVE_PIPELINE`
