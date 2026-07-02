@@ -157,6 +157,11 @@ Current promotion baseline:
   The dedicated-LDS-sidecar design was rejected at resource gate: current W12
   LDS is already 128KB, so sidecar-in-LDS must replace an existing page/lifetime
   rather than append another 768B page.
+- The source-score layout probe was rejected at correctness gate:
+  `Q^T/dO^T` source-layout pages are not raw `Q/dO` drop-in replacements for
+  score/dP with the current `ds_read_matrix` mapping.  Keep raw `Q/dO` pages
+  for score/dP unless a smaller instruction-layout probe proves a different
+  mapping.
 
 Current state has two paths:
 

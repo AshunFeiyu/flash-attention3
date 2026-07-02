@@ -1668,3 +1668,44 @@ must replace an existing LDS lifetime or be paired with a topology that frees
 space.  The raw-overlay attempt already showed that adding another ownership
 generation is expensive, so the next version needs a real page/lifetime swap,
 not an appended page and not a second RawFilled/RawUsed epoch.
+
+### Source-Score Layout Probe
+
+Hypothesis:
+
+- Current W12 is LDS-full because it keeps raw `Q/dO` pages for score/dP and
+  source-layout `Q^T/dO^T` pages for dV/dK.
+- If the source-layout pages could also feed score/dP, raw `Q/dO` pages could
+  become removable in a later design, opening about 32KB for sidecar or a
+  healthier page lifecycle.
+- The probe only changed the score/dP operand source from `QBase/DoutBase` to
+  `QtBase/DoutTBase`; K/V, sidecar, dV/dK, store ownership, and barrier
+  protocol stayed unchanged.
+
+Evidence:
+
+- Workbook design and result rows were added before and after the run.
+- Static/resource gate passed for the temporary source-score symbol:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Branch pressure was clean: consumer `146/160`.
+- H1/S128 causal PMD ran but failed numerical correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_092729`.
+- Failure signal:
+  `dk_max_abs=0.000713147`, `dk_rel_l2=1.5564`,
+  `dv_max_abs=0.000420369`, `dv_rel_l2=0.00432992`, `pass=0`.
+- No H1/S1024 or perf capture was run because correctness failed first.
+- The temporary opt-in code was removed to keep the clean repo from accruing a
+  failed full-kernel path.
+
+Decision:
+
+`REJECT_LAYOUT_PROBE`.  Source-layout `Q^T/dO^T` pages are not a drop-in
+replacement for raw `Q/dO` score/dP operands under the current
+`ds_read_matrix` operand mapping.
+
+Conclusion:
+
+Keep raw `Q/dO` pages for score/dP in the main W12 design.  If this direction
+is revisited, do it as a smaller instruction/layout probe that compares raw-Q
+and source-Q fragments before entering full dKV; do not free the raw pages
+based only on the existing source-layout ABI.

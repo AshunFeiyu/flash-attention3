@@ -1,5 +1,41 @@
 # Source Status
 
+## 2026-07-02 Source-Score Layout Probe
+
+Status: `REJECT_LAYOUT_PROBE`
+
+A workbook-first focused probe tested whether existing `Q^T/dO^T`
+source-layout LDS pages can replace raw `Q/dO` pages for score/dP:
+
+- temporary source-score path was implemented as an opt-in diagnostic only
+- score/dP read operands from `QtBase/DoutTBase`
+- K/V resident pages, packed global sidecar, dV/dK read4x2, zero-seed
+  accumulation, store ownership, and ABarrier protocol were unchanged
+
+Static/resource evidence:
+
+- remote build PASS
+- symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=84`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`
+- branch pressure: consumer `146/160`
+
+Correctness evidence:
+
+- H1/S128 causal PMD run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_092729`
+- result:
+  `dk_max_abs=0.000713147`, `dk_rel_l2=1.5564`,
+  `dv_max_abs=0.000420369`, `dv_rel_l2=0.00432992`, `pass=0`
+
+Conclusion:
+
+Do not remove raw `Q/dO` pages for score/dP based on the current
+source-layout ABI.  `Q^T/dO^T` pages remain valid for the existing dV/dK path,
+but they are not a drop-in replacement for raw score/dP operands with the
+current `ds_read_matrix` mapping.  The temporary code was removed; revisit only
+with a smaller fragment-layout instruction probe.
+
 ## 2026-07-02 Causal Whole-Tile Skip
 
 Status: `REJECT_PERF_H1S1024`
