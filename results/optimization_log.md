@@ -1709,3 +1709,44 @@ Keep raw `Q/dO` pages for score/dP in the main W12 design.  If this direction
 is revisited, do it as a smaller instruction/layout probe that compares raw-Q
 and source-Q fragments before entering full dKV; do not free the raw pages
 based only on the existing source-layout ABI.
+
+### Raw-dVdK Layout Probe
+
+Hypothesis:
+
+- If raw `Q/dO` pages could feed dV/dK, the source-layout `Q^T/dO^T` pages
+  could become removable in a later design.
+- This would free about 32KB LDS in the current W12 layout and potentially make
+  room for sidecar/LDS or cleaner packet ownership.
+- The probe kept score/dP, producer publication, sidecar, store ownership, and
+  barrier protocol unchanged.  Only dV/dK operand reads changed from
+  `DoutTBase/QtBase` to raw `DoutBase/QBase`.
+
+Evidence:
+
+- Workbook design and result rows were added before and after the run.
+- Static/resource gate passed for the temporary raw-dVdK symbol:
+  `private=0`, `sgpr_count=84`, `vgpr_count=112`, no SGPR/VGPR spill.
+- Branch pressure was resource-clean but higher than the source-score probe:
+  consumer about `171/208`.
+- H1/S128 causal PMD ran but failed numerical correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_094838`.
+- Failure signal:
+  `dk_max_abs=0.000490837`, `dk_rel_l2=1.00048`,
+  `dv_max_abs=0.253552`, `dv_rel_l2=0.932977`, `pass=0`.
+- No H1/S1024 or perf capture was run because correctness failed first.
+- The temporary opt-in code was removed to keep the clean repo from accruing a
+  failed full-kernel path.
+
+Decision:
+
+`REJECT_LAYOUT_PROBE`.  Raw `Q/dO` LDS pages are not a drop-in replacement for
+source-layout `dO^T/Q^T` operands for dV/dK under the current
+`ds_read_matrix_trans_pair` mapping.
+
+Conclusion:
+
+The current W12 design still needs both raw `Q/dO` for score/dP and
+source-layout `Q^T/dO^T` for dV/dK.  The simple 32KB-LDS-freeing route is
+closed unless a smaller instruction probe proves another documented
+`matrix_load`/`ds_read_matrix` pairing.

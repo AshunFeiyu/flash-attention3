@@ -1147,3 +1147,20 @@ Decision: `REJECT_RESOURCE_DESIGN`.  Do not add sidecar/scratch LDS by
 appending bytes to the current W12 layout.  A future sidecar-in-LDS design must
 free or reuse an existing page/lifetime; raw-overlay is already a negative
 example for adding an extra ownership generation.
+
+Raw/source layout swap boundary:
+
+- source-score probe:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_092729`
+- raw-dVdK probe:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_094838`
+- both temporary paths passed static/resource checks and then failed H1/S128
+  correctness before any H1/S1024/perf run
+- conclusion: current W12 layout still needs raw `Q/dO` pages for score/dP and
+  source-layout `Q^T/dO^T` pages for dV/dK; neither page family is a drop-in
+  replacement for the other with the current `ds_read_matrix_trans_pair`
+  operand mapping
+- both temporary code paths were removed from the clean repo
+- next attempt to free LDS must change lifetimes/topology or start with a
+  smaller documented instruction-layout probe, not another direct raw/source
+  swap inside full dKV

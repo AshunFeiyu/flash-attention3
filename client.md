@@ -525,3 +525,16 @@ Rule: a larger MMAC island by itself is not enough.  The exact-128KB
 single-buffer Mq64 topology fixes redundant q-loop control but appears to lose
 too much producer/consumer overlap.  The next FWD-style design should preserve
 the high-D seed lesson while recovering LDS slack or double-buffered overlap.
+
+Raw/source layout swap boundary:
+
+- source-score probe failed H1/S128 correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_092729`
+- raw-dVdK probe failed H1/S128 correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_094838`
+- the two probes together close the direct 32KB LDS freeing route: raw
+  `Q/dO` pages are required for score/dP, and source-layout `Q^T/dO^T` pages
+  are required for dV/dK under the current operand mapping
+- do not reintroduce full-kernel raw/source swaps without a smaller
+  instruction-layout proof that names the exact `matrix_load` and
+  `ds_read_matrix` pairing
