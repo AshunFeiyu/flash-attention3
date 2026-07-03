@@ -3150,3 +3150,46 @@ Next:
 - Avoid already-rejected shortcuts: builtin raw waits, extra raw/source token
   generations, direct AllDone removal, pre-reading all source operands across
   softmax, and causal=false tuning.
+
+## 2026-07-03 Physical dKV Code Convergence
+
+Decision: `CODE_GOVERNANCE_ACCEPT`
+
+Purpose:
+
+Complete the source-convergence pass after the active route had already been
+narrowed to one canonical dKV kernel.  This round intentionally does not claim
+a performance improvement.
+
+Change:
+
+- Deleted archived `#if 0` bring-up/rejected global kernels.
+- Deleted stale experiment helpers for Mq64, semantic pages, sidecar overlay,
+  causal skip, score/dP brick, and split producers.
+- Deleted old standalone probe scripts for `fa3_bwd_dkv_probe`,
+  sidecar correctness, and fragment-sidecar correctness.
+- Reduced dKV path contract to reference correctness plus canonical dKV.
+- Tightened `scripts/check_dkv_kernel_gate.py` so stale experiment route
+  symbols are forbidden in active source.
+
+Evidence:
+
+- Remote build PASS.
+- Static dKV gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=78`, `vgpr=112`, `sgpr_spill=0`, `vgpr_spill=0`.
+- WDRA windows unchanged:
+  producer `6/16`, consumer0 `159/160`, consumer1 `159/160`.
+- H1/S128 PMD correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_111624`.
+- H1/S128 stats:
+  `simTicks=17781855`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=17781855`, `MMOP=2048`, `ldsBankConflict=0`,
+  `coissue=351/238`.
+
+Conclusion:
+
+The live repo now expresses the intended development rule: one canonical dKV
+performance kernel plus reference correctness.  Future layout or pipeline
+ideas should be implemented as focused probes or in-place edits to
+`fa3_bwd_dkv_kernel`, not as accumulated phase stacks.

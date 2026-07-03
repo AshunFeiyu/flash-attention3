@@ -830,3 +830,29 @@ H26 causal sidecar boundary:
   causal predicate specialization is not a useful route toward 60% in the
   current code shape.  Prioritize structural RawUsed/ABarrier lifetime,
   sidecar data path, or larger useful MMAC island work.
+
+Physical code convergence:
+
+- status: `CODE_GOVERNANCE_ACCEPT`
+- live dKV performance route is now only `fa3_bwd_dkv_kernel`
+- reference correctness kernels remain behind `kDkvPathReferenceCorrectness`
+- removed from live source: archived `#if 0` kernels, old Wasp path constants,
+  Mq64/semantic/sidecar-overlay/causal-skip helpers, and probe/fragment
+  standalone scripts
+- static gate now checks the active canonical route directly and forbids stale
+  experiment route symbols in `src/include`
+- remote verification:
+  build PASS, dKV kernel gate PASS, symbol metadata PASS
+  `private=0`, `sgpr=78`, `vgpr=112`, no spills
+- H1/S128 PMD correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_111624`
+- H1/S128 stats:
+  `simTicks=17781855`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=17781855`, `MMOP=2048`, `ldsBankConflict=0`,
+  `coissue=351/238`
+
+Rule going forward:
+
+- do not add another dKV performance path
+- modify `fa3_bwd_dkv_kernel` in place
+- keep experiment history in git, workbook, ledger, and optimization log

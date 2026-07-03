@@ -15,7 +15,7 @@ python3 scripts/check_symbol_metadata_gate.py \
   --symbol-regex fa3_bwd_dkv_kernel
 ./scripts/check_repo_clean.sh
 
-case_id="dkv_score_dp_probe_$(date +%Y%m%d_%H%M%S)"
+case_id="dkv_canonical_smoke_$(date +%Y%m%d_%H%M%S)"
 case_dir="${SHAOBO_RUN_ROOT}/${case_id}"
 mkdir -p "${case_dir}"
 

@@ -2171,3 +2171,43 @@ metric and should not be compared directly.  The next step should not add
 another public phase or chase generic read batching.  Continue modifying
 `fa3_bwd_dkv_kernel` in place with a workbook-backed hypothesis that targets
 raw-page ABarrier/control or exposed sidecar wait.
+
+## 2026-07-03 Physical Removal Of Stale dKV Routes
+
+Status: `CODE_GOVERNANCE_ACCEPT`
+
+Change:
+
+- Physically removed the archived `#if 0` bring-up/rejected global kernels.
+- Removed old public dKV path constants; only
+  `kDkvPathReferenceCorrectness=1` and `kDkvPathCanonicalDkv=5` remain.
+- Removed stale Mq64, semantic-page, sidecar-overlay, causal-skip, score-brick,
+  and split-producer helper bodies from `src/dkv_kernel.cpp`.
+- Removed standalone probe/fragment scripts that targeted deleted
+  `fa3_bwd_dkv_probe` behavior.
+- Simplified the standalone executable to two modes:
+  default canonical correctness and `--check=1` reference correctness.
+- Tightened `scripts/check_dkv_kernel_gate.py`: it no longer strips archived
+  blocks and now forbids stale experiment route symbols in active source.
+
+Verification:
+
+- Remote build PASS.
+- dKV kernel gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=78`, `vgpr=112`, `sgpr_spill=0`, `vgpr_spill=0`.
+- WDRA branch windows unchanged:
+  producer `6/16`, consumer0 `159/160`, consumer1 `159/160`.
+- H1/S128 PMD correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_111624`.
+- H1/S128 stats:
+  `simTicks=17781855`, `firstWaveStartTick=3613610`,
+  `lastWaveEndTick=17781855`, `MMOP=2048`, `ldsBankConflict=0`,
+  coissue `351/238`.
+
+Decision:
+
+This is a code-governance checkpoint, not a performance promotion.  Future
+dKV work should edit `fa3_bwd_dkv_kernel` directly and use git/workbook/ledger
+for experiment history instead of adding phases or preserving rejected source
+routes.

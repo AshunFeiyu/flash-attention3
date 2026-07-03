@@ -18,25 +18,6 @@ def forbid(text: str, pattern: str, failures: list[str], name: str) -> None:
         failures.append(name)
 
 
-def strip_archived_variants(source: str) -> tuple[str, str]:
-    """Return non-archived source and the active performance prefix.
-
-    The clean repo keeps rejected global kernels under a compile-time archive
-    for now.  Static evidence must not be satisfied by that block.
-    """
-    archive_marker = "\n#if 0\n// Archived rejected variants."
-    ref_marker = "\n__global__ void fa3_bwd_dkv_ref_softmax_kernel"
-    start = source.find(archive_marker)
-    if start < 0:
-        return source, source
-    end = source.find(ref_marker, start)
-    if end < 0:
-        return source[:start], source[:start]
-    non_archived = source[:start] + source[end:]
-    performance_prefix = source[:start]
-    return non_archived, performance_prefix
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", default="src/dkv_kernel.cpp")
@@ -44,8 +25,8 @@ def main() -> int:
     parser.add_argument("--asm", default="build/fa3_bwd_wasp_clean.asm")
     args = parser.parse_args()
 
-    source_raw = Path(args.source).read_text(errors="ignore")
-    source, perf_source = strip_archived_variants(source_raw)
+    source = Path(args.source).read_text(errors="ignore")
+    perf_source = source
     contract = Path(args.contract).read_text(errors="ignore")
     asm_path = Path(args.asm)
     asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
@@ -73,14 +54,12 @@ def main() -> int:
             "missing_wdra12_attribute")
     require(perf_source, r"producer_all_loop", failures,
             "missing_12wave_combined_producer")
-    require(perf_source, r"score_dp_mmac_fragments", failures,
-            "missing_score_dp_mmac_fragments")
     require(perf_source, r"wave_id\s*<\s*4", failures,
             "missing_producer_a_branch")
     require(perf_source, r"wave_id\s*<\s*8", failures,
             "missing_consumer0_branch")
-    require(perf_source, r"wave_id\s*<\s*12", failures,
-            "missing_consumer1_branch")
+    require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*1,\s*true>",
+            failures, "missing_consumer1_branch")
     require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducer12Vgprs\)",
             failures,
             "missing_producer_vgpr_window")
@@ -117,10 +96,6 @@ def main() -> int:
             "missing_canonical_path_contract")
     require(contract, r"DkvTileD128Mq32Nk128W12", failures,
             "missing_w12_tile_contract")
-    require(contract, r"kProbeProbDiagBase\s*=\s*8", failures,
-            "missing_prob_diag_contract")
-    require(contract, r"kProbeDsDiagBase\s*=\s*16", failures,
-            "missing_ds_diag_contract")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,
             "missing_active_share_target")
     require(contract, r"kForbidDuplicateScoreDp\s*=\s*true", failures,
@@ -140,6 +115,16 @@ def main() -> int:
            r"kSourceFilled|kSourceUsed|wait_source_|arrive_source_|"
            r"kSource0Filled|kSource0Used|kSource1Filled|kSource1Used",
            failures, "source_layout_must_share_page_packet_token")
+    forbid(source + contract,
+           r"kDkvPathWasp|DkvTileD128Mq64|DkvSemanticMq64|"
+           r"fa3_bwd_dkv_probe_kernel|fa3_bwd_dkv_mmac_kernel|"
+           r"fa3_bwd_dkv_mmac12_|consumer_score_dp_loop|"
+           r"consumer_dkv_mmac_loop_(causal_skip|score_dp_brick|"
+           r"sidecar_overlay|mq64)|producer_(qk|dout_v)_loop|"
+           r"producer_all_loop_(causal_skip|sidecar_overlay|mq64)|"
+           r"score_dp_mmac_fragments|softmax_ds_fragment_from_sidecar|"
+           r"probe_check|fragment_check|fa3_bwd_dkv_probe",
+           failures, "stale_experiment_route_or_probe_code")
 
     if asm:
         require(asm, r"s_set_vgpr_size", failures, "asm_missing_s_set_vgpr_size")
