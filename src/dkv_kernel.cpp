@@ -2881,6 +2881,10 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop_mq64_semantic(
         tensor_base);
 }
 
+#if 0
+// Archived bring-up kernels.  They are kept only as local reference while the
+// clean repo converges; supported dKV performance work routes through
+// fa3_bwd_dkv_kernel below.
 __global__ void __launch_bounds__(dkv::DkvTileD128Mq32Nk128::kThreadsPerCta, 1)
     __attribute__((hcu_wdra_waves_per_tg(16)))
 fa3_bwd_dkv_probe_kernel(const __half* __restrict__ dout,
@@ -3137,6 +3141,8 @@ fa3_bwd_dkv_mmac_kernel(const __half* __restrict__ dout,
 #endif
 }
 
+#endif
+
 __global__ void __launch_bounds__(dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta, 1)
     __attribute__((hcu_wdra_waves_per_tg(12)))
 fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
@@ -3249,6 +3255,9 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
 #endif
 }
 
+#if 0
+// Archived rejected variants.  Do not route or resurrect these without a
+// workbook row and a focused proof.
 __global__ void __launch_bounds__(dkv::DkvTileD128Mq32Nk128W12::kThreadsPerCta, 1)
     __attribute__((hcu_wdra_waves_per_tg(12)))
 fa3_bwd_dkv_mmac12_early_release_kernel(
@@ -4004,6 +4013,8 @@ fa3_bwd_dkv_mmac12_mq64_semantic_kernel(
     (void)softmax_scale;
 #endif
 }
+
+#endif
 
 __global__ void fa3_bwd_dkv_ref_softmax_kernel(
     const __half* __restrict__ q,

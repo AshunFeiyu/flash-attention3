@@ -2082,3 +2082,32 @@ Next:
 - Next structural target remains Tri Dao-style packet conveyor: reduce
   RawUsed/ABarrier and read-to-use gaps while preserving no duplicate score/dP,
   correct dK/dV ownership, no spill/scratch, and `ldsBankConflict=0`.
+
+## 2026-07-03 Archive Unreachable Global Kernels
+
+Status: `CODE_GOVERNANCE_ACCEPT`
+
+Change:
+
+- Old bring-up/rejected global kernels are compile-time archived.
+- Build now instantiates only the canonical dKV performance kernel plus
+  reference correctness kernels.
+- This is a code-hygiene step; no performance claim is made.
+
+Evidence:
+
+- Remote build PASS.
+- WDRA branch report shrank to the canonical kernel:
+  producer `6/16`, consumer0 `159/160`, consumer1 `159/160`.
+- `scripts/check_dkv_kernel_gate.py` PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=78`, `vgpr=112`, no spill.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_091957`.
+
+Next:
+
+- Physical deletion of archived kernels can happen after we confirm their
+  lessons are fully captured in workbook/ledger.
+- The next real optimization should alter the RawUsed/source-read/softmax
+  conveyor inside `fa3_bwd_dkv_kernel`, not create a new launch path.

@@ -3041,3 +3041,36 @@ Decision:
 single-kernel convergence checkpoint.  Further Tri Dao-style changes must
 modify `fa3_bwd_dkv_kernel` in place and record rejected alternatives in the
 workbook/ledger instead of adding another public performance route.
+
+## 2026-07-03 Archive Unreachable Global Kernels
+
+Hypothesis:
+
+- Public routing was converged, but old global kernels were still compiled.
+  This kept noisy WDRA metadata in the build and made the clean repo look like a
+  phase stack.
+
+Change:
+
+- Archived unreachable bring-up and rejected global kernels under compile-time
+  guards.
+- Build now instantiates only the reference kernels plus
+  `fa3_bwd_dkv_kernel` for dKV performance work.
+
+Evidence:
+
+- Remote build PASS.
+- Build WDRA branch report now only shows the canonical dKV branch windows:
+  producer `6/16`, consumer0 `159/160`, consumer1 `159/160`.
+- Static/source gate PASS.
+- Symbol metadata PASS for `fa3_bwd_dkv_kernel`:
+  `private=0`, `sgpr=78`, `vgpr=112`, no SGPR/VGPR spill.
+- H1/S128 PMD correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_091957`.
+
+Decision:
+
+`CODE_GOVERNANCE_ACCEPT`.  The active source is materially cleaner even before
+physical deletion.  Next performance edits should operate inside the single
+canonical kernel; archived kernels should be physically removed once their
+lessons are fully represented in workbook/ledger.
