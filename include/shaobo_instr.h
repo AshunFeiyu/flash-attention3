@@ -92,7 +92,6 @@ __device__ __forceinline__ void ds_read_matrix_trans_pair(
     const int lds_addr =
         static_cast<int>(reinterpret_cast<size_t>(lds)) + lds_offset;
     asm volatile(
-        "s_nop 0\n\t"
         "ds_read_matrix_trans_format %0, %2 offset:0 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
         "ds_read_matrix_trans_format %1, %2 offset:1024 element:0x2 row:0x2 col:0x1 alt:0x0\n"
         : "=v"(frag0), "=v"(frag1)

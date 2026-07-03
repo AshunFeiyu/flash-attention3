@@ -13,7 +13,8 @@ Outputs stay outside the repo by default:
   ${SHAOBO_RUN_ROOT}/xcu_outputs/<perf-name>_<timestamp>/
 
 The first form records detail and wavefront/bubble tables.  The second form
-also exports pipeline and SIMD CSV for the selected time window and location.
+also exports pipeline, SIMD, and coissue CSV for the selected time window and
+location.
 USAGE
 }
 
@@ -126,7 +127,8 @@ run_capture "${out_dir}/wavefronts_bubbles.txt" \
 if [[ -n "${time_range}" ]]; then
   pipeline_dir="${out_dir}/pipeline"
   simd_dir="${out_dir}/simd"
-  mkdir -p "${pipeline_dir}" "${simd_dir}"
+  coissue_dir="${out_dir}/coissue"
+  mkdir -p "${pipeline_dir}" "${simd_dir}" "${coissue_dir}"
 
   simd_location="$(printf '%s\n' "${location}" | sed -E 's/,?wave=[^,]+//g; s/,,+/,/g; s/,$//')"
 
@@ -144,6 +146,13 @@ if [[ -n "${time_range}" ]]; then
     --sqtt-location "${simd_location}" \
     -F csv -D "${simd_dir}" > "${out_dir}/simd_export.txt" 2>&1
 
+  "${xcu_bin}" status -P "${perf_abs}" \
+    --sqtt-sections coissue \
+    --sqtt-dispatches "${dispatch}" \
+    --sqtt-time-range "${time_range}" \
+    --sqtt-location "${simd_location}" \
+    -F csv -D "${coissue_dir}" > "${out_dir}/coissue_export.txt" 2>&1
+
   {
     echo
     echo "## Window exports"
@@ -153,6 +162,12 @@ if [[ -n "${time_range}" ]]; then
     echo "simd_location: ${simd_location}"
     echo "pipeline_dir: ${pipeline_dir}"
     echo "simd_dir: ${simd_dir}"
+    echo "coissue_dir: ${coissue_dir}"
+    echo
+    echo "## Coissue outputs"
+    echo
+    echo "- *_sqtt_coissue_summary.csv"
+    echo "- *_sqtt_coissue_opcodes.csv"
   } >> "${out_dir}/manifest.md"
 else
   {

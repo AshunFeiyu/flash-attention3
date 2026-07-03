@@ -20,6 +20,7 @@ run_outputs/
 sqtt_csv/
 xcu_outputs/
 xcu_sidecar/
+work/
 *.perf
 *.csv
 *.jsonl

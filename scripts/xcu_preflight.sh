@@ -41,11 +41,29 @@ find_xcu_in_sidecar() {
   find "${XCU_SIDECAR_ROOT}" -type f -name xcu -perm -111 2>/dev/null | head -n 1
 }
 
+find_installed_xcu() {
+  local candidate
+  for candidate in \
+    "/zys/shaobo/tools/bin/xcu" \
+    "/zys/shaobo/tools/xcompute-light-sqtt-cli/xcompute-light-current/XCompute/bin/xcu" \
+    "/zys/shaobo/tools/xcompute-light-sqtt-cli/unpack/opt/XCompute-Light-4.6.3/XCompute/bin/xcu"
+  do
+    if [[ -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 xcu_bin=""
 if command -v xcu >/dev/null 2>&1; then
   xcu_bin="$(command -v xcu)"
 else
-  xcu_bin="$(find_xcu_in_sidecar || true)"
+  xcu_bin="$(find_installed_xcu || true)"
+  if [[ -z "${xcu_bin}" ]]; then
+    xcu_bin="$(find_xcu_in_sidecar || true)"
+  fi
   if [[ -z "${xcu_bin}" ]]; then
     deb_path="$(find_deb)" || {
       echo "xcu not found and sidecar deb not found. Set XCU_DEB=/path/to/XCompute-Light-*.deb" >&2

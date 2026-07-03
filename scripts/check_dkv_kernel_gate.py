@@ -31,8 +31,6 @@ def main() -> int:
     asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
     failures: list[str] = []
 
-    require(source, r"fa3_bwd_dkv_probe_kernel",
-            failures, "missing_probe_kernel")
     require(source, r"fa3_bwd_dkv_ref_softmax_kernel",
             failures, "missing_ref_softmax_kernel")
     require(source, r"fa3_bwd_dkv_ref_output_kernel",
@@ -41,35 +39,20 @@ def main() -> int:
             "missing_cpu_reference_dkv")
     require(source, r"fa3_bwd_dkv_correctness", failures,
             "missing_correctness_status_line")
-    require(source, r"softmax_ds_pair_sidecar", failures,
-            "missing_softmax_ds_sidecar")
-    require(source, r"fa3_bwd_dkv_sidecar", failures,
-            "missing_sidecar_status_line")
-    require(source, r"softmax_ds_fragment_from_sidecar", failures,
-            "missing_fragment_sidecar_helper")
-    require(source, r"fa3_bwd_dkv_fragment_sidecar", failures,
-            "missing_fragment_sidecar_status_line")
+    require(source, r"fa3_bwd_dkv_kernel", failures,
+            "missing_canonical_dkv_kernel")
     require(source, r"consumer_dkv_mmac_loop", failures,
             "missing_dkv_mmac_consumer_loop")
     require(source, r"score_dp_mmac_owner16", failures,
             "missing_owner16_score_dp_mmac")
     require(source, r"dv_dk_mmac_owner16", failures,
             "missing_owner16_dv_dk_mmac")
-    require(source, r"fa3_bwd_dkv_mmac_correctness", failures,
-            "missing_dkv_mmac_status_line")
-    require(source, r"fa3_bwd_dkv_mmac12_kernel", failures,
-            "missing_dkv_mmac12_kernel")
+    require(source, r"kDkvPathCanonicalDkv", failures,
+            "missing_canonical_path")
     require(source, r"hcu_wdra_waves_per_tg\(12\)", failures,
             "missing_wdra12_attribute")
     require(source, r"producer_all_loop", failures,
             "missing_12wave_combined_producer")
-    require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
-            "missing_wdra_attribute")
-    require(source, r"producer_qk_loop", failures, "missing_producer_qk_loop")
-    require(source, r"producer_dout_v_loop", failures,
-            "missing_producer_dout_v_loop")
-    require(source, r"consumer_score_dp_loop", failures,
-            "missing_consumer_score_dp_loop")
     require(source, r"score_dp_mmac_fragments", failures,
             "missing_score_dp_mmac_fragments")
     require(source, r"wave_id\s*<\s*4", failures, "missing_producer_a_branch")
@@ -103,14 +86,8 @@ def main() -> int:
             "missing_barrier_ledger")
     require(contract, r"kDkvPathReferenceCorrectness\s*=\s*1", failures,
             "missing_reference_path_contract")
-    require(contract, r"kDkvPathWaspSoftmaxDsSidecar\s*=\s*2", failures,
-            "missing_sidecar_path_contract")
-    require(contract, r"kDkvPathWaspFragmentSidecar\s*=\s*3", failures,
-            "missing_fragment_sidecar_path_contract")
-    require(contract, r"kDkvPathWaspDkvMmac\s*=\s*4", failures,
-            "missing_dkv_mmac_path_contract")
-    require(contract, r"kDkvPathWaspDkvMmac12Wave\s*=\s*5", failures,
-            "missing_dkv_mmac12_path_contract")
+    require(contract, r"kDkvPathCanonicalDkv", failures,
+            "missing_canonical_path_contract")
     require(contract, r"DkvTileD128Mq32Nk128W12", failures,
             "missing_w12_tile_contract")
     require(contract, r"kProbeProbDiagBase\s*=\s*8", failures,
@@ -133,7 +110,8 @@ def main() -> int:
     forbid(source, r"kPacketAFilled|kPacketAUsed|kPacketBFilled|kPacketBUsed",
            failures, "single_packet_probe_barrier_tokens")
     forbid(source + contract,
-           r"kSourceFilled|kSourceUsed|wait_source_|arrive_source_",
+           r"kSourceFilled|kSourceUsed|wait_source_|arrive_source_|"
+           r"kSource0Filled|kSource0Used|kSource1Filled|kSource1Used",
            failures, "source_layout_must_share_page_packet_token")
 
     if asm:
@@ -145,7 +123,7 @@ def main() -> int:
                 "asm_missing_ds_read_matrix")
         require(asm, r"v_mmac_.*lit", failures, "asm_missing_v_mmac_lit")
         require(asm, r"s_setprio", failures, "asm_missing_s_setprio")
-        require(asm, r"fa3_bwd_dkv_probe_kernel", failures,
+        require(asm, r"fa3_bwd_dkv_kernel", failures,
                 "asm_missing_kernel_symbol")
 
     if failures:

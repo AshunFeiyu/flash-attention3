@@ -1,5 +1,127 @@
 # Optimization Log
 
+## 2026-07-03 H19A Pre-Read All Source Before Softmax
+
+Decision: `REJECT_RESOURCE`
+
+Hypothesis:
+
+`Move both low and high dV/dK source reads before softmax/dS so the consumer can
+arrive RawUsed earlier.  This should shorten the raw page lifetime and reduce
+the dominant producer-side RawUsed ABarrier bubble seen in xcu.`
+
+Implemented:
+
+- Added a helper that consumes already-read low+high source fragments.
+- In the W12 early-release consumer path, read high `dO^T/Q^T` immediately
+  after the low source reads, waited once, and arrived `RawUsed` before
+  softmax/dS.
+
+Rejected evidence:
+
+- Remote build produced asm, but symbol metadata gate failed for
+  `fa3_bwd_dkv_mmac12_kernel`:
+  `private_segment_fixed_size=24`, `vgpr_spill_count=10`, `sgpr_count=80`,
+  `vgpr_count=112`.
+- The consumer branch pressure hit the current 160 VGPR WDRA window, matching
+  the expected risk of carrying all source fragments across softmax/dS.
+
+Conclusion:
+
+The active route was reverted.  H19A proves that shortening page lifetime by
+pre-reading all source operands is not viable inside the current 160 VGPR
+consumer budget.  A future retry must be an explicit H19B-style resource
+experiment with a justified 208 VGPR window or a smaller softmax live range,
+and must pass no-spill metadata before correctness/perf.
+
+Restored baseline:
+
+- Static/resource gate after revert:
+  `private_segment_fixed_size=0`, `sgpr_count=84`, `vgpr_count=112`, no
+  SGPR/VGPR spill, branch consumers `150/160`.
+- H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_033619`,
+  `kernel_ticks=15342145`, `MMOP=2048`, `ldsBankConflict=0`.
+- H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_033625`,
+  `kernel_ticks=70444920`, `MMOP=131072`, `coissue=32369/20986`,
+  `ldsBankConflict=0`.
+
+## 2026-07-03 H19B 208 VGPR Pre-Read All Source
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Hypothesis:
+
+`H19A failed because the 160 VGPR consumer window could not hold both low and
+high dO^T/Q^T source fragments across softmax/dS.  Widen the W12 consumer role
+to 208 VGPR and rerun the same earlier RawUsed release timing.`
+
+Implemented:
+
+- W12 canonical dKV consumers used `kConsumerMq64Vgprs=208`.
+- Consumer loop read low+high source fragments, waited once, arrived
+  `RawUsed`, then ran softmax/dS and dV/dK MMAC from the pre-read source regs.
+- No new kernel, path, or phase was added.
+
+Evidence:
+
+- Static/resource PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=76`, `vgpr_count=144`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`, branch consumers `164/208`.
+- H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_034717`,
+  `kernel_ticks=15167425`, `MMOP=2048`, `ldsBankConflict=0`.
+- H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_034723`,
+  `kernel_ticks=77708085`, `MMOP=131072`, `coissue=31351/23990`,
+  `ldsBankConflict=0`.
+- Restored canonical comparison:
+  `kernel_ticks=70444920`, `coissue=32369/20986`.
+
+Conclusion:
+
+The 208 VGPR window removes the H19A spill and preserves correctness, but it
+regresses S1024 ticks by about `10.31%`.  The wider window and longer live range
+are not the path to 60% MMAC active.  Revert H19B and shift the next design
+toward reducing consumer-side sidecar/mask/softmax work or changing page
+ownership without carrying source fragments across a large VALU section.
+
+## 2026-07-03 H20A Owner16 Full-Valid Softmax Fast Path
+
+Decision: `REJECT_CORRECTNESS`
+
+Hypothesis:
+
+`Causal full-valid tiles should not pay the per-element qrow/valid_pair branch.
+Split softmax_ds_owner16_from_global_sidecar into full-valid and masked paths
+to reduce consumer VALU/mask work without touching MMAC or ABarrier.`
+
+Implemented:
+
+- Added a full-valid branch in `softmax_ds_owner16_from_global_sidecar`.
+- The full-valid branch computes P and dS directly from packed sidecar rows.
+- The masked branch preserved the original validity logic.
+
+Evidence:
+
+- Static/resource PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=83`, `vgpr_count=112`, no spill,
+  branch consumers `155/160`.
+- H1/S128 correctness failed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_035528`,
+  `dk_rel_l2=0.000361379`, `dv_max_abs=0.518505`, `dv_rel_l2=14.4712`,
+  `pass=0`.
+- A retry with explicit `p_vec{}`/`ds_vec{}` initialization also failed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_035643`.
+
+Conclusion:
+
+The failure reproduces the older full-valid fastpath dV issue.  Revert H20A.
+Do not attack the sidecar/mask cost by splitting this helper in the main route
+until a focused owner16 fragment/codegen probe explains why dV changes while
+dK remains near the baseline.
+
 ## 2026-07-01 Clean dKV WASP Probe
 
 Decision: `BRINGUP_ONLY`
@@ -1865,3 +1987,1057 @@ latency in the main dKV kernel.  It trades visible flat-read debt for larger
 control/VALU/bpermute scheduling cost and makes the conveyor much slower.  The
 remaining sidecar/global-read debt needs either a different representation or a
 producer/page-topology solution, not per-wave broadcast.
+
+### v_mov Reduction Attempts From ASM
+
+Hypothesis:
+
+- XCompute CLI showed `v_mov_b32_e32` as a top BWD coissue/VALU opcode.
+- The first response must come from compile-time asm, not from guessing which
+  source block a SQTT opcode belongs to.
+
+ASM baseline:
+
+- Build command: `TARGET_GFX=946 BUILD_ASM=1 ./build.sh`.
+- Symbol: `fa3_bwd_dkv_mmac12_kernel`.
+- Baseline opcode counts inside the symbol:
+  `total_ops=1713`, `v_mov=176`, `v_mov_b32=168`,
+  `v_cvt_pk_f16_f32=0`, `v_mmac=192`, `ds_read_matrix=112`,
+  `matrix_load=12`, `s_waitcnt=44`, `s_abarrier=34`.
+- `.loc` mapping of the largest static `v_mov` groups:
+  - `98` at `loc=0:0`, including `v_mov_b32_e32 0x3fb8aa3b`.
+  - `32` at `src/dkv_kernel.cpp:2432`, around `page = q_tile & 1`.
+  - `32` at `src/dkv_kernel.cpp:300`, around `arrive_raw_used_page`.
+  - `8` at `include/shaobo_instr.h:32`, `zero_f16x8`.
+
+Rejected attempts:
+
+- Full-valid softmax pack fast path:
+  - The uninitialized-vector variant failed correctness.
+  - The `cvt_pk` variant passed S128 correctness but worsened asm:
+    `v_mov 176 -> 184`, `v_cvt_pk 0 -> 32`, `s_waitcnt 44 -> 56`.
+  - Removed.
+- Page-specialized body expansion:
+  - Replaced runtime `page` helpers with page0/page1 template bodies.
+  - Worsened resource/codegen: consumer branch VGPR hit `160/160`, emitted
+    `found vgpr before wave branch` warnings.
+  - Worsened asm: `total_ops 1713 -> 3615`, `v_mov 176 -> 484`,
+    `v_mmac 192 -> 384`, `s_waitcnt 44 -> 103`.
+  - Removed.
+- `softmax_scale_log2` local hoist:
+  - Build/resource gate passed but produced identical main-symbol opcode
+    counts and kept `log2e_const=2`.
+  - Removed as no-effect noise.
+- Score/dP inline-asm brick:
+  - Replaced the `score_dp_mmac_owner16` builtin MMAC loop with an
+    eight-MMAC inline asm brick modeled after the older FWD-style code.
+  - Static/resource gate passed, `vgpr_count=112`, no spill/scratch.
+  - ASM changed only marginally: `total_ops 1713 -> 1709`, but
+    `v_mov` stayed `176` and `v_mov_b32` stayed `168`.
+  - Correctness passed for H1/S128 and H1/S1024.
+  - H1/S1024 stats-only regressed: `simTicks=74360650`, worse than the
+    current W12 baseline band around `70.6M-71.2M`.
+  - Removed.
+
+Conclusion:
+
+`REJECT_ASM_OR_STATS` for these four candidates.  The largest remaining `v_mov`
+groups are not simple softmax vector initialization.  They are mostly compiler
+register remap around q-loop/page/ABarrier control flow plus small zero-seed
+setup.  The next serious route should be a narrower codegen-control probe or a
+page/topology redesign that reduces live accumulator movement without
+duplicating the whole loop body.
+
+Follow-up candidates, 2026-07-02:
+
+- Prezero dV/dK accumulators and remove the `q_tile == 0` branch:
+  - Change: initialize all `dv_acc/dk_acc` before the q-loop, then always call
+    the accumulate path.
+  - Resource gate passed and metadata stayed spill-free:
+    `sgpr_count 84 -> 80`, `vgpr_count=112`.
+  - ASM rejected the idea: `v_mov_total 176 -> 196`, adding
+    `148` `v_mov_b64_e32` accumulator copies.  Static `v_mmac` also changed
+    `192 -> 128` by removing the duplicated first-tile branch body, which is
+    not a runtime win by itself.
+  - Removed.
+- Use inline-asm `s_abarrier_arrive` for `arrive_raw_used_page`:
+  - Change: only swapped `abarrier_arrive_cnt<false>` to
+    `abarrier_arrive_cnt<true>` for the consumer RawUsed release.
+  - Resource gate passed, but asm was byte-for-byte equivalent for the relevant
+    symptom: `v_mov_total` stayed `176`, and the `src/dkv_kernel.cpp:300`
+    group stayed `32`.
+  - Removed as no-effect noise.
+- Peel the first q tile:
+  - Change: factor one `consumer_dkv_mmac_one_tile` helper, run q_tile 0 with
+    zero-seed `<true>` before the loop, then loop q_tile 1..N with `<false>`.
+  - Resource gate passed and improved static branch pressure:
+    consumer branch `150/160 -> 147/160`, metadata `sgpr_count 84 -> 80`,
+    no scratch/spill.
+  - ASM improved the narrow `v_mov` metric:
+    `v_mov_total 176 -> 84`; the page/release remap groups disappeared.
+  - But it expanded the static body:
+    `v_mmac 192 -> 256`, `ds_read_matrix 112 -> 192`,
+    `s_waitcnt 44 -> 64`, `global_load_dwordx3 16 -> 32`.
+  - Correctness passed:
+    - H1/S128 m5out
+      `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_230035/m5out`
+    - H1/S1024 m5out
+      `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_230113/m5out`
+  - H1/S1024 stats regressed: `simTicks=73019765`, worse than the current W12
+    baseline band around `70.6M-71.2M`.
+  - Decision: `REJECT_STATS`.  Static `v_mov` reduction is not enough if it
+    increases code footprint/read/wait pressure and loses ticks.
+- Temporary codegen flag probes:
+  - Tested only by emitting temporary asm under `/tmp`, without changing
+    `build.sh`:
+    - `-mllvm -amdgpu-opt-vgpr-liverange=true`
+    - `-mllvm -join-globalcopies=true -mllvm -join-splitedges=true`
+    - `-mllvm -amdgpu-dce-in-ra=true`
+  - All three produced the same main-symbol `v_mov_total=176` and the same
+    top groups (`0:0:5`, `src/dkv_kernel.cpp:2432`, `0:0:0`,
+    `src/dkv_kernel.cpp:300`).
+  - Decision: `REJECT_NO_EFFECT`.  Do not add these flags to `build.sh`.
+
+Updated conclusion:
+
+The remaining useful `v_mov` work is not a local zero-init problem.  FWD also
+uses `inline_vgpr2_init_zero` for `mmac_zeros`; its advantage is that the zero
+setup is amortized across a much larger and better-overlapped MMAC conveyor.
+For BWD, direct attempts to erase q-loop/page remaps either add accumulator
+copies or inflate the code body.  Next candidates should reduce the need for
+page/first-tile control in the steady loop without duplicating score/softmax
+work, or should attack the larger pipeline issue rather than treating `v_mov`
+as an isolated metric.
+
+### Main Bottleneck Pass: RawUsed ABarrier
+
+Evidence baseline:
+
+- Pre-change full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_234326`
+- xcu detail:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/main_bottleneck_w12_h1s1024_20260702_234326/detail.txt`
+- H1/S1024, `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`, causal.
+- Baseline full perf:
+  `kernel_ticks=71040060`, MMAC active avg `21.82%`,
+  `coissue=30387/21352`, `ldsBankConflict=0`.
+- Top SQTT bubble:
+  `s_abarrier_try_wait -> s_xor_b32`, `3.590M cycles`, `28.64%`,
+  example `s_abarrier_try_wait s0, 2` (`Raw0Used`).
+- Same-window SIMD probe around `5128:11564` showed producer and consumer
+  wave slots all dominated by ABarrier bubbles, so this is a real conveyor
+  stall, not only a harmless producer-idle accounting artifact.
+
+Canonical early-release promotion:
+
+- Change: use existing verified `EarlyReleasePage=true` in the canonical
+  `fa3_bwd_dkv_mmac12_kernel` consumer calls.
+- Rationale: release `RawUsed` after high source operands are read, before the
+  high dV/dK MMAC island.
+- Build/static/metadata PASS:
+  `private=0`, `sgpr=84`, `vgpr=112`, no spills.
+- Stats-only H1/S1024:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_235302`
+  with `kernel_ticks=70505435`, MMAC active avg `21.8494%`.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260702_235606`
+  with `kernel_ticks=70658770`, MMAC active avg `21.8783%`,
+  `coissue=31248/20588`, `ldsBankConflict=0`.
+- xcu detail:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/main_bottleneck_w12_earlycanon_h1s1024_20260702_235606/detail.txt`
+  still shows `s_abarrier_try_wait -> s_xor_b32` at `3.576M cycles`,
+  `28.66%`.
+- Decision: `ACCEPT_MICRO_CANONICAL`.  Keep because ticks/coissue move in the
+  right direction and resources stay clean, but do not call this a pipeline
+  solution; RawUsed remains the main SQTT bubble.
+
+Rejected split raw/source token retry:
+
+- Change: split raw `Q/dO` page lifetime and source-layout `Q^T/dO^T` page
+  lifetime into separate ABarrier tokens so raw can be reused after score/dP
+  while source stays live until dV/dK operand read.
+- Rationale: this directly attacks the RawUsed over-serialization observed by
+  xcu without adding LDS bytes.
+- Build/static/metadata PASS:
+  `private=0`, `sgpr=86`, `vgpr=112`, no spills.
+- Correctness:
+  - H1/S128 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_001233`
+  - H1/S1024 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_001305`
+- H1/S1024 stats regressed:
+  `kernel_ticks=75855325`, MMAC active avg `21.0489%`,
+  `coissue=26810/18008`, `ldsBankConflict=0`.
+- Decision: `REJECT_PERF_STATS_ONLY`; code removed from the active route.
+  Lesson: more precise ABarrier ownership can be worse when it adds extra
+  phase flips/control and inserts a new source-filled wait on the consumer path.
+  Future RawUsed work should reduce token turns or useful-work-hide the wait,
+  not add another page-generation protocol.
+
+Rejected RawUsed builtin-wait probe:
+
+- Change: only swapped `wait_raw_used_page` from inline-asm
+  `abarrier_try_wait<true>` to builtin `abarrier_try_wait<false>`.
+- Rationale: test whether the large xcu
+  `s_abarrier_try_wait -> s_xor_b32` bubble is amplified by the hand-written
+  phase flip / scheduling barriers rather than true page ownership wait.
+- Result: static metadata gate failed before PMD:
+  `private_segment_fixed_size=12`, `sgpr=88`, `vgpr=112`, no SGPR/VGPR spill.
+- Decision: `REJECT_STATIC_PRIVATE_SEGMENT`; code removed.
+- Lesson: for this full dKV body, builtin RawUsed wait changes codegen enough
+  to create private segment.  Keep the inline wait form unless a focused probe
+  proves a spill-free replacement.
+
+### Tile Ledger For The 60% MMAC-Active Push
+
+Workbook and repo ledger:
+
+- Shared workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`
+- Repo ledger:
+  `results/tile_ledger_20260703.md`
+
+Current canonical topology:
+
+- `fa3_bwd_dkv_mmac12_kernel`
+- `Mq=32,Nk=128,D=128`, 12 waves
+- waves0-3: one producer group
+- waves4-7 and waves8-11: two consumer groups
+- each consumer wave owns `Nk=16` and full `D=128`
+- `S1024` has `32` q-packet turns and `8` K CTAs
+
+MMAC accounting:
+
+- per consumer wave per q tile:
+  `score=16`, `dP=16`, `dV=16`, `dK=16`, total `64`
+- per CTA per q tile:
+  `8 consumer waves * 64 = 512`
+- per CTA for `S1024`:
+  `512 * 32 = 16384`
+- dispatch total for `H1/S1024`:
+  `8 K CTAs * 16384 = 131072`, matching PMD `MMOP`
+
+Resource boundary:
+
+- current LDS is already exactly 128KB:
+  `K 32KB + V 32KB + Q raw 16KB + dO raw 16KB + Q^T source 16KB + dO^T source 16KB`
+- appending a dedicated sidecar page is invalid under the current layout
+- `Mq64` single-buffer also fits exactly 128KB and doubles the consumer MMAC
+  island to `128` per wave per q packet, but prior seedfix/perf work showed it
+  lost too much overlap
+- `Mq64` double-buffer and `Mq128` single-buffer both exceed 128KB when raw and
+  source-layout operands are both kept resident with K/V
+
+Design conclusion:
+
+- the current low MMAC-active share is not because MMAC is absent; it is because
+  the steady loop is packet/control dominated
+- the accepted mainline has only a `64`-MMAC island per consumer wave before
+  the next packet protocol
+- the top xcu bubble remains RawUsed ABarrier, about `28.66%`
+- the next promoted change must increase effective MMAC island length or hide
+  packet waits without adding ABarrier token families, without appending LDS,
+  and without duplicating score/dP
+
+### RawUsed Release After High-Read Candidate A
+
+Decision: `REJECT_XCU_PRIMARY_METRIC`
+
+Hypothesis:
+
+- The canonical early-release path still waits for the high source
+  `ds_read_matrix` to become ready before arriving `RawUsed`.
+- Move `arrive_raw_used_page` earlier, immediately after issuing the high
+  source read and before the low dV/dK MMAC island.
+- Expected benefit: producers can reuse the raw page while the consumer is
+  still doing useful low/high dV/dK MMAC work, reducing the dominant
+  `s_abarrier_try_wait -> s_xor_b32` bubble.
+
+Evidence:
+
+- Build/static/metadata stayed clean:
+  `private=0`, `sgpr=84`, `vgpr=112`, no spill/scratch.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_020841`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_020926`
+  with `kernel_ticks=69979910`, MMAC active avg `21.8854%`,
+  `coissue=33672/21734`, `ldsBankConflict=0`.
+- H1/S1024 full perf correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_021203`
+  with `kernel_ticks=69865705`, MMAC active avg `21.8495%`,
+  `coissue=33894/21881`, `ldsBankConflict=0`.
+- xcu output:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/rawused_candidateA_h1s1024_20260703_021203`.
+- xcu comparison versus canonical:
+  - canonical `s_abarrier_try_wait -> s_xor_b32`:
+    `3.576M cycles`, `28.66%`.
+  - candidate A `s_abarrier_try_wait -> s_xor_b32`:
+    `3.538M cycles`, `28.61%`.
+  - canonical `s_waitcnt` hot latency:
+    `2.960M cycles`, `22.04%`.
+  - candidate A `s_waitcnt` hot latency:
+    `3.007M cycles`, `22.57%`.
+  - canonical `v_mov_b32_e32 -> v_mov_b32_e32` bubble:
+    `362K cycles`, `2.90%`.
+  - candidate A `v_mov_b32_e32 -> v_mov_b32_e32` bubble:
+    `378K cycles`, `3.05%`.
+
+Conclusion:
+
+Correctness and resources are fine, but the hypothesis does not hold.  The
+dominant RawUsed ABarrier bubble remains essentially unchanged, full-perf MMAC
+active is flat to slightly worse, and wait/move-side bubbles increase.  The code
+was reverted from the canonical path.  Treat this as evidence that simply
+moving the release a few instructions earlier cannot close the 60% MMAC-active
+gap; the next route must reduce packet-turn count, lengthen useful MMAC
+islands, or change producer/page topology.
+
+Next candidates:
+
+- first re-derive an `Mq64`-equivalent conveyor using the existing two `Mq32`
+  physical pages, so we can test longer MMAC islands without new LDS bytes
+- keep a clean `Mq64` single-buffer reference as a comparison, but do not
+  promote it unless it beats same-build W12 on ticks and MMAC active
+- only revisit a 16-wave FWD-style role split after the workbook proves the
+  second producer has recurring useful work under the same 128KB LDS budget
+
+## 2026-07-03 Mq64 Long-Island Reorder
+
+Decision: `REJECT_CORRECTNESS`
+
+Hypothesis:
+
+- use the existing Mq64 single-buffer route, not a new phase
+- increase the effective MMAC island by joining the two 32-row halves before
+  returning to packet/control work
+- keep LDS unchanged at 128KB and avoid new ABarrier token families
+
+Tried variants:
+
+- score/dP both halves, then softmax both halves, then dV/dK both halves
+- score/dP both halves, then one half at a time for softmax+dV/dK
+- full Mq64 helper: `score[4]/dp[4] -> softmax[4] -> dV/dK[4]`
+
+Evidence:
+
+- all variants were static-resource clean:
+  `private=0`, no scratch/spill, Mq64 symbol `sgpr=100`, `vgpr=144`
+- branch consumer pressure stayed within the 208 window:
+  `191/208`, `187/208`, `179/208`
+- all variants failed H1/S128 causal correctness in the same way:
+  exact `dK`, but `dV bad=16384`, `dv_max_abs=2.73637e-05`,
+  `dv_rel_l2=0.000267234`, `pass=0`
+- evidence dirs:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_012315`,
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_012619`,
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_012810`
+
+Conclusion:
+
+Simple Mq64 live-range stretching is not a valid route to FWD-like long MMAC
+islands.  It either exposes an Mq64 dV seed/layout hazard or a PMD/codegen
+hazard around holding score/dP across the half-block boundary.  The live code
+was restored to the prior Mq64 half-sequential shape; next work should focus on
+topology/page lifetime or write a focused Mq64 dV seed/layout probe.
+
+## 2026-07-03 W16 WG-Local Nk64 Semantic Conveyor
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Design premise:
+
+- current W12 is correct and no-duplicate, but xcu shows shared RawUsed
+  ABarrier remains dominant and MMAC active is stuck around `21.9%`
+- split the CTA into two independent 8-wave WG-local conveyors:
+  `P0/C0` owns `K/V0..63`, `P1/C1` owns `K/V64..127`
+- resource stress showed that private raw double pages plus private source
+  double pages would require `192KB`; the legal candidate must use semantic
+  pages:
+  `K/V64 32KB + two 16KB Q/dO-or-QT/DOT pages = 64KB/WG`
+
+Implementation:
+
+- reused the existing 16-wave `fa3_bwd_dkv_mmac_kernel` route as the candidate
+  path, leaving the W12 canonical baseline intact
+- added WG-local semantic LDS offsets, WG-local page token helpers, and
+  producer/consumer loops
+- producer publishes raw page0/page1, then alternates
+  `wait raw used -> source fill -> wait source used -> next raw fill`
+- consumer performs
+  `wait raw -> score/dP -> raw used -> softmax/dS -> wait source -> dV/dK`
+
+Evidence:
+
+- build/static metadata PASS:
+  `private=0`, `sgpr=86`, `vgpr=88`, `sgpr_spill=0`, `vgpr_spill=0`
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_024846`
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_024909`
+- H1/S1024 stats:
+  `kernel_ticks=80790710`, `MMOP=131072`, `ldsBankConflict=0`,
+  `coissue=30775/21592`, `MMAC active=19.1856%`,
+  `VOP active=27.6249%`
+
+Conclusion:
+
+The candidate is resource/correctness-clean but fails the primary objective.
+WG-local independence is not enough when it is paid for with duplicated
+Q/dO/source loads and an exposed raw/source semantic epoch.  This confirms that
+the next 60% attempt should not simply clone FWD's two-WG topology; it must
+either preserve W12's shared double-buffering while reducing exposed barrier
+time, or increase the per-consumer useful MMAC island without adding a source
+epoch wait.
+
+## 2026-07-03 Legacy W16 Split-Producer Probe
+
+Decision: `REJECT_RUNTIME_HANG`
+
+Hypothesis:
+
+- test the existing 16-wave path as a cheap FWD-style reference before writing
+  new code
+- waves0-3 publish Q/K, waves12-15 publish dO/V, and waves4-11 consume
+
+Evidence:
+
+- metadata gate passed:
+  `private=0`, `sgpr=78`, `vgpr=84`, no SGPR/VGPR spill
+- H1/S128 causal PMD path:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_013236`
+- PMD emitted `read vgpr112 before writing`
+- the run did not finish after more than `18B` simulated ticks and was killed
+
+Conclusion:
+
+The old W16 route is not a valid shortcut to FWD-style dKV.  A future 16-wave
+design must be re-derived around exact producer arrival counts and consumer
+release counts.  Role count alone does not create WASP; the barrier ownership
+protocol has to be designed as carefully as the tile.
+
+Update after q-loop audit:
+
+- root cause for the S128 non-convergence was a real loop-bound bug in
+  `producer_qk_loop`: the producer used fixed `Tile::kQTilesPerCta` instead of
+  runtime `q_tiles`
+- after changing the producer to stop at `q_tiles`, W16 H1/S128 and H1/S1024
+  both pass correctness
+- H1/S1024 q-loop-fix stats:
+  `kernel_ticks=73333260`, MMAC active avg `20.5512%`, coissue
+  `34952/26250`, `ldsBankConflict=0`
+- evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_013701`,
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_013725`
+
+Decision: `OBSERVE_CORRECTNESS_PASS`.  Keep the q-loop bound fix because it
+removes a real runtime bug, but do not promote W16 as a performance route.
+
+## 2026-07-03 W16 Split-Producer Early Release
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Hypothesis:
+
+- take the now-correct legacy W16 split-producer route and apply the same early
+  RawUsed release used by the W12 canonical route
+- expected benefit: reduce packet lifetime pressure and give the two producers
+  more chance to overlap with consumers
+
+Evidence:
+
+- static/resource gate passed:
+  `private=0`, `sgpr=78`, `vgpr=84`, no scratch/spill
+- H1/S128 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_014618`
+- H1/S1024 causal correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_014638`
+- H1/S1024 stats:
+  `kernel_ticks=74882080`, MMAC active avg `20.3284%`, coissue
+  `32395/24677`, total MMOP `131072`, `ldsBankConflict=0`
+- comparison:
+  q-loop-fix W16 before early-release was `73333260` ticks and `20.5512%`
+  MMAC active; W12 canonical is about `70.5M` stats-only ticks and
+  `21.8783%` full-perf MMAC active
+
+Conclusion:
+
+Role count and split producers are not sufficient.  This path still has too
+little useful consumer MMAC density and too much control/barrier cost.  Revert
+the W16 early-release edit from the active route; keep only the q-loop bound
+fix because it is a correctness/runtime repair.
+
+## 2026-07-03 W12 dV/dK Source Quad-Read Probe
+
+Decision: `OBSERVE_REJECT_PERF`
+
+Hypothesis:
+
+- FWD has PMD-only contiguous `ds_read_matrix` blocks without `s_nop`.
+- Current BWD dV/dK source operand read uses four pair wrappers, each carrying
+  a local `s_nop`, which xcu reports as part of the read-side bubble.
+- Change only the canonical dV/dK source read helper from four pair reads to
+  two contiguous 4-read blocks: one for `dO^T`, one for `Q^T`.
+
+Evidence:
+
+- build/static/resource passed:
+  `private=0`, `sgpr=82`, `vgpr=112`, no spill/scratch
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_015831`
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_015836`
+- H1/S1024 stats:
+  `kernel_ticks=70560945`, MMAC active avg `21.7716%`, coissue
+  `31952/20804`, `ldsBankConflict=0`, `mmop_runtime_share=45.5229%`
+
+Conclusion:
+
+This improves the local VOP/runtime mix but does not beat the W12 canonical
+baseline on ticks or MMAC active.  The code was removed from the active route.
+The useful lesson is that FWD-style batched reads alone are insufficient when
+the dominant loss is still packet/barrier conveyor control and sidecar/global
+waits around the short 64-MMAC island.
+
+## 2026-07-03 H18A Packed Sidecar dwordx4 Probe
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Hypothesis:
+
+- xcu barrier audit showed two immediate blockers:
+  `RawUsed0/1` dominates ABarrier top1000, and sidecar
+  `global_load_dwordx3 -> s_waitcnt` is the largest non-barrier bubble.
+- Change packed sidecar ABI from 3 floats/row to 4 floats/row and force the
+  pad float live in `load_packed_sidecar_row4`, so the hot path uses
+  `global_load_dwordx4` instead of `global_load_dwordx3`.
+- Expected benefit: lower sidecar load/wait overhead, shorter consumer page
+  lifetime, lower producer `RawUsed` wait, higher MMAC active.
+
+Evidence:
+
+- Static/resource clean:
+  `private=0`, `sgpr=84`, `vgpr=112`, no scratch/spill.
+- ASM changed as intended: sidecar hot loads became `global_load_dwordx4`.
+- H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_031739`.
+- H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_031804`.
+- H1/S1024 stats:
+  `simTicks=74270105`, `kernel_ticks=70656495`, `MMOP=131072`,
+  `coissue=31641/20782`, `ldsBankConflict=0`.
+- Canonical W12 stats companion:
+  `kernel_ticks=70505435`, `coissue=31497/20470`.
+
+Conclusion:
+
+Correct but not useful.  The opcode change does not reduce the end-to-end
+consumer critical section; `VALU_cycles` is unchanged and ticks slightly
+regress.  Revert the ABI/helper change.  The next high-value work should focus
+on reducing duplicated sidecar/mask/softmax work or changing page lifetime, not
+just changing the sidecar load width.
+
+## 2026-07-03 H21A Q-pair Control-Only Redesign
+
+Decision: `REJECT_STATIC_SPILL`
+
+Hypothesis:
+
+- Reuse the existing page0/page1 as one logical q-pair without adding LDS or
+  ABarrier token families.
+- First cut was deliberately conservative: process page0 then page1 inside a
+  `q_tile += 2` consumer loop while preserving the original per-page
+  source-layout reads and early RawUsed release.
+- Expected benefit was small but useful: fewer exposed q-loop control turns and
+  a cleaner stepping stone toward H21B q-pair stagger.
+
+Evidence:
+
+- Workbook design sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  `19_qpair_design`.
+- First helper implementation failed static metadata for
+  `fa3_bwd_dkv_mmac12_kernel`:
+  `private_segment_fixed_size=0`, `sgpr_count=100`,
+  `sgpr_spill_count=39`, `vgpr_count=112`, `vgpr_spill_count=0`.
+- A second local-macro implementation removed the `int&` helper footgun but
+  still failed static metadata:
+  `private_segment_fixed_size=0`, `sgpr_count=100`,
+  `sgpr_spill_count=38`, `vgpr_count=112`, `vgpr_spill_count=0`.
+- After reverting H21A, the remote canonical build/static gate passed again:
+  `private_segment_fixed_size=0`, `sgpr_count=84`,
+  `sgpr_spill_count=0`, `vgpr_count=112`, `vgpr_spill_count=0`.
+
+Conclusion:
+
+The q-pair control-only shape is not a free way to halve loop-control overhead.
+Even without new LDS/token families, duplicating the consumer body in one loop
+scope widens SGPR live ranges enough to spill.  Do not continue H21A into PMD.
+Future q-pair work must reduce live state first or use a different ownership
+shape; otherwise it will chase a scheduling idea that fails before execution.
+
+## 2026-07-03 H22 First-Tile Peel
+
+Decision: `ACCEPT_MICRO_CONTROL`
+
+Hypothesis:
+
+- The hot consumer q-loop still carried a runtime `q_tile == 0` branch to seed
+  dV/dK accumulators differently on the first packet.
+- Peel `q_tile=0` out of the steady loop, then run the hot loop from
+  `q_tile=1` with the normal non-first MMAC path.
+- Expected benefit: remove one steady-loop branch/control shape, reduce SGPR
+  pressure, and make the loop a cleaner base for the next pipeline redesign.
+
+Evidence:
+
+- Static/resource gate passed for `fa3_bwd_dkv_mmac12_kernel`:
+  `private_segment_fixed_size=0`, `sgpr_count=78`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_042133`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_042139`.
+- H1/S1024 full perf correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_042626`.
+- Full perf stats:
+  `kernel_ticks=67665325`, `MMOP=131072`, `ldsBankConflict=0`,
+  coissue `23064/18083`, `MMAC active share=23.0485%`,
+  `VOP active share=20.8165%`.
+- Archived perf:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_042626_clean_w12_h22_first_tile_peel_h1s1024_sqc7_fullperf`.
+- xcu detail still shows the main bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` at `28.44%`, and
+  `global_load_dwordx3 -> s_waitcnt` at `11.59%`.
+
+Conclusion:
+
+Keep H22 in the canonical route.  It is a real control/codegen cleanup:
+SGPR count drops from `84` to `78`, H1/S1024 ticks improve, and MMAC active
+share rises into the low `23%` range.  It is not a structural solution for
+the `60%` goal, because the dominant xcu bubbles remain RawUsed/ABarrier and
+sidecar global-load wait.  The next implementation should use H22 as the
+clean baseline and attack those two exposed waits without reintroducing q-pair
+SGPR spill or extra ABarrier token families.
+
+## 2026-07-03 H23 Remove ds_read_matrix Helper s_nop
+
+Hypothesis:
+
+- H22 xcu reported a hot `s_nop -> ds_read_matrix` row and high
+  `ds_read_matrix` latency.
+- The `ds_read_matrix_trans_pair` helper inserted a fixed `s_nop 0` before
+  each read pair.  Removing that nop should make the source read island closer
+  to the FWD style: contiguous matrix reads, then first-use wait/MMAC, without
+  an artificial scheduling bubble.
+
+Evidence:
+
+- Static/resource gate passed for `fa3_bwd_dkv_mmac12_kernel`:
+  `private_segment_fixed_size=0`, `sgpr_count=78`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_043940`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_043946`.
+- H1/S1024 full perf correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_044220`.
+- Full perf stats:
+  `kernel_ticks=67246725`, `MMOP=131072`, `ldsBankConflict=0`,
+  coissue `22768/18808`, `MMAC active share=23.2228%`,
+  `VOP active share=20.9728%`.
+- Archived perf:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_044220_clean_w12_h23_no_dsread_snop_h1s1024_sqc7_fullperf`.
+- xcu comparison against H22:
+  dispatch issue count drops from `897096` to `847944`, the hot `s_nop`
+  row disappears, and `ds_read_matrix` latency drops from `557792` to
+  `475420`.
+- xcu still reports dominant structural bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` around `28.48%` and
+  `global_load_dwordx3 -> s_waitcnt` around `11.54%`.
+
+Conclusion:
+
+`ACCEPT_MICRO_SQTT`.  Keep H23 in the canonical route because it removes a
+real artificial read-side bubble and slightly improves ticks/MMAC active.
+This is still not the 60% solution: the next patch must target RawUsed
+ABarrier ownership and sidecar global-load wait, or lengthen a useful MMAC
+island enough to hide those waits.
+
+## 2026-07-03 H24 Raw ABarrier Wait Builtin Boundary
+
+Hypothesis:
+
+- H23 xcu top issue gap points to `include/shaobo_instr.h:137`, the asm wrapper
+  for `abarrier_try_wait<true>`:
+  `s_abarrier_try_wait -> s_xor_b32`, about `28.48%`.
+- Replacing raw packet waits with the builtin wrapper might reduce this exposed
+  wait/phase-flip bubble without changing LDS layout, MMAC count, sidecar math,
+  or output ownership.
+
+Attempts:
+
+- H24A changed both `wait_raw_used_page` and `wait_raw_filled_page` from
+  `abarrier_try_wait<true>` to `abarrier_try_wait<false>`.
+- H24B kept `wait_raw_filled_page` as asm and changed only
+  `wait_raw_used_page` to builtin.
+
+Evidence:
+
+- H24A static/resource gate failed:
+  `private_segment_fixed_size=12`, `sgpr_count=80`, `vgpr_count=112`,
+  no SGPR/VGPR spills.
+- H24B static/resource gate also failed:
+  `private_segment_fixed_size=12`, `sgpr_count=82`, `vgpr_count=112`,
+  no SGPR/VGPR spills.
+- Restored H23 after revert:
+  `private_segment_fixed_size=0`, `sgpr_count=78`, `vgpr_count=112`,
+  no SGPR/VGPR spills.
+
+Conclusion:
+
+`REJECT_STATIC_PRIVATE`.  Raw Filled/Used waits in the q-loop cannot be
+converted to the builtin wrapper as a simple micro-fix: even the RawUsed-only
+variant introduces private segment.  This narrows the ABarrier path: the 60%
+route must reduce the number or exposed duration of raw page ownership waits,
+or cover them with useful consumer/producer work.  Do not retry raw-wait
+builtinization in the active kernel without a focused compiler/codegen probe.
+
+## 2026-07-03 H25 Release RawUsed Before Full dV/dK Island
+
+Hypothesis:
+
+- Current early-release order waits for low source, issues high source, runs
+  the low dV/dK MMAC island, waits for high source, then releases RawUsed
+  before the high dV/dK island.
+- Moving the high-source wait before the dV/dK MMAC island would allow the
+  consumer to release RawUsed before both low and high dV/dK MMAC groups,
+  giving producer waves a longer useful MMAC window to refill the page.
+
+Evidence:
+
+- Static/resource gate passed:
+  `private=0`, `sgpr=78`, `vgpr=112`, no SGPR/VGPR spill, no scratch.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_050642`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_050705`.
+- H1/S1024 stats:
+  `kernel_ticks=68373305`, `MMAC active share=22.8899%`,
+  `ldsBankConflict=0`.
+- H23 comparison:
+  `kernel_ticks=67246725`, `MMAC active share=23.2228%`.
+
+Conclusion:
+
+`REJECT_PERF_STATS_ONLY`.  The design shortened RawUsed lifetime on paper, but
+it moved high-source readiness onto the pre-MMAC critical path.  The current
+H23 order is better because low dV/dK MMAC hides high-source latency.  The
+code was reverted; future RawUsed work must preserve that overlap or create
+new useful work before page release.
+
+## 2026-07-03 H26 Causal Sidecar Hot-Path Split
+
+Hypothesis:
+
+- The target tuning case is `causal=true`, but H23's sidecar helper still has
+  an inner-element runtime causal term:
+  `(!causal || krow <= qrow)`.
+- Splitting a causal-specific helper should remove that term from the
+  `m_idx/vec_id` loop without changing score/dP, dV/dK, ABarrier, LDS, MMOP,
+  or output ownership.
+- This was deliberately narrower than H20A: no full-valid fastpath body, no
+  sidecar load skipping, and no p/dS fragment layout change.
+
+Evidence:
+
+- Workbook-first design:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `22_causal_sidecar_design`.
+- Static/resource gate passed for the candidate:
+  `private=0`, `sgpr=80`, `vgpr=112`, no SGPR/VGPR spill.
+  This is already worse than H23's `sgpr=78`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_052600`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_052606`.
+- H1/S1024 stats regressed:
+  `kernel_ticks=70504980`, `MMAC active share=22.5343%`,
+  `VOP active share=21.6469%`, `VALU=230108`, `ldsBankConflict=0`.
+- H23 comparison:
+  `kernel_ticks=67246725`, `MMAC active share=23.2228%`,
+  `VOP active share=20.9728%`, `VALU=213208`.
+- Restored H23 after revert:
+  `private=0`, `sgpr=78`, `vgpr=112`, no spill/scratch.
+
+Conclusion:
+
+`REJECT_PERF_STATS_ONLY`.  The causal helper split is correct, but it makes
+the hot path heavier: SGPR rises and VALU increases instead of falling.  This
+means the runtime causal boolean is not the active-share limiter in the current
+code shape.  The code was reverted.  Next work should target the structural
+blockers already visible in H23 xcu: RawUsed/ABarrier lifetime, sidecar
+global-load wait, or a larger useful MMAC island that can hide those waits.
+
+## 2026-07-03 H27 RawUsed Arrive After High-Source Issue
+
+Hypothesis:
+
+- H25 proved that waiting for the high dV/dK source before both low/high MMAC
+  groups is wrong: it moves LDS readiness onto the pre-MMAC critical path.
+- H27 keeps H23's useful overlap, where low dV/dK MMAC hides high-source
+  latency, but releases `RawUsed` immediately after issuing the high-source
+  `ds_read_matrix`.
+- The correctness risk is explicit: if a high-source LDS read is not protected
+  after issue, producer reuse of the page could corrupt the later high MMAC
+  operands.
+
+Evidence:
+
+- Workbook-first design:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `23_rawused_after_high_issue`.
+- Static/resource gate passed:
+  `private=0`, `sgpr=78`, `vgpr=112`, no SGPR/VGPR spill, no scratch.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_053909`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_053933`.
+- H1/S1024 full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_054127`.
+- Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_054127_clean_w12_h27_rawused_after_high_issue_h1s1024_sqc7_fullperf`.
+- Full-perf metrics:
+  `kernel_ticks=66892280`, `MMAC active share=23.3787%`,
+  `VOP active share=20.9407%`, `MMOP=131072`, `VALU=213208`,
+  `SCA=289456`, `ldsBankConflict=0`.
+- H23 baseline:
+  `kernel_ticks=67246725`, `MMAC active share=23.2228%`.
+- xcu comparison versus H23:
+  `s_abarrier_try_wait -> s_xor_b32` changes from `3.389M / 28.48%`
+  to `3.381M / 28.41%`; `v_mmac -> s_waitcnt` improves from `6.65%`
+  to `6.55%`; sidecar `global_load_dwordx3 -> s_waitcnt` worsens slightly
+  from `11.54%` to `11.69%`.
+
+Conclusion:
+
+`ACCEPT_MICRO_OBSERVE_PIPELINE`.  The H27 ordering is correctness-safe in PMD
+and gives a small same-shape improvement while preserving the useful
+high-source latency hiding that H25 lost.  It is still far from the 60% MMAC
+active target, and xcu still shows the same dominant barrier/sidecar debt.
+Keep the reorder as a micro-win, but do not stack more cosmetic reorder
+patches.  The next structural work must either reduce sidecar global-read wait,
+collapse page-control turns, or produce a longer useful MMAC island with a
+clear workbook resource proof.
+
+### Causal=False Diagnostic On H27
+
+Because leader feedback called out causal-mask overhead, the same H27 code was
+run with `CAUSAL=0` before starting a new implementation.
+
+Evidence:
+
+- Run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_055407`.
+- Numerical comparison did not pass the current gate:
+  `bad=0`, but `dk_rel_l2=0.0199722`, `dv_rel_l2=0.002617`, `pass=0`.
+- Stats are still useful as a diagnosis:
+  `simTicks=77584780`, `kernel_ticks=73971170`,
+  `MMOP=131072`, `VALU=244352`, `SCA=230896`,
+  `MMAC active share=17.8499%`, `VOP active share=24.3721%`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+`OBSERVE_CORRECTNESS_FAIL`.  Disabling causal does not move this code shape
+toward the FWD-like 60% target; it lowers MMAC active and increases VALU.
+The active bottleneck is still the packet/control/sidecar conveyor, not merely
+the causal predicate term.  Do not spend the next round on causal-only tuning
+unless a separate noncausal correctness path is first designed and justified.
+
+## 2026-07-03 H28 Producer Sidecar Cache-Warm
+
+Hypothesis:
+
+- H27 still shows a large consumer-side sidecar bubble:
+  `global_load_dwordx3 -> s_waitcnt` at `1.391M / 11.69%`.
+- Moving sidecar values into LDS by overlay already failed because it added an
+  extra ownership generation.  Appending a dedicated sidecar page also violates
+  the 128KB LDS budget.
+- Instead, let producer `wave_local==0` issue volatile sidecar row loads before
+  the RawUsed wait/refill point.  This does not transfer values to consumers;
+  it only tests whether cache warming plus producer useful work can reduce the
+  exposed consumer global-load wait.
+
+Implementation:
+
+- Added `prefetch_packed_sidecar_tile`.
+- Only producer wave `wave_local==0`, lanes `<32`, touches one q tile's packed
+  sidecar rows.
+- The main matrix path, LDS layout, ABarrier ledger, consumer math, dV/dK
+  output ownership, and MMOP count are unchanged.
+
+Evidence:
+
+- Workbook-first design:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `24_sidecar_cache_prefetch`.
+- Static/resource gate PASS:
+  `private=0`, `sgpr=78`, `vgpr=112`, no spill/scratch.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_060502`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_060528`.
+- H1/S1024 full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_060726`.
+- Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_060726_clean_w12_h28_sidecar_cache_prefetch_h1s1024_sqc7_fullperf`.
+- Full-perf metrics:
+  `kernel_ticks=66630200`, `MMAC active share=27.9004%`,
+  `VOP active share=26.6286%`, `MMOP=131072`, `VALU=214952`,
+  `SCA=292576`, `ldsBankConflict=0`.
+- H27 comparison:
+  `kernel_ticks=66892280`, `MMAC active share=23.3787%`.
+- xcu comparison:
+  RawUsed `s_abarrier_try_wait -> s_xor_b32` improves from `28.41%`
+  to `26.25%`; sidecar `global_load_dwordx3 -> s_waitcnt` improves from
+  `11.69%` to `11.42%`; a new producer prefetch
+  `flat_load_dword -> s_waitcnt` appears at `185k / 1.57%`.
+
+Conclusion:
+
+`ACCEPT_PIPELINE_OBSERVE`.  H28 is the first change in this sequence that
+produces a meaningful MMAC-active jump with an xcu explanation.  It does not
+solve the 60% target: the added prefetch creates its own wait bubble, and
+RawUsed plus sidecar waits remain large.  Keep H28, then improve it by
+batching/placing the prefetch so its wait is covered by producer RawUsed or by
+designing a true producer-helper sidecar protocol that does not add LDS bytes
+or a new page-ownership generation.
+
+## 2026-07-03 H29 Fire-And-Forget Sidecar Prefetch
+
+Hypothesis:
+
+- H28's empty-asm use may force producer prefetch values to become ready,
+  creating the new `flat_load_dword -> s_waitcnt` producer bubble.
+- Replacing the consumed loads with volatile fire-and-forget reads might keep
+  the cache-warm effect while reducing the producer wait.
+
+Evidence:
+
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_061743`.
+- H1/S1024 stats-only PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_061810`.
+- H1/S1024 full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_062248`.
+- Stats-only metrics:
+  `kernel_ticks=66626560`, `MMAC active=28.0412%`,
+  `VALU=214952`, `SCA=292576`, `ldsBankConflict=0`.
+- Full-perf metrics:
+  `kernel_ticks=66690260`, `MMAC active=27.9272%`,
+  `VALU=214952`, `SCA=292576`, `ldsBankConflict=0`.
+- H28 full-perf comparison:
+  `kernel_ticks=66630200`, `MMAC active=27.9004%`.
+
+Decision:
+
+`OBSERVE_ACTIVE_REJECT_TICKS`.  H29 slightly improves MMAC active but regresses
+same-shape full-perf ticks.  It is not stable enough to replace H28, and the
+code has been restored to the H28 explicit-load plus empty-asm-use form.  The
+lesson is useful: active share can move by tiny noise without shortening the
+critical path.  The next change needs to reduce RawUsed/sidecar wait or lengthen
+MMAC islands with a visible tick improvement.
+
+## 2026-07-03 H30 Future Sidecar Prefetch Placement
+
+Hypothesis:
+
+- H28 prefetches the current q tile immediately before waiting `RawUsed` and
+  refilling that page.
+- Moving the same sidecar cache-warm to `q_tile + 2` immediately after
+  `RawFilled` gives the sidecar rows a full ping-pong interval to reach cache
+  before consumers use them.
+- This keeps the single canonical kernel and does not add LDS, ABarrier
+  tokens, consumer math, output ownership, or MMOP.
+
+Evidence:
+
+- Workbook-first design:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `26_sidecar_future_prefetch`.
+- Static/resource gate PASS:
+  `private=0`, `sgpr=78`, `vgpr=112`, no spill/scratch.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_063323`.
+- H1/S1024 stats-only PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_063344`.
+- H1/S1024 full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_063614`.
+- Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_063614_clean_w12_h30_future_sidecar_prefetch_h1s1024_sqc7_fullperf`.
+- xcu:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/h30_future_sidecar_prefetch_h1s1024_20260703_063614`.
+- Full-perf metrics:
+  `kernel_ticks=66321255`, `MMAC active=28.3952%`,
+  `VOP active=26.6089%`, `MMOP=131072`, `VALU=214984`,
+  `SCA=296832`, `ldsBankConflict=0`.
+- H28 comparison:
+  `kernel_ticks=66630200`, `MMAC active=27.9004%`.
+- xcu comparison:
+  duration improves from `146440` to `145764`;
+  RawUsed `s_abarrier_try_wait -> s_xor_b32` improves from `26.25%` to
+  `25.89%`; sidecar `global_load_dwordx3 -> s_waitcnt` improves from
+  `11.42%` to `11.38%`; producer prefetch `flat_load_dword -> s_waitcnt`
+  worsens from `1.57%` to `1.79%`.
+
+Decision:
+
+`ACCEPT_PIPELINE_MICRO`.  H30 is the current best W12 canonical route.  It
+proves that earlier producer-side cache-warm placement can move the critical
+path, but the improvement is still tiny relative to the 60% MMAC-active goal.
+The remaining bottleneck is not sidecar load shape alone: `s_waitcnt` and
+RawUsed/ABarrier still dominate, and future work needs either a longer MMAC
+island or a page-lifetime/topology change that reduces those waits without
+adding another token family.
+
+## 2026-07-03 Canonical dKV Route Convergence
+
+Hypothesis:
+
+- Before applying the Tri Dao-style redesign rules, the clean repo needs one
+  hot dKV route.  Multiple `--dkv-mmac12-*` launch paths make code review and
+  profiler attribution drift.
+- Keep reference correctness for CPU-golden comparison, but make the active
+  Shaobo path route only to `fa3_bwd_dkv_kernel`.
+
+Changes:
+
+- Renamed the active W12 kernel entry from the experiment-shaped
+  `fa3_bwd_dkv_mmac12_kernel` to `fa3_bwd_dkv_kernel`.
+- API, standalone default, symbol gate, and PMD scripts now select only this
+  canonical kernel for dKV performance work.
+- Rejected historical kernels are still present for a later physical deletion
+  pass, but are no longer reachable from the supported API/script route.
+
+Evidence:
+
+- Remote build PASS with no compile warnings.
+- Static/source gate PASS.
+- Symbol metadata PASS for `fa3_bwd_dkv_kernel`:
+  `private_segment_fixed_size=0`, `sgpr_count=78`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- H1/S128 PMD correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_090438`.
+- H1/S1024 PMD correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_090629`.
+- H1/S1024 stats-only aggregate:
+  `simTicks=69908930`, `MMOP=131072`, `ldsBankConflict=0`,
+  `coissue=22685/18256`, `MMAC active=23.5544%`.
+
+Decision:
+
+`CODE_GOVERNANCE_ACCEPT`.  This is not a new performance promotion; it is the
+single-kernel convergence checkpoint.  Further Tri Dao-style changes must
+modify `fa3_bwd_dkv_kernel` in place and record rejected alternatives in the
+workbook/ledger instead of adding another public performance route.

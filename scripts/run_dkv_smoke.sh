@@ -12,7 +12,7 @@ fi
 python3 scripts/check_dkv_kernel_gate.py
 python3 scripts/check_symbol_metadata_gate.py \
   --asm build/fa3_bwd_wasp_clean.asm \
-  --symbol-regex fa3_bwd_dkv_probe
+  --symbol-regex fa3_bwd_dkv_kernel
 ./scripts/check_repo_clean.sh
 
 case_id="dkv_score_dp_probe_$(date +%Y%m%d_%H%M%S)"
@@ -46,9 +46,9 @@ if grep -Eiq 'panic|Program aborted|core dumped|Aborted' "${stdout_log}"; then
   exit 1
 fi
 
-if ! grep -q 'fa3_bwd_dkv_probe status=success' "${stdout_log}"; then
+if ! grep -q 'fa3_bwd_dkv_correctness status=success' "${stdout_log}"; then
   echo "PMD dKV smoke did not report successful status" >&2
   exit 1
 fi
 
-echo "dKV score/dP probe smoke m5out: ${case_dir}/m5out"
+echo "dKV canonical smoke m5out: ${case_dir}/m5out"

@@ -10,36 +10,9 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
 fi
 
 python3 scripts/check_dkv_kernel_gate.py
-export WAVES="${WAVES:-16}"
-export MQ64="${MQ64:-0}"
-export MQ64_SEMANTIC="${MQ64_SEMANTIC:-0}"
-export CAUSAL_SKIP="${CAUSAL_SKIP:-0}"
-export MIXED_SCORE_BRICK="${MIXED_SCORE_BRICK:-0}"
-export EARLY_RELEASE="${EARLY_RELEASE:-0}"
-export OVERLAY="${OVERLAY:-0}"
-export SCORE_BRICK="${SCORE_BRICK:-0}"
-if [[ "${WAVES}" == "12" && "${MQ64_SEMANTIC}" == "1" ]]; then
-  metadata_regex="fa3_bwd_dkv_mmac12_mq64_semantic"
-elif [[ "${WAVES}" == "12" && "${CAUSAL_SKIP}" == "1" ]]; then
-  metadata_regex="fa3_bwd_dkv_mmac12_causal_skip"
-elif [[ "${WAVES}" == "12" && "${MIXED_SCORE_BRICK}" == "1" ]]; then
-  metadata_regex="fa3_bwd_dkv_mmac12_mixed_score_brick"
-elif [[ "${WAVES}" == "12" && "${EARLY_RELEASE}" == "1" ]]; then
-  metadata_regex="fa3_bwd_dkv_mmac12_early_release"
-elif [[ "${WAVES}" == "12" && "${MQ64}" == "1" ]]; then
-  metadata_regex="fa3_bwd_dkv_mmac12_mq64"
-elif [[ "${WAVES}" == "12" && "${SCORE_BRICK}" == "1" ]]; then
-  metadata_regex="fa3_bwd_dkv_mmac12_score_dp_brick"
-elif [[ "${WAVES}" == "12" && "${OVERLAY}" == "1" ]]; then
-  metadata_regex="fa3_bwd_dkv_mmac12_sidecar_overlay"
-elif [[ "${WAVES}" == "12" ]]; then
-  metadata_regex="fa3_bwd_dkv_mmac12_kernel"
-else
-  metadata_regex="fa3_bwd_dkv_mmac_kernel"
-fi
 python3 scripts/check_symbol_metadata_gate.py \
   --asm build/fa3_bwd_wasp_clean.asm \
-  --symbol-regex "${metadata_regex}"
+  --symbol-regex "fa3_bwd_dkv_kernel"
 
 case_id="dkv_mmac_correctness_$(date +%Y%m%d_%H%M%S)"
 case_dir="${SHAOBO_RUN_ROOT}/${case_id}"
@@ -56,33 +29,7 @@ export H="\${H:-1}"
 export S="\${S:-128}"
 export D="\${D:-128}"
 export CAUSAL="\${CAUSAL:-1}"
-export WAVES="\${WAVES:-${WAVES}}"
-export MQ64="\${MQ64:-${MQ64}}"
-export MQ64_SEMANTIC="\${MQ64_SEMANTIC:-${MQ64_SEMANTIC}}"
-export CAUSAL_SKIP="\${CAUSAL_SKIP:-${CAUSAL_SKIP}}"
-export MIXED_SCORE_BRICK="\${MIXED_SCORE_BRICK:-${MIXED_SCORE_BRICK}}"
-export EARLY_RELEASE="\${EARLY_RELEASE:-${EARLY_RELEASE}}"
-export OVERLAY="\${OVERLAY:-${OVERLAY}}"
-export SCORE_BRICK="\${SCORE_BRICK:-${SCORE_BRICK}}"
-if [[ "\${WAVES}" == "12" && "\${MQ64_SEMANTIC}" == "1" ]]; then
-  ./build/fa3_bwd_wasp_clean --dkv-mmac12-mq64-semantic-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
-elif [[ "\${WAVES}" == "12" && "\${CAUSAL_SKIP}" == "1" ]]; then
-  ./build/fa3_bwd_wasp_clean --dkv-mmac12-causal-skip-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
-elif [[ "\${WAVES}" == "12" && "\${MIXED_SCORE_BRICK}" == "1" ]]; then
-  ./build/fa3_bwd_wasp_clean --dkv-mmac12-mixed-score-brick-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
-elif [[ "\${WAVES}" == "12" && "\${EARLY_RELEASE}" == "1" ]]; then
-  ./build/fa3_bwd_wasp_clean --dkv-mmac12-early-release-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
-elif [[ "\${WAVES}" == "12" && "\${MQ64}" == "1" ]]; then
-  ./build/fa3_bwd_wasp_clean --dkv-mmac12-mq64-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
-elif [[ "\${WAVES}" == "12" && "\${SCORE_BRICK}" == "1" ]]; then
-  ./build/fa3_bwd_wasp_clean --dkv-mmac12-score-brick-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
-elif [[ "\${WAVES}" == "12" && "\${OVERLAY}" == "1" ]]; then
-  ./build/fa3_bwd_wasp_clean --dkv-mmac12-overlay-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
-elif [[ "\${WAVES}" == "12" ]]; then
-  ./build/fa3_bwd_wasp_clean --dkv-mmac12-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
-else
-  ./build/fa3_bwd_wasp_clean --dkv-mmac-check=1 --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
-fi
+./build/fa3_bwd_wasp_clean --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
 EOF
 chmod +x "${case_script}"
 
@@ -100,7 +47,7 @@ if grep -Eiq 'panic|Program aborted|core dumped|Aborted' "${stdout_log}"; then
   exit 1
 fi
 
-if ! grep -Eq 'fa3_bwd_dkv_mmac(12(_mq64(_semantic)?|_causal_skip|_mixed_score_brick|_early_release|_overlay|_score_brick)?)?_correctness status=success' "${stdout_log}"; then
+if ! grep -Eq 'fa3_bwd_dkv_correctness status=success' "${stdout_log}"; then
   echo "PMD dKV MMAC correctness did not report successful status" >&2
   exit 1
 fi
