@@ -18,6 +18,25 @@ def forbid(text: str, pattern: str, failures: list[str], name: str) -> None:
         failures.append(name)
 
 
+def strip_archived_variants(source: str) -> tuple[str, str]:
+    """Return non-archived source and the active performance prefix.
+
+    The clean repo keeps rejected global kernels under a compile-time archive
+    for now.  Static evidence must not be satisfied by that block.
+    """
+    archive_marker = "\n#if 0\n// Archived rejected variants."
+    ref_marker = "\n__global__ void fa3_bwd_dkv_ref_softmax_kernel"
+    start = source.find(archive_marker)
+    if start < 0:
+        return source, source
+    end = source.find(ref_marker, start)
+    if end < 0:
+        return source[:start], source[:start]
+    non_archived = source[:start] + source[end:]
+    performance_prefix = source[:start]
+    return non_archived, performance_prefix
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", default="src/dkv_kernel.cpp")
@@ -25,7 +44,8 @@ def main() -> int:
     parser.add_argument("--asm", default="build/fa3_bwd_wasp_clean.asm")
     args = parser.parse_args()
 
-    source = Path(args.source).read_text(errors="ignore")
+    source_raw = Path(args.source).read_text(errors="ignore")
+    source, perf_source = strip_archived_variants(source_raw)
     contract = Path(args.contract).read_text(errors="ignore")
     asm_path = Path(args.asm)
     asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
@@ -39,42 +59,49 @@ def main() -> int:
             "missing_cpu_reference_dkv")
     require(source, r"fa3_bwd_dkv_correctness", failures,
             "missing_correctness_status_line")
-    require(source, r"fa3_bwd_dkv_kernel", failures,
+    require(perf_source, r"fa3_bwd_dkv_kernel", failures,
             "missing_canonical_dkv_kernel")
-    require(source, r"consumer_dkv_mmac_loop", failures,
+    require(perf_source, r"consumer_dkv_mmac_loop", failures,
             "missing_dkv_mmac_consumer_loop")
-    require(source, r"score_dp_mmac_owner16", failures,
+    require(perf_source, r"score_dp_mmac_owner16", failures,
             "missing_owner16_score_dp_mmac")
-    require(source, r"dv_dk_mmac_owner16", failures,
+    require(perf_source, r"dv_dk_mmac_owner16", failures,
             "missing_owner16_dv_dk_mmac")
     require(source, r"kDkvPathCanonicalDkv", failures,
             "missing_canonical_path")
-    require(source, r"hcu_wdra_waves_per_tg\(12\)", failures,
+    require(perf_source, r"hcu_wdra_waves_per_tg\(12\)", failures,
             "missing_wdra12_attribute")
-    require(source, r"producer_all_loop", failures,
+    require(perf_source, r"producer_all_loop", failures,
             "missing_12wave_combined_producer")
-    require(source, r"score_dp_mmac_fragments", failures,
+    require(perf_source, r"score_dp_mmac_fragments", failures,
             "missing_score_dp_mmac_fragments")
-    require(source, r"wave_id\s*<\s*4", failures, "missing_producer_a_branch")
-    require(source, r"wave_id\s*<\s*8", failures, "missing_consumer0_branch")
-    require(source, r"wave_id\s*<\s*12", failures, "missing_consumer1_branch")
-    require(source, r"s_set_vgpr_size\(Vgpr::kProducerVgprs\)", failures,
+    require(perf_source, r"wave_id\s*<\s*4", failures,
+            "missing_producer_a_branch")
+    require(perf_source, r"wave_id\s*<\s*8", failures,
+            "missing_consumer0_branch")
+    require(perf_source, r"wave_id\s*<\s*12", failures,
+            "missing_consumer1_branch")
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducer12Vgprs\)",
+            failures,
             "missing_producer_vgpr_window")
-    require(source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)", failures,
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)",
+            failures,
             "missing_consumer_vgpr_window")
-    require(source, r"s_abarrier_init\(Bar::kResidentFilled,\s*8\)",
+    require(perf_source, r"s_abarrier_init\(Bar::kResidentFilled,\s*4\)",
             failures, "missing_resident_filled_count")
-    require(source, r"s_abarrier_init\(Bar::kRaw0Filled,\s*8\)", failures,
+    require(perf_source, r"s_abarrier_init\(Bar::kRaw0Filled,\s*4\)",
+            failures,
             "missing_raw0_filled_count")
-    require(source, r"s_abarrier_init\(Bar::kRaw0Used,\s*8\)", failures,
+    require(perf_source, r"s_abarrier_init\(Bar::kRaw0Used,\s*8\)", failures,
             "missing_raw0_used_count")
-    require(source, r"s_abarrier_init\(Bar::kRaw1Filled,\s*8\)", failures,
+    require(perf_source, r"s_abarrier_init\(Bar::kRaw1Filled,\s*4\)",
+            failures,
             "missing_raw1_filled_count")
-    require(source, r"s_abarrier_init\(Bar::kRaw1Used,\s*8\)", failures,
+    require(perf_source, r"s_abarrier_init\(Bar::kRaw1Used,\s*8\)", failures,
             "missing_raw1_used_count")
-    require(source, r"q_tile\s*<\s*q_tiles", failures,
+    require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
-    require(source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
+    require(perf_source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
             "missing_all_done_wait")
     require(source, r"matrix_load_32x32_b16_bps_lds", failures,
             "missing_mls_bps_helper")
@@ -100,7 +127,7 @@ def main() -> int:
             "missing_no_duplicate_contract")
     forbid(source, r"61C\d+|C1\d{2}", failures,
            "clean_source_must_not_define_cxx_phase_stack")
-    forbid(source,
+    forbid(perf_source,
            r"matrix_load_32x32_b16_bps_lds\([\s\S]{0,360}?"
            r"wait_lgkm\(0\)[\s\S]{0,160}?abarrier_arrive_cnt",
            failures, "post_mls_wait_before_publication")

@@ -60,6 +60,26 @@ the benchmark.  dQ is frozen.
   `kernel_ticks=66321255`, `MMAC active=28.3952%`.  xcu shows RawUsed bubble
   improves to `25.89%` and sidecar wait to `11.38%`, while producer prefetch
   wait grows to `1.79%`.
+- After single-kernel convergence and archived-kernel cleanup, the current
+  canonical full-perf rebaseline is clean and essentially matches H30 when
+  both are normalized with the same stats formula:
+  `kernel_ticks=66411800`, `MMAC active=23.4288%`,
+  `VOP active=21.3239%`, `coissue=23057/18211`, `ldsBankConflict=0`.
+  H30 normalized by `sum(mmopRunTimeCounter)/sum(activeTimeCounter)` is
+  `23.4386%`; the older `28.3952%` row used a different/non-normalized active
+  metric and should not be compared directly.
+  Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_093932_clean_canonical_after_convergence_h1s1024_sqc7_fullperf`.
+  Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `28_current_xcu_rebaseline`.
+- Current xcu top bubbles are
+  `s_abarrier_try_wait -> s_xor_b32` `25.95%`,
+  `global_load_dwordx3 -> s_waitcnt` `11.28%`,
+  `v_mmac -> s_waitcnt` `6.35%`, and
+  `ds_read_matrix -> s_waitcnt` only `2.38%`.  The next performance edit
+  should attack raw-page or sidecar exposure; batching `ds_read_matrix` alone
+  is not a credible path to `60%`.
 
 ## Code Plan
 
@@ -233,6 +253,11 @@ Current promotion baseline:
   `s_abarrier_try_wait -> s_xor_b32` drops to `25.89%`, sidecar
   `global_load_dwordx3 -> s_waitcnt` drops to `11.38%`, but producer prefetch
   `flat_load_dword -> s_waitcnt` rises to `1.79%`.
+- The post-convergence full-perf rebaseline is:
+  `kernel_ticks=66411800`, `MMAC active share=23.4288%`,
+  `ldsBankConflict=0`, with top xcu bubbles RawUsed/control `25.95%` and
+  sidecar wait `11.28%`.  With the same stats formula, H30 is `23.4386%`, so
+  treat the current source as equivalent to H30 rather than a real regression.
 - The sidecar lane-broadcast idea was rejected even though correctness and
   resource gates passed: `lane_n==0 + __shfl` regressed H1/S1024 ticks from
   `71209320` to `86765770` and MMAC active from `21.5636%` to `15.8550%`.

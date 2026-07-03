@@ -3074,3 +3074,79 @@ Decision:
 physical deletion.  Next performance edits should operate inside the single
 canonical kernel; archived kernels should be physically removed once their
 lessons are fully represented in workbook/ledger.
+
+## 2026-07-03 Canonical After-Convergence SQTT Rebaseline
+
+Decision: `PASS_XCU_BASELINE`
+
+Purpose:
+
+After archiving unreachable global kernels and converging the supported route to
+one canonical `fa3_bwd_dkv_kernel`, rerun the exact H1/S1024 diagnostic with
+`GPU_CHIP=sb` and `GPU_ARGS=['--SQCIPfLines=7']`. This is the evidence baseline
+before the next code edit.
+
+Evidence:
+
+- Static/resource gate remains clean:
+  `private_segment_fixed_size=0`, `sgpr_count=78`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`; WDRA branch windows are producer
+  `6/16`, consumer0 `159/160`, consumer1 `159/160`.
+- H1/S1024 causal stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_093524`,
+  `kernel_ticks=66540565`, `MMOP=131072`, `MMAC active=23.4212%`,
+  `VOP active=21.3174%`, `ldsBankConflict=0`.
+- H1/S1024 causal=false diagnostic:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_093608`,
+  `pass=0`, `dk_rel_l2=0.0199722`, `dv_rel_l2=0.002617`,
+  `kernel_ticks=68400150`, `MMAC active=20.5948%`.
+- H1/S1024 full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_093932`,
+  `kernel_ticks=66411800`, `MMOP=131072`, `coissue=23057/18211`,
+  `MMAC active=23.4288%`, `VOP active=21.3239%`, `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_093932_clean_canonical_after_convergence_h1s1024_sqc7_fullperf`.
+- xcu output:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/canonical_after_convergence_h1s1024_20260703_093932`.
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  `28_current_xcu_rebaseline`.
+
+xcu dispatch 0 summary:
+
+- duration `145960` cycles, inst issues `861816`, avg active waves `86.45`.
+- top opcode rows: `s_waitcnt` `26.48%`, `s_xor_b32` `24.23%`,
+  `v_mmac_f32_16x16x16_f16` `9.55%`, `ds_read_matrix_trans_format` `3.88%`.
+- top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `25.95%`,
+  `global_load_dwordx3 -> s_waitcnt` `11.28%`,
+  `v_mmac -> v_mmac` `6.55%`,
+  `v_mmac -> s_waitcnt` `6.35%`,
+  `s_abarrier_try_wait -> s_waitcnt` `5.59%`,
+  `ds_read_matrix -> s_waitcnt` `2.38%`.
+
+Conclusion:
+
+The converged canonical route is correct and resource-clean.  The apparent
+H30-to-current active-share drop was a metric normalization issue, not a real
+pipeline regression: recomputing H30 from its archived `stats.txt` with
+`sum(mmopRunTimeCounter)/sum(activeTimeCounter)` gives `23.4386%`, while this
+post-convergence run is `23.4288%`.  The historical H30 `28.3952%` value used a
+different active metric and should not be compared directly.
+
+The current bottleneck is not missing MMAC and not LDS bank conflict. The
+largest measured debt is raw-page ABarrier/control and the exposed sidecar
+global load. `ds_read_matrix -> wait` is visible but only `2.38%`, so read
+batching alone is not a credible path to `60%` MMAC active.
+
+Next:
+
+- Tighten `scripts/check_dkv_kernel_gate.py` so it validates only the active
+  canonical route, not archived `#if 0` bodies.  This has now been implemented
+  locally and remotely verified with build/static/metadata plus H1/S128
+  correctness.
+- Continue one-kernel optimization inside `fa3_bwd_dkv_kernel`; do not add
+  another performance path.
+- Avoid already-rejected shortcuts: builtin raw waits, extra raw/source token
+  generations, direct AllDone removal, pre-reading all source operands across
+  softmax, and causal=false tuning.

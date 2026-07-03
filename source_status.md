@@ -2111,3 +2111,63 @@ Next:
   lessons are fully captured in workbook/ledger.
 - The next real optimization should alter the RawUsed/source-read/softmax
   conveyor inside `fa3_bwd_dkv_kernel`, not create a new launch path.
+
+## 2026-07-03 Canonical After-Convergence SQTT Rebaseline
+
+Status: `PASS_XCU_BASELINE`
+
+Workbook-first evidence:
+
+- `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`
+- sheet `28_current_xcu_rebaseline`
+
+Shared perf archive:
+
+- `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_093932_clean_canonical_after_convergence_h1s1024_sqc7_fullperf`
+- open helper perf:
+  `canonical_after_convergence_H1S1024_sqc7.perf`
+
+Current active source state:
+
+- canonical performance kernel: `fa3_bwd_dkv_kernel`
+- shape: `B=1,H=1,S=1024,D=128,causal=true`
+- env: `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`
+- static/resource gate: `private=0`, `sgpr=78`, `vgpr=112`, no spills
+- branch windows: producer `6/16`, consumer0 `159/160`, consumer1 `159/160`
+
+PMD evidence:
+
+- causal stats-only pass:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_093524`,
+  `kernel_ticks=66540565`, `MMAC active=23.4212%`.
+- causal=false diagnostic:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_093608`,
+  `pass=0`, `dk_rel_l2=0.0199722`, `dv_rel_l2=0.002617`,
+  `MMAC active=20.5948%`.
+- full perf pass:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_093932`,
+  `kernel_ticks=66411800`, `MMAC active=23.4288%`,
+  `VOP active=21.3239%`, `coissue=23057/18211`, `ldsBankConflict=0`.
+
+xcu evidence:
+
+- dispatch 0 duration `145960`, inst issues `861816`, avg active waves
+  `86.45`.
+- top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `25.95%`,
+  `global_load_dwordx3 -> s_waitcnt` `11.28%`,
+  `v_mmac -> v_mmac` `6.55%`,
+  `v_mmac -> s_waitcnt` `6.35%`,
+  `s_abarrier_try_wait -> s_waitcnt` `5.59%`,
+  `ds_read_matrix -> s_waitcnt` `2.38%`.
+
+Conclusion:
+
+This post-convergence run is clean and, after metric normalization, effectively
+matches H30.  H30 recomputed from its archived `stats.txt` with the same
+`sum(mmopRunTimeCounter)/sum(activeTimeCounter)` formula is `23.4386%`, while
+current is `23.4288%`; the older `28.3952%` H30 value used a different active
+metric and should not be compared directly.  The next step should not add
+another public phase or chase generic read batching.  Continue modifying
+`fa3_bwd_dkv_kernel` in place with a workbook-backed hypothesis that targets
+raw-page ABarrier/control or exposed sidecar wait.
