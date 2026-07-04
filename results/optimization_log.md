@@ -4192,3 +4192,69 @@ Conclusion:
 - It does not solve the 60% active target.  More raw pages/tokens alone are
   unlikely to be enough; the next design should increase useful work per token
   or make producer waves do independent work while consumers hold raw pages.
+
+### Raw3 Token Stress And v_mov/Useful Coissue Rule
+
+Status: `REJECT_PERF_STATS_ONLY`; code reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `46_raw3_token_stress` records the hypothesis: add a third
+  raw Q/dO page so producers wait only after three live pages, not two.
+- Temporary barrier ledger:
+  `Raw2Filled/Raw2Used = 6/7`, `AllDone = 8`.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=68`, `vgpr=112`, no scratch/spill.
+- H1/S128 and H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- H1/S1024 stats-only:
+  `kernel_ticks=56,111,055`, `MMAC active=26.5078%`,
+  coissue `29,684/17,063`.
+- Raw2 stats-only comparison:
+  `kernel_ticks=53,300,975`, `MMAC active=27.6518%`.
+
+Conclusion:
+
+- A third raw page is legal, but the extra token/control/page-selection cost
+  outweighs the RawUsed wait relief.
+- Do not continue increasing raw page depth as the next route.
+- Future pipeline work must prove useful work overlap, not only higher coissue
+  counts.
+
+Updated `v_mov` / coissue rule:
+
+- `v_mov` is now a hard reduction target, but it is not an isolated promotion
+  metric.
+- If XCU coissue is dominated by `v_mov_b32_e32`, that is not a successful
+  softmax/MMAC conveyor.  Useful coissue means softmax/dS math, sidecar or
+  predicate/address work that actually hides peer MMAC, and reduced exposed
+  wait/ABarrier bubbles.
+- Current raw2 asm audit shows explicit `zero_f16x8` contributes only the
+  small `include/shaobo_instr.h:32` group, while larger `v_mov` groups are
+  around softmax/dS and compiler remap/control locations such as
+  `src/dkv_kernel.cpp:620` and `.loc 0:0`.
+- Next edits must either reduce these `v_mov` groups without expanding
+  wait/ABarrier/code footprint, or create real consumer stagger where useful
+  VALU runs under peer MMAC.  Promotion still requires correctness PASS, no
+  scratch/spill, `ldsBankConflict=0`, and same-shape MMAC-active/ticks
+  improvement with XCU explanation.
+
+Follow-up static probe: FWD-style single `mmac_zero`.
+
+- Change tried locally and on remote build: initialize one `mmac_zero` per
+  consumer branch and pass it through score/dP plus dV/dK first-accum helpers,
+  mirroring FA3 FWD's `mmac_zeros` style.
+- Static/resource stayed legal:
+  `private=0`, `sgpr=60`, `vgpr=112`, no spill/scratch, but branch consumer
+  pressure increased from `198/208` to `202/208`.
+- ASM result was negative:
+  explicit zero-immediate `v_mov_b64` dropped from `20` to `4`, but
+  `v_mov_b64_e32` copies increased from `107` to `139`; `v_mov_b32_e32`
+  stayed `317`.
+- Decision: `REJECT_STATIC_NO_PMD`.  Long-living the zero fragment reduces
+  explicit zero init but creates more compiler register moves, so it is not a
+  safe route for BWD's current live-range shape.
+- Active source was restored to raw2 canonical.  Future `v_mov` work should
+  target softmax/dS/control remaps or useful stagger, not simply hoist zero.

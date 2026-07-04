@@ -2901,3 +2901,36 @@ Lesson:
   mistake it for a pipeline solution.  The producer still catches the consumer
   after two pages; the next design needs either more independent producer work
   during RawUsed waits or a larger/cleaner consumer MMAC island.
+
+## 2026-07-04 Raw3 Rejection And Current Optimization Focus
+
+- Raw3 page-local token stress was tried and reverted.
+- Temporary route:
+  `kRawBuffers=3`, `Raw2Filled/Raw2Used=6/7`, `AllDone=8`.
+- Static/resource PASS:
+  `private=0`, `sgpr=68`, `vgpr=112`, no scratch/spill.
+- H1/S128 and H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- H1/S1024 stats regressed versus raw2:
+  `kernel_ticks=56,111,055`, `MMAC active=26.5078%`
+  versus raw2 stats-only `kernel_ticks=53,300,975`,
+  `MMAC active=27.6518%`.
+- Decision: `REJECT_PERF_STATS_ONLY`.
+
+Current active route remains raw2 canonical:
+
+- 16 waves.
+- `ActiveDkvTile = DkvTileD128MqNk128<64>`.
+- `kRawBuffers=2`.
+- Page-local raw ownership:
+  `Raw0Filled/Raw0Used=2/3`, `Raw1Filled/Raw1Used=4/5`,
+  `AllDone=6`.
+
+Current focus:
+
+- Reduce or remove avoidable `v_mov`, especially the runtime-hot groups that
+  XCU counts as VALU/coissue but do not represent useful pipeline overlap.
+- Do not count `v_mov` + MMAC overlap as successful coissue.  Useful coissue
+  must be softmax/dS, sidecar/predicate/address work, or another real BWD
+  operation hidden under peer MMAC.
+- Use asm and XCU evidence for every change.  Raw page depth alone is not the
+  next route to 60% MMAC active.

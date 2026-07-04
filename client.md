@@ -1073,3 +1073,20 @@ Next design rule:
   page serialization but does not solve the 60% MMAC-active target; the next
   design must create more useful producer work or longer consumer MMAC islands,
   not only add more raw pages/tokens.
+
+## Current Rule: v_mov And Useful Coissue
+
+- Raw3 page-local token stress was tried and rejected:
+  `kernel_ticks=56,111,055`, `MMAC active=26.5078%` versus raw2 stats-only
+  `kernel_ticks=53,300,975`, `MMAC active=27.6518%`.
+- Keep the raw2 canonical route; do not add more raw pages/tokens as the next
+  optimization.
+- `v_mov` must be removed or greatly reduced, but a static `v_mov` reduction
+  does not promote a patch by itself.
+- Coissue is only meaningful when useful VALU work overlaps peer MMAC:
+  softmax/dS, sidecar/predicate/address work, or another real BWD operation.
+  `v_mov_b32_e32` showing up as the top coissued VALU opcode is a symptom to
+  fix, not evidence of a healthy conveyor.
+- Next implementation should use asm + XCU before/after evidence:
+  `v_mov` groups, `MMAC active`, useful `MMAC+VALU` overlap, RawUsed/ABarrier,
+  `s_waitcnt`, and same-shape ticks.
