@@ -56,6 +56,11 @@ SQTT evidence are required before any performance claim.
   same-shape performance.
 - Rejected before 62C2: direct Mq128/C208, Mq128/C240, and 62A still spilled
   SGPR.  62C2 is the first Mq128/R1 version that is no-spill and faster.
+- Rejected after 62C2: sheet 63 sidecar/raw lifetime split with early RawUsed
+  release.  It was static-clean (`private=0`, `sgpr=98`, no spill, consumer
+  `190/240`) and H1/S128 passed, but H1/S1024 failed for both no-wait and
+  wait-before-release variants.  Do not keep or retry release-before-softmax in
+  the canonical kernel without a focused lifetime/instruction probe.
 
 ## Current Diagnosis
 
@@ -75,6 +80,8 @@ S1024, but the active limiter is still packet ownership and barrier lifetime:
 Start from 62C2 and update the workbook before editing.  The next design should
 reduce or hide `s_abarrier_try_wait` ownership windows without duplicating Q/dO
 or score/dP, and without adding more token epochs that raise SCA/control cost.
+Do not directly retry sheet 63's release-before-softmax path: long q-loop
+correctness failed even though H1/S128 passed.
 
 Workbook sheet `51_structural_pivot` records the rejected WG-local duplicate
 Q/dO structural probe:

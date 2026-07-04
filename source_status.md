@@ -1,5 +1,33 @@
 # Source Status
 
+## 2026-07-05 Mq128 63 Rejected, 62C2 Restored
+
+Status: `MQ128_R1_62C2_ACTIVE_AFTER_63_REJECT`.
+
+Sheet 63 tried to split sidecar lifetime from raw Q/dO lifetime and release
+Raw0Used before final softmax.  The candidate was intentionally reverted from
+the active source after correctness failure.
+
+Evidence:
+
+- Static/resource gate was clean:
+  `private=0`, `sgpr=98`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`; branch windows `14/190/190/8`.
+- 63A H1/S128 PASS, but H1/S1024 FAIL:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_035331`,
+  `dk_rel_l2=0.0622111`, `dv_rel_l2=0.0326977`.
+- 63B added a wait before RawUsed release.  H1/S128 PASS, but H1/S1024 still
+  FAIL:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_035616`,
+  `dk_rel_l2=0.0638349`, `dv_rel_l2=0.047026`.
+
+Conclusion:
+
+Current active source is restored to 62C2.  Do not keep release-before-softmax
+code in the canonical route.  Future raw lifetime changes must prove
+correctness on H1/S1024 or a focused instruction/lifetime probe before any
+performance claim.
+
 ## 2026-07-05 Mq128 62C2 Candidate Active
 
 Status: `MQ128_R1_62C2_ACTIVE_CANDIDATE`.

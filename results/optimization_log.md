@@ -1,5 +1,58 @@
 # Optimization Log
 
+## 2026-07-05 Mq128 63 Sidecar Split Raw Release
+
+Decision: `REJECT_CORRECTNESS`
+
+Hypothesis:
+
+`Sheet 63 keeps the Mq128/R1 math and one raw Q/dO page, but splits sidecar
+lifetime from raw lifetime by giving sidecar two pages.  If final-pair raw Q/dO
+sources can be read into VGPR before softmax, consumers can arrive Raw0Used
+before final softmax/dS and dV/dK, letting producers publish the next q tile
+while useful consumer work continues.`
+
+Implemented as a temporary in-place candidate:
+
+- Added `kSidecarBuffers = RawBuffers == 1 ? 2 : RawBuffers`.
+- Producer0 wrote sidecar to `q_tile & 1` while raw Q/dO stayed on page 0.
+- Consumers read sidecar by sidecar page, not raw page.
+- Final ReleasePage M-pair read both low and high Q/dO source fragments before
+  softmax and moved `arrive_raw_used_page` before final softmax.
+- No new kernel, phase, ABarrier token, or asm island.
+
+Evidence:
+
+- Static/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=98`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- Branch windows:
+  producer0 `14/16`, consumer0 `190/240`, consumer1 `190/240`,
+  producer1 `8/16`.
+- 63A H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_035311`.
+- 63A H1/S1024 correctness FAIL:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_035331`,
+  `dk_rel_l2=0.0622111`, `dv_rel_l2=0.0326977`, `pass=0`.
+- 63B added `wait_lgkm(0)` after high source reads and before RawUsed release.
+  H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_035555`.
+- 63B H1/S1024 correctness still FAIL:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_035616`,
+  `dk_rel_l2=0.0638349`, `dv_rel_l2=0.047026`, `pass=0`.
+
+Conclusion:
+
+Reject and revert the active kernel to 62C2.  The failure only appears on the
+long q-loop, so H1/S128 is not sufficient evidence for raw/sidecar lifetime
+changes.  The issue is not just an in-flight `ds_read_matrix` wait boundary;
+holding final low/high raw source fragments across softmax or the split-sidecar
+lifetime is not safe in this code shape.  Do not keep this code in the
+canonical route.  If we revisit release-before-softmax, first write a focused
+lifetime/instruction probe or use a design that avoids carrying large raw
+source fragments across softmax.
+
 ## 2026-07-05 Mq128 62C2 Causal Exact-Tile Helper
 
 Decision: `ACCEPT_STATS_XCU_CANDIDATE`
