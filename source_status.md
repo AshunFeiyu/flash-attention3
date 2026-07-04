@@ -3103,3 +3103,33 @@ Current focus:
   softmax/dS helper again without a focused fragment/codegen probe.  The same
   class of dV corruption seen in older full-valid fastpaths reproduces on the
   current LDS-sidecar raw2 route.
+
+## 2026-07-05 Sidecar Register Prefetch Rejection
+
+- Workbook sheet: `58_sidecar_reg_prefetch_wait`.
+- Goal: hide producer0 sidecar global reads inside the measured RawUsed wait
+  window without changing ABarrier ownership or consumer math.
+- Temporary source change:
+  - split sidecar publication into a producer register-load helper and an LDS
+    store helper
+  - loaded `row_max_log2`, `row_inv_sum`, and `row_delta` before
+    `wait_raw_used_page`
+  - wrote sidecar values to LDS only after the raw page was free
+- Static/resource:
+  - PASS
+  - branch windows unchanged at `6/198/198/1`
+  - metadata `private=0`, `sgpr=60`, `vgpr=112`, no scratch/spill
+- Correctness:
+  - H1/S128 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_021112`
+  - H1/S1024 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_021118`
+- Performance:
+  - H1/S1024 `kernel_ticks=53,658,605`,
+    `MMAC active ~=27.4726%`, coissue `30,915/18,119`
+  - raw2 recert baseline remained better:
+    `kernel_ticks=53,008,410`, `MMAC active=27.7754%`
+- Decision: `REJECT_PERF_STATS_ONLY`; source reverted to raw2 canonical.
+- Guardrail: do not carry tiny producer prefetch work just because it is
+  correct and resource-clean.  Future producer-thickening needs enough
+  independent work to change the critical path or a consumer-release redesign.

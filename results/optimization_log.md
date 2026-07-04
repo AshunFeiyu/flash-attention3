@@ -1,5 +1,56 @@
 # Optimization Log
 
+## 2026-07-05 Sidecar Register Prefetch Before RawUsed Wait
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Hypothesis:
+
+`Producer0 currently loads sidecar after RawUsed wait and after Q publication.
+Move only the sidecar global read into producer VGPR before RawUsed wait, then
+write those values to the LDS sidecar page after the raw page is free.  This
+uses the observed producer idle window without changing ABarrier tokens, output
+ownership, MMOP count, or consumer math.`
+
+Implemented as a temporary in-place canonical-kernel refactor:
+
+- Split sidecar publication into `load_sidecar_tile_regs` and
+  `store_sidecar_regs_to_lds`.
+- Loaded the three sidecar floats before `wait_raw_used_page`.
+- Stored them to LDS only after `wait_raw_used_page`, `seq_raw_filled_page`, and
+  Q `matrix_load` publication.
+- Did not add a new page, token, phase, kernel, or asm island.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows unchanged at `6/198/198/1`, metadata `private=0`,
+  `sgpr=60`, `vgpr=112`, no scratch/spill.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_021112`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_021118`,
+  with `dk_rel_l2=0.0025563`, `dv_rel_l2=0.000337571`.
+- H1/S1024 stats:
+  `simTicks=57,272,215`, `kernel_ticks=53,658,605`,
+  `MMOP=131,072`, `MMAC active ~=27.4726%`,
+  coissue `30,915/18,119`, `ldsBankConflict=0`.
+- Raw2 recert comparison:
+  `kernel_ticks=53,008,410`, `MMAC active=27.7754%`.
+
+Conclusion:
+
+The idea is resource-clean and correct, but it regresses the target metric.  A
+three-float producer-sidecar preload is too small or not on the dominant
+critical path.  It does not move the kernel toward 60% MMAC active.  The code
+was reverted to raw2 canonical.
+
+Next implication:
+
+Future producer-thickening must either move substantially more independent work
+under the RawUsed window or change the consumer release structure.  Tiny
+producer prefetch alone is not worth carrying in the main route.
+
 ## 2026-07-05 Full-Valid Mask Shrink
 
 Decision: `REJECT_CORRECTNESS`

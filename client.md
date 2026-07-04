@@ -37,8 +37,8 @@ SQTT evidence are required before any performance claim.
 - Rejected after raw2: raw3 page depth, consumer1 score-prefetch stagger,
   causal=true specialization, score read batch2, WG-local duplicate Q/dO, and
   causal invalid-prefix page skip, raw release before softmax, and sidecar
-  ring3 early release, producer sidecar rebalance, and full-valid mask shrink.
-  All
+  ring3 early release, producer sidecar rebalance, full-valid mask shrink, and
+  sidecar register prefetch.  All
   resource/correctness-clean candidates regressed or failed to improve
   same-shape performance.
 
@@ -148,6 +148,19 @@ metadata `private=0`, `sgpr=66`, `vgpr=112`, no spill/scratch, but H1/S128
 failed with `dv_rel_l2=33.2914` while dK stayed close. PMD also warned
 `read vgpr165 before writing`. Do not remove per-element `valid_pair` from the
 main dKV helper without a focused fragment/codegen probe first.
+
+Workbook sheet `58_sidecar_reg_prefetch_wait` records a producer-thickening
+negative:
+
+```text
+load sidecar row_max/sum/delta into producer VGPR before RawUsed wait
+write sidecar to LDS only after page ownership is granted
+```
+
+It was resource-clean and correct, with branch windows still `6/198/198/1`,
+but H1/S1024 regressed to `kernel_ticks=53,658,605` and
+`MMAC active ~=27.4726%` versus raw2 `53,008,410` / `27.7754%`. Tiny producer
+prefetch is not enough to move the RawUsed critical path.
 
 ## Workflow Rules
 
