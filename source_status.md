@@ -3077,3 +3077,29 @@ Current focus:
   balanced and raise coissue, but it does not shorten the RawUsed/consumer
   critical path.  Future producer-thickening must either hide useful work under
   consumer MMAC or eliminate an actual wait.
+
+## 2026-07-05 Full-Valid Mask Shrink Rejection
+
+- Workbook sheet: `57_full_valid_mask_shrink`.
+- Goal: shorten causal full-valid softmax/dS by skipping the per-element
+  `valid_pair` checks inside the canonical raw2 LDS-sidecar route.
+- Temporary source change:
+  - added a no-mask `softmax_ds_owner16_full_valid_from_lds_sidecar` helper
+  - selected it from `consume_mq_mpair_owner16` when the whole owner16 M-pair
+    was full-valid
+  - left MMOP count, output ownership, ABarrier tokens, and LDS pages unchanged
+- Static/resource:
+  - PASS
+  - branch windows `6/197/197/1`
+  - metadata `private=0`, `sgpr=66`, `vgpr=112`, no scratch/spill
+- Correctness:
+  - H1/S128 failed at
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_015917`
+  - PMD warning: `read vgpr165 before writing`
+  - `dk_rel_l2=0.000361379`
+  - `dv_rel_l2=33.2914`, `dv_max_abs=1.3782`, `pass=0`
+- Decision: `REJECT_CORRECTNESS`; source reverted to raw2 canonical.
+- Guardrail: do not remove per-element `valid_pair` from the main dKV
+  softmax/dS helper again without a focused fragment/codegen probe.  The same
+  class of dV corruption seen in older full-valid fastpaths reproduces on the
+  current LDS-sidecar raw2 route.

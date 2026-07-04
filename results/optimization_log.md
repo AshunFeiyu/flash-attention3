@@ -1,5 +1,49 @@
 # Optimization Log
 
+## 2026-07-05 Full-Valid Mask Shrink
+
+Decision: `REJECT_CORRECTNESS`
+
+Hypothesis:
+
+`For causal=true full-valid owner16 M-pairs, every q/k element is valid.  A
+shorter softmax/dS helper can skip the per-element valid_pair branch and reduce
+SCA/VALU before RawUsed release without changing MMOP count, tile shape, output
+ownership, or ABarrier tokens.`
+
+Implemented as a temporary in-place canonical-kernel probe:
+
+- Added an LDS-sidecar full-valid helper for softmax/dS.
+- Selected it in `consume_mq_mpair_owner16` only when the whole 32-row M-pair
+  was full-valid.
+- Kept the existing masked helper for boundary and diagonal M-pairs.
+- Did not add a new kernel, phase, ABarrier, LDS page, or asm island.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=66`, `vgpr=112`, no scratch/spill.
+- Branch windows changed to `6/197/197/1`.
+- H1/S128 failed at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_015917`.
+- PMD printed `warn: read vgpr165 before writing`.
+- dK stayed close: `dk_rel_l2=0.000361379`.
+- dV was corrupted:
+  `dv_max_abs=1.3782`, `dv_mean_abs=0.197446`,
+  `dv_rmse=0.305841`, `dv_rel_l2=33.2914`, `pass=0`.
+
+Conclusion:
+
+The old full-valid dV corruption reproduces even on the current LDS-sidecar
+raw2 route.  This is not a safe consumer-side mask shrink.  The code was
+reverted to raw2 canonical.
+
+Next implication:
+
+Do not remove per-element `valid_pair` from the main dKV helper again without a
+focused fragment/codegen probe that proves P/dV fragment layout and PMD/compiler
+behavior first.
+
 ## 2026-07-05 Producer Sidecar Rebalance
 
 Decision: `REJECT_PERF_STATS_ONLY`

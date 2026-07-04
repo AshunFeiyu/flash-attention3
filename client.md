@@ -37,7 +37,8 @@ SQTT evidence are required before any performance claim.
 - Rejected after raw2: raw3 page depth, consumer1 score-prefetch stagger,
   causal=true specialization, score read batch2, WG-local duplicate Q/dO, and
   causal invalid-prefix page skip, raw release before softmax, and sidecar
-  ring3 early release, and producer sidecar rebalance.  All
+  ring3 early release, producer sidecar rebalance, and full-valid mask shrink.
+  All
   resource/correctness-clean candidates regressed or failed to improve
   same-shape performance.
 
@@ -134,6 +135,19 @@ It passed correctness/resource gates and moved branch windows from
 `kernel_ticks=53,558,960`, `MMAC active=27.5554%`.  Coissue rose, but the
 RawUsed/consumer critical path did not shorten.  Do not equate producer visual
 balance with useful pipeline overlap.
+
+Workbook sheet `57_full_valid_mask_shrink` records a correctness negative:
+
+```text
+If an owner16 M-pair is fully causal-valid:
+  skip per-element valid_pair checks in softmax/dS
+```
+
+It passed static/resource gates with branch windows `6/197/197/1` and
+metadata `private=0`, `sgpr=66`, `vgpr=112`, no spill/scratch, but H1/S128
+failed with `dv_rel_l2=33.2914` while dK stayed close. PMD also warned
+`read vgpr165 before writing`. Do not remove per-element `valid_pair` from the
+main dKV helper without a focused fragment/codegen probe first.
 
 ## Workflow Rules
 
