@@ -4293,3 +4293,36 @@ Conclusion:
 - Do not keep this code.  The next useful-stagger attempt must avoid carrying
   two score/dP pairs live at once, or target softmax/control `v_mov` shrink
   instead of reordering score islands.
+
+### Causal=True Specialization Probe
+
+Status: `REJECT_PERF_STATS_ONLY`; code reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `49_causal_true_specialize` records the hypothesis:
+  canonical dKV targets causal=true, so require `causal==1` and pass literal
+  `1` into the consumer loop to let the compiler drop `!causal` arms.
+- This is a codegen/control shrink attempt, not a pipeline redesign.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=56`, `vgpr=112`, no scratch/spill.
+- Branch windows:
+  producerKQ `6/16`, consumer0 `198/208`, consumer1 `198/208`,
+  producerVDout `1/16`.
+- H1/S128 and H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- H1/S1024 stats:
+  `kernel_ticks=56,200,690`, `MMAC active=28.0230%`,
+  VALU `181,752`, SCA `280,408`, coissue `31,481/18,140`.
+- Raw2 stats-only baseline:
+  `kernel_ticks=53,300,975`, `MMAC active=27.6518%`.
+
+Conclusion:
+
+- Causal constant propagation reduces SGPR and SCA, but does not shorten the
+  exposed critical path.  Ticks regress by about `5.4%`.
+- The remaining limiter is still packet ownership/wait shape, not simply the
+  runtime `causal` boolean.
+- Do not keep this specialization in the canonical route.

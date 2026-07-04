@@ -27,6 +27,9 @@ Latest rejected probe:
   `53,300,975`.
 - MMAC active rose only slightly (`27.6518% -> 28.0755%`), so the probe was
   rejected and removed from live source.
+- `w16_raw2_causal_true_specialize` required canonical `causal==1` and passed
+  literal causal into consumers.  It reduced SGPR/SCA but regressed H1/S1024
+  to `kernel_ticks=56,200,690`, so it was also rejected and removed.
 
 Next:
 
