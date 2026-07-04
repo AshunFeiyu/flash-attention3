@@ -2699,3 +2699,24 @@ Lesson:
   control/VALU/SCA cost without reducing the dominant ABarrier bubble.
 - Keep active source simple; the next useful move must reduce raw/ABarrier
   lifetime itself, not only move sidecar work around.
+
+Tail `AllDone` wave0-only wait probe:
+
+- temporary change: only wave0 waited `AllDone` and invalidated abarriers at
+  kernel tail; all waves still synchronized at the final `__syncthreads()`
+- resource/correctness:
+  - build/static gates PASS
+  - metadata `private=0`, `sgpr=86`, `vgpr=112`, no spill
+  - H1/S128 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_193951`
+  - H1/S1024 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_194010`
+- performance:
+  - baseline `simTicks=58424275`, `MMAC active=26.6364%`,
+    coissue `20088/11882`
+  - probe `simTicks=58700915`, `MMAC active=26.7200%`,
+    coissue `18982/11595`
+- decision: `REJECT_PERF`; code reverted
+- lesson: tail-only ABarrier cleanup does not reduce the dominant raw-loop
+  `s_abarrier_try_wait -> s_xor_b32` bubble and slightly hurts same-shape
+  ticks.

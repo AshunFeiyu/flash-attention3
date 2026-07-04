@@ -3874,3 +3874,38 @@ Next:
   is hidden by score/dP MMAC.
 - The next higher-probability path is to reduce raw packet wait count/lifetime
   or revisit raw2 overlay only with a simpler ownership ledger.
+
+### Tail AllDone Wave0 Probe
+
+Status: `REJECT_PERF`, code reverted.
+
+Hypothesis:
+
+- Only wave0 waits `AllDone` and invalidates ABarrier tokens at kernel tail.
+- Other waves only arrive at `AllDone` and fall through to the final
+  `__syncthreads()`.
+- Expected effect was a small reduction in tail ABarrier overhead.
+
+Evidence:
+
+- Build/static gates PASS:
+  `private=0`, `sgpr=86`, `vgpr=112`, no SGPR/VGPR spill.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_193951`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_194010`.
+- H1/S1024 stats:
+  `simTicks=58700915`, `MMAC active=26.7200%`,
+  coissue `18982/11595`, `ldsBankConflict=0`.
+- Baseline was
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411`:
+  `simTicks=58424275`, `MMAC active=26.6364%`,
+  coissue `20088/11882`.
+
+Conclusion:
+
+- The tiny MMAC-active increase is not a pipeline win because same-shape ticks
+  regressed by about `0.47%` and coissue success/rate dropped.
+- Tail-only ABarrier cleanup does not attack the dominant xcu bubble
+  `s_abarrier_try_wait -> s_xor_b32` inside the raw packet loop.
+- Do not continue optimizing `AllDone` tail handling in isolation.
