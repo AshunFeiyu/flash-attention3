@@ -1,5 +1,93 @@
 # Optimization Log
 
+## 2026-07-05 Mq128 Half-Page Conveyor
+
+Decision: `ACCEPT_CANDIDATE_CURRENT_BEST`
+
+Hypothesis:
+
+The Q/dO lifetime split proved that separating Q and dO tokens is legal and
+slightly better, but focused xcu still showed full-page ownership cliffs:
+representative `QUsed`/`DoutUsed` windows had about `95%` same-SIMD bubble.
+This candidate keeps one physical Q page and one physical dO page, but splits
+the Mq128 page into two M64 semantic ownership halves.  Producers should be
+able to publish the next tile half0 while consumers finish the previous tile
+half1, reducing the cliff without duplicating Q/dO or adding a full extra LDS
+page.
+
+Implemented in the single canonical kernel:
+
+- Barrier ledger is now:
+  `ResidentFilled=0`, `ResidentUsed=1`,
+  `Q0Filled/Q0Used=2/3`, `Dout0Filled/Dout0Used=4/5`,
+  `Q1Filled/Q1Used=6/7`, `Dout1Filled/Dout1Used=8/9`,
+  `AllDone=10`.
+- Producers publish half0 then half1 for Q/sidecar and dO.
+- Consumers wait/consume/release MBlockBase `0/2` for half0, then
+  wait/consume/release MBlockBase `4/6` for half1.
+- No new kernel, no phase stack, no extra full LDS page, no output ownership
+  change, no dQ change, and no asm island.
+
+Evidence:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `69_mq128_half_page_conveyor`.
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- Branch windows:
+  producer0 `14/16`, consumer0 `180/240`, consumer1 `180/240`,
+  producer1 `8/16`.
+- Correctness PASS:
+  - H1/S128:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_053013`.
+  - H1/S1024 stats-only:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_053032`.
+  - H1/S1024 full perf:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_053321`.
+- Full perf metrics:
+  `kernel_ticks=48,279,140`, `simTicks=51,892,750`,
+  `MMOP=131,072`, `MMAC active=31.7858%`, `VALU=165,872`,
+  `SCA=115,608`, `LDS=83,856`, `VMEM=4,352`,
+  coissue `33,962/22,131`, `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_053321_clean_half_page_conveyor_h1s1024_sqc7_fullperf`.
+
+XCU:
+
+- Dispatch aggregate:
+  `s_abarrier_try_wait -> s_xor_b32` remains top at `40.42%`;
+  `s_abarrier_try_wait -> s_waitcnt` is `9.07%`;
+  `v_mmac -> v_mmac` is `7.50%`.
+- Focused windows:
+  - `bar3 Q0Used`, `7832:14048`, `xcd0/se0/cu0/simd3/wave0`:
+    producer pipeline bubble `99.98%`; same-SIMD bubble `96.04%`,
+    MMAC `1.01%`, VALU `0.90%`.
+  - `bar5 Dout0Used`, `18900:25448`, `xcd0/se0/cu0/simd2/wave3`:
+    producer pipeline bubble `99.98%`; same-SIMD bubble `94.39%`,
+    MMAC `1.13%`, VALU `1.95%`.
+  - `bar7 Q1Used`, `14432:20560`, `xcd0/se0/cu0/simd2/wave0`:
+    producer pipeline bubble `99.98%`; same-SIMD bubble `94.25%`,
+    MMAC `1.01%`, VALU `2.03%`.
+
+Conclusion:
+
+Accept as the current best clean baseline.  Versus the Q/dO split full perf,
+`kernel_ticks` improves from `51,238,915` to `48,279,140`
+(`~5.78%`) and MMAC active rises from `29.6586%` to `31.7858%`
+(`+2.13` points), while correctness, no-spill, and bank-conflict gates stay
+clean.
+
+This is still not the 60% active target.  The focused windows prove that the
+candidate mostly shortens ownership cliffs from about `10k` cycles to about
+`6.1-6.5k` cycles; it does not yet hide those waits with FWD-style useful
+softmax/MMAC conveyor work.  The next design should either reduce handshakes
+per useful MMAC further, create real consumer-group stagger during half-token
+waits, or lengthen the useful MMAC island without reintroducing duplicate
+score/dP.
+
 ## 2026-07-05 Mq128 62C2 RawUsed XCU Top2000 Diagnosis
 
 Decision: `OBSERVE_XCU_DIAGNOSIS`

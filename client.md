@@ -19,10 +19,11 @@ SQTT evidence are required before any performance claim.
   - waves12-15: producer V + dO
 - Main path: `matrix_load_32x16/32x32 ... bps lds` +
   normal/trans `ds_read_matrix` + `v_mmac_*lit`.
-- Q and dO now have separate semantic ownership tokens on the same Mq128
-  physical LDS pages: `QFilled/QUsed=bar2/bar3`,
-  `DoutFilled/DoutUsed=bar4/bar5`. K/V is latched into consumer VGPR, then
-  the raw pages overlay the K/V LDS region.
+- Q and dO are split into two M64 semantic half-page ownership regions on the
+  same Mq128 physical LDS pages:
+  `Q0=bar2/3`, `Dout0=bar4/5`, `Q1=bar6/7`, `Dout1=bar8/9`;
+  `AllDone=bar10`. K/V is latched into consumer VGPR, then the raw pages
+  overlay the K/V LDS region.
 - Canonical target path is exact causal tiles only:
   `causal == 1`, `seqlen_q % Mq == 0`, `seqlen_k == seqlen_q`,
   `seqlen_k % Nk == 0`.
@@ -33,22 +34,26 @@ SQTT evidence are required before any performance claim.
 
 ## Latest Evidence
 
-- Q/dO lifetime split H1/S1024 full-perf stats:
-  `kernel_ticks=51,238,915`, `MMAC active=29.6586%`, `MMOP=131,072`,
-  `VALU=165,744`, `SCA=108,632`, `LDS=83,856`, `VMEM=4,352`,
-  `coissue=27,090/16,944`, `ldsBankConflict=0`.
-- Static/resource for the split:
+- Half-page conveyor H1/S1024 full-perf stats:
+  `kernel_ticks=48,279,140`, `MMAC active=31.7858%`, `MMOP=131,072`,
+  `VALU=165,872`, `SCA=115,608`, `LDS=83,856`, `VMEM=4,352`,
+  `coissue=33,962/22,131`, `ldsBankConflict=0`.
+- Static/resource for the half-page conveyor:
   branch windows producer0 `14/16`, consumer0 `180/240`,
   consumer1 `180/240`, producer1 `8/16`; metadata `private=0`,
-  `sgpr=97`, `sgpr_spill=0`, `vgpr=128`, `vgpr_spill=0`.
-- Q/dO split full perf archive:
-  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_044647_clean_qdo_split_h1s1024_sqc7_fullperf`.
-- Q/dO split xcu top bubbles:
-  `s_abarrier_try_wait -> s_xor_b32` is still dominant at `42.85%`.
-  Ownership bubbles split into `bar3 QUsed` `2,266,380` cycles
-  (`224` bubbles, avg `10,117.8`) and `bar5 DoutUsed` `2,251,240` cycles
-  (`224` bubbles, avg `10,050.2`); combined ownership wait remains about
-  `4.52M` cycles, so this is not a pipeline breakthrough.
+  `sgpr=99`, `sgpr_spill=0`, `vgpr=128`, `vgpr_spill=0`.
+- Half-page full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_053321_clean_half_page_conveyor_h1s1024_sqc7_fullperf`.
+- Half-page xcu top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` is still dominant at `40.42%`;
+  `s_abarrier_try_wait -> s_waitcnt` is `9.07%`; `v_mmac -> v_mmac`
+  is `7.50%`.
+- Half-page focused windows:
+  `bar3 Q0Used` same-SIMD bubble `96.04%`, `bar5 Dout0Used` `94.39%`,
+  and `bar7 Q1Used` `94.25%`.  Individual cliffs are shorter than the Q/dO
+  split, but they are still not covered by useful peer-wave work.
+- Q/dO lifetime split comparison:
+  `kernel_ticks=51,238,915`, `MMAC active=29.6586%`.
 - 62C2 H1/S1024 full-perf stats:
   `kernel_ticks=52,163,020`, `MMAC active=29.2001%`, `MMOP=131,072`,
   `VALU=167,536`, `SCA=106,968`, `ldsBankConflict=0`.
@@ -98,23 +103,24 @@ SQTT evidence are required before any performance claim.
 ## Current Diagnosis
 
 The kernel does have MMAC and the matrix path is not the primary missing piece.
-The Q/dO split is a small clean improvement over 62C2, but the active limiter
-is still packet ownership and barrier lifetime:
+The half-page conveyor is the current best clean baseline, but the active
+limiter is still packet ownership and barrier lifetime:
 
-- ABarrier waits dominate xcu despite lower SCA/VALU count.  The main steady
-  culprits are now split across `QUsed` and `DoutUsed`, not eliminated.
+- ABarrier waits dominate xcu despite better ticks and active share.  The main
+  steady culprits are now split across half-page `Q0/Dout0/Q1` waits, not
+  eliminated.
 - `ds_read_matrix -> wait -> MMAC` is visible but secondary versus
   `s_abarrier_try_wait` bubbles.
-- The Mq128 exact-tile route plus Q/dO split is a better baseline, not a
+- The Mq128 exact-tile route plus half-page split is a better baseline, not a
   60% active solution.
 - Assembly is not the next default move; only a proven hot island should become
   asm, and only after topology/resource work fails.
 
 ## Next Experiment
 
-Start from the Q/dO split baseline and update the workbook before editing. The
-next design must reduce the combined `QUsed + DoutUsed` ownership bubble, not
-merely rename it.  Viable directions are:
+Start from the half-page conveyor baseline and update the workbook before
+editing. The next design must reduce or hide the half-token ownership bubbles,
+not merely rename them.  Viable directions are:
 
 - make more useful producer work happen while the producer waits, without
   adding a new LDS page/token family;

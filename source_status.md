@@ -1,5 +1,76 @@
 # Source Status
 
+## 2026-07-05 Half-Page Conveyor Active
+
+Status: `MQ128_R1_HALF_PAGE_CONVEYOR_CURRENT_BEST`.
+
+Current active source keeps the clean W16/Mq128/Nk128/D128 canonical dKV
+kernel and freezes dQ.  It refines the prior Q/dO lifetime split by cutting
+the Mq128 page into two M64 semantic ownership halves on the same physical LDS
+pages:
+
+- `Q0Filled/Q0Used = bar2/bar3`, `Dout0Filled/Dout0Used = bar4/bar5`.
+- `Q1Filled/Q1Used = bar6/bar7`, `Dout1Filled/Dout1Used = bar8/bar9`.
+- `AllDone = bar10`; do not delete it by inspection because the previous
+  cleanup changed WDRA metadata into private/VGPR spill.
+- Producers publish half0 then half1.  Consumers consume MBlockBase `0/2`,
+  release half0, then consume MBlockBase `4/6`, release half1.
+- No new kernel, no new phase stack, no extra full LDS page, no output
+  ownership change, and no asm island was added.
+
+Validation:
+
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- WDRA branch windows:
+  producer0 `14/16`, consumer0 `180/240`, consumer1 `180/240`,
+  producer1 `8/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_053013`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_053032`.
+- H1/S1024 full perf correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_053321`.
+
+Performance:
+
+- Full perf `kernel_ticks=48,279,140`, `simTicks=51,892,750`.
+- `MMOP=131,072`, `MMAC active=31.7858%`, `VALU=165,872`,
+  `SCA=115,608`, `LDS=83,856`, `VMEM=4,352`.
+- Coissue `33,962/22,131`.
+- `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_053321_clean_half_page_conveyor_h1s1024_sqc7_fullperf`.
+
+XCU finding:
+
+- Dispatch aggregate:
+  `s_abarrier_try_wait -> s_xor_b32` remains top at `40.42%`;
+  `s_abarrier_try_wait -> s_waitcnt` is `9.07%`;
+  `v_mmac -> v_mmac` is `7.50%`.
+- Focused half-token windows:
+  - `bar3 Q0Used`, `7832:14048`, `xcd0/se0/cu0/simd3/wave0`:
+    producer pipeline bubble `99.98%`; same-SIMD bubble `96.04%`,
+    MMAC `1.01%`, VALU `0.90%`.
+  - `bar5 Dout0Used`, `18900:25448`, `xcd0/se0/cu0/simd2/wave3`:
+    producer pipeline bubble `99.98%`; same-SIMD bubble `94.39%`,
+    MMAC `1.13%`, VALU `1.95%`.
+  - `bar7 Q1Used`, `14432:20560`, `xcd0/se0/cu0/simd2/wave0`:
+    producer pipeline bubble `99.98%`; same-SIMD bubble `94.25%`,
+    MMAC `1.01%`, VALU `2.03%`.
+
+Conclusion:
+
+Promote this as the current best clean baseline because it improves the Q/dO
+split full-perf ticks from `51,238,915` to `48,279,140` and MMAC active from
+`29.6586%` to `31.7858%` while preserving correctness and resource gates.
+It is not a final FWD-style conveyor: the focused windows remain
+`94-96%` bubble.  The next design must create real useful overlap during the
+half-token waits, reduce handshakes without restoring a full-page cliff, or
+lengthen useful MMAC islands without duplicate score/dP.
+
 ## 2026-07-05 Q/dO Lifetime Split Active
 
 Status: `MQ128_R1_QDO_LIFETIME_SPLIT_MICRO_BASELINE`.

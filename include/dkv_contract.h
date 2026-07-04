@@ -79,15 +79,23 @@ using ActiveDkvTile = DkvTileD128MqNk128<128, 1>;
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
     static constexpr int kResidentUsed = 1;
-    static constexpr int kRaw0Filled = 2;
-    static constexpr int kRaw0Used = 3;
-    static constexpr int kRaw1Filled = 4;
-    static constexpr int kRaw1Used = 5;
-    static constexpr int kAllDone = 6;
-    static constexpr int kQFilled = kRaw0Filled;
-    static constexpr int kQUsed = kRaw0Used;
-    static constexpr int kDoutFilled = kRaw1Filled;
-    static constexpr int kDoutUsed = kRaw1Used;
+    static constexpr int kQ0Filled = 2;
+    static constexpr int kQ0Used = 3;
+    static constexpr int kDout0Filled = 4;
+    static constexpr int kDout0Used = 5;
+    static constexpr int kQ1Filled = 6;
+    static constexpr int kQ1Used = 7;
+    static constexpr int kDout1Filled = 8;
+    static constexpr int kDout1Used = 9;
+    static constexpr int kAllDone = 10;
+    static constexpr int kRaw0Filled = kQ0Filled;
+    static constexpr int kRaw0Used = kQ0Used;
+    static constexpr int kRaw1Filled = kDout0Filled;
+    static constexpr int kRaw1Used = kDout0Used;
+    static constexpr int kQFilled = kQ0Filled;
+    static constexpr int kQUsed = kQ0Used;
+    static constexpr int kDoutFilled = kDout0Filled;
+    static constexpr int kDoutUsed = kDout0Used;
 };
 
 struct OptimizationTargets {

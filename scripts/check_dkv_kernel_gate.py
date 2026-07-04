@@ -74,20 +74,34 @@ def main() -> int:
             failures, "missing_resident_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*8\)",
             failures, "missing_resident_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQFilled,\s*4\)",
-            failures,
-            "missing_q_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQUsed,\s*8\)", failures,
-            "missing_q_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kDoutFilled,\s*4\)",
-            failures,
-            "missing_dout_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kDoutUsed,\s*8\)", failures,
-            "missing_dout_used_count")
-    require(perf_source, r"arrive_dout_used<Wdra>\(\)", failures,
-            "missing_dout_lifetime_release")
-    require(perf_source, r"arrive_q_used<Wdra>\(\)", failures,
-            "missing_q_lifetime_release")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ0Filled,\s*4\)",
+            failures, "missing_q0_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ0Used,\s*8\)",
+            failures, "missing_q0_used_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kDout0Filled,\s*4\)",
+            failures, "missing_dout0_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kDout0Used,\s*8\)",
+            failures, "missing_dout0_used_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ1Filled,\s*4\)",
+            failures, "missing_q1_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ1Used,\s*8\)",
+            failures, "missing_q1_used_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kDout1Filled,\s*4\)",
+            failures, "missing_dout1_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kDout1Used,\s*8\)",
+            failures, "missing_dout1_used_count")
+    require(perf_source, r"publish_mq_half_tile<Tile,\s*0>", failures,
+            "missing_qdo_half0_publisher")
+    require(perf_source, r"publish_mq_half_tile<Tile,\s*1>", failures,
+            "missing_qdo_half1_publisher")
+    require(perf_source, r"publish_sidecar_half_tile_to_lds<Tile,\s*0>",
+            failures, "missing_sidecar_half0_publisher")
+    require(perf_source, r"publish_sidecar_half_tile_to_lds<Tile,\s*1>",
+            failures, "missing_sidecar_half1_publisher")
+    require(perf_source, r"arrive_dout_half_used<Wdra,\s*ReleaseHalf>\(\)",
+            failures, "missing_dout_half_lifetime_release")
+    require(perf_source, r"arrive_q_half_used<Wdra,\s*ReleaseHalf>\(\)",
+            failures, "missing_q_half_lifetime_release")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
     require(perf_source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
@@ -100,9 +114,9 @@ def main() -> int:
     require(source, r"raise_priority_2", failures, "missing_s_setprio_helper")
     require(contract, r"struct\s+DkvBarrierLedger", failures,
             "missing_barrier_ledger")
-    require(contract, r"kQFilled\s*=\s*kRaw0Filled", failures,
+    require(contract, r"kQFilled\s*=\s*kQ0Filled", failures,
             "missing_q_barrier_alias")
-    require(contract, r"kDoutFilled\s*=\s*kRaw1Filled", failures,
+    require(contract, r"kDoutFilled\s*=\s*kDout0Filled", failures,
             "missing_dout_barrier_alias")
     require(contract, r"kDkvPathReferenceCorrectness\s*=\s*1", failures,
             "missing_reference_path_contract")
