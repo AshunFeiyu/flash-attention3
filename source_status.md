@@ -3027,3 +3027,26 @@ Current focus:
   operation hidden under peer MMAC.
 - Use asm and XCU evidence for every change.  Raw page depth alone is not the
   next route to 60% MMAC active.
+
+## 2026-07-05 Sidecar Ring3 Early Release Rejection
+
+- Workbook sheet: `55_sidecar_ring3_early_raw_release`.
+- Goal: make ReleasePage `RawUsed` arrive before softmax/dS without spilling
+  sidecar rows into consumer VGPR.
+- Design:
+  - raw Q/dO remained two pages
+  - sidecar used three LDS pages
+  - consumer pre-read Q/dO source, released raw page, then read sidecar ring
+    for softmax/dS
+- Result:
+  - direct `%3` version: correctness/resource PASS, but
+    `kernel_ticks=54,754,245`, `MMAC active=26.7523%`
+  - static sidecar-page-counter version: correctness/resource PASS, but
+    `kernel_ticks=55,298,425`, `MMAC active=26.5015%`
+  - raw2 recert baseline remained better:
+    `kernel_ticks=53,008,410`, `MMAC active=27.7754%`
+- Decision: `REJECT_PERF_STATS_ONLY`; source reverted to raw2 canonical.
+- Lesson: sidecar lifetime can be fixed with an LDS ring, but the control/SCA
+  cost is visible and does not solve the RawUsed critical path.  Do not retry
+  page/ring-depth changes without a top-level reason that also increases useful
+  MMAC island length or removes ownership/control work.

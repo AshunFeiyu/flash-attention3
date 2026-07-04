@@ -36,8 +36,9 @@ SQTT evidence are required before any performance claim.
   Raw1Used SIMD window is about `93.94%` bubble and only `1.05%` MMAC.
 - Rejected after raw2: raw3 page depth, consumer1 score-prefetch stagger,
   causal=true specialization, score read batch2, WG-local duplicate Q/dO, and
-  causal invalid-prefix page skip.  All resource/correctness-clean candidates
-  regressed or failed to improve same-shape performance.
+  causal invalid-prefix page skip, raw release before softmax, and sidecar
+  ring3 early release.  All resource/correctness-clean candidates regressed or
+  failed to improve same-shape performance.
 
 ## Current Diagnosis
 
@@ -100,6 +101,24 @@ assumes the second fragment is `+1024` bytes from the first, while raw Q/dO
 M0/M1 score/dP reads are separated by `4 * 1024` bytes in the D128 raw page.
 The source is reverted to the raw2 baseline. Future asm islands must first
 prove the exact LDS adjacency relation for the target layout.
+
+Workbook sheets `54_raw_release_before_softmax` and
+`55_sidecar_ring3_early_raw_release` record two raw-lifetime negatives:
+
+```text
+54: pre-read Q/dO source and arrive RawUsed before softmax
+    -> H1/S1024 correctness fails because sidecar is still live.
+
+54b: pre-read sidecar rows to VGPR too
+    -> static fails with private=52, vgpr_spill=24.
+
+55: keep raw2 but add sidecar ring3, then release raw before softmax
+    -> correctness/resource pass, but H1/S1024 kernel_ticks=55,298,425,
+       MMAC active=26.5015%, worse than raw2 recert 53,008,410 / 27.7754%.
+```
+
+Do not retry page/ring-depth work in isolation.  A future raw-lifetime design
+must also remove ownership/control cost or enlarge a useful MMAC island.
 
 ## Workflow Rules
 

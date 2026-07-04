@@ -1,5 +1,63 @@
 # Optimization Log
 
+## 2026-07-05 Sidecar Ring3 Early Raw Release
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Hypothesis:
+
+`Sheet 54 proved raw release before softmax is illegal unless sidecar lifetime is
+also protected.  Instead of latching sidecar rows in consumer VGPR, keep raw
+Q/dO as two pages and allocate a three-page sidecar ring.  RawUsed can then
+mean Q/dO ownership only, while softmax reads sidecar[t % 3] after the raw page
+has been released.`
+
+Implemented as a temporary in-place canonical-kernel probe:
+
+- Added a third sidecar LDS page while keeping `kRawBuffers=2`.
+- Producer published Q/dO to raw page `q_tile & 1` and sidecar to a three-page
+  ring.
+- ReleasePage path pre-read the low/high Q/dO source fragments, arrived
+  `RawUsed` before softmax/dS, then used the sidecar ring page for P/dS and ran
+  dV/dK MMAC.
+- No extra ABarrier token and no new kernel/phase were added.
+
+Evidence:
+
+- Direct `%3` version:
+  - static PASS: branch windows `6/203/203/1`, `private=0`, `sgpr=60`,
+    `vgpr=112`, no spill/scratch
+  - H1/S128 and H1/S1024 correctness PASS
+  - H1/S1024:
+    `kernel_ticks=54,754,245`, `MMAC active=26.7523%`,
+    `MMOP=131,072`, `VALU=193,180`, `SCA=297,032`,
+    `ldsBankConflict=0`
+- Static sidecar-page-counter refinement:
+  - static PASS: branch windows `6/200/200/1`, `private=0`, `sgpr=62`,
+    `vgpr=112`, no spill/scratch
+  - H1/S128 and H1/S1024 correctness PASS
+  - H1/S1024:
+    `kernel_ticks=55,298,425`, `MMAC active=26.5015%`,
+    `MMOP=131,072`, `VALU=181,980`, `SCA=300,328`,
+    `LDS=85,822`, `VMEM=4,352`, `coissue=29,576/17,687`,
+    `ldsBankConflict=0`
+- Raw2 recert comparison:
+  `kernel_ticks=53,008,410`, `MMAC active=27.7754%`.
+
+Conclusion:
+
+The sidecar ring makes the earlier RawUsed release legal and resource-clean,
+but it does not improve the pipeline.  The likely cost is extra sidecar page
+selection/control and shifted ABarrier/SCA work, not LDS bank conflict or
+spill.  The code was reverted to raw2 canonical.
+
+Next implication:
+
+Do not keep adding page depth or sidecar rings.  The next credible route needs
+to reduce ownership/control operations, enlarge the useful MMAC island without
+spilling, or use a cleaner FWD-style topology that gives producer waves useful
+work while consumers run MMAC/softmax.
+
 ## 2026-07-03 BlockN / Owner-N32 Direct Expansion Probe
 
 Decision: `REJECT_STATIC_SPILL`
