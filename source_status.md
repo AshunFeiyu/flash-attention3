@@ -2757,3 +2757,22 @@ Mq128 static-scoped direct probe:
   The next design must reduce scalar live state/control expansion, not only
   raise VGPR allocation.
 - baseline Mq64 source and remote binary were restored after the check.
+
+Further Mq128 resource probes:
+
+- noinline M-pair helper:
+  - `consume_mq_mpair_owner16` marked noinline under Mq128/consumer248
+  - result: `private_segment_fixed_size=492`, `sgpr_spill_count=0`,
+    `vgpr_spill_count=0`
+  - decision: `REJECT_RESOURCE`
+  - lesson: function boundary cuts SGPR lifetime but device call/private memory
+    is unacceptable
+- explicit four-Mpair sequence:
+  - Mq128 first/rest q tile paths explicitly called MBlockBase
+    `0,2,4,6`, without template recursion
+  - result: `private=0`, `sgpr_count=100`, `sgpr_spill_count=18`,
+    `vgpr_count=132`, `vgpr_spill_count=0`
+  - decision: `REJECT_RESOURCE`
+  - lesson: template recursion is not the root cause; the inlined four-Mpair
+    static branch itself has too much scalar/control live state
+- baseline Mq64 source and remote binary were restored and metadata PASS.

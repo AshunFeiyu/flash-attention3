@@ -3963,3 +3963,21 @@ Follow-up resource check:
 - Branch windows became consumer `209/248`, so the VGPR side is legal.
 - The remaining hard failure is SGPR spill, not the 208-VGPR window.
 - Baseline source and remote binary were restored after this check.
+
+Additional Mq128 resource probes:
+
+- `consume_mq_mpair_owner16` noinline boundary:
+  - intent: cut M-pair island scalar live range without changing math or output
+    ownership
+  - result: `sgpr_spill_count=0`, `vgpr_spill_count=0`, but
+    `private_segment_fixed_size=492`
+  - conclusion: noinline proves the SGPR spill comes from inlined M-pair
+    lifetime, but device calls/private segment make this route unusable
+- explicit four-Mpair sequence:
+  - intent: remove template recursion while keeping full static Mq128
+  - result: same as direct static 248VGPR:
+    `private=0`, `sgpr_count=100`, `sgpr_spill_count=18`,
+    `vgpr_count=132`, `vgpr_spill_count=0`
+  - conclusion: recursion is not the root cause; the inlined four-Mpair
+    branch itself expands scalar/control state too much
+- Baseline source and remote binary were restored clean after both probes.
