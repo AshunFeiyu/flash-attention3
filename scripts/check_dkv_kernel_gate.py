@@ -74,16 +74,20 @@ def main() -> int:
             failures, "missing_resident_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*8\)",
             failures, "missing_resident_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kRaw0Filled,\s*8\)",
+    require(perf_source, r"s_abarrier_init\(Bar::kQFilled,\s*4\)",
             failures,
-            "missing_raw0_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kRaw0Used,\s*8\)", failures,
-            "missing_raw0_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kRaw1Filled,\s*8\)",
+            "missing_q_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQUsed,\s*8\)", failures,
+            "missing_q_used_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kDoutFilled,\s*4\)",
             failures,
-            "missing_raw1_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kRaw1Used,\s*8\)", failures,
-            "missing_raw1_used_count")
+            "missing_dout_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kDoutUsed,\s*8\)", failures,
+            "missing_dout_used_count")
+    require(perf_source, r"arrive_dout_used<Wdra>\(\)", failures,
+            "missing_dout_lifetime_release")
+    require(perf_source, r"arrive_q_used<Wdra>\(\)", failures,
+            "missing_q_lifetime_release")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
     require(perf_source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
@@ -96,6 +100,10 @@ def main() -> int:
     require(source, r"raise_priority_2", failures, "missing_s_setprio_helper")
     require(contract, r"struct\s+DkvBarrierLedger", failures,
             "missing_barrier_ledger")
+    require(contract, r"kQFilled\s*=\s*kRaw0Filled", failures,
+            "missing_q_barrier_alias")
+    require(contract, r"kDoutFilled\s*=\s*kRaw1Filled", failures,
+            "missing_dout_barrier_alias")
     require(contract, r"kDkvPathReferenceCorrectness\s*=\s*1", failures,
             "missing_reference_path_contract")
     require(contract, r"kDkvPathCanonicalDkv", failures,

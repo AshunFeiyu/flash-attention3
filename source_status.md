@@ -1,5 +1,63 @@
 # Source Status
 
+## 2026-07-05 Q/dO Lifetime Split Active
+
+Status: `MQ128_R1_QDO_LIFETIME_SPLIT_MICRO_BASELINE`.
+
+Current active source keeps the clean W16/Mq128/Nk128/D128 canonical dKV
+kernel and freezes dQ.  It changes the 62C2 raw ownership contract from one
+combined Q+dO token to two semantic lifetimes on the same physical LDS layout:
+
+- `QFilled/QUsed = bar2/bar3`, published by waves0-3 with Q + sidecar.
+- `DoutFilled/DoutUsed = bar4/bar5`, published by waves12-15 with dO.
+- Consumers wait both Q and dO before score/dP.
+- On the final M-pair, consumers read low/high dO normal sources, wait, arrive
+  `DoutUsed`, run softmax/dS, read low/high Q normal sources, wait, arrive
+  `QUsed`, then run the combined dV/dK MMAC island.
+- No new kernel, phase, raw page, output ownership, or asm island was added.
+
+Validation:
+
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=97`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- WDRA branch windows:
+  producer0 `14/16`, consumer0 `180/240`, consumer1 `180/240`,
+  producer1 `8/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_044322`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_044345`.
+- H1/S1024 full perf correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_044647`.
+
+Performance:
+
+- Full perf `kernel_ticks=51,238,915`, `simTicks=54,852,525`.
+- `MMOP=131,072`, `MMAC active=29.6586%`, `VALU=165,744`,
+  `SCA=108,632`, `LDS=83,856`, `VMEM=4,352`.
+- Coissue `27,090/16,944`.
+- `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_044647_clean_qdo_split_h1s1024_sqc7_fullperf`.
+
+XCU finding:
+
+- Top bubble remains `s_abarrier_try_wait -> s_xor_b32`, `42.85%`.
+- The old combined RawUsed bubble split into:
+  `bar3 QUsed = 2,266,380 cycles` and
+  `bar5 DoutUsed = 2,251,240 cycles`.
+- Combined ownership wait is still about `4.52M` cycles, close to 62C2
+  `bar3 Raw0Used = 4.62M` cycles.
+
+Conclusion:
+
+Keep this as a micro-positive baseline because it is correctness/resource clean
+and improves 62C2 full-perf ticks and MMAC active.  It is not a qualitative
+pipeline solution: the next workbook design must reduce or hide the combined
+`QUsed + DoutUsed` ownership bubble instead of adding more token names.
+
 ## 2026-07-05 62C2 RawUsed XCU Diagnosis
 
 Status: `MQ128_R1_62C2_ACTIVE_AFTER_XCU_DIAGNOSIS`.

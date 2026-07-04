@@ -5239,3 +5239,63 @@ Post-revert recertification:
   `private=0`, `sgpr=60`, `vgpr=112`, no scratch/spill.
 - Kernel gate PASS after restore with branch windows
   `6/198/198/1`.
+
+### Mq128 Q/dO Lifetime Split
+
+Status: `ACCEPT_MICRO_BASELINE_OBSERVE`.
+
+Design basis:
+
+- Workbook sheet `66_mq128_qdo_lifetime_split`.
+- Starting point was 62C2 Mq128/R1, with a single physical Q page, a single
+  physical dO page, and sidecar tied to Q.
+- The old combined raw token was replaced by semantic tokens using the existing
+  ids:
+  `QFilled/QUsed=2/3`, `DoutFilled/DoutUsed=4/5`, `AllDone=6`.
+- Producer0 publishes K resident, then Q + sidecar; producer1 publishes V
+  resident, then dO.
+- Consumers wait both Q and dO before score/dP.  On the release M-pair,
+  consumers read dO low/high sources, wait, arrive `DoutUsed`, run softmax/dS,
+  read Q low/high sources, wait, arrive `QUsed`, then run the combined dV/dK
+  MMAC island.
+- No phase, second kernel, extra raw page, output ownership change, or asm
+  island was added.
+
+Evidence:
+
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=97`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- Branch windows:
+  producer0 `14/16`, consumer0 `180/240`, consumer1 `180/240`,
+  producer1 `8/16`.
+- Correctness PASS:
+  H1/S128 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_044322`,
+  H1/S1024 stats-only at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_044345`,
+  and H1/S1024 full perf at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_044647`.
+- H1/S1024 full-perf stats:
+  `simTicks=54,852,525`, `kernel_ticks=51,238,915`,
+  `MMOP=131,072`, `MMAC active=29.6586%`, `VALU=165,744`,
+  `SCA=108,632`, `LDS=83,856`, `VMEM=4,352`,
+  coissue `27,090/16,944`, `ldsBankConflict=0`.
+- Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_044647_clean_qdo_split_h1s1024_sqc7_fullperf`.
+- XCU dispatch0 top2000:
+  top bubble remains `s_abarrier_try_wait -> s_xor_b32`, `42.85%`.
+  `bar3 QUsed` contributes `2,266,380` cycles across `224` bubbles,
+  and `bar5 DoutUsed` contributes `2,251,240` cycles across `224` bubbles.
+
+Conclusion:
+
+- Keep as the current micro-positive Mq128/R1 baseline: it improves 62C2
+  full-perf ticks from `52,163,020` to `51,238,915` and MMAC active from
+  `29.2001%` to `29.6586%` while preserving correctness and resource gates.
+- It does not solve the 60% active problem.  The combined Q/Dout ownership
+  bubble is still about `4.52M` cycles, close to the old RawUsed `4.62M`.
+- Next design must either reduce total ownership wait, hide it with useful
+  producer/consumer work, or lengthen the useful MMAC island without
+  reintroducing duplicate score/dP.

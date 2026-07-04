@@ -19,8 +19,10 @@ SQTT evidence are required before any performance claim.
   - waves12-15: producer V + dO
 - Main path: `matrix_load_32x16/32x32 ... bps lds` +
   normal/trans `ds_read_matrix` + `v_mmac_*lit`.
-- Raw Q/dO use one Mq128 page per ownership epoch. K/V is latched into
-  consumer VGPR, then the raw page overlays the K/V LDS region.
+- Q and dO now have separate semantic ownership tokens on the same Mq128
+  physical LDS pages: `QFilled/QUsed=bar2/bar3`,
+  `DoutFilled/DoutUsed=bar4/bar5`. K/V is latched into consumer VGPR, then
+  the raw pages overlay the K/V LDS region.
 - Canonical target path is exact causal tiles only:
   `causal == 1`, `seqlen_q % Mq == 0`, `seqlen_k == seqlen_q`,
   `seqlen_k % Nk == 0`.
@@ -31,6 +33,22 @@ SQTT evidence are required before any performance claim.
 
 ## Latest Evidence
 
+- Q/dO lifetime split H1/S1024 full-perf stats:
+  `kernel_ticks=51,238,915`, `MMAC active=29.6586%`, `MMOP=131,072`,
+  `VALU=165,744`, `SCA=108,632`, `LDS=83,856`, `VMEM=4,352`,
+  `coissue=27,090/16,944`, `ldsBankConflict=0`.
+- Static/resource for the split:
+  branch windows producer0 `14/16`, consumer0 `180/240`,
+  consumer1 `180/240`, producer1 `8/16`; metadata `private=0`,
+  `sgpr=97`, `sgpr_spill=0`, `vgpr=128`, `vgpr_spill=0`.
+- Q/dO split full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_044647_clean_qdo_split_h1s1024_sqc7_fullperf`.
+- Q/dO split xcu top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` is still dominant at `42.85%`.
+  Ownership bubbles split into `bar3 QUsed` `2,266,380` cycles
+  (`224` bubbles, avg `10,117.8`) and `bar5 DoutUsed` `2,251,240` cycles
+  (`224` bubbles, avg `10,050.2`); combined ownership wait remains about
+  `4.52M` cycles, so this is not a pipeline breakthrough.
 - 62C2 H1/S1024 full-perf stats:
   `kernel_ticks=52,163,020`, `MMAC active=29.2001%`, `MMOP=131,072`,
   `VALU=167,536`, `SCA=106,968`, `ldsBankConflict=0`.
@@ -80,32 +98,32 @@ SQTT evidence are required before any performance claim.
 ## Current Diagnosis
 
 The kernel does have MMAC and the matrix path is not the primary missing piece.
-62C2 improves the top-level tile shape by halving raw ownership epochs at
-S1024, but the active limiter is still packet ownership and barrier lifetime:
+The Q/dO split is a small clean improvement over 62C2, but the active limiter
+is still packet ownership and barrier lifetime:
 
 - ABarrier waits dominate xcu despite lower SCA/VALU count.  The main steady
-  culprit is `Raw0Used`, not the tail `AllDone` wait.
+  culprits are now split across `QUsed` and `DoutUsed`, not eliminated.
 - `ds_read_matrix -> wait -> MMAC` is visible but secondary versus
   `s_abarrier_try_wait` bubbles.
-- The Mq128 exact-tile route is a better baseline, not a 60% active solution.
+- The Mq128 exact-tile route plus Q/dO split is a better baseline, not a
+  60% active solution.
 - Assembly is not the next default move; only a proven hot island should become
   asm, and only after topology/resource work fails.
 
 ## Next Experiment
 
-Start from 62C2 and update the workbook before editing.  The next design should
-reduce or hide `Raw0Used` ownership windows without duplicating Q/dO or
-score/dP, and without adding more token epochs that raise SCA/control cost.
-Workbook sheet `65_mq128_rawused_xcu` now records the xcu top2000 evidence and
-the next candidate thesis: split Q and dO lifetimes, because `dO` is last used
-by dV and `Q` is last used by dK.  This may let producers refill one operand
-half while the other remains live.
-Workbook sheet `66_mq128_qdo_lifetime_split` refines this into the concrete
-candidate: keep the combined dV/dK MMAC island, but on the final M-pair read
-dO normal sources first, arrive `DoutUsed`, run softmax/dS, read Q normal
-sources, arrive `QUsed`, then execute the combined dV/dK MMAC with held dO and
-Q fragments.  The intent is to free producer1 without splitting dV and dK into
-smaller GEMM islands.
+Start from the Q/dO split baseline and update the workbook before editing. The
+next design must reduce the combined `QUsed + DoutUsed` ownership bubble, not
+merely rename it.  Viable directions are:
+
+- make more useful producer work happen while the producer waits, without
+  adding a new LDS page/token family;
+- reduce total ABarrier handshakes per useful MMAC island;
+- lengthen the consumer MMAC island or improve real softmax/dS coissue without
+  reintroducing duplicate score/dP.
+
+Do not treat this split as the 60% active solution; it is a measured micro
+baseline and a better attribution scaffold.
 Do not directly retry sheet 63's release-before-softmax path: long q-loop
 correctness failed even though H1/S128 passed.
 Do not directly retry sheet 64's full-valid two-path helper: it fails the
