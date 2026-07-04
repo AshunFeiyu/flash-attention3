@@ -72,6 +72,8 @@ def main() -> int:
             "missing_consumer_vgpr_window")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentFilled,\s*8\)",
             failures, "missing_resident_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*8\)",
+            failures, "missing_resident_used_count")
     require(perf_source, r"s_abarrier_init\(Bar::kRaw0Filled,\s*8\)",
             failures,
             "missing_raw0_filled_count")
@@ -93,10 +95,14 @@ def main() -> int:
             "missing_reference_path_contract")
     require(contract, r"kDkvPathCanonicalDkv", failures,
             "missing_canonical_path_contract")
-    require(contract, r"DkvTileD128Mq64Nk128", failures,
-            "missing_16wave_tile_contract")
+    require(contract, r"template\s*<\s*int\s+BlockMq\s*>", failures,
+            "missing_blockmq_template_contract")
+    require(contract, r"using\s+ActiveDkvTile\s*=\s*DkvTileD128MqNk128<64>",
+            failures, "missing_active_mq64_tile_contract")
     require(contract, r"kRawBuffers\s*=\s*1", failures,
             "canonical_route_must_use_single_raw_buffer")
+    require(contract, r"kOverlayRawOnResidentKv", failures,
+            "missing_kv_raw_overlay_contract")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,
             "missing_active_share_target")
     require(contract, r"kForbidDuplicateScoreDp\s*=\s*true", failures,
@@ -116,8 +122,6 @@ def main() -> int:
            r"kSourceFilled|kSourceUsed|wait_source_|arrive_source_|"
            r"kSource0Filled|kSource0Used|kSource1Filled|kSource1Used",
            failures, "source_layout_must_share_page_packet_token")
-    forbid(source + contract, r"kResidentUsed", failures,
-           "resident_used_overlay_token_must_not_exist")
     forbid(source + contract, r"kRaw1Filled|kRaw1Used", failures,
            "raw1_tokens_must_not_exist_in_single_buffer_route")
     forbid(source + contract,

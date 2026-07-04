@@ -20,7 +20,8 @@ workbook row proves the resource/performance tradeoff.
 ## Current Tile Thesis
 
 ```text
-Mq = 64 experimental, Mq = 32 canonical rebaseline
+BlockMq is a template parameter.
+Active alias: Mq = 64
 Nk per consumer wave = 16
 consumer waves = 8
 resident Nk = 128
@@ -41,6 +42,25 @@ total: 128 MMAC / q-tile / consumer wave
 This keeps all four GEMM islands balanced.  The Mq64 same-LDS experiment is
 resource-clean but not promoted yet: H1/S1024 remains slower than the Mq32
 canonical rebaseline because the dominant RawUsed/control bubble is unchanged.
+The clean repo later converged on the Mq64 same-LDS form as the active
+single-buffer LDS-sidecar route.
+
+Mq128 stress result:
+
+```text
+score: 64 MMAC
+dP:    64 MMAC
+dV:    64 MMAC
+dK:    64 MMAC
+total: 256 MMAC / q-tile / consumer wave
+```
+
+This is correctness/resource-clean only after switching the M-block body to a
+dynamic loop, but it regresses H1/S1024 to `kernel_ticks=62473320` and
+`MMAC active=23.2158%`.  For fixed S, total MMOP remains unchanged because
+q-tile count halves when BlockMq doubles.  Future BlockMq > 64 work must
+preserve compile-time MMAC islands without SGPR spill; larger tiles are not
+accepted just because the per-tile MMAC count is larger.
 
 ## Resource Budget
 
@@ -206,9 +226,11 @@ sidecar generation:
 
 This is the active contract after the 2026-07-04 single-buffer convergence
 pass.  Sidecar stays in LDS because that removed the old consumer global-load
-wait, but it no longer overlays K/V and does not require `ResidentUsed`.
-`Raw1` is also removed from the active route.  Reintroducing either token needs
-fresh workbook and xcu evidence.
+wait, but active Mq64 no longer overlays K/V and does not instantiate
+`ResidentUsed`.  `ResidentUsed` remains only as a dormant template mechanism
+for BlockMq values that cannot fit K/V and raw Q/dO simultaneously.  `Raw1` is
+also removed from the active route.  Reintroducing either token needs fresh
+workbook and xcu evidence.
 
 Causal skip boundary:
 

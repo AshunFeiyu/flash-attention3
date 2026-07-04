@@ -941,22 +941,30 @@ Current active route:
 - K/V are loaded once and latched into consumer VGPR
 - sidecar is producer-published into a small dedicated LDS region
 - raw Q/dO uses one page
-- `Raw1` and `ResidentUsed` are intentionally removed from the active source
+- `BlockMq` is a template parameter; active alias is currently `Mq64`
+- `Raw1` is not present in the active source
+- `ResidentUsed` exists only in the dormant `Mq128` overlay template path and
+  is not instantiated by active `Mq64`
 
 Latest H1/S1024 evidence:
 
 - correctness PASS
 - no scratch/spill
 - `ldsBankConflict=0`
-- `kernel_ticks=54818400`
-- `MMAC active=26.6857%`
+- `kernel_ticks=54887105`
+- `MMAC active=26.5542%`
 - remote stats:
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_164444/m5out/0/0/stats.txt`
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_190101/m5out/0/0/stats.txt`
 
 Interpretation:
 
 - This is the current active route by user decision.  The raw2 overlay path was
   correct and about `1.5%` faster, but the extra ownership protocol is not
   worth carrying while we are trying to keep the repo clean.
+- The `Mq128` template stress is correctness/resource-clean only after a
+  dynamic M-block loop, but it regresses to `kernel_ticks=62473320` and
+  `MMAC active=23.2158%`.  Do not activate `Mq128` without a new workbook
+  design that preserves compile-time MMAC islands without SGPR spill.
 - Continue from this simpler single-buffer LDS-sidecar baseline.
-- Do not reintroduce Raw1 or `ResidentUsed` without workbook-backed evidence.
+- Do not reintroduce Raw1 or activate `ResidentUsed` without workbook-backed
+  evidence.

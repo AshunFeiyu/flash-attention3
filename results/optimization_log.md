@@ -3728,3 +3728,63 @@ Next:
   justify the complexity.
 - The next real bottleneck remains ABarrier/consumer lockstep, not sidecar
   global memory.
+
+## 2026-07-04 BlockMq Template And Mq128 Stress
+
+Decision: `CODE_GOVERNANCE_ACCEPT` for templateization,
+`REJECT_PERF` for the tested `Mq128` implementation.
+
+Question:
+
+- The user suggested making tile size a template parameter and testing whether
+  a larger per-wave dK/dV tensor is the real algorithm-level route to higher
+  MMAC active.
+
+Implementation:
+
+- Replaced the fixed `DkvTileD128Mq64Nk128` contract with
+  `DkvTileD128MqNk128<BlockMq>`.
+- The active alias is back to `ActiveDkvTile = DkvTileD128MqNk128<64>`.
+- `Mq128` was tested through the same canonical kernel by temporarily changing
+  the alias, not by adding another kernel or phase route.
+- For `Mq128`, raw Q/dO must overlay the K/V resident LDS lifetime, so the
+  stress version uses a one-shot `ResidentUsed` token after consumers latch
+  K/V into VGPR.  `Mq64` does not instantiate that overlay path.
+- Static `Mq128` expansion initially failed metadata:
+  `private_segment_fixed_size=8`, `sgpr_spill_count=18`,
+  `vgpr_spill_count=2`.
+- Switching the M-block body to a small runtime loop fixed resource pressure:
+  branch consumers `190/208`, metadata `private=0`, `sgpr=62`, `vgpr=112`,
+  no spills.
+
+Evidence:
+
+- `Mq128` H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_185323`.
+- `Mq128` H1/S1024 correctness/stats PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_185357`,
+  `kernel_ticks=62473320`, `MMOP=131072`, `MMAC active=23.2158%`,
+  coissue `35774/19059`, `ldsBankConflict=0`.
+- Active `Mq64` template checkpoint H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_190032`.
+- Active `Mq64` template checkpoint H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_190101`,
+  `kernel_ticks=54887105`, `MMAC active=26.5542%`, coissue `20049/12067`,
+  `ldsBankConflict=0`.
+- Workbook updated:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `38_mq128_template`.
+
+Conclusion:
+
+- Increasing `BlockMq` does not increase total MMOP for fixed S: `Mq128`
+  doubles per-tile MMAC but halves q-tile count, so H1/S1024 still reports
+  `MMOP=131072`.
+- The possible win is only from amortizing control/ABarrier/wait under longer
+  MMAC islands.  The tested implementation did not achieve that: dynamic
+  M-block control plus overlay ownership lowered MMAC active and regressed
+  ticks by about `13.96%` versus the single-buffer `Mq64` baseline.
+- The idea remains architecturally plausible, but future `BlockMq>64` work must
+  preserve compile-time MMAC islands without SGPR spill, or otherwise show via
+  xcu that dynamic-loop control is hidden.  Do not promote this `Mq128`
+  implementation.

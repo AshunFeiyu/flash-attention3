@@ -7,9 +7,10 @@ namespace shaobo::fa3::bwd::dkv {
 inline constexpr int kDkvPathReferenceCorrectness = 1;
 inline constexpr int kDkvPathCanonicalDkv = 5;
 
-struct DkvTileD128Mq64Nk128 {
+template <int BlockMq>
+struct DkvTileD128MqNk128 {
     static constexpr int kHeadDim = 128;
-    static constexpr int kBlockMq = 64;
+    static constexpr int kBlockMq = BlockMq;
     static constexpr int kNkPerConsumerWave = 16;
     static constexpr int kConsumerGroups = 2;
     static constexpr int kWavesPerConsumerGroup = 4;
@@ -55,22 +56,32 @@ struct DkvTileD128Mq64Nk128 {
     static constexpr int kSidecarBytes =
         kRawBuffers * kSidecarFloats * static_cast<int>(sizeof(float));
     static constexpr int kSourceLayoutBytes = 0;
-    static constexpr int kPlannedLdsBytes =
-        kKvBytes + kRawBytes + kSidecarBytes + kSourceLayoutBytes;
     static constexpr int kLdsBudgetBytes = 128 * 1024;
+    static constexpr bool kOverlayRawOnResidentKv =
+        kKvBytes + kRawBytes + kSidecarBytes + kSourceLayoutBytes >
+        kLdsBudgetBytes;
+    static constexpr int kOverlayRawKvBytes =
+        kRawBytes > kKvBytes ? kRawBytes : kKvBytes;
+    static constexpr int kPlannedLdsBytes =
+        kOverlayRawKvBytes + kSidecarBytes + kSourceLayoutBytes;
 
+    static_assert(kBlockMq % 32 == 0,
+                  "dKV clean tile consumes Mq in pairs of M16 blocks");
     static_assert(kResidentNk == 128, "dKV clean lane expects Nk=128");
-    static_assert(kTotalMmacPerConsumer == 128,
-                  "Mq64 dKV consumer should issue 128 MMAC per q tile");
+    static_assert(kTotalMmacPerConsumer == 2 * kBlockMq,
+                  "dKV consumer MMAC count should scale with BlockMq");
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
                   "dKV clean LDS plan must fit 128KB");
 };
 
+using ActiveDkvTile = DkvTileD128MqNk128<64>;
+
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
-    static constexpr int kRaw0Filled = 1;
-    static constexpr int kRaw0Used = 2;
-    static constexpr int kAllDone = 3;
+    static constexpr int kResidentUsed = 1;
+    static constexpr int kRaw0Filled = 2;
+    static constexpr int kRaw0Used = 3;
+    static constexpr int kAllDone = 4;
 };
 
 struct OptimizationTargets {

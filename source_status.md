@@ -2597,3 +2597,60 @@ Conclusion:
   while adding another ownership token and lifetime rule.
 - Continue from this simpler single-buffer baseline.  Do not reintroduce Raw1
   or `ResidentUsed` without a new workbook-backed hypothesis.
+
+## 2026-07-04 BlockMq Template Checkpoint
+
+Status: `CODE_GOVERNANCE_ACCEPT`, with `Mq128` marked `REJECT_PERF`.
+
+Current source state:
+
+- `BlockMq` is now a tile template parameter:
+  `DkvTileD128MqNk128<BlockMq>`.
+- Active dKV still instantiates `ActiveDkvTile = DkvTileD128MqNk128<64>`.
+- Active `Mq64` keeps the static two-Mpair consumer path and does not
+  instantiate the K/V raw overlay or `ResidentUsed` path.
+- The rejected `Mq128` stress is recorded in workbook sheet
+  `38_mq128_template`; it is not the active alias.
+
+Resource/correctness evidence:
+
+- active `Mq64` template build PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=84`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`
+- branch windows:
+  producer KQ `10/16`, consumer0 `196/208`, consumer1 `196/208`,
+  producer VDout `4/16`
+- H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_190032`
+- H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_190101`
+
+Latest H1/S1024 metrics:
+
+- `kernel_ticks=54887105`
+- `MMOP=131072`
+- `MMAC active=26.5542%`
+- coissue `20049/12067`
+- `ldsBankConflict=0`
+
+Mq128 stress result:
+
+- static compile-time expansion failed resource gate:
+  `private_segment_fixed_size=8`, `sgpr_spill_count=18`,
+  `vgpr_spill_count=2`
+- dynamic M-block loop fixed resource/admission:
+  branch consumer `190/208`, `private=0`, `sgpr=62`, `vgpr=112`, no spill
+- H1/S1024 correctness passed, but performance regressed:
+  `kernel_ticks=62473320`, `MMAC active=23.2158%`
+
+Conclusion:
+
+- `BlockMq` templating is useful code governance, but `Mq128` as implemented
+  is not a performance solution.
+- The key lesson is subtle: for fixed S, `Mq128` does not increase total MMOP;
+  it doubles per-tile MMAC while halving q-tile count.  The only possible win
+  is amortizing control/wait under a longer island.  Our dynamic-loop version
+  lost more to control and overlay lifetime than it gained.
+- Future `BlockMq>64` attempts need a design that keeps compile-time MMAC
+  islands without SGPR spill, or xcu proof that dynamic-loop overhead is fully
+  hidden.
