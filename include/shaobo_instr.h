@@ -83,6 +83,68 @@ __device__ __forceinline__ void matrix_load_32x32_b16_bps_lds(
 #endif
 }
 
+__device__ __forceinline__ void matrix_load_32x16_b16_bps_lds(
+    __half* shared_addr,
+    Vec4U32 srsrc,
+    int lds_offset) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const uint32_t lds_addr_v =
+        static_cast<uint32_t>(reinterpret_cast<size_t>(shared_addr)) +
+        static_cast<uint32_t>(lds_offset);
+    const int lds_addr =
+        __builtin_amdgcn_readfirstlane(static_cast<int>(lds_addr_v));
+    asm volatile(
+        "s_nop 0\n\t"
+        "s_mov_b32 m0, %1\n\t"
+        "matrix_load_32x16_b16 %0, m0 moffset:%2 bps lds\n"
+        :
+        : "s"(srsrc), "s"(lds_addr), "n"(0)
+        : "memory");
+#else
+    (void)shared_addr;
+    (void)srsrc;
+    (void)lds_offset;
+#endif
+}
+
+__device__ __forceinline__ void ds_read_matrix_32x16_normal(
+    const __half* lds,
+    int lds_offset,
+    Vec8F16& frag) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const int lds_addr =
+        static_cast<int>(reinterpret_cast<size_t>(lds)) + lds_offset;
+    asm volatile(
+        "ds_read_matrix_format %0, %1 offset:0 element:0x2 row:0x2 col:0x1 alt:0x0\n"
+        : "=v"(frag)
+        : "s"(lds_addr)
+        :);
+#else
+    (void)lds;
+    (void)lds_offset;
+    frag = {};
+#endif
+}
+
+__device__ __forceinline__ void ds_read_matrix_32x16_trans(
+    const __half* lds,
+    int lds_offset,
+    Vec8F16& frag) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const int lds_addr =
+        static_cast<int>(reinterpret_cast<size_t>(lds)) + lds_offset;
+    asm volatile(
+        "ds_read_matrix_trans_format %0, %1 offset:0 element:0x2 row:0x2 col:0x1 alt:0x0\n"
+        : "=v"(frag)
+        : "s"(lds_addr)
+        :);
+#else
+    (void)lds;
+    (void)lds_offset;
+    frag = {};
+#endif
+}
+
 __device__ __forceinline__ void ds_read_matrix_trans_pair(
     const __half* lds,
     int lds_offset,

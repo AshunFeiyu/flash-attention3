@@ -17,10 +17,10 @@ dK += dS^T @ Q
 The clean design must not duplicate score or dP across D-split owners unless a
 workbook row proves the resource/performance tradeoff.
 
-## Initial Tile Thesis
+## Current Tile Thesis
 
 ```text
-Mq = 32
+Mq = 64 experimental, Mq = 32 canonical rebaseline
 Nk per consumer wave = 16
 consumer waves = 8
 resident Nk = 128
@@ -28,19 +28,19 @@ D = 128
 threads = 16 waves * 64 lanes
 ```
 
-Per consumer wave, expected MMAC count:
+Per consumer wave, expected MMAC count for the current Mq64 experiment:
 
 ```text
-score: (32/16) * (16/16) * (128/16) = 16
-dP:    (32/16) * (16/16) * (128/16) = 16
-dV:    (16/16) * (128/16) * (32/16) = 16
-dK:    (16/16) * (128/16) * (32/16) = 16
-total: 64 MMAC / q-tile / consumer wave
+score: (64/16) * (16/16) * (128/16) = 32
+dP:    (64/16) * (16/16) * (128/16) = 32
+dV:    (16/16) * (128/16) * (64/16) = 32
+dK:    (16/16) * (128/16) * (64/16) = 32
+total: 128 MMAC / q-tile / consumer wave
 ```
 
-This keeps all four GEMM islands balanced.  That is the first algorithm-level
-lesson from the old repo: smaller dV/dK islands or D-split score/dP duplication
-can make local traces look busy while lowering useful MMAC density.
+This keeps all four GEMM islands balanced.  The Mq64 same-LDS experiment is
+resource-clean but not promoted yet: H1/S1024 remains slower than the Mq32
+canonical rebaseline because the dominant RawUsed/control bubble is unchanged.
 
 ## Resource Budget
 
@@ -48,36 +48,44 @@ Target LDS plan:
 
 ```text
 K/V resident, Nk=128,D=128:       2 * 128 * 128 * 2 = 65536 B
-raw Q/dO double buffer:           2 * 2 * 32 * 128 * 2 = 32768 B
-sidecar/slack seed:               about 512 B initially
-planned total:                    98816 B
-slack under 128KB:                about 28 KB
+raw Q/dO single buffer, Mq64:     1 * 2 * 64 * 128 * 2 = 32768 B
+sidecar LDS, Mq64:                1 * 3 * 64 * 4 = 768 B
+planned total:                    99072 B
+slack under 128KB:                32000 B
 ```
 
-Do not allocate another full LDS raw-to-trans scratch in the main path.  If
-`Q^T` or `dO^T` source-layout operands are needed for MMAC, they must be loaded
-through MLS/BPS into pages whose ownership/lifetime is explicit in the workbook,
-or reuse released raw-page capacity.  LDS raw-to-trans scatter remains rejected
-until a focused probe proves bank-conflict-free behavior and a resource row pays
-for it.
+Do not allocate another full LDS raw-to-trans scratch in the main path.  The
+verified current contract is `matrix_load_32x16_b16` plus normal/trans
+`ds_read_matrix` from the same raw `Q/dO` LDS page.  This removes the external
+source-layout ABI.  The current promoted sidecar route additionally moves
+`max_log2/inv_sum/delta` into producer-published LDS so consumer softmax/dS no
+longer performs direct sidecar global loads.
+
+The remaining LDS slack is not free performance.  It should be spent only after
+a workbook-stressed ABarrier/page-lifetime design proves that extra raw/sidecar
+pages reduce token waits more than they add control cost.
 
 ## Wave Roles
 
 ```text
-waves 0-3:   producer A, K/V rows 0..63, Q raw, Q^T source-layout reuse
+waves 0-3:   producer A, K resident + raw Q same-LDS pages + future sidecar prefetch
 waves 4-7:   consumer group 0, Nk rows 0..63, dV+dK full D ownership
 waves 8-11:  consumer group 1, Nk rows 64..127, dV+dK full D ownership
-waves 12-15: producer B, K/V rows 64..127, dO raw, dO^T source-layout
+waves 12-15: producer B, V resident + raw dO same-LDS pages
 ```
 
-This is the clean WASP goal: two recurring producers, two heavy consumer groups,
-no one-time-only thin producer after startup.
+This is the current W16 structural probe shape.  It is correctness/resource
+clean, but the first H1/S1024 full perf shows it is not yet a performance
+promotion: `kernel_ticks=69039425`, `MMAC active=22.3357%`, and xcu still shows
+`s_abarrier_try_wait -> s_xor_b32` as the dominant bubble.  The next edit must
+reduce the raw-page ABarrier/control lifetime or create real useful producer
+work; simply adding the second producer group is not enough.
 
 ## Pipeline Target
 
 ```text
 T0:
-  P0 loads K resident + Q page0
+  P0 loads K resident + Q page0 + sidecar page0
   P1 loads V resident + dO page0
 
 T1:
@@ -88,7 +96,7 @@ T1:
 T2:
   C0 softmax+dS VALU for page0 plus dV operand reads
   C1 score+dP MMAC on page0
-  P0/P1 prepare next useful raw/source-layout pages
+  P0 prepares next useful raw page and sidecar prefetch
 
 T3:
   C0 dV MMAC page0
@@ -112,6 +120,16 @@ Expected XCompute pattern:
 - Producer waves have recurring work after K/V startup.
 - Consumer groups should not show long lockstep wait bands on the same trans
   ownership token.
+
+Current actual H1/S1024 single-buffer sidecar-LDS result:
+
+- `kernel_ticks=54539485`, `MMAC active=26.6693%`,
+  `ldsBankConflict=0`.
+- The old consumer `global_load_dwordx3 -> s_waitcnt` top bubble is removed.
+- xcu now shows `s_abarrier_try_wait -> s_xor_b32` `47.39%` and
+  `s_abarrier_try_wait -> s_waitcnt` `6.60%`; selected window
+  `100000:118000` has `96.76%` SIMD bubble.  This means sidecar LDS is useful,
+  but the single raw-page protocol is still not a long conveyor.
 
 ## SQTT Evidence Contract
 
@@ -167,13 +185,30 @@ Semantic page reuse boundary:
 
 ```text
 raw generation:    page = Q/dO
-source generation: page = Q^T/dO^T
+  trans view:        same raw page read by trans ds_read_matrix
 ```
 
-This is legal and was verified in the Mq64 semantic-page path, but it regressed
-H1/S1024 ticks because it adds a second RawFilled/RawUsed generation per q tile.
-Do not repeat this topology as a promotion attempt unless the source generation
-replaces an existing barrier turn instead of adding one.
+The old semantic-page source generation is no longer the current contract.  The
+same-LDS 32x16 contract is correctness-proven, but Mq64 A/B show that larger Wq
+still needs a separate RawUsed/control solution before promotion.
+
+Sidecar LDS boundary:
+
+```text
+K/V resident generation:
+  producer publishes K/V into LDS
+  consumers latch K/V into VGPR exactly once
+
+sidecar generation:
+  producer writes max_log2 / inv_sum / delta into a small dedicated LDS region
+  RawFilled covers Q, dO, and sidecar readiness for that q tile
+```
+
+This is the active contract after the 2026-07-04 single-buffer convergence
+pass.  Sidecar stays in LDS because that removed the old consumer global-load
+wait, but it no longer overlays K/V and does not require `ResidentUsed`.
+`Raw1` is also removed from the active route.  Reintroducing either token needs
+fresh workbook and xcu evidence.
 
 Causal skip boundary:
 
@@ -200,7 +235,7 @@ Cut A, launch shell:
   no dV/dK math, no perf promotion
 
 Cut B, producer packets:
-  K/V resident load, raw Q/dO, source-layout Q^T/dO^T publication
+  K/V resident load, raw Q/dO same-LDS publication
   no consumer math promotion until packet correctness is probed
 
 Cut C, first consumer island:

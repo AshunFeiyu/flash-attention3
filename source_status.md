@@ -1,5 +1,165 @@
 # Source Status
 
+## 2026-07-04 Single Raw Page + Producer Sidecar LDS
+
+Status: `ACCEPT_PIPELINE_SIDECAR_LDS_SINGLEBUF`.
+
+Current source state:
+
+- Active dKV kernel remains the W16 K/V-resident Mq64 route:
+  waves0-3 producer K+Q, waves4-7 consumer0, waves8-11 consumer1,
+  waves12-15 producer V+dO.
+- `kRawBuffers=1`; the active Q/dO raw page is a single page with sidecar
+  metadata published into LDS by producer A.
+- A compile-time page helper keeps the page arithmetic explicit:
+  `raw_page_for_q_tile<Tile>(q_tile)`.
+- Producer A writes a sidecar SoA page in LDS:
+  `max_log2[64]`, `inv_sum[64]`, `delta[64]`.
+- Consumers call `softmax_ds_owner16_from_lds_sidecar`; the active consumer
+  path no longer reads `packed_sidecar` directly from global memory.
+- Remote build/static/symbol gates pass:
+  `private_segment_fixed_size=0`, `sgpr_spill_count=0`,
+  `vgpr_spill_count=0`, `vgpr_count=112`; branch windows producer KQ `10/16`,
+  consumer0 `196/208`, consumer1 `196/208`, producer VDout `4/16`.
+
+Evidence:
+
+- Double-buffer baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_153154`,
+  `kernel_ticks=61582885`, `MMAC active=25.4747%`,
+  coissue `26857/16837`, `ldsBankConflict=0`.
+- Single-buffer temporary probe:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_153511`,
+  `kernel_ticks=63344645`, `MMAC active=24.6431%`,
+  coissue `19026/12647`, `ldsBankConflict=0`.
+- Current single-buffer + LDS sidecar:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_154650`,
+  `kernel_ticks=54539485`, `MMAC active=26.6693%`,
+  `VALU=180570`, `SCA=215648`, `LDS=85822`, `VMEM=4352`,
+  coissue `20030/11508`, `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260704_154650_clean_singlebuf_lds_sidecar_h1s1024_sqc7_fullperf`.
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `35_singlebuf_lds_sidecar`.
+- xcu top bubbles after the change:
+  `s_abarrier_try_wait -> s_xor_b32` `47.39%`,
+  `s_abarrier_try_wait -> s_waitcnt` `6.60%`,
+  `ds_read_b32 -> s_waitcnt` `2.34%`.
+- In the exported window `100000:118000`, SIMD bubble is `96.76%`, dominated
+  by `s_abarrier_try_wait -> s_waitcnt`.
+
+Conclusion:
+
+Moving sidecar from consumer global reads into producer-published LDS is a real
+win.  It beats the double-buffer global-sidecar baseline by about `11.44%`
+kernel ticks and removes `global_load_dwordx3 -> s_waitcnt` from the top xcu
+bubbles.  The price is that a single raw page exposes the page-control problem:
+ABarrier/RawUsed-RawFilled serialization is now the dominant bottleneck.
+
+Next:
+
+- Keep sidecar LDS as the current active route.
+- Do not interpret this as final FWD-style conveyor success; MMAC active is
+  still only `26.6693%`.
+- Next candidate should restore useful lookahead while keeping sidecar out of
+  the consumer global path: either reintroduce two raw pages with sidecar pages,
+  split sidecar/RawFilled ownership, or use the remaining LDS slack for a
+  workbook-stressed third raw+sidecar page.
+
+## 2026-07-03 BlockN / Owner-N32 Direct Expansion Probe
+
+Status: `REJECT_STATIC_SPILL`
+
+Workbook-first design sheet:
+
+- `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`
+- sheet `33_blockn128_stress`
+
+Clarification:
+
+- Current CTA-level K/V resident width is already `kResidentNk=128`.
+- The meaningful experiment was per-consumer owner-N expansion: N16 -> N32.
+
+Temporary probe:
+
+- A direct N32 implementation was compiled by giving each active consumer wave
+  two N16 K/V halves and two dV/dK accumulator sets.
+- Only waves4-7 owned output rows in the probe; waves8-11 were disabled for
+  output to avoid duplicate stores.
+- The code was removed after resource evidence was collected.
+
+Evidence:
+
+- Build completed, but symbol metadata failed:
+  `private_segment_fixed_size=432`, `sgpr_count=104`,
+  `sgpr_spill_count=22`, `vgpr_count=64`, `vgpr_spill_count=110`.
+- Branch report showed consumer exactly at `208/208`, with spills/private
+  segment already present.
+- The live baseline was restored and remote gates passed:
+  branch consumers `195/208`,
+  `private_segment_fixed_size=0`, `sgpr_count=62`, `vgpr_count=112`,
+  no SGPR/VGPR spill.
+
+Conclusion:
+
+Do not pursue direct owner-N32/N64/N128 by simply holding more long-lived
+accumulators in the consumer.  Larger BlockN needs accumulator phasing or a
+store-safe partial-reduction design before it can be a performance candidate.
+
+## 2026-07-03 W16 K/V Resident Mq64
+
+Status: `ACCEPT_PIPELINE_RESOURCE_WIN`
+
+Workbook-first design sheet:
+
+- `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`
+- sheet `32_kv_reg_resident`
+
+Hypothesis:
+
+- For a block-local fixed K/V tile, K/V should be read from LDS into each
+  consumer wave's VGPR once, then reused across all q-loop score/dP work.
+- This removes repeated K/V `ds_read_matrix` from the hot q-loop, reduces
+  wait pressure, and makes K/V LDS lifetime available for later Q/dO buffering.
+
+Current source shape:
+
+- One canonical dKV kernel, no new public route.
+- W16 CTA: waves0-3 producer K+Q, waves4-7 consumer0, waves8-11 consumer1,
+  waves12-15 producer V+dO.
+- Consumers latch `Nk=16,D=128` K/V into `Owner16KvRegs` after
+  `ResidentFilled`.
+- Active Mq64 loop consumes M rows as two half-sequential M32 groups to avoid
+  holding both halves' score/dP state at once.
+
+Evidence:
+
+- Remote build/static/symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=62`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- Branch windows:
+  producer KQ `6/16`, consumer0 `195/208`, consumer1 `195/208`,
+  producer VDout `1/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_170546`.
+- H1/S1024 full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_170901`,
+  `kernel_ticks=61582430`, `MMOP=131072`, `VALU=181512`,
+  `SCA=311168`, `LDS=66816`, `VMEM=4352`, coissue `26862/16883`,
+  `MMAC active=25.4935%`, `VOP active=19.7415%`,
+  `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_170901_clean_kv_reg_resident_mq64_h1s1024_sqc7_fullperf`.
+
+Conclusion:
+
+K/V resident is the current clean W16 baseline and should be kept.  It is a
+real resource and pipeline improvement, but the main xcu bottleneck remains
+ABarrier/page-control plus sidecar/global wait, not K/V matrix-read latency.
+Do not jump directly to Mq128 unless the workbook shows LDS/VGPR slack and a
+clear expected reduction in `RawUsed`/sidecar bubbles.
+
 ## 2026-07-03 H19A Pre-Read All Source Before Softmax
 
 Status: `REJECT_RESOURCE`
@@ -2211,3 +2371,229 @@ This is a code-governance checkpoint, not a performance promotion.  Future
 dKV work should edit `fa3_bwd_dkv_kernel` directly and use git/workbook/ledger
 for experiment history instead of adding phases or preserving rejected source
 routes.
+
+## 2026-07-03 Mq64 Same-LDS Experimental State
+
+Status: `OBSERVE_CORRECTNESS_REJECT_PERF`
+
+Current dirty source state:
+
+- canonical dKV tile is temporarily `DkvTileD128Mq64Nk128W12`.
+- raw `Q/dO` use the verified `matrix_load_32x16_b16` same-LDS contract.
+- LDS budget is exactly 128KB:
+  `K/V 64KB + Q/dO raw double buffer 64KB`.
+- consumer WDRA window is `208`; branch report is producer `6/16`,
+  consumer0 `204/208`, consumer1 `200/208`.
+- symbol metadata is clean:
+  `private=0`, `sgpr=80`, `vgpr=144`, `sgpr_spill=0`, `vgpr_spill=0`.
+
+Correctness:
+
+- Mq64-B half-sequential:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_150917`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_150946`,
+  both PASS.
+- Mq64-A full-score:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_151316`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_151356`,
+  both PASS.
+
+Performance:
+
+- canonical H1/S1024 rebaseline:
+  `kernel_ticks=66411800`, `MMAC active=23.4288%`.
+- A1 same-LDS Mq32:
+  `kernel_ticks=67704000`, `MMAC active=22.8697%`.
+- Mq64-B:
+  `kernel_ticks=67825940`, `MMAC active=23.1120%`.
+- Mq64-A:
+  `kernel_ticks=67762240`, `MMAC active=23.0392%`.
+
+xcu for Mq64-A:
+
+- full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_151548`.
+- xcu:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/mq64A_full_h1s1024_20260703_151548`.
+- top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `25.92%`,
+  `global_load_dwordx3 -> s_waitcnt` `10.77%`,
+  `s_abarrier_try_wait -> s_waitcnt` `7.92%`,
+  `v_mmac -> v_mmac` `6.51%`,
+  `ds_read_matrix_trans_format -> s_waitcnt` `3.32%`.
+
+Conclusion:
+
+`Mq64` proves the larger Wq can be made resource-clean with WDRA, but it is not
+a performance promotion. The bigger page reduces q-tile count but does not
+move the dominant RawUsed/control bubble; the source read wait grows and VOP
+active rises. If work continues from this dirty state, the next edit must
+directly attack RawUsed/control or useful producer/helper overlap. If the next
+task is independent, revert to the canonical rebaseline first.
+
+## 2026-07-03 W16 Split-Producer Mq64 Structural Probe
+
+Status: `STRUCTURAL_PASS_REJECT_PERF`
+
+Current source state:
+
+- canonical dKV kernel is now a 16-wave structural probe.
+- wave roles:
+  waves0-3 producer K+Q, waves4-7 consumer0, waves8-11 consumer1,
+  waves12-15 producer V+dO.
+- PMD confirms `wg size=(1024,1,1)` and
+  `16 waves using this aBarrier/eBarrier group`.
+- static gate now requires the W16 annotation, the wave12-15 branch, and the
+  two producer loops.
+
+Correctness/resource evidence:
+
+- Remote build/static/symbol gates PASS.
+- Metadata:
+  `private=0`, `sgpr=74`, `vgpr=112`, no spill/scratch.
+- Branch windows:
+  producer KQ `6/16`, consumer0 `204/208`, consumer1 `204/208`,
+  producer VDout `1/16`.
+- H1/S128 PASS and H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_161054`.
+
+Performance:
+
+- H1/S1024 full perf:
+  `kernel_ticks=69039425`, `MMOP=131072`, `ldsBankConflict=0`,
+  coissue `27214/18060`, `MMAC active=22.3357%`,
+  `VOP active=23.7529%`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_161054_clean_w16_split_mq64_h1s1024_sqc7_fullperf`.
+- xcu:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/w16_split_mq64_h1s1024_sqc7_20260703_161054_dispatch0`.
+- xcu top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `38.07%`,
+  `s_abarrier_try_wait -> s_waitcnt` `9.89%`,
+  `global_load_dwordx3 -> s_waitcnt` `8.18%`,
+  `v_mmac -> v_mmac` `4.18%`,
+  `ds_read_matrix_trans_format -> s_waitcnt` `2.12%`.
+
+Conclusion:
+
+This answers the 12wave objection but does not solve the pipeline.  The W16
+split still has severe ABarrier/control gaps and consumer lockstep.  Producer B
+is functionally present but remains too thin in the steady q-loop, so it does
+not provide a forward-style producer/helper overlap window yet.
+
+Next:
+
+Treat W16 as the active structural constraint only if the next step keeps the
+user's 16-wave requirement.  The next edit must target the ABarrier raw-page
+lifetime and producer-B useful work, not just role count.
+
+## 2026-07-04 Active Route: Raw2 Sidecar Overlay On K/V LDS
+
+Status: `ACCEPT_PIPELINE_MICRO`
+
+Current source state:
+
+- active dKV route remains the single canonical `fa3_bwd_dkv_kernel`
+- role topology remains 16-wave:
+  waves0-3 producer K/Q/sidecar, waves4-7 consumer0,
+  waves8-11 consumer1, waves12-15 producer V/dO
+- K/V are resident-loaded once, latched into consumer VGPR, then the K/V LDS
+  region is reused for sidecar metadata
+- raw Q/dO is back to two pages (`kRawBuffers=2`)
+- sidecar is in LDS, overlaid on dead K/V resident storage after
+  `ResidentUsed`
+
+Static/resource evidence:
+
+- remote build PASS
+- `scripts/check_dkv_kernel_gate.py` PASS
+- symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=60`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`
+- branch windows:
+  producer KQ `6/16`, consumer0 `198/208`, consumer1 `198/208`,
+  producer VDout `1/16`
+
+Correctness/perf:
+
+- H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_161558`
+- H1/S1024 full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_161747`
+- metrics:
+  `kernel_ticks=53719120`, `MMOP=131072`, `MMAC active=27.7542%`,
+  `VALU=181916`, `SCA=297480`, `LDS=85822`, `VMEM=4352`,
+  coissue `32106/18911`, `ldsBankConflict=0`
+- shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260704_161747_clean_raw2_sidecar_kv_overlay_h1s1024_sqc7_fullperf`
+
+xcu:
+
+- first-pass output:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/raw2_sidecar_kv_overlay_h1s1024_20260704_161747_dispatch0`
+- selected window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/raw2_sidecar_kv_overlay_h1s1024_20260704_161747_dispatch0_window_bar6`
+- top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `39.79%`,
+  `s_abarrier_try_wait -> s_waitcnt` `7.82%`,
+  `ds_read_b32 -> s_waitcnt` `2.43%`
+
+Conclusion:
+
+- Sidecar-in-LDS remains the right direction, and overlaying it on dead K/V
+  LDS lets us recover raw Q/dO lookahead without extra LDS capacity.
+- Improvement is real but small versus the immediately previous LDS-sidecar
+  route: `54539485 -> 53719120` kernel ticks, about `1.50%`.
+- The current blocker is ABarrier ownership exposure.  The next edit should
+  reduce `ResidentUsed`/Raw page over-synchronization before adding any new
+  buffers or phase tokens.
+
+## 2026-07-04 Current Active Route: Single Raw Buffer LDS Sidecar
+
+Status: `CODE_CONVERGENCE_ACCEPT`
+
+Current source state:
+
+- active dKV route remains the single canonical `fa3_bwd_dkv_kernel`
+- role topology remains 16-wave:
+  waves0-3 producer K/Q/sidecar, waves4-7 consumer0,
+  waves8-11 consumer1, waves12-15 producer V/dO
+- K/V are resident-loaded once and latched into consumer VGPR
+- sidecar is producer-published into LDS, but no longer overlays K/V
+- raw Q/dO uses one page (`kRawBuffers=1`)
+- active barrier ledger is only:
+  `ResidentFilled`, `Raw0Filled`, `Raw0Used`, `AllDone`
+- `Raw1` and `ResidentUsed` are removed from source/contract and forbidden by
+  `scripts/check_dkv_kernel_gate.py`
+
+Static/resource evidence:
+
+- remote build PASS
+- `scripts/check_dkv_kernel_gate.py` PASS
+- symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=84`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`
+- branch windows:
+  producer KQ `10/16`, consumer0 `196/208`, consumer1 `196/208`,
+  producer VDout `4/16`
+
+Correctness/perf:
+
+- H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_164439`
+- H1/S1024 stats PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_164444`
+- metrics:
+  `kernel_ticks=54818400`, `MMOP=131072`, `MMAC active=26.6857%`,
+  `VALU=180570`, `SCA=215376`, `LDS=85822`, `VMEM=4352`,
+  coissue `19747/11693`, `ldsBankConflict=0`
+
+Conclusion:
+
+- This is now the active route by user decision.  The raw2 overlay path was
+  valid and faster, but only by about `1.5%` versus single-buffer LDS-sidecar
+  while adding another ownership token and lifetime rule.
+- Continue from this simpler single-buffer baseline.  Do not reintroduce Raw1
+  or `ResidentUsed` without a new workbook-backed hypothesis.

@@ -1,5 +1,136 @@
 # Optimization Log
 
+## 2026-07-03 BlockN / Owner-N32 Direct Expansion Probe
+
+Decision: `REJECT_STATIC_SPILL`
+
+Hypothesis:
+
+`Since K/V are loaded once and latched into consumer VGPR, increase per-wave
+N ownership so each consumer wave does more MMAC before the same page-control
+turn.  A larger MMAC island might reduce exposed ABarrier/sidecar overhead.`
+
+Clarification:
+
+- The current clean kernel already has CTA-level `kResidentNk=128`; K/V
+  resident total BlockN is already 128.
+- The actual experiment is owner-N expansion: one consumer wave owns two N16
+  slices (`OwnerN32`) instead of one.
+- Direct `OwnerN64` or `OwnerN128` would be even more expensive, so the first
+  resource probe used N32.
+
+Implemented as a temporary compile/resource probe:
+
+- Added `Owner32KvRegs` with two `Owner16KvRegs` halves.
+- Mapped waves4-7 to four N32 chunks covering the CTA's 128 K rows.
+- Waves8-11 were made inactive for output to avoid duplicate stores.
+- RawUsed arrival count was reduced from 8 to 4.
+- Each active consumer held two dV/dK accumulator sets so it could accumulate
+  both N16 halves across the q-loop.
+
+Evidence:
+
+- Remote build completed, but symbol metadata gate failed:
+  `private_segment_fixed_size=432`, `sgpr_count=104`,
+  `sgpr_spill_count=22`, `vgpr_count=64`, `vgpr_spill_count=110`.
+- Branch window report reached the hard edge:
+  consumer branch `208/208`.
+- No correctness or PMD perf was run because the resource gate failed.
+- Workbook result:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `33_blockn128_stress`.
+
+Conclusion:
+
+Direct owner-N expansion is not viable in the current K/V resident kernel.
+The extra K/V slice is not the main problem; the second long-lived dV/dK
+accumulator set is.  The live code was reverted to the K/V resident owner16
+baseline and remotely revalidated:
+`private_segment_fixed_size=0`, `sgpr_count=62`, `vgpr_count=112`, no spills,
+branch consumers `195/208`.
+
+Future larger-N work needs a different algorithmic design: phase dV/dK
+accumulation, store partials safely, or reduce/relocate accumulator lifetime.
+Simply increasing owner-N will not reach 60% MMAC active.
+
+## 2026-07-03 W16 K/V Resident In Consumer VGPR
+
+Decision: `ACCEPT_PIPELINE_RESOURCE_WIN`
+
+Hypothesis:
+
+`For one block, K/V are a fixed resident tile.  Latch each consumer wave's
+owned Nk=16,D=128 K/V slice from LDS into VGPR once after ResidentFilled, then
+remove K/V ds_read_matrix from every q-loop score/dP iteration.  This should
+reduce repeated matrix-read/wait pressure and free K/V LDS lifetime for a later
+Mq128/Q-dO double-buffer design.`
+
+Implemented:
+
+- Added `Owner16KvRegs` for one consumer wave's K and V fragments.
+- Added a branch-local `latch_owner16_kv_regs` step immediately after
+  `ResidentFilled`.
+- Changed the active Mq64 path to a half-sequential schedule: compute M rows
+  0/1, then rows 2/3, while reusing cached K/V fragments.
+- Kept the single canonical dKV kernel; no new performance route or phase was
+  added.
+
+Evidence:
+
+- Remote build/static/symbol gates PASS.
+- Symbol metadata:
+  `private_segment_fixed_size=0`, `sgpr_count=62`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- Branch windows:
+  producer KQ `6/16`, consumer0 `195/208`, consumer1 `195/208`,
+  producer VDout `1/16`.  This is lower consumer pressure than the W16 split
+  structural probe (`204/208`).
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_170546`,
+  `dk_rel_l2=0.000361379`, `dv_rel_l2=0.000267234`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_170645`,
+  `kernel_ticks=61635665`, `MMAC active=25.4615%`,
+  `VOP active=19.7256%`, `ldsBankConflict=0`.
+- H1/S1024 full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_170901`,
+  `kernel_ticks=61582430`, `MMOP=131072`, `VALU=181512`,
+  `SCA=311168`, `LDS=66816`, `VMEM=4352`, coissue `26862/16883`,
+  `MMAC active=25.4935%`, `VOP active=19.7415%`,
+  `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_170901_clean_kv_reg_resident_mq64_h1s1024_sqc7_fullperf`.
+
+xcu findings:
+
+- Dispatch duration `135348`, `128` waves, average active waves `114.00`.
+- Top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `36.67%`,
+  `s_abarrier_try_wait -> s_waitcnt` `10.69%`,
+  `global_load_dwordx3 -> s_waitcnt` `9.31%`,
+  `v_mmac -> v_mmac` `4.94%`,
+  `ds_read_matrix_trans_format -> s_waitcnt` `1.20%`,
+  `s_waitcnt -> v_mmac` `0.77%`.
+- Hot instruction latency:
+  `s_xor_b32` `34.80%`, `s_waitcnt` `24.25%`,
+  `v_mmac_f32_16x16x16_f16` `7.74%`,
+  `ds_read_matrix_trans_format` `2.40%`,
+  `ds_read_matrix_format` `1.26%`.
+
+Conclusion:
+
+Keep this as the current clean W16 baseline.  K/V VGPR residency is a real
+improvement: about `10.8%` faster than W16 split Mq64
+(`69039425 -> 61582430` kernel ticks) and about `7.3%` faster than the clean
+canonical rebaseline (`66411800 -> 61582430`).  It also lowers consumer branch
+pressure and keeps `ldsBankConflict=0`.
+
+This still does not solve the 60% MMAC-active goal.  The dominant debt is no
+longer K/V matrix read; it is still ABarrier/page-control and sidecar/global
+wait exposure.  Next work should either shorten the RawUsed/page lifetime,
+hide sidecar/helper work under peer MMAC, or spend the released K/V LDS on a
+workbook-stressed Mq128/Q-dO double-buffer design.
+
 ## 2026-07-03 H19A Pre-Read All Source Before Softmax
 
 Decision: `REJECT_RESOURCE`
@@ -3193,3 +3324,407 @@ The live repo now expresses the intended development rule: one canonical dKV
 performance kernel plus reference correctness.  Future layout or pipeline
 ideas should be implemented as focused probes or in-place edits to
 `fa3_bwd_dkv_kernel`, not as accumulated phase stacks.
+
+## 2026-07-03 A1 32x16 Same-LDS Q/dO Load-Once And Mq64 Follow-Up
+
+Decision: `OBSERVE_CORRECTNESS_REJECT_PERF`
+
+Purpose:
+
+Test the user's hypothesis that once raw `Q/dO` can be loaded once and read as
+both normal and transposed fragments, the freed LDS should first be spent on a
+larger `Wq/Mq` tile.
+
+Changes tested:
+
+- A1 replaced external source-layout `Q^T/dO^T` inputs with raw `Q/dO` pages
+  loaded by `matrix_load_32x16_b16`, then read by normal/trans
+  `ds_read_matrix` forms.
+- Mq64-B changed the canonical tile from `Mq=32` to `Mq=64`, kept one raw page
+  ownership turn per Mq64 tile, and consumed it as two short M32 halves.
+- Mq64-A kept `Mq=64` but stretched the consumer schedule: score/dP for both
+  M32 halves first, then softmax/dS, then dV/dK. Consumer WDRA window was set
+  to `208`, with branch windows `204/208` and `200/208`.
+
+Evidence:
+
+- A1 H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_144936`,
+  `kernel_ticks=67704000`, `MMAC active=22.8697%`.
+- Mq64-B H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_150946`,
+  `kernel_ticks=67825940`, `MMAC active=23.1120%`,
+  `VOP active=23.0466%`.
+- Mq64-A H1/S1024 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_151356`,
+  `kernel_ticks=67762240`, `MMAC active=23.0392%`,
+  `VOP active=22.9746%`.
+- Mq64-A full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_151548`,
+  xcu output
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/mq64A_full_h1s1024_20260703_151548`.
+- Canonical comparison remains
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_093932`,
+  `kernel_ticks=66411800`, `MMAC active=23.4288%`.
+
+xcu findings for Mq64-A:
+
+- dispatch duration `149680` cycles versus canonical `145960`.
+- `s_abarrier_try_wait -> s_xor_b32` remains dominant at `25.92%`, essentially
+  unchanged from canonical `25.95%`.
+- sidecar `global_load_dwordx3 -> s_waitcnt` improves slightly to `10.77%`
+  from canonical `11.28%`.
+- `ds_read_matrix_trans_format -> s_waitcnt` worsens to `3.32%` from canonical
+  `2.38%`.
+- `v_mmac -> v_mmac` remains about `6.51%`, and MMAC source latency share does
+  not move toward the 60% active target.
+
+Conclusion:
+
+The `32x16 same-LDS` contract is real and resource-clean, and `Mq64` is
+possible under WDRA without spill/scratch. But the current Mq64 schedules do
+not convert the larger Wq into a better conveyor: q-loop barrier count is
+lower, yet the RawUsed/control bubble is unchanged and operand-read wait grows.
+The larger tile also raises VOP active, so it is not a promotion.
+
+Next:
+
+- Do not keep chasing Mq64 by simply rearranging the two M32 halves.
+- If continuing from this experimental state, the next hypothesis must directly
+  reduce the RawUsed/control wait or make producer/helper work overlap that
+  wait. Otherwise revert to the canonical rebaseline before the next
+  independent optimization.
+
+## 2026-07-03 W16 Split-Producer Mq64 Structural Probe
+
+Decision: `STRUCTURAL_PASS_REJECT_PERF`
+
+Purpose:
+
+Address the current review findings directly:
+
+- the active code was still effectively 12-wave;
+- instruction gaps were severe;
+- both heavy consumers were still moving in lockstep.
+
+Change:
+
+- Switched the canonical dKV kernel to a 16-wave CTA:
+  waves0-3 `producer_kq_loop`, waves4-7 consumer0, waves8-11 consumer1,
+  waves12-15 `producer_vdout_loop`.
+- Kept the same-LDS `Mq=64,Nk=128,D=128` contract and 208-VGPR consumer
+  window.
+- Updated the static gate to require `hcu_wdra_waves_per_tg(16)`,
+  the two producer loops, and the wave12-15 role branch.
+
+Evidence:
+
+- Remote build/static/symbol gates PASS.
+- Metadata is clean:
+  `private=0`, `sgpr=74`, `vgpr=112`, no spill/scratch.
+- Branch windows:
+  producer KQ `6/16`, consumer0 `204/208`, consumer1 `204/208`,
+  producer VDout `1/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_161054`
+  also produced the H1/S1024 full-perf run.
+- H1/S1024 correctness PASS:
+  `dk_rel_l2=0.0025563`, `dv_rel_l2=0.000337571`.
+- H1/S1024 full perf:
+  `kernel_ticks=69039425`, `MMOP=131072`, `ldsBankConflict=0`,
+  coissue `27214/18060`, `MMAC active=22.3357%`,
+  `VOP active=23.7529%`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_161054_clean_w16_split_mq64_h1s1024_sqc7_fullperf`.
+
+xcu findings:
+
+- dispatch duration `151736`, average active waves `115.35`.
+- top issue bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `38.07%`,
+  `s_abarrier_try_wait -> s_waitcnt` `9.89%`,
+  `global_load_dwordx3 -> s_waitcnt` `8.18%`,
+  `v_mmac -> v_mmac` `4.18%`,
+  `ds_read_matrix_trans_format -> s_waitcnt` `2.12%`.
+
+Conclusion:
+
+The first review item is fixed structurally: PMD shows
+`wg size=(1024,1,1)` and `16 waves using this aBarrier/eBarrier group`.
+The other two items are not fixed.  The dominant bubble got worse because the
+two producer split still uses a raw-page ownership protocol that makes the two
+consumer groups wait on the same page-control rhythm.  The second producer is
+also still thin: it performs the V/dO MLS role but has almost no useful
+post-load work in its branch (`1/16` VGPR metadata).
+
+Next:
+
+- Keep the W16 code as the structural baseline only if the next task requires
+  16-wave form.
+- Do not treat this as the best performance route.
+- The next real optimization must change the ABarrier/raw-page lifecycle or
+  move sidecar/helper work into producer B so that producer B contributes
+  useful overlap and consumer0/consumer1 stop waiting on the same token rhythm.
+
+## 2026-07-04 Q/dO Raw Buffer Depth A/B
+
+Decision: `BASELINE_DOUBLE_BUFFER_KEEP`, single-buffer probe
+`REJECT_PERF_PROBE`.
+
+Question:
+
+- Quantify how much the current Q/dO raw double buffer helps versus a
+  single-buffer protocol before spending the released K/V LDS on three or four
+  pages.
+
+Method:
+
+- Kept the active W16 K/V-resident Mq64 kernel, math, output ownership, and
+  `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.
+- Added a compile-time raw-page helper so `kRawBuffers=1` uses only page0 and
+  waits after every q tile, while `kRawBuffers=2` keeps the current page0/page1
+  ping-pong.
+- Sidecar cache-warm distance follows buffer depth: double buffer prefetches
+  `q_tile+2`; single buffer prefetches `q_tile+1`.
+- The single-buffer constant was restored after measurement; the active source
+  is back to double buffer.
+
+Evidence:
+
+- Double-buffer same-build baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_153154`,
+  `kernel_ticks=61582885`, `MMAC active=25.4747%`,
+  coissue `26857/16837`, `VALU=181512`, `SCA=311168`, `LDS=66816`,
+  `VMEM=4352`, `ldsBankConflict=0`, metadata `private=0 sgpr=62 vgpr=112`.
+- Single-buffer probe:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_153511`,
+  `kernel_ticks=63344645`, `MMAC active=24.6431%`,
+  coissue `19026/12647`, `VALU=185888`, `SCA=232752`, `LDS=66816`,
+  `VMEM=4352`, `ldsBankConflict=0`, metadata `private=0 sgpr=88 vgpr=112`.
+
+Conclusion:
+
+- Double buffer is real but modest: it improves H1/S1024 kernel ticks by about
+  `2.78%` versus single buffer and raises MMAC active by about `0.83` point.
+- This is not a long-conveyor solution.  The small gain means the current
+  two-page design mostly prevents total serialization, but consumer page
+  lifetime and RawUsed/sidecar waits still dominate.
+- Three/four-buffer work should not be implemented as an unconditional extra
+  ABarrier stack.  The high-value design is to add a `ResidentUsed` ownership
+  point after all consumer waves latch K/V into VGPR, then reuse the dead K/V
+  64KB LDS for additional Q/dO raw pages and possibly sidecar LDS cache.
+
+Next:
+
+- Workbook-stress two candidates before coding:
+  `3-page`: add one extra Q/dO raw page plus sidecar LDS cache in released K/V
+  space; lower barrier complexity.
+  `4-page`: use all released K/V LDS for two extra Q/dO raw pages; highest
+  producer lookahead but needs a larger barrier ledger and careful RawUsed
+  accounting.
+- Promotion criterion: three/four pages must improve same-shape MMAC active
+  and ticks with no spill/scratch and `ldsBankConflict=0`; if it only raises
+  ABarrier/SCA cost, reject.
+
+## 2026-07-04 Single Raw Page With Producer-Published Sidecar LDS
+
+Decision: `ACCEPT_PIPELINE_SIDECAR_LDS_SINGLEBUF`.
+
+Question:
+
+- The raw Q/dO double buffer only gave a modest benefit, while xcu repeatedly
+  showed consumer-side sidecar global load wait.  Test the user's proposal:
+  use one raw Q/dO page for now, have producer A publish sidecar metadata into
+  LDS, and make consumers read sidecar from LDS instead of global memory.
+
+Implementation:
+
+- `kRawBuffers=1`.
+- Added `DkvLdsLayout::kSidecarBase` and sidecar page helpers.
+- Added `publish_sidecar_tile_to_lds<Tile>` in producer A.  Only
+  `wave_local==0` and lanes `<64` write the SoA sidecar page:
+  `max_log2[64]`, `inv_sum[64]`, `delta[64]`.
+- Replaced consumer global sidecar reads with
+  `softmax_ds_owner16_from_lds_sidecar`.
+- `RawFilled` now gates Q, dO, and sidecar readiness for the active page.
+
+Evidence:
+
+- Static/resource gates PASS:
+  `private_segment_fixed_size=0`, `sgpr_spill_count=0`,
+  `vgpr_spill_count=0`, `vgpr_count=112`.
+- Branch windows:
+  producer KQ `10/16`, consumer0 `196/208`, consumer1 `196/208`,
+  producer VDout `4/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_154344`,
+  `dk_rel_l2=0.000361379`, `dv_rel_l2=0.000267234`.
+- H1/S1024 full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_154650`,
+  `kernel_ticks=54539485`, `MMOP=131072`, `MMAC active=26.6693%`,
+  `VALU=180570`, `SCA=215648`, `LDS=85822`, `VMEM=4352`,
+  coissue `20030/11508`, `ldsBankConflict=0`.
+- Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260704_154650_clean_singlebuf_lds_sidecar_h1s1024_sqc7_fullperf`.
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  `35_singlebuf_lds_sidecar`.
+
+xcu findings:
+
+- The previous consumer `global_load_dwordx3 -> s_waitcnt` sidecar bubble is no
+  longer a top bubble.
+- New top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `47.39%`,
+  `s_abarrier_try_wait -> s_waitcnt` `6.60%`,
+  `ds_read_b32 -> s_waitcnt` `2.34%`.
+- Exported window `100000:118000` at `xcd=0,se=3,cu=1,simd=3,wave=0`
+  shows SIMD bubble `96.76%`, dominated by
+  `s_abarrier_try_wait -> s_waitcnt`.
+
+Conclusion:
+
+- Sidecar LDS is a real structural win.  It improves H1/S1024 kernel ticks by
+  about `11.44%` versus the double-buffer global-sidecar baseline
+  (`61582885 -> 54539485`) and by about `13.90%` versus the single-buffer
+  global-sidecar probe (`63344645 -> 54539485`).
+- The next bottleneck is not consumer sidecar global latency; it is
+  RawUsed/RawFilled page-token serialization.  Single-buffering exposes this
+  more sharply even though total ticks improve.
+
+Next:
+
+- Keep sidecar LDS as the current active route.
+- Do not move sidecar reads back to consumer global memory.
+- Draft the next workbook row for one of:
+  reintroduce two raw pages with matching sidecar pages, split sidecar/RawFilled
+  ownership, or use LDS slack for a third raw+sidecar page.  The next candidate
+  must reduce ABarrier wait without adding an unconditional barrier stack.
+
+## 2026-07-04 Raw2 Sidecar Overlay On Dead K/V LDS
+
+Decision: `ACCEPT_PIPELINE_MICRO`.
+
+Question:
+
+- The single-buffer LDS-sidecar path removed consumer global sidecar latency but
+  exposed Raw/sidecar token serialization.  Test the user's follow-up: keep
+  sidecar in LDS, but reuse the K/V resident LDS region after consumers latch
+  K/V into VGPR, so the raw Q/dO path can return to two buffers without
+  exceeding 128KB LDS.
+
+Implementation:
+
+- Restored `kRawBuffers=2`.
+- Added `ResidentUsed` as a one-shot ownership token.  Consumers arrive after
+  `latch_owner16_kv_regs`; producer A waits before writing sidecar into the
+  overlaid K/V region.
+- Sidecar base now aliases the K/V resident LDS region; planned LDS excludes
+  sidecar bytes because sidecar lives only after K/V resident data is dead.
+- Static gate now checks the `ResidentUsed` wait/arrive/init protocol.
+
+Evidence:
+
+- Static/resource gates PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=60`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- Branch windows:
+  producer KQ `6/16`, consumer0 `198/208`, consumer1 `198/208`,
+  producer VDout `1/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_161558`.
+- H1/S1024 full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_161747`,
+  `kernel_ticks=53719120`, `MMOP=131072`, `MMAC active=27.7542%`,
+  `VALU=181916`, `SCA=297480`, `LDS=85822`, `VMEM=4352`,
+  coissue `32106/18911`, `ldsBankConflict=0`.
+- Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260704_161747_clean_raw2_sidecar_kv_overlay_h1s1024_sqc7_fullperf`.
+
+xcu findings:
+
+- Dispatch0 detail duration `118064`, issue count `807423`,
+  avg active waves `118.54`.
+- Top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `39.79%`,
+  `s_abarrier_try_wait -> s_waitcnt` `7.82%`,
+  `v_mmac -> v_mmac` `5.76%`,
+  `ds_read_b32 -> s_waitcnt` `2.43%`.
+- Window export:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/raw2_sidecar_kv_overlay_h1s1024_20260704_161747_dispatch0_window_bar6`.
+
+Conclusion:
+
+- The overlay idea is correct and modestly positive.  It improves full-perf
+  H1/S1024 kernel ticks by about `1.50%` versus single-buffer LDS-sidecar
+  (`54539485 -> 53719120`) and by about `12.77%` versus the double-buffer
+  global-sidecar baseline (`61582885 -> 53719120`).
+- It also raises MMAC active from `26.6693%` to `27.7542%` versus single-buffer
+  LDS-sidecar, with `ldsBankConflict=0`.
+- The bottleneck is now more cleanly ABarrier ownership exposure, not sidecar
+  global load latency.  The new `ResidentUsed` token is paid once per CTA, but
+  raw page waits still dominate the steady timeline.
+
+Next:
+
+- Keep K/V-overlay sidecar as the active route.
+- Do not move sidecar back to global memory.
+- Next micro should reduce over-synchronization: only the actual sidecar writer
+  wave may need to wait for `ResidentUsed`; non-writer producer waves can keep
+  issuing Q raw work and arrive at RawFilled early, with writer arrival last.
+- If that does not reduce xcu ABarrier bubbles, move back to workbook-level
+  topology work rather than adding more tokens.
+
+## 2026-07-04 Converge Back To Single Raw Buffer LDS Sidecar
+
+Decision: `CODE_CONVERGENCE_ACCEPT`.
+
+Question:
+
+- The user decided the raw2 overlay gain is too small for the added ownership
+  complexity.  Revert the active route to single raw Q/dO buffer while keeping
+  the proven producer-published LDS sidecar path.
+
+Implementation:
+
+- Set `kRawBuffers=1`.
+- Sidecar lives in its own small LDS region after K/V instead of overlaying
+  dead K/V.
+- Removed `ResidentUsed` from `DkvBarrierLedger`, kernel init/invalidate,
+  producer wait, consumer arrive, and static gate.
+- Removed Raw1 tokens and helper branches from the active source and gate.
+- The canonical route now has only:
+  `ResidentFilled`, `Raw0Filled`, `Raw0Used`, and `AllDone`.
+
+Evidence:
+
+- Remote build/static/symbol gates PASS:
+  `private_segment_fixed_size=0`, `sgpr_count=84`, `vgpr_count=112`,
+  `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- Branch windows:
+  producer KQ `10/16`, consumer0 `196/208`, consumer1 `196/208`,
+  producer VDout `4/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_164439`.
+- H1/S1024 stats PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_164444`,
+  `kernel_ticks=54818400`, `MMOP=131072`, `MMAC active=26.6857%`,
+  `VALU=180570`, `SCA=215376`, `LDS=85822`, `VMEM=4352`,
+  coissue `19747/11693`, `ldsBankConflict=0`.
+
+Conclusion:
+
+- The cleaned single-buffer route is about `0.51%` slower than the previous
+  single-buffer full-perf record, within run/build noise for this style of
+  PMD comparison, and about `2.05%` slower than raw2 overlay.
+- This is an intentional readability/control tradeoff, not a speed promotion.
+  The raw2 overlay result remains useful evidence, but the active code now
+  follows the simpler single-buffer contract requested by the user.
+
+Next:
+
+- Continue from this single-buffer LDS-sidecar baseline.
+- Do not reintroduce Raw1 or `ResidentUsed` unless workbook and xcu evidence
+  justify the complexity.
+- The next real bottleneck remains ABarrier/consumer lockstep, not sidecar
+  global memory.

@@ -8,6 +8,52 @@ the benchmark.  dQ is frozen.
 
 ## Current Evidence
 
+- Current source state is a W16 split-producer Mq64 kernel with K/V resident in
+  consumer VGPR:
+  waves0-3 producer K+Q, waves4-7 consumer0, waves8-11 consumer1,
+  waves12-15 producer V+dO.  Consumers latch their owned Nk=16,D=128 K/V
+  fragments once after `ResidentFilled`; the q-loop score/dP path reads Q/dO
+  from LDS and consumers read sidecar from producer-published LDS.
+- Latest accepted evidence is single raw Q/dO page plus producer-published LDS
+  sidecar:
+  `kernel_ticks=54539485`, `MMOP=131072`, `ldsBankConflict=0`,
+  `MMAC active=26.6693%`, `VALU=180570`, `SCA=215648`, `LDS=85822`,
+  `VMEM=4352`, coissue `20030/11508`.
+  Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260704_154650_clean_singlebuf_lds_sidecar_h1s1024_sqc7_fullperf`.
+- This beats the K/V-resident double-buffer global-sidecar baseline
+  (`kernel_ticks=61582885`, `MMAC active=25.4747%`) by about `11.44%` on
+  kernel ticks and removes the old consumer `global_load_dwordx3 -> s_waitcnt`
+  bubble from xcu top findings.  It is not the final 60% active-share solution:
+  xcu now shows `s_abarrier_try_wait -> s_xor_b32` `47.39%`,
+  `s_abarrier_try_wait -> s_waitcnt` `6.60%`, and a selected
+  `100000:118000` window with `96.76%` SIMD bubble dominated by ABarrier wait.
+- The next high-value design should keep sidecar in LDS while restoring useful
+  raw-page lookahead or reducing RawUsed/RawFilled token serialization.  Do not
+  move sidecar reads back to consumer global memory.
+- Direct owner-N expansion was tested as a compile/resource probe after the
+  K/V resident win.  Important clarification: CTA-level K/V resident BlockN is
+  already `128`; the experiment was per-consumer owner-N `16 -> 32`.  The
+  direct N32 probe failed static metadata with
+  `private_segment_fixed_size=432`, `sgpr_spill_count=22`, and
+  `vgpr_spill_count=110`, then was removed.  Do not retry N32/N64/N128 by
+  simply holding more long-lived dV/dK accumulators; a larger-N design needs
+  accumulator phasing or store-safe partial reductions first.  Workbook sheet:
+  `33_blockn128_stress`.
+- Previous W16 structural probe:
+  PMD confirms `wg size=(1024,1,1)` and `16 waves using this
+  aBarrier/eBarrier group`.
+- Latest W16 probe evidence:
+  `kernel_ticks=69039425`, `MMOP=131072`, `ldsBankConflict=0`,
+  `MMAC active=22.3357%`, coissue `27214/18060`.
+  Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260703_161054_clean_w16_split_mq64_h1s1024_sqc7_fullperf`.
+- Plain W16 split is not a performance promotion.  xcu shows worse ABarrier/control
+  exposure than the earlier Mq64-A/W12 routes:
+  `s_abarrier_try_wait -> s_xor_b32` `38.07%` and
+  `s_abarrier_try_wait -> s_waitcnt` `9.89%`.  Producer B is present but thin
+  (`1/16` branch VGPR metadata), so the next edit must give it real useful work
+  or reduce raw-page lifetime.
 - Best active route is the W12 canonical kernel with accepted
   H22/H23/H27/H28/H30 cleanups:
   `fa3_bwd_dkv_kernel`, `Mq=32,Nk=128,D=128`, one producer group and
@@ -80,6 +126,31 @@ the benchmark.  dQ is frozen.
   `ds_read_matrix -> s_waitcnt` only `2.38%`.  The next performance edit
   should attack raw-page or sidecar exposure; batching `ds_read_matrix` alone
   is not a credible path to `60%`.
+- A1 `32x16 same-LDS raw Q/dO load-once` is correctness-accepted but not a
+  performance promotion.  It removes external `Q^T/dO^T` source-layout inputs
+  from the canonical kernel and uses `matrix_load_32x16_b16` plus normal/trans
+  `ds_read_matrix` views of the same raw Q/dO LDS pages.  Evidence:
+  H1/S128 pass at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_144814`;
+  H1/S1024 pass at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260703_144936`.
+  H1/S1024 regresses versus the canonical rebaseline:
+  `kernel_ticks=67704000` vs `66411800`, `MMAC active=22.8697%` vs `23.4288%`.
+  The semantic win is real; the performance lesson is that 32x16 load-once
+  frees 32KB LDS but does not reduce the matrix instruction count by itself.
+  Next work must spend that freed LDS on deeper raw-page/sidecar/pipeline
+  overlap before promotion.
+- Mq64 same-LDS follow-up has also been tested and is not a promotion yet.
+  Mq64-B consumes one Mq64 raw page as two short M32 halves:
+  `kernel_ticks=67825940`, `MMAC active=23.1120%`.  Mq64-A stretches the
+  consumer score/dP island across both M32 halves and uses `208` consumer
+  VGPRs: `kernel_ticks=67762240`, `MMAC active=23.0392%`.  Both are correct,
+  no spill/scratch, `ldsBankConflict=0`, but still worse than canonical
+  `kernel_ticks=66411800`, `MMAC active=23.4288%`.  xcu for Mq64-A shows the
+  main reason: RawUsed/control remains `25.92%`, sidecar wait is `10.77%`, and
+  `ds_read_matrix_trans -> s_waitcnt` rises to `3.32%`.  Larger Wq is
+  resource-legal, but rearranging Mq64 halves is insufficient; the next
+  successful edit must reduce RawUsed/control or hide it with useful work.
 
 ## Code Plan
 
@@ -102,16 +173,19 @@ Do not port the old phase stack.  Port only proven pieces, one block at a time:
 
 - First eliminate duplicate score/dP and wrong output ownership.
 - Main matrix path must be MLS/BPS + `ds_read_matrix` + `v_mmac_*lit`.
-- `Q^T` and `dO^T` come from source-layout ABI, not LDS raw-to-trans scatter.
+- `Q^T` and `dO^T` should not be generated by LDS raw-to-trans scatter.
+  The current canonical experiment instead uses the verified official
+  32x16 same-LDS contract: raw `Q/dO` are loaded once with
+  `matrix_load_32x16_b16`, score/dP read the trans view, and dV/dK read the
+  normal view.  This is correctness-proven but still performance-negative
+  until the freed LDS is used to shorten page lifetime or hide sidecar waits.
 - Producer MLS/BPS publication should not be followed by local
   `wait_lgkm(0)`; ABarrier is the ownership fence to consumer
   `ds_read_matrix`.  Keep waits near first use or true overwrite/reuse points.
-- Current W12 LDS plan is already full 128 KB:
-  `Q 16KB + dO 16KB + K 32KB + V 32KB + Q^T 16KB + dO^T 16KB`.
-  Do not add a dedicated LDS sidecar/scratch page unless another page/lifetime
-  is removed or reused.  Source-layout operands must come from MLS/BPS pages
-  already in this budget, or a workbook row must show which existing bytes are
-  freed before code changes.
+- A1 W12 raw-only LDS plan is `96KB`:
+  `Q 16KB + dO 16KB + K 32KB + V 32KB`, leaving about `32KB` slack under the
+  128KB budget.  Do not spend that slack casually; a workbook row must show how
+  it reduces `RawUsed`/sidecar waits or lengthens useful MMAC islands.
 - Consumer work should be balanced: score, dP, dV, dK are each 16 MMAC per
   consumer wave per q tile.
 - Producers must have recurring work after K/V startup; avoid thin producer
@@ -856,3 +930,33 @@ Rule going forward:
 - do not add another dKV performance path
 - modify `fa3_bwd_dkv_kernel` in place
 - keep experiment history in git, workbook, ledger, and optimization log
+
+## Current Checkpoint: Single Raw Buffer LDS Sidecar
+
+Current active route:
+
+- one canonical dKV kernel: `fa3_bwd_dkv_kernel`
+- 16-wave topology:
+  producer K/Q/sidecar, two heavy consumers, producer V/dO
+- K/V are loaded once and latched into consumer VGPR
+- sidecar is producer-published into a small dedicated LDS region
+- raw Q/dO uses one page
+- `Raw1` and `ResidentUsed` are intentionally removed from the active source
+
+Latest H1/S1024 evidence:
+
+- correctness PASS
+- no scratch/spill
+- `ldsBankConflict=0`
+- `kernel_ticks=54818400`
+- `MMAC active=26.6857%`
+- remote stats:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_164444/m5out/0/0/stats.txt`
+
+Interpretation:
+
+- This is the current active route by user decision.  The raw2 overlay path was
+  correct and about `1.5%` faster, but the extra ownership protocol is not
+  worth carrying while we are trying to keep the repo clean.
+- Continue from this simpler single-buffer LDS-sidecar baseline.
+- Do not reintroduce Raw1 or `ResidentUsed` without workbook-backed evidence.

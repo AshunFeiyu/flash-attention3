@@ -7,9 +7,9 @@ namespace shaobo::fa3::bwd::dkv {
 inline constexpr int kDkvPathReferenceCorrectness = 1;
 inline constexpr int kDkvPathCanonicalDkv = 5;
 
-struct DkvTileD128Mq32Nk128 {
+struct DkvTileD128Mq64Nk128 {
     static constexpr int kHeadDim = 128;
-    static constexpr int kBlockMq = 32;
+    static constexpr int kBlockMq = 64;
     static constexpr int kNkPerConsumerWave = 16;
     static constexpr int kConsumerGroups = 2;
     static constexpr int kWavesPerConsumerGroup = 4;
@@ -40,7 +40,7 @@ struct DkvTileD128Mq32Nk128 {
     static constexpr int kHalfBytes = 2;
     static constexpr int kKvBytes =
         2 * kResidentNk * kHeadDim * kHalfBytes;
-    static constexpr int kRawBuffers = 2;
+    static constexpr int kRawBuffers = 1;
     static constexpr int kRawBytes =
         kRawBuffers * 2 * kBlockMq * kHeadDim * kHalfBytes;
     static constexpr int kSidecarRows = kBlockMq;
@@ -54,31 +54,23 @@ struct DkvTileD128Mq32Nk128 {
     static constexpr int kPackedSidecarFields = 3;
     static constexpr int kSidecarBytes =
         kRawBuffers * kSidecarFloats * static_cast<int>(sizeof(float));
-    static constexpr int kSourceLayoutBytes =
-        kRawBuffers * 2 * kBlockMq * kHeadDim * kHalfBytes;
+    static constexpr int kSourceLayoutBytes = 0;
     static constexpr int kPlannedLdsBytes =
-        kKvBytes + kRawBytes + kSourceLayoutBytes;
+        kKvBytes + kRawBytes + kSidecarBytes + kSourceLayoutBytes;
     static constexpr int kLdsBudgetBytes = 128 * 1024;
 
     static_assert(kResidentNk == 128, "dKV clean lane expects Nk=128");
-    static_assert(kTotalMmacPerConsumer == 64,
-                  "Balanced dKV consumer should issue 64 MMAC per q tile");
+    static_assert(kTotalMmacPerConsumer == 128,
+                  "Mq64 dKV consumer should issue 128 MMAC per q tile");
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
                   "dKV clean LDS plan must fit 128KB");
-};
-
-struct DkvTileD128Mq32Nk128W12 : DkvTileD128Mq32Nk128 {
-    static constexpr int kWavesPerCta = 12;
-    static constexpr int kThreadsPerCta = kWaveSize * kWavesPerCta;
 };
 
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
     static constexpr int kRaw0Filled = 1;
     static constexpr int kRaw0Used = 2;
-    static constexpr int kRaw1Filled = 3;
-    static constexpr int kRaw1Used = 4;
-    static constexpr int kAllDone = 5;
+    static constexpr int kAllDone = 3;
 };
 
 struct OptimizationTargets {
@@ -90,8 +82,8 @@ struct OptimizationTargets {
 };
 
 struct WdraResourceWindows {
-    static constexpr int kProducer12Vgprs = 16;
-    static constexpr int kConsumerVgprs = 160;
+    static constexpr int kProducerVgprs = 16;
+    static constexpr int kConsumerVgprs = 208;
     static constexpr int kConsumerTargetVgprs = 200;
     static constexpr int kConsumerCeilingVgprs = 248;
 };

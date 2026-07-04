@@ -50,34 +50,33 @@ def main() -> int:
             "missing_owner16_dv_dk_mmac")
     require(source, r"kDkvPathCanonicalDkv", failures,
             "missing_canonical_path")
-    require(perf_source, r"hcu_wdra_waves_per_tg\(12\)", failures,
-            "missing_wdra12_attribute")
-    require(perf_source, r"producer_all_loop", failures,
-            "missing_12wave_combined_producer")
+    require(perf_source, r"hcu_wdra_waves_per_tg\(16\)", failures,
+            "missing_wdra16_attribute")
+    require(perf_source, r"producer_kq_loop", failures,
+            "missing_16wave_kq_producer")
+    require(perf_source, r"producer_vdout_loop", failures,
+            "missing_16wave_vdout_producer")
     require(perf_source, r"wave_id\s*<\s*4", failures,
             "missing_producer_a_branch")
     require(perf_source, r"wave_id\s*<\s*8", failures,
             "missing_consumer0_branch")
+    require(perf_source, r"wave_id\s*<\s*12", failures,
+            "missing_consumer1_branch")
     require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*1,\s*true>",
             failures, "missing_consumer1_branch")
-    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducer12Vgprs\)",
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVgprs\)",
             failures,
             "missing_producer_vgpr_window")
     require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)",
             failures,
             "missing_consumer_vgpr_window")
-    require(perf_source, r"s_abarrier_init\(Bar::kResidentFilled,\s*4\)",
+    require(perf_source, r"s_abarrier_init\(Bar::kResidentFilled,\s*8\)",
             failures, "missing_resident_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kRaw0Filled,\s*4\)",
+    require(perf_source, r"s_abarrier_init\(Bar::kRaw0Filled,\s*8\)",
             failures,
             "missing_raw0_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kRaw0Used,\s*8\)", failures,
             "missing_raw0_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kRaw1Filled,\s*4\)",
-            failures,
-            "missing_raw1_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kRaw1Used,\s*8\)", failures,
-            "missing_raw1_used_count")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
     require(perf_source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
@@ -94,8 +93,10 @@ def main() -> int:
             "missing_reference_path_contract")
     require(contract, r"kDkvPathCanonicalDkv", failures,
             "missing_canonical_path_contract")
-    require(contract, r"DkvTileD128Mq32Nk128W12", failures,
-            "missing_w12_tile_contract")
+    require(contract, r"DkvTileD128Mq64Nk128", failures,
+            "missing_16wave_tile_contract")
+    require(contract, r"kRawBuffers\s*=\s*1", failures,
+            "canonical_route_must_use_single_raw_buffer")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,
             "missing_active_share_target")
     require(contract, r"kForbidDuplicateScoreDp\s*=\s*true", failures,
@@ -115,8 +116,12 @@ def main() -> int:
            r"kSourceFilled|kSourceUsed|wait_source_|arrive_source_|"
            r"kSource0Filled|kSource0Used|kSource1Filled|kSource1Used",
            failures, "source_layout_must_share_page_packet_token")
+    forbid(source + contract, r"kResidentUsed", failures,
+           "resident_used_overlay_token_must_not_exist")
+    forbid(source + contract, r"kRaw1Filled|kRaw1Used", failures,
+           "raw1_tokens_must_not_exist_in_single_buffer_route")
     forbid(source + contract,
-           r"kDkvPathWasp|DkvTileD128Mq64|DkvSemanticMq64|"
+           r"kDkvPathWasp|DkvSemanticMq64|"
            r"fa3_bwd_dkv_probe_kernel|fa3_bwd_dkv_mmac_kernel|"
            r"fa3_bwd_dkv_mmac12_|consumer_score_dp_loop|"
            r"consumer_dkv_mmac_loop_(causal_skip|score_dp_brick|"
