@@ -4258,3 +4258,38 @@ Follow-up static probe: FWD-style single `mmac_zero`.
   safe route for BWD's current live-range shape.
 - Active source was restored to raw2 canonical.  Future `v_mov` work should
   target softmax/dS/control remaps or useful stagger, not simply hoist zero.
+
+### G1 Score-Prefetch Stagger Probe
+
+Status: `REJECT_PERF_STATS_ONLY`; code reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `48_g1_score_prefetch_stagger` records the hypothesis:
+  keep consumer0 as the timing anchor, but let consumer1 compute score/dP for
+  pair0 and pair2 before finishing pair0/pair2.
+- This is a real-work stagger attempt, not an empty delay and not a new phase.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=62`, `vgpr=112`, no scratch/spill.
+- Branch windows:
+  producerKQ `6/16`, consumer0 `198/208`, consumer1 `205/208`,
+  producerVDout `1/16`.
+- H1/S128 and H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- H1/S1024 stats:
+  `kernel_ticks=56,500,990`, `MMAC active=28.0755%`,
+  coissue `29,908/17,617`.
+- Raw2 stats-only baseline:
+  `kernel_ticks=53,300,975`, `MMAC active=27.6518%`.
+
+Conclusion:
+
+- The stagger slightly improves MMAC active, but slows ticks by about `6.0%`.
+- Holding score0/dP0 while issuing score2/dP2 makes consumer1 branch nearly
+  full (`205/208`) and delays useful finish/store work enough to lengthen the
+  critical path.
+- Do not keep this code.  The next useful-stagger attempt must avoid carrying
+  two score/dP pairs live at once, or target softmax/control `v_mov` shrink
+  instead of reordering score islands.

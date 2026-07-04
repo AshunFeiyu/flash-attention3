@@ -1,5 +1,41 @@
 # Source Status
 
+## 2026-07-04 Raw2 Canonical After Rejected Stagger
+
+Status: `RAW2_CANONICAL_ACTIVE`.
+
+Current source state:
+
+- Active dKV kernel is the W16 K/V-resident Mq64 route with page-local raw
+  ownership:
+  waves0-3 producer K+Q+sidecar, waves4-7 consumer0,
+  waves8-11 consumer1, waves12-15 producer V+dO.
+- `ActiveDkvTile = DkvTileD128MqNk128<64>`.
+- `kRawBuffers=2`.
+- ABarrier ledger:
+  `ResidentFilled=0`, `ResidentUsed=1`, `Raw0Filled/Used=2/3`,
+  `Raw1Filled/Used=4/5`, `AllDone=6`.
+- Consumer0 and consumer1 both use the canonical pair order:
+  pair0 score/dP -> softmax/dS -> dV/dK, then pair2.
+
+Latest rejected probe:
+
+- `w16_raw2_g1_score_prefetch_stagger` made consumer1 compute score/dP for
+  pair0 and pair2 before finishing pair0/pair2.
+- Static/resource and correctness passed, but H1/S1024 regressed:
+  `kernel_ticks=56,500,990` versus raw2 stats-only baseline
+  `53,300,975`.
+- MMAC active rose only slightly (`27.6518% -> 28.0755%`), so the probe was
+  rejected and removed from live source.
+
+Next:
+
+- Keep raw2 canonical as the active route.
+- Do not add another stagger variant that keeps two score/dP pairs live.
+- Next candidates should either reduce softmax/control `v_mov` pressure or
+  build a larger clean MMAC island without extra ABarrier generations or
+  score/dP duplication.
+
 ## 2026-07-04 Single Raw Page + Producer Sidecar LDS
 
 Status: `ACCEPT_PIPELINE_SIDECAR_LDS_SINGLEBUF`.
