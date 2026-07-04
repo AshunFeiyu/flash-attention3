@@ -2804,3 +2804,39 @@ Mq128 dynamic causal=true probe:
 - decision: `REJECT_PERF`; code reverted
 - lesson: dynamic Mq128 can be resource-clean, but its dynamic control/VALU
   overhead overwhelms the reduced raw barrier count.
+
+## 2026-07-04 Q/dO Split Lifetime Probe
+
+Design basis:
+
+- Workbook sheet `43_q_dout_split_lifetime` records the dependency DAG:
+  Q is consumed by score and dK, while dO is consumed by dP and dV.
+- The probe tested whether Q and dO could use separate filled/used tokens so
+  producer0 could start the next Q+sidecar packet before producer1's dO page
+  was fully released.
+
+Result:
+
+- Full Q-first dK/dV split:
+  - correctness PASS at H1/S128 and H1/S1024
+  - metadata PASS: `private=0`, `sgpr=86`, `vgpr=112`, no spills
+  - H1/S1024 `simTicks=63880635`, `MMAC active=24.4167%`
+  - decision: `REJECT_PERF`
+- Token-only split with combined dV/dK MMAC preserved:
+  - correctness PASS at H1/S128 and H1/S1024
+  - metadata PASS: `private=0`, `sgpr=86`, `vgpr=112`, no spills
+  - H1/S1024 `simTicks=61733035`, `MMAC active=25.1155%`
+  - decision: `REJECT_PERF`
+- Baseline remains:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411`,
+  `simTicks=58424275`, `MMAC active=26.6364%`.
+
+Lesson:
+
+- Separate Q/dO lifetimes are legal, but the current one-page Mq64 route does
+  not gain enough usable overlap to pay for the extra token/SCA/control cost.
+- Do not reintroduce Q/Dout split tokens as the next main step.  A future
+  design must first create a larger useful-work window or larger GEMM island,
+  then consider finer lifetime release inside that window.
+- Active source and remote binary have been restored to the single
+  `Raw0Filled/Raw0Used` baseline.

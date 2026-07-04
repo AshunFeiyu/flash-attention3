@@ -4028,3 +4028,66 @@ Conclusion:
   the Mq64 baseline.
 - PMD emitted `read vgpr68 before writing`, but numerical correctness passed;
   this warning is noted and not promoted.
+
+### Q/dO Split Lifetime Probe
+
+Status: `REJECT_PERF_STATS_ONLY`, code reverted.
+
+Hypothesis:
+
+- Current `Raw0Filled/Raw0Used` binds Q and dO to one packet lifetime.
+- Q is needed by score and dK; dO is needed by dP and dV.  Splitting tokens
+  into Q-filled/Q-used and dO-filled/dO-used might let producer0 start the next
+  Q+sidecar packet earlier while current consumers finish dK/dV.
+
+Evidence:
+
+- Workbook design sheet added:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `43_q_dout_split_lifetime`.
+- First implementation: full Q-first dK/dV split.
+  - Changed barrier ledger to `QRawFilled/QRawUsed` and
+    `DoutRawFilled/DoutRawUsed`.
+  - Split dK and dV source reads/MMAC islands so Q released before dK, then
+    dO released before dV.
+  - Metadata PASS: `private=0`, `sgpr=86`, `vgpr=112`, no spills; branch
+    consumers `164/208`.
+  - H1/S128 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_210423`.
+  - H1/S1024 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_210509`.
+  - H1/S1024 stats: `simTicks=63880635`, `MMAC active=24.4167%`,
+    coissue `18856/10486`, `VALU=188634`, `SCA=219712`, `LDS=85822`,
+    `VMEM=4352`, `MMOP=131072`, `ldsBankConflict=0`.
+- Second implementation: split tokens only, preserve combined dV/dK MMAC
+  island.
+  - Kept original combined dV/dK MMAC, but issued high-Q reads and arrived
+    `QRawUsed` before high-dO reads and `DoutRawUsed`.
+  - Metadata PASS: `private=0`, `sgpr=86`, `vgpr=112`, no spills; branch
+    consumers `196/208`.
+  - H1/S128 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_211029`.
+  - H1/S1024 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_211035`.
+  - H1/S1024 stats: `simTicks=61733035`, `MMAC active=25.1155%`,
+    coissue `19731/12057`, `VALU=176730`, `SCA=219200`, `LDS=85822`,
+    `VMEM=4352`, `MMOP=131072`, `ldsBankConflict=0`.
+- Baseline for comparison:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411`,
+  `simTicks=58424275`, `MMAC active=26.6364%`, coissue `20088/11882`,
+  `VALU=180570`, `SCA=215792`, `LDS=85822`, `VMEM=4352`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Splitting Q and dO lifetimes is correctness-legal and resource-clean, but it
+  is not profitable in the current single-page Mq64 code shape.
+- Full Q-first splitting breaks the compact combined dV/dK MMAC island and
+  regresses ticks by about `9.34%`.
+- The narrower token-only split still regresses ticks by about `5.66%`; the
+  added ABarrier/SCA/control cost is larger than the few-instruction earlier Q
+  release.
+- Do not continue adding token families to solve the ABarrier bubble unless a
+  design also creates a longer useful-work window, reduces token turns, or
+  increases effective GEMM island size.
+- Baseline source and remote binary were restored after the probe.

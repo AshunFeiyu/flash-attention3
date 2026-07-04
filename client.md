@@ -1006,3 +1006,19 @@ Next design rule:
 - Treat ABarrier/raw packet lifetime as the main bottleneck.  Sidecar movement
   only matters if the design proves readiness and reduces that lifetime instead
   of adding another exposed wait.
+
+## Rejected: Q/dO Split Lifetime
+
+- Workbook sheet `43_q_dout_split_lifetime` captures the design and result.
+- Two variants were tried on the canonical kernel and then reverted:
+  - full Q-first split of dK/dV MMAC: H1/S1024
+    `simTicks=63880635`, `MMAC active=24.4167%`
+  - token-only split while preserving combined dV/dK MMAC: H1/S1024
+    `simTicks=61733035`, `MMAC active=25.1155%`
+- Baseline remains
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411`,
+  `simTicks=58424275`, `MMAC active=26.6364%`.
+- Lesson: Q/dO lifetime splitting is correctness-legal, but in the current
+  single-page Mq64 topology the added token/SCA/control cost is larger than
+  the earlier release benefit.  Do not pursue more token families without a
+  larger useful-work window or a larger GEMM island.
