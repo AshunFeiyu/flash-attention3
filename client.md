@@ -968,3 +968,41 @@ Interpretation:
 - Continue from this simpler single-buffer LDS-sidecar baseline.
 - Do not reintroduce Raw1 or activate `ResidentUsed` without workbook-backed
   evidence.
+
+## Latest Evidence: 2026-07-04 ABarrier Baseline
+
+Fresh H1/S1024 full perf for the active `Mq64` route:
+
+- case:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411`
+- helper perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411/m5out/0/0/2673937_fa3_bwd_wasp_clean.perf`
+- xcu:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/f27_h1s1024_fullperf_20260704_191411_dispatch0`
+- focused barrier window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/f27_h1s1024_fullperf_20260704_191411_dispatch0_window_barrier_swait`
+
+Numbers:
+
+- `simTicks=58424275`
+- `MMAC active=26.6364%`
+- coissue `20088/11882`
+- `ldsBankConflict=0`
+- xcu top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `47.46%`,
+  `s_abarrier_try_wait -> s_waitcnt` `6.64%`
+
+Rejected sidecar idea:
+
+- Do not use sidecar future prefetch without a matching sidecar token.  It
+  failed H1/S128 correctness because sidecar readiness was no longer tied to
+  the raw Q/dO epoch.
+- A correctness-safe two-page/current-sidecar/four-wave-writer diagnostic
+  passed but regressed H1/S1024 to `simTicks=60289320` and
+  `MMAC active=26.1523%`.
+
+Next design rule:
+
+- Treat ABarrier/raw packet lifetime as the main bottleneck.  Sidecar movement
+  only matters if the design proves readiness and reduces that lifetime instead
+  of adding another exposed wait.

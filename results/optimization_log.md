@@ -3788,3 +3788,89 @@ Conclusion:
   preserve compile-time MMAC islands without SGPR spill, or otherwise show via
   xcu that dynamic-loop control is hidden.  Do not promote this `Mq128`
   implementation.
+
+## 2026-07-04 Current Full Perf And Sidecar Prefetch Probe
+
+Decision: `PASS_XCU_BASELINE` for the current full-perf rebaseline,
+`REJECT_CORRECTNESS` for no-token future sidecar prefetch, and `REJECT_PERF`
+for the current-page four-wave sidecar writer diagnostic.
+
+Question:
+
+- The current `f27ec64`/`ActiveDkvTile=Mq64` route had stats-only evidence but
+  needed a fresh full perf/xcu baseline before changing ABarrier or sidecar
+  lifetime.
+- Hypothesis: sidecar could be moved out of the raw Q/dO critical path by
+  double-buffering only sidecar pages and prefetching q+1 sidecar while
+  consumers compute q.
+
+Baseline evidence:
+
+- Full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411`.
+- Helper perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411/m5out/0/0/2673937_fa3_bwd_wasp_clean.perf`.
+- xcu first pass:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/f27_h1s1024_fullperf_20260704_191411_dispatch0`.
+- xcu focused window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/f27_h1s1024_fullperf_20260704_191411_dispatch0_window_barrier_swait`.
+- Metrics: `simTicks=58424275`, `MMOP=131072`,
+  `MMAC active=26.6364%`, VOP share `19.7478%`, coissue `20088/11882`,
+  `ldsBankConflict=0`.
+- xcu: duration `120460`, avg active waves `124.27`.
+- Top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `47.46%`,
+  `s_abarrier_try_wait -> s_waitcnt` `6.64%`,
+  `ds_read_b32 -> s_waitcnt` `2.53%`.
+- Focused barrier window `100912:113928`,
+  location `xcd=0,se=2,cu=1,simd=3,wave=0`:
+  pipeline bubble `99.99%`; selected SIMD bubble `97.37%`,
+  MMAC `%` only `0.49%`.
+
+Implementation/probe:
+
+- Tried `kSidecarBuffers=2` with no new ABarrier token.
+- Producer KQ wrote current sidecar before the q-loop and future q+1 sidecar
+  after current `RawFilled`.
+- Added `lgkmcnt(0)` after sidecar writes when the first attempt failed.
+- Diagnosed producer skew: old sidecar writer only had `wave_local=0` doing
+  useful sidecar writes, so a four-wave writer variant split 64 rows across
+  waves0-3.
+- Finally tested a correctness-safe diagnostic: two sidecar pages, four-wave
+  writer, current-tile publication only, no future prefetch.
+
+Evidence:
+
+- No-token future prefetch failed H1/S128 correctness twice:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_192236`
+  and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_192452`,
+  with `dk_rel_l2=7.20419`, `dv_rel_l2=5.57578`.
+- Current-page four-wave sidecar diagnostic passed H1/S128:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_192742`.
+- It passed H1/S1024 but regressed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_192805`,
+  `simTicks=60289320`, `MMAC active=26.1523%`,
+  coissue `20333/11403`, `VALU=190556`, `SCA=220848`, `LDS=86590`,
+  `VMEM=4352`, `ldsBankConflict=0`.
+
+Conclusion:
+
+- The current main bottleneck is ABarrier/raw packet ownership lifetime, not
+  missing MMAC, LDS bank conflict, or sidecar global memory.
+- Future sidecar prefetch is not legal without explicit sidecar readiness and
+  ownership, because it is no longer tied to the raw Q/dO epoch.
+- Splitting sidecar rows across producer waves is correct but not profitable
+  in the current critical path; it increases scalar/vector work and lowers
+  MMAC active.
+- Reverted all sidecar-prefetch diagnostic code.  Active source is back to the
+  clean single-page LDS sidecar baseline.
+
+Next:
+
+- Do not retry no-token future sidecar prefetch.
+- If sidecar is decoupled again, design it as a proper `SidecarFilled` /
+  `SidecarUsed` protocol and prove in the workbook that the added ABarrier cost
+  is hidden by score/dP MMAC.
+- The next higher-probability path is to reduce raw packet wait count/lifetime
+  or revisit raw2 overlay only with a simpler ownership ledger.

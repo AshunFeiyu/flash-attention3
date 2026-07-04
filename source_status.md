@@ -2654,3 +2654,48 @@ Conclusion:
 - Future `BlockMq>64` attempts need a design that keeps compile-time MMAC
   islands without SGPR spill, or xcu proof that dynamic-loop overhead is fully
   hidden.
+
+## 2026-07-04 Full Perf Rebaseline And Sidecar Prefetch Rejection
+
+Status: active source restored to `f27ec64`-equivalent baseline after rejected
+sidecar experiments.
+
+Current baseline full perf:
+
+- case:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411`
+- helper perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_191411/m5out/0/0/2673937_fa3_bwd_wasp_clean.perf`
+- xcu:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/f27_h1s1024_fullperf_20260704_191411_dispatch0`
+- focused xcu window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/f27_h1s1024_fullperf_20260704_191411_dispatch0_window_barrier_swait`
+
+Metrics:
+
+- `simTicks=58424275`
+- `MMOP=131072`
+- `MMAC active=26.6364%`
+- coissue `20088/11882`
+- `ldsBankConflict=0`
+- xcu top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `47.46%`,
+  `s_abarrier_try_wait -> s_waitcnt` `6.64%`,
+  `ds_read_b32 -> s_waitcnt` `2.53%`
+
+Rejected experiments:
+
+- `sidecar future prefetch without token`: `REJECT_CORRECTNESS`.
+  H1/S128 failed even after explicit `lgkmcnt(0)` after sidecar write.
+- `two-page current sidecar with four-wave writer`: correctness PASS but
+  `REJECT_PERF`; H1/S1024 regressed to `simTicks=60289320` and
+  `MMAC active=26.1523%`.
+
+Lesson:
+
+- Future sidecar prefetch cannot be treated as raw-packet-ready unless it has
+  explicit readiness/ownership or is still inside the same raw epoch.
+- Four-wave sidecar writing is correct, but in the current code shape it adds
+  control/VALU/SCA cost without reducing the dominant ABarrier bubble.
+- Keep active source simple; the next useful move must reduce raw/ABarrier
+  lifetime itself, not only move sidecar work around.
