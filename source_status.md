@@ -58,6 +58,15 @@ and improves 62C2 full-perf ticks and MMAC active.  It is not a qualitative
 pipeline solution: the next workbook design must reduce or hide the combined
 `QUsed + DoutUsed` ownership bubble instead of adding more token names.
 
+Negative follow-up:
+
+- Workbook sheet `67_mq128_prune_alldone` tried to remove the tail `AllDone`
+  counted ABarrier and rely on the existing post-branch `__syncthreads()`.
+- Remote build/source gate PASS, but symbol metadata failed:
+  `private_segment_fixed_size=244`, `vgpr_spill_count=60`.
+- Active source was restored to keep `AllDone`; do not retry this cleanup
+  without a focused WDRA CFG/codegen probe.
+
 ## 2026-07-05 62C2 RawUsed XCU Diagnosis
 
 Status: `MQ128_R1_62C2_ACTIVE_AFTER_XCU_DIAGNOSIS`.

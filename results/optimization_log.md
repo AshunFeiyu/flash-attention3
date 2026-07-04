@@ -5299,3 +5299,35 @@ Conclusion:
 - Next design must either reduce total ownership wait, hide it with useful
   producer/consumer work, or lengthen the useful MMAC island without
   reintroducing duplicate score/dP.
+
+### Mq128 Prune AllDone Tail ABarrier
+
+Status: `REJECT_STATIC_SPILL`.
+
+Design basis:
+
+- Workbook sheet `67_mq128_prune_alldone`.
+- Starting point was commit `b67577f` Q/dO lifetime split.
+- XCU detail showed a tail/control bubble:
+  `s_abarrier_try_wait -> s_waitcnt`, `122` hits, `1,275,458` cycles
+  (`10.04%` of issue-gap summary).
+- Candidate removed the counted `AllDone` ABarrier init/arrive/wait/inv and
+  relied on the following CTA-wide `__syncthreads()` before ABarrier invalidation.
+- No q-loop ownership, math, output ownership, MMAC island, or asm was changed.
+
+Evidence:
+
+- Remote build completed and source gate PASS.
+- Symbol metadata failed before PMD:
+  `private_segment_fixed_size=244`, `sgpr_count=104`,
+  `sgpr_spill_count=0`, `vgpr_count=128`, `vgpr_spill_count=60`.
+- Branch windows also changed: producer1 rose from `8/16` to `15/16`.
+- PMD correctness and perf were not run because the no-spill hard gate failed.
+
+Conclusion:
+
+- Reverted active source to the `b67577f` AllDone form.
+- The counted `AllDone` barrier appears redundant semantically, but in the
+  current WDRA CFG/codegen shape it acts as a useful live-range/control sink.
+- Do not remove tail ABarrier by inspection.  A future attempt needs a focused
+  CFG/codegen probe or an alternative cleanup that preserves no-spill metadata.

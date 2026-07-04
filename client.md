@@ -128,6 +128,10 @@ Do not directly retry sheet 63's release-before-softmax path: long q-loop
 correctness failed even though H1/S128 passed.
 Do not directly retry sheet 64's full-valid two-path helper: it fails the
 no-spill static gate.
+Do not directly delete the tail `AllDone` ABarrier: sheet
+`67_mq128_prune_alldone` showed static regression to
+`private_segment_fixed_size=244` and `vgpr_spill_count=60`, likely because the
+current WDRA CFG/codegen uses it to limit post-branch live range.
 
 Workbook sheet `51_structural_pivot` records the rejected WG-local duplicate
 Q/dO structural probe:
