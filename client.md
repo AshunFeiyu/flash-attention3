@@ -162,6 +162,22 @@ but H1/S1024 regressed to `kernel_ticks=53,658,605` and
 `MMAC active ~=27.4726%` versus raw2 `53,008,410` / `27.7754%`. Tiny producer
 prefetch is not enough to move the RawUsed critical path.
 
+Workbook sheet `59_half_page_raw_tokens` records an ownership-granularity
+negative:
+
+```text
+Raw0/Raw1 whole-page tokens
+  -> Raw0Half0, Raw0Half1, Raw1Half0, Raw1Half1 Filled/Used tokens
+```
+
+It passed static/resource gates (`private=0`, `sgpr=62`, `vgpr=112`,
+no spill/scratch) and H1/S128/H1/S1024 correctness, but H1/S1024 regressed to
+`kernel_ticks=53,505,270`, `MMAC active=27.3801%`, `SCA=330,730` versus raw2
+`53,008,410`, `27.7754%`, `SCA=296,328`.  The code is reverted to raw2
+whole-page tokens.  Do not split RawUsed finer as a standalone fix; it adds
+protocol/control cost unless paired with a larger useful MMAC island or fewer
+ownership handshakes.
+
 ## Workflow Rules
 
 1. Update the shared workbook before changing tile shape, output ownership,

@@ -4780,3 +4780,65 @@ Conclusion:
 - Do not pursue release-before-softmax in the current Mq64/208-VGPR route.
   Future attempts would need a different sidecar ownership/lifetime design or
   a larger feasible consumer VGPR window before this can be revisited.
+
+### Half-Page Raw Tokens
+
+Status: `REJECT_PERF_STATS_ONLY`; code reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `59_half_page_raw_tokens`.
+- Goal was to shorten raw Q/dO page ownership without duplicating Q/dO or
+  changing score/dP/dV/dK math.  A Mq64 raw page was split into two M32 halves:
+  half0 owns MBlockBase 0/1 and half1 owns MBlockBase 2/3.
+- Candidate ABarrier ledger:
+  `Raw0Half0Filled/Used=2/3`, `Raw0Half1Filled/Used=4/5`,
+  `Raw1Half0Filled/Used=6/7`, `Raw1Half1Filled/Used=8/9`,
+  `AllDone=10`.
+- Intended pipeline: release half0 immediately after its high Q/dO source read,
+  so producers can refill half0 for `q_tile+2` while consumers still process
+  half1.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows producer0 `7/16`, consumer0 `198/208`,
+  consumer1 `198/208`, producer1 `1/16`.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=62`, `vgpr=112`, no scratch/spill.
+- Correctness PASS:
+  H1/S128 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_022507`
+  and H1/S1024 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_022513`.
+- H1/S1024 stats:
+  `simTicks=57,118,880`, `kernel_ticks=53,505,270`,
+  `MMOP=131,072`, `MMAC active=27.3801%`,
+  coissue `33,440/19,683`, `VALU=183,836`,
+  `SCA=330,730`, `LDS=86,078`, `VMEM=4,352`,
+  `ldsBankConflict=0`.
+- Raw2 recert baseline remained better:
+  `kernel_ticks=53,008,410`, `MMAC active=27.7754%`,
+  coissue `32,341/18,768`, `SCA=296,328`.
+
+Conclusion:
+
+- The ownership model is correct, but finer RawUsed/Filled granularity doubles
+  page-token traffic and increases SCA/control enough to dominate the earlier
+  release opportunity.
+- Because useful MMOP count and island size are unchanged, the candidate raises
+  protocol cost without raising MMAC active.  This is a precise negative
+  against "split RawUsed finer" as a standalone route.
+- Future RawUsed work must either reduce barrier/control operations, move
+  ownership to a larger useful packet, or increase the useful MMAC island before
+  spending more ABarrier tokens.
+
+Post-revert recertification:
+
+- Live source restored to raw2 canonical with whole-page raw tokens:
+  `Raw0Filled/Used=2/3`, `Raw1Filled/Used=4/5`, `AllDone=6`.
+- zys1 build/static PASS after restore.
+- Symbol metadata PASS after restore:
+  `private=0`, `sgpr=60`, `vgpr=112`, no scratch/spill.
+- Kernel gate PASS after restore with branch windows
+  `6/198/198/1`.

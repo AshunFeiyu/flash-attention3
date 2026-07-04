@@ -39,6 +39,26 @@ Latest rejected probes:
   but failed H1/S1024 correctness because sidecar rows were overwritten after
   release.  Q/dO+sidecar preread failed static with `private=52` and
   `vgpr_spill=24`.  Lesson: raw page ownership includes sidecar lifetime.
+- `w16_sidecar_ring3_early_raw_release` moved sidecar into a three-page LDS
+  ring so raw release-before-softmax was legal, but H1/S1024 regressed to
+  `kernel_ticks=55,298,425`, `MMAC active=26.5015%`.
+- `w16_producer_sidecar_rebalance` moved sidecar publication from producer0 to
+  producer1 and passed correctness/resource gates, but H1/S1024 regressed to
+  `kernel_ticks=53,558,960`, `MMAC active=27.5554%`.
+- `w16_full_valid_mask_shrink` removed per-element valid-pair masking on
+  full-valid owner16 pairs, but failed H1/S128 correctness with dV corruption
+  (`dv_rel_l2=33.2914`) and PMD `read vgpr165 before writing`.
+- `w16_sidecar_reg_prefetch_before_wait` loaded sidecar rows into producer VGPR
+  before RawUsed wait and wrote to LDS after page ownership.  It passed
+  correctness/resource gates, but H1/S1024 regressed to
+  `kernel_ticks=53,658,605`, `MMAC active~=27.4726%`.
+- `w16_half_page_raw_tokens` split each Mq64 raw page into M32 half tokens.
+  It passed correctness/resource gates with branch windows `7/198/198/1`, but
+  H1/S1024 regressed to `kernel_ticks=53,505,270`,
+  `MMAC active=27.3801%`, and `SCA=330,730` versus raw2 `SCA=296,328`.
+  Lesson: finer RawUsed granularity is not free; do not split ownership tokens
+  again unless the design also removes protocol/control work or increases the
+  useful MMAC island.
 
 Next:
 
@@ -49,6 +69,9 @@ Next:
   barrier-critical structure; do not keep adding consumer-side skip branches.
 - Future RawUsed work must either move sidecar out of the raw page lifetime or
   reduce consumer live state before attempting release-before-softmax again.
+- Future ABarrier work must reduce total ownership handshakes or hide them
+  under larger useful work; half-page tokenization alone is now a recorded
+  negative.
 
 ## 2026-07-04 Raw2 Canonical After Rejected Stagger
 
