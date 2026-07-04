@@ -2775,4 +2775,12 @@ Further Mq128 resource probes:
   - decision: `REJECT_RESOURCE`
   - lesson: template recursion is not the root cause; the inlined four-Mpair
     static branch itself has too much scalar/control live state
+- causal=true literal specialization:
+  - Mq128/consumer248 static path passed literal `causal=1` into the consumer
+    calls
+  - result: `private=0`, `sgpr_count=100`, `sgpr_spill_count=16`,
+    `vgpr_count=132`, `vgpr_spill_count=0`
+  - decision: `REJECT_RESOURCE`
+  - lesson: causal mask scalar work contributes, but only slightly; it is not
+    enough to make Mq128 static resource-clean
 - baseline Mq64 source and remote binary were restored and metadata PASS.

@@ -3980,4 +3980,11 @@ Additional Mq128 resource probes:
     `vgpr_count=132`, `vgpr_spill_count=0`
   - conclusion: recursion is not the root cause; the inlined four-Mpair
     branch itself expands scalar/control state too much
-- Baseline source and remote binary were restored clean after both probes.
+- causal=true literal probe:
+  - intent: test whether causal mask/predicate scalar state is the main Mq128
+    resource blocker
+  - result: `private=0`, `sgpr_count=100`, `sgpr_spill_count=16`,
+    `vgpr_count=132`, `vgpr_spill_count=0`
+  - conclusion: causal mask contributes about two SGPR spills but is not the
+    root cause
+- Baseline source and remote binary were restored clean after these probes.
