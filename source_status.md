@@ -65,6 +65,13 @@ Latest rejected probes:
   `sgpr=104`, `sgpr_spill=18`, `vgpr_spill=2`, and consumer branch windows
   `208/208`.  Lesson: Mq128 needs a resource redesign before code expansion;
   do not keep a dynamic Mq128 fallback as the performance route.
+- `w16_mq128_vgpr240_retest` repeated the same static Mq128 route with
+  consumer WDRA windows raised to 240 so the per-SIMD ledger exactly matched
+  `P16+C240+C240+P16=512`.  It removed the private/VGPR spill but still failed
+  metadata with `sgpr=100`, `sgpr_spill=18`, `vgpr=128`,
+  `vgpr_spill=0`; branch windows were `15/16`, `209/240`, `209/240`,
+  `9/16`.  Lesson: direct static Mq128 is blocked by scalar/control live
+  range, not consumer VGPR window size alone.
 
 Next:
 
@@ -79,7 +86,8 @@ Next:
   under larger useful work; half-page tokenization alone is now a recorded
   negative.
 - Future larger-Mq work must first reduce helper live ranges or change phasing;
-  local static expansion of the current Mq64 helper shape spills.
+  local static expansion of the current Mq64 helper shape spills.  Raising
+  consumer VGPR to 240 is not enough if SGPR/control state is unchanged.
 
 ## 2026-07-04 Raw2 Canonical After Rejected Stagger
 

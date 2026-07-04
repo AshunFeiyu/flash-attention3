@@ -1,5 +1,61 @@
 # Optimization Log
 
+## 2026-07-05 Mq128 Consumer-240 Resource Retest
+
+Decision: `REJECT_STATIC_SGPR_SPILL`
+
+Hypothesis:
+
+`Sheet 60's Mq128/R1 static four-M-pair chain failed at consumer VGPR 208 with
+private/VGPR spill plus SGPR spill.  Because a 16-wave CTA maps one wave from
+each role to each SIMD, raising both consumer branches to 240 should spend the
+full per-SIMD VGPR ledger: P16 + C240 + C240 + P16 = 512.  If the only blocker
+is the consumer VGPR window, this should make Mq128 static resource-clean.`
+
+Implemented as a temporary in-place resource retest:
+
+- Generalized the tile contract to `DkvTileD128MqNk128<128, 1>`.
+- Kept one canonical dKV route and no new kernel/phase.
+- Used one Mq128 raw Q/dO page and a static four-pair consumer chain with
+  MBlockBase `0/2/4/6`.
+- Set consumer WDRA window to 240 VGPR while keeping producer windows at 16.
+
+Evidence:
+
+- Remote build completed and source gate PASS.
+- Symbol metadata failed before correctness/PMD:
+  `private_segment_fixed_size=0`, `sgpr_count=100`,
+  `sgpr_spill_count=18`, `vgpr_count=128`, `vgpr_spill_count=0`.
+- WDRA branch windows:
+  producer0 `15/16`, consumer0 `209/240`, consumer1 `209/240`,
+  producer1 `9/16`.
+- Because the hard gate is no SGPR/VGPR spill, no correctness or performance
+  run was made.
+
+Conclusion:
+
+The retest removes the private/VGPR spill seen in sheet 60, but it does not
+remove the SGPR spill.  The direct static Mq128 island is therefore blocked by
+scalar/control live ranges and inlined helper structure, not by consumer VGPR
+window alone.  More VGPR budget is not the next lever.
+
+Post-revert recertification:
+
+- Live source restored to raw2 canonical.
+- zys1 build/static PASS after restore.
+- Symbol metadata PASS after restore:
+  `private=0`, `sgpr=60`, `sgpr_spill=0`, `vgpr=112`,
+  `vgpr_spill=0`.
+- Kernel gate PASS after restore.
+
+Next implication:
+
+Future Mq128 work must first redesign the scalar/control lifetime: reduce
+runtime scalar arguments across the four M-pair calls, split or reorder helper
+scopes without device-call private segment, or change phasing/output ownership
+so the larger useful MMAC island does not inline four full control contexts.
+Do not run PMD on static Mq128 candidates until metadata is spill-free.
+
 ## 2026-07-05 Sidecar Register Prefetch Before RawUsed Wait
 
 Decision: `REJECT_PERF_STATS_ONLY`

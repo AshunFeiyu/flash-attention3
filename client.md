@@ -193,6 +193,23 @@ branches at `208/208`.  The code is reverted to raw2.  Larger Mq still looks
 like the right architectural lever, but it needs a resource redesign first;
 do not keep a dynamic Mq128 loop as the performance route.
 
+Workbook sheet `61_mq128_vgpr240_retest` records the follow-up resource
+boundary:
+
+```text
+Mq128/R1 static four-pair chain
+  consumer window 208 -> 240
+  per-SIMD ledger P16 + C240 + C240 + P16 = 512
+```
+
+This removed the sheet-60 private/VGPR spill, but metadata still failed before
+PMD: `private=0`, `sgpr=100`, `sgpr_spill=18`, `vgpr=128`,
+`vgpr_spill=0`, with consumer branches at `209/240`.  The code is reverted to
+raw2 and remote recert PASS (`private=0`, `sgpr=60`, `vgpr=112`,
+no spill).  Conclusion: static Mq128 is blocked by SGPR/control live range and
+helper shape, not by consumer VGPR window alone.  Next larger-Mq work must
+redesign scalar lifetime/phasing before another PMD run.
+
 ## Workflow Rules
 
 1. Update the shared workbook before changing tile shape, output ownership,
