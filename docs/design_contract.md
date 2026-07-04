@@ -208,6 +208,25 @@ The current workbook source of truth is:
 The workbook must be updated before changing the tile shape, output ownership,
 ABarrier ledger, or source-layout operand budget.
 
+Current asm-island policy:
+
+```text
+Do not rewrite the full kernel in assembly.
+Keep C++ for launch ABI, WDRA roles, ABarrier ownership, LDS layout, and
+correctness harness.
+Use hand-constrained inline assembly only for short hot islands where the
+expected instruction order is clear and the C++ compiler introduces measurable
+noise.
+```
+
+Workbook sheet `53_score_dp_pair_asm` records the first asm-island negative:
+replacing four independent score/dP `ds_read_matrix_trans` reads with two
+`ds_read_matrix_trans_pair` helper calls built cleanly but failed H1/S128
+correctness. The helper's `offset:1024` relation does not match raw Q/dO
+M0/M1 layout, where the adjacent M-block at fixed D block is `4 * 1024` bytes
+away for D128. Keep this as a layout rule: an asm island must prove the exact
+LDS adjacency relation before using pair-read helpers from another layout.
+
 Required CLI sequence for a perf candidate:
 
 ```bash

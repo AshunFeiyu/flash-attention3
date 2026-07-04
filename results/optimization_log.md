@@ -4430,3 +4430,41 @@ Conclusion:
 - Next high-ceiling direction should preserve shared Q/dO and reduce RawUsed
   frequency, likely through an Mq128/static scalar-lifetime redesign or another
   coarser shared packet that avoids duplicate MLS traffic.
+
+### Score/dP Pair-Read ASM Island
+
+Status: `REJECT_CORRECTNESS`; code reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `53_score_dp_pair_asm`.
+- Goal was to test a minimal "C++ clean kernel + asm island" route instead of
+  rewriting the whole kernel in assembly.
+- Change: replace the score/dP island's four independent raw Q/dO
+  `ds_read_matrix_trans` calls with two `ds_read_matrix_trans_pair` helper
+  calls, expecting the second fragment to use `offset:1024`.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=60`, `vgpr=112`, no scratch/spill.
+- Branch windows unchanged:
+  producer0 `6/16`, consumer0 `198/208`, consumer1 `198/208`,
+  producer1 `1/16`.
+- Asm changed as expected: each pair emitted two consecutive
+  `ds_read_matrix_trans_format` instructions with `offset:0` and
+  `offset:1024`.
+- H1/S128 correctness failed:
+  `dk_rel_l2=1.20384`, `dv_rel_l2=0.00230465`, `pass=0`.
+
+Conclusion:
+
+- The implementation assumption was wrong.  In the raw Q/dO page layout,
+  `raw_page_block_offset_m(page, m+1, d)` is separated from
+  `raw_page_block_offset_m(page, m, d)` by `4 * 1024` bytes for D128, not
+  `1024` bytes.
+- `ds_read_matrix_trans_pair` remains valid for the resident K/V layout where
+  the second required fragment is actually at `+1024`, but it cannot be reused
+  blindly for score/dP raw M0/M1 reads.
+- Future asm islands must first prove exact LDS adjacency for the specific
+  MLS layout and fragment pair before replacing correct scalar-addressed reads.
