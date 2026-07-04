@@ -1,5 +1,43 @@
 # FA3 BWD dKV Clean WASP Design Contract
 
+## Current Pivot
+
+The active canonical kernel is the raw2 W16/Mq64 route:
+
+```text
+waves0-3:   producer K + Q + sidecar
+waves4-7:   consumer group 0, owns Nk0..63
+waves8-11:  consumer group 1, owns Nk64..127
+waves12-15: producer V + dO
+```
+
+The latest accepted H1/S1024 stats-only baseline is:
+
+```text
+kernel_ticks = 53,300,975
+MMAC active  = 27.6518%
+MMOP         = 131,072
+ldsBankConflict = 0
+```
+
+XCU still shows `s_abarrier_try_wait -> s_xor_b32` as the dominant bubble
+family, about `40.24%` in the raw2 full-perf run.  The next structural
+experiment is not another local read batch or token-depth patch; it is the
+workbook sheet `51_structural_pivot` design:
+
+```text
+WG0: waves0-3 producer K0/V0 + Q/dO + sidecar
+     waves4-7 consumer0
+
+WG1: waves12-15 producer K1/V1 + Q/dO + sidecar
+     waves8-11 consumer1
+```
+
+This duplicates Q/dO loads, but it turns producer1 into a recurring producer
+and replaces CTA-wide raw-page ownership with warpgroup-local ownership.  It is
+accepted only if correctness/resource gates pass and XCU shows lower or hidden
+ABarrier/RawUsed exposure with higher MMAC active share.
+
 ## Algorithm
 
 For each `Mq x Nk` score tile:

@@ -4362,3 +4362,28 @@ Conclusion:
 - Do not keep this as live code.  Larger read/MMAC bricks need to be applied
   only where XCU proves the wait is the critical path and not hidden by other
   packet ownership/control costs.
+
+### Structural Pivot After Raw2 Micro-Failures
+
+Status: `DESIGN_READY`; no code change yet.
+
+Design basis:
+
+- Workbook sheet `51_structural_pivot` records the next structural experiment.
+- Raw2 improved the single-buffer ABarrier bubble, but the top XCU issue is
+  still `s_abarrier_try_wait -> s_xor_b32` at about `40.24%`.
+- Raw3, score-prefetch stagger, causal specialization, and score-read batch2
+  all passed correctness/resource gates but regressed ticks by more than 5%.
+
+Conclusion:
+
+- The next live-code change should not add another raw page, token split, fake
+  delay, or local read-order tweak.
+- The selected structural candidate is warpgroup-local ownership with duplicated
+  Q/dO:
+  `WG0 = waves0-3 producer K0/V0+Q/dO+sidecar -> waves4-7 consumer0`,
+  `WG1 = waves12-15 producer K1/V1+Q/dO+sidecar -> waves8-11 consumer1`.
+- Expected benefit: producer1 becomes useful in every q tile, RawUsed is local
+  to four consumer waves instead of CTA-wide, and WG0/WG1 can naturally drift.
+- Main risk: Q/dO/sidecar traffic doubles and each WG has only a single raw
+  page unless a later LDS proof allows deeper local buffering.
