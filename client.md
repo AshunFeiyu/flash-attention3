@@ -1044,3 +1044,32 @@ Next design rule:
 - Lesson: packing two owner16 blocks keeps two dV/dK accumulator sets live and
   spills badly.  Larger GEMM islands need explicit accumulator phasing or a
   different true-owner32 design; do not keep this route in active code.
+
+## Accepted Micro: Raw2 Page-Local ABarrier
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  `45_raw2_ab_xcu`.
+- Design basis: xcu showed the single-buffer baseline was dominated by
+  producer-side `Raw0Used` wait:
+  `s_abarrier_try_wait -> s_xor_b32 = 47.46%`.
+- First minimal raw2 attempt reused one `Raw0Filled/Raw0Used` token for both
+  raw pages and failed PMD at H1/S128:
+  `ABARRIER_CNT_ERROR` on `barId 2`.
+- Current accepted micro implementation uses two raw pages with page-local
+  tokens:
+  `Raw0Filled/Raw0Used = 2/3`, `Raw1Filled/Raw1Used = 4/5`,
+  `AllDone = 6`.
+- H1/S1024 full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_221910`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260704_221910_clean_raw2_tokens_h1s1024_sqc7_fullperf`.
+- Result:
+  `kernel_ticks=53,462,955`, `MMAC active=27.5982%`, `MMOP=131,072`,
+  `coissue=30,829/18,010`, `ldsBankConflict=0`, no spill/scratch.
+- xcu: top `s_abarrier_try_wait -> s_xor_b32` shrank to `40.24%`, but the
+  top window is still `Raw1Used` with `98.19%` bubble and `0%` MMAC.
+- Decision: keep this as a small positive canonical change.  It reduces raw
+  page serialization but does not solve the 60% MMAC-active target; the next
+  design must create more useful producer work or longer consumer MMAC islands,
+  not only add more raw pages/tokens.

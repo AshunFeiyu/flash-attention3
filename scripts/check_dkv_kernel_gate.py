@@ -79,6 +79,11 @@ def main() -> int:
             "missing_raw0_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kRaw0Used,\s*8\)", failures,
             "missing_raw0_used_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kRaw1Filled,\s*8\)",
+            failures,
+            "missing_raw1_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kRaw1Used,\s*8\)", failures,
+            "missing_raw1_used_count")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
     require(perf_source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
@@ -99,8 +104,8 @@ def main() -> int:
             "missing_blockmq_template_contract")
     require(contract, r"using\s+ActiveDkvTile\s*=\s*DkvTileD128MqNk128<64>",
             failures, "missing_active_mq64_tile_contract")
-    require(contract, r"kRawBuffers\s*=\s*1", failures,
-            "canonical_route_must_use_single_raw_buffer")
+    require(contract, r"kRawBuffers\s*=\s*2", failures,
+            "canonical_route_must_use_two_raw_buffers")
     require(contract, r"kOverlayRawOnResidentKv", failures,
             "missing_kv_raw_overlay_contract")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,
@@ -122,8 +127,10 @@ def main() -> int:
            r"kSourceFilled|kSourceUsed|wait_source_|arrive_source_|"
            r"kSource0Filled|kSource0Used|kSource1Filled|kSource1Used",
            failures, "source_layout_must_share_page_packet_token")
-    forbid(source + contract, r"kRaw1Filled|kRaw1Used", failures,
-           "raw1_tokens_must_not_exist_in_single_buffer_route")
+    require(source + contract, r"kRaw1Filled", failures,
+            "missing_raw1_filled_token")
+    require(source + contract, r"kRaw1Used", failures,
+            "missing_raw1_used_token")
     forbid(source + contract,
            r"kDkvPathWasp|DkvSemanticMq64|"
            r"fa3_bwd_dkv_probe_kernel|fa3_bwd_dkv_mmac_kernel|"

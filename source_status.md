@@ -2861,3 +2861,43 @@ Lesson:
   `vgpr_count=80`.
 - Conclusion: owner16x2 packing keeps two dV/dK accumulator sets live at once
   and is not a viable resource shape.
+
+## 2026-07-04 Raw2 Page-Local ABarrier Result
+
+- Status: `ACCEPT_MICRO_OBSERVE`.
+- Canonical code now uses `kRawBuffers=2` with page-local raw ownership
+  barriers:
+  - `Raw0Filled/Raw0Used = 2/3`
+  - `Raw1Filled/Raw1Used = 4/5`
+  - `AllDone = 6`
+- A one-token raw2 attempt was rejected first because PMD aborted with
+  `ABARRIER_CNT_ERROR` on `barId 2`; this established that two outstanding raw
+  pages need separate ABarrier generations.
+- Static/resource:
+  - gate PASS
+  - metadata `private=0`, `sgpr=60`, `vgpr=112`, no SGPR/VGPR spill
+  - branch windows `producerKQ=6/16`, `consumer0=198/208`,
+    `consumer1=198/208`, `producerVDout=1/16`
+- Correctness:
+  - H1/S128 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_221533`
+  - H1/S1024 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_221539`
+- Full perf:
+  - remote:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_221910`
+  - shared:
+    `/Volumes/172.20.68.76/共享/shaobo/perf/20260704_221910_clean_raw2_tokens_h1s1024_sqc7_fullperf`
+  - `simTicks=57,076,565`, `kernel_ticks=53,462,955`
+  - `MMAC active=27.5982%`
+  - `MMOP=131,072`, `VALU=181,980`, `SCA=296,328`, `LDS=85,822`
+  - `coissue=30,829/18,010`, `ldsBankConflict=0`
+- xcu:
+  - `s_abarrier_try_wait -> s_xor_b32` dropped from `47.46%` to `40.24%`
+    versus the single-buffer baseline.
+  - Top remaining window is `Raw1Used` (`barId 5`) and is still almost pure
+    producer idle: window `15252:23376`, `Bubble=98.19%`, `MMAC=0%`.
+- Conclusion: keep raw2 page-local tokens as a small positive step, but do not
+  mistake it for a pipeline solution.  The producer still catches the consumer
+  after two pages; the next design needs either more independent producer work
+  during RawUsed waits or a larger/cleaner consumer MMAC island.

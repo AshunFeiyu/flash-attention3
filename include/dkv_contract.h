@@ -41,7 +41,7 @@ struct DkvTileD128MqNk128 {
     static constexpr int kHalfBytes = 2;
     static constexpr int kKvBytes =
         2 * kResidentNk * kHeadDim * kHalfBytes;
-    static constexpr int kRawBuffers = 1;
+    static constexpr int kRawBuffers = 2;
     static constexpr int kRawBytes =
         kRawBuffers * 2 * kBlockMq * kHeadDim * kHalfBytes;
     static constexpr int kSidecarRows = kBlockMq;
@@ -81,7 +81,9 @@ struct DkvBarrierLedger {
     static constexpr int kResidentUsed = 1;
     static constexpr int kRaw0Filled = 2;
     static constexpr int kRaw0Used = 3;
-    static constexpr int kAllDone = 4;
+    static constexpr int kRaw1Filled = 4;
+    static constexpr int kRaw1Used = 5;
+    static constexpr int kAllDone = 6;
 };
 
 struct OptimizationTargets {

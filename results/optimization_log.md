@@ -4137,3 +4137,58 @@ Conclusion:
 - The next larger-island attempt needs phasing that does not keep two owner16
   dV/dK accumulator sets live simultaneously, or it must move to a true
   owner32 design with explicit accumulator lifetime control.
+
+### Raw2 Page-Local ABarrier Recovery
+
+Status: `ACCEPT_MICRO_OBSERVE`; canonical route updated in place.
+
+Design basis:
+
+- Workbook sheet `45_raw2_ab_xcu` records the xcu-driven design.
+- H1/S1024 single-buffer baseline had a dominant producer-side raw-page wait:
+  `s_abarrier_try_wait -> s_xor_b32 = 47.46%`, with a focused window showing
+  `98.63%` bubble and `0%` MMAC.
+- A first raw2 attempt with a shared `Raw0Filled/Raw0Used` token failed H1/S128
+  PMD with `ABARRIER_CNT_ERROR`, proving that two outstanding raw pages need
+  page-local ABarrier tokens.
+
+Implementation:
+
+- `kRawBuffers=2`.
+- `raw_page_for_q_tile = q_tile & 1`.
+- Page-local raw ownership:
+  `Raw0Filled/Raw0Used = 2/3`, `Raw1Filled/Raw1Used = 4/5`.
+- `AllDone` moved to barrier id `6`.
+- No new kernel, phase, or alternative route was added.
+
+Evidence:
+
+- Build/gate PASS.
+- Metadata PASS:
+  `private=0`, `sgpr=60`, `vgpr=112`, no SGPR/VGPR spill.
+- H1/S128 PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_221533`.
+- H1/S1024 stats PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_221539`,
+  `kernel_ticks=53,300,975`, `MMAC active=27.6518%`.
+- H1/S1024 full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260704_221910`,
+  `kernel_ticks=53,462,955`, `MMAC active=27.5982%`, `MMOP=131,072`,
+  `VALU=181,980`, `SCA=296,328`, `LDS=85,822`, `coissue=30,829/18,010`,
+  `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260704_221910_clean_raw2_tokens_h1s1024_sqc7_fullperf`.
+- xcu top bubble:
+  `s_abarrier_try_wait -> s_xor_b32` dropped to `40.24%`, but the top
+  focused window is still `Raw1Used` (`barId 5`) with `98.19%` bubble and
+  `0%` MMAC.
+
+Conclusion:
+
+- This is a real but small improvement over the single-buffer baseline:
+  full-perf kernel ticks improve by about `2.47%` versus the archived
+  single-buffer full perf (`54,818,400 -> 53,462,955`), and MMAC active rises
+  by about `0.91` point.
+- It does not solve the 60% active target.  More raw pages/tokens alone are
+  unlikely to be enough; the next design should increase useful work per token
+  or make producer waves do independent work while consumers hold raw pages.
