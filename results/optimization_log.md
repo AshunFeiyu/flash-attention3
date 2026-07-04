@@ -3952,3 +3952,14 @@ Conclusion:
 - The next Mq128 attempt needs a resource redesign: either scoped/noinline
   M-pair islands, a smaller accumulator/store ownership, or a different
   producer/consumer split.  It must pass metadata before any PMD run.
+
+Follow-up resource check:
+
+- Retried the same direct static Mq128 shape with
+  `WdraResourceWindows::kConsumerVgprs = 248`.
+- Result:
+  `private_segment_fixed_size=0`, `sgpr_count=100`,
+  `sgpr_spill_count=18`, `vgpr_count=132`, `vgpr_spill_count=0`.
+- Branch windows became consumer `209/248`, so the VGPR side is legal.
+- The remaining hard failure is SGPR spill, not the 208-VGPR window.
+- Baseline source and remote binary were restored after this check.

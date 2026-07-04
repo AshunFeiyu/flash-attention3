@@ -2742,3 +2742,18 @@ Mq128 static-scoped direct probe:
 - lesson: Mq128 remains the right class of algorithmic lever, but direct static
   expansion is not the implementation.  Future Mq128 work must first redesign
   lifetime/ownership so metadata is clean.
+
+248-VGPR resource check:
+
+- temporary change: same direct static Mq128 probe, but
+  `WdraResourceWindows::kConsumerVgprs = 248`
+- result:
+  - `private_segment_fixed_size=0`
+  - `sgpr_count=100`, `sgpr_spill_count=18`
+  - `vgpr_count=132`, `vgpr_spill_count=0`
+  - branch consumers `209/248`
+- conclusion: widening the consumer VGPR window fixes the private/VGPR side,
+  but the direct static Mq128 implementation is still blocked by SGPR spill.
+  The next design must reduce scalar live state/control expansion, not only
+  raise VGPR allocation.
+- baseline Mq64 source and remote binary were restored after the check.
