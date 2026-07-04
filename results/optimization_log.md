@@ -4842,3 +4842,51 @@ Post-revert recertification:
   `private=0`, `sgpr=60`, `vgpr=112`, no scratch/spill.
 - Kernel gate PASS after restore with branch windows
   `6/198/198/1`.
+
+### Mq128 Single-Buffer Static Chain
+
+Status: `REJECT_STATIC_SPILL`; code reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `60_mq128_singlebuf_static`.
+- Goal was to reduce ABarrier handshakes per useful MMAC by increasing the
+  q tile from Mq64 to Mq128 while using one raw Q/dO page.  Two Mq128 raw pages
+  exceed the 128KB LDS budget; one Mq128 raw page is 64KB and can overlay the
+  dead K/V resident area after consumers latch K/V into VGPR.
+- Candidate kept the same W16 role topology and output ownership, but changed
+  `ActiveDkvTile` to `DkvTileD128MqNk128<128, 1>` and added a static
+  four-M-pair consumer chain with MBlockBase `0/2/4/6`.
+- The candidate intentionally avoided the old dynamic Mq128 loop, whose
+  correctness/resource was possible but performance regressed.
+
+Evidence:
+
+- Remote build completed and source gate PASS, but symbol metadata failed
+  before PMD:
+  `private_segment_fixed_size=8`, `sgpr_count=104`,
+  `sgpr_spill_count=18`, `vgpr_count=112`, `vgpr_spill_count=2`.
+- WDRA branch windows showed the problem directly:
+  producer0 `15/16`, consumer0 `208/208`, consumer1 `208/208`,
+  producer1 `9/16`.
+- Because the hard gate is no private segment and no SGPR/VGPR spill, PMD
+  correctness/perf was not run.
+
+Conclusion:
+
+- The top-level direction remains plausible, but the current helper/codegen
+  shape cannot statically expand Mq128 inside the 208-VGPR consumer window
+  without spilling.
+- This validates the resource-budget rule: do not enlarge Mq by local helper
+  expansion alone.  A future larger-tile route needs a resource redesign first,
+  such as shorter helper live ranges, different score/dP/dV/dK phasing, or a
+  different output-ownership schedule.
+
+Post-revert recertification:
+
+- Live source restored to raw2 canonical.
+- zys1 build/static PASS after restore.
+- Symbol metadata PASS after restore:
+  `private=0`, `sgpr=60`, `vgpr=112`, no scratch/spill.
+- Kernel gate PASS after restore with branch windows
+  `6/198/198/1`.

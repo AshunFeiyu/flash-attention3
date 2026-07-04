@@ -59,6 +59,12 @@ Latest rejected probes:
   Lesson: finer RawUsed granularity is not free; do not split ownership tokens
   again unless the design also removes protocol/control work or increases the
   useful MMAC island.
+- `w16_mq128_singlebuf_static` tried the sheet 60 long-island route:
+  `ActiveDkvTile=DkvTileD128MqNk128<128,1>` plus a static MBlockBase
+  `0/2/4/6` chain.  It failed metadata before PMD with `private=8`,
+  `sgpr=104`, `sgpr_spill=18`, `vgpr_spill=2`, and consumer branch windows
+  `208/208`.  Lesson: Mq128 needs a resource redesign before code expansion;
+  do not keep a dynamic Mq128 fallback as the performance route.
 
 Next:
 
@@ -72,6 +78,8 @@ Next:
 - Future ABarrier work must reduce total ownership handshakes or hide them
   under larger useful work; half-page tokenization alone is now a recorded
   negative.
+- Future larger-Mq work must first reduce helper live ranges or change phasing;
+  local static expansion of the current Mq64 helper shape spills.
 
 ## 2026-07-04 Raw2 Canonical After Rejected Stagger
 

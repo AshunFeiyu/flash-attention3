@@ -178,6 +178,21 @@ whole-page tokens.  Do not split RawUsed finer as a standalone fix; it adds
 protocol/control cost unless paired with a larger useful MMAC island or fewer
 ownership handshakes.
 
+Workbook sheet `60_mq128_singlebuf_static` records a larger-tile resource
+negative:
+
+```text
+Mq64/R2 static two-pair chain
+  -> Mq128/R1 static four-pair chain
+```
+
+The LDS budget works only with one raw page, but the direct static four-pair
+consumer expansion failed metadata before PMD:
+`private=8`, `sgpr=104`, `sgpr_spill=18`, `vgpr_spill=2`, with both consumer
+branches at `208/208`.  The code is reverted to raw2.  Larger Mq still looks
+like the right architectural lever, but it needs a resource redesign first;
+do not keep a dynamic Mq128 loop as the performance route.
+
 ## Workflow Rules
 
 1. Update the shared workbook before changing tile shape, output ownership,
