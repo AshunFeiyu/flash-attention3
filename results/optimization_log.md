@@ -4387,3 +4387,46 @@ Conclusion:
   to four consumer waves instead of CTA-wide, and WG0/WG1 can naturally drift.
 - Main risk: Q/dO/sidecar traffic doubles and each WG has only a single raw
   page unless a later LDS proof allows deeper local buffering.
+
+### WG-Local Duplicate Q/dO Structural Probe
+
+Status: `REJECT_PERF_FULL`; code will be reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `51_structural_pivot`.
+- WG0: waves0-3 producer K0/V0 + Q/dO + sidecar, waves4-7 consumer0.
+- WG1: waves12-15 producer K1/V1 + Q/dO + sidecar, waves8-11 consumer1.
+- Purpose: make producer1 useful every q tile and replace CTA-wide raw-page
+  ownership with WG-local 4-wave ownership.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=88`, `vgpr=112`, no scratch/spill.
+- Branch windows:
+  producer0 `15/16`, consumer0 `197/208`, consumer1 `196/208`,
+  producer1 `14/16`.
+- H1/S128 and H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- H1/S1024 full perf:
+  `simTicks=58,310,070`, `MMAC active=26.7125%`, `MMOP=131,072`,
+  `VMEM=8,448`, `VALU=186,234`, coissue `31,950/18,997`.
+- Raw2 full baseline:
+  `simTicks=53,462,955`, `MMAC active=27.5982%`.
+- XCU detail:
+  `s_abarrier_try_wait -> s_xor_b32` rises to `44.30%`;
+  `s_abarrier_try_wait -> s_waitcnt` is `7.77%`;
+  `matrix_load_32x16_b16` hits `8,192`; VMEM doubles versus raw2.
+- Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_001605_wg_local_dup_qdo_h1s1024_sqc7_reject_fullperf`.
+
+Conclusion:
+
+- The topology is semantically valid, but the cost of duplicated Q/dO
+  publication plus single-page local ownership exceeds the benefit of local
+  4-wave ABarrier tokens.
+- Do not pursue independent WGs by duplicating shared Q/dO. Shared Q/dO reuse
+  is valuable.
+- Next high-ceiling direction should preserve shared Q/dO and reduce RawUsed
+  frequency, likely through an Mq128/static scalar-lifetime redesign or another
+  coarser shared packet that avoids duplicate MLS traffic.
