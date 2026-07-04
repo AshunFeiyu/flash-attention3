@@ -3050,3 +3050,30 @@ Current focus:
   cost is visible and does not solve the RawUsed critical path.  Do not retry
   page/ring-depth changes without a top-level reason that also increases useful
   MMAC island length or removes ownership/control work.
+
+## 2026-07-05 Producer Sidecar Rebalance Rejection
+
+- Workbook sheet: `56_producer_sidecar_rebalance`.
+- Goal: test whether producer imbalance could be improved without adding
+  synchronization by moving sidecar publication from producer0 to producer1.
+- Temporary ownership:
+  - producer0: K + Q
+  - producer1: V + dO + sidecar
+  - same two raw pages and same RawFilled/RawUsed tokens
+- Static/resource:
+  - branch windows moved from `6/198/198/1` to `1/198/198/6`
+  - metadata `private=0`, `sgpr=58`, `vgpr=112`, no scratch/spill
+- Correctness:
+  - H1/S128 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_014728`
+  - H1/S1024 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_014734`
+- Performance:
+  - `kernel_ticks=53,558,960`, `MMAC active=27.5554%`
+  - raw2 recert baseline was better:
+    `kernel_ticks=53,008,410`, `MMAC active=27.7754%`
+- Decision: `REJECT_PERF_STATS_ONLY`; code reverted.
+- Lesson: sidecar ownership rebalance can make producer VGPR windows look
+  balanced and raise coissue, but it does not shorten the RawUsed/consumer
+  critical path.  Future producer-thickening must either hide useful work under
+  consumer MMAC or eliminate an actual wait.

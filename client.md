@@ -37,8 +37,9 @@ SQTT evidence are required before any performance claim.
 - Rejected after raw2: raw3 page depth, consumer1 score-prefetch stagger,
   causal=true specialization, score read batch2, WG-local duplicate Q/dO, and
   causal invalid-prefix page skip, raw release before softmax, and sidecar
-  ring3 early release.  All resource/correctness-clean candidates regressed or
-  failed to improve same-shape performance.
+  ring3 early release, and producer sidecar rebalance.  All
+  resource/correctness-clean candidates regressed or failed to improve
+  same-shape performance.
 
 ## Current Diagnosis
 
@@ -119,6 +120,20 @@ Workbook sheets `54_raw_release_before_softmax` and
 
 Do not retry page/ring-depth work in isolation.  A future raw-lifetime design
 must also remove ownership/control cost or enlarge a useful MMAC island.
+
+Workbook sheet `56_producer_sidecar_rebalance` records a producer topology
+negative:
+
+```text
+producer0: K + Q + sidecar   ->   K + Q
+producer1: V + dO            ->   V + dO + sidecar
+```
+
+It passed correctness/resource gates and moved branch windows from
+`6/198/198/1` to `1/198/198/6`, but H1/S1024 regressed to
+`kernel_ticks=53,558,960`, `MMAC active=27.5554%`.  Coissue rose, but the
+RawUsed/consumer critical path did not shorten.  Do not equate producer visual
+balance with useful pipeline overlap.
 
 ## Workflow Rules
 

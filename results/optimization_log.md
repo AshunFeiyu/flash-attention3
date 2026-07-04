@@ -1,5 +1,55 @@
 # Optimization Log
 
+## 2026-07-05 Producer Sidecar Rebalance
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Hypothesis:
+
+`Current raw2 canonical makes producer0 publish K+Q+sidecar and producer1
+publish V+dO.  Since producer imbalance is visible in Wavefronts, move sidecar
+publication to producer1 so producer0=K+Q and producer1=V+dO+sidecar.  Keep the
+same raw pages, same RawFilled token, same consumer code, and same math.`
+
+Implemented as a temporary in-place topology probe:
+
+- Removed `publish_sidecar_tile_to_lds` from `producer_kq_loop`.
+- Added `publish_sidecar_tile_to_lds` to `producer_vdout_loop`.
+- `RawFilled` still counted both producer groups, so sidecar readiness remained
+  covered by the existing token.
+- No new ABarrier, LDS page, kernel, phase, or consumer change.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=58`, `vgpr=112`, no scratch/spill.
+- Branch windows changed as intended:
+  `6/198/198/1 -> 1/198/198/6`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_014728`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_014734`.
+- H1/S1024 stats:
+  `kernel_ticks=53,558,960`, `MMAC active=27.5554%`,
+  `MMOP=131,072`, `VALU=181,980`, `SCA=295,944`,
+  `LDS=85,822`, `VMEM=4,352`, `coissue=33,141/19,270`,
+  `ldsBankConflict=0`.
+- Raw2 recert comparison:
+  `kernel_ticks=53,008,410`, `MMAC active=27.7754%`.
+
+Conclusion:
+
+The producer work moved exactly as designed and coissue rose, but the critical
+path did not shorten.  This confirms that producer-branch visual balance alone
+is not enough; the two-page raw ownership and consumer release timing still
+dominate.  The code was reverted to raw2 canonical.
+
+Next implication:
+
+Future producer-thickening must add useful independent work that actually
+overlaps consumer MMAC/softmax or removes a wait.  Merely moving sidecar
+ownership is not a path toward 60% MMAC active.
+
 ## 2026-07-05 Sidecar Ring3 Early Raw Release
 
 Decision: `REJECT_PERF_STATS_ONLY`
