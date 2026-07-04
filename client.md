@@ -10,7 +10,7 @@ SQTT evidence are required before any performance claim.
 ## Current Canonical State
 
 - Repo focus: `/zys/shaobo/fa3_bwd_wasp_clean`.
-- Active tile: `Mq=64, Nk=128, D=128`, 16 waves, `GPU_CHIP=sb`,
+- Active candidate tile: `Mq=128, Nk=128, D=128`, 16 waves, `GPU_CHIP=sb`,
   `GPU_ARGS="['--SQCIPfLines=7']"`.
 - Wave roles:
   - waves0-3: producer K + Q + sidecar
@@ -19,21 +19,34 @@ SQTT evidence are required before any performance claim.
   - waves12-15: producer V + dO
 - Main path: `matrix_load_32x16/32x32 ... bps lds` +
   normal/trans `ds_read_matrix` + `v_mmac_*lit`.
-- Raw Q/dO use two page-local ABarrier generations. K/V is latched into
-  consumer VGPR, then raw pages overlay the K/V LDS region.
+- Raw Q/dO use one Mq128 page per ownership epoch. K/V is latched into
+  consumer VGPR, then the raw page overlays the K/V LDS region.
+- Canonical target path is exact causal tiles only:
+  `causal == 1`, `seqlen_q % Mq == 0`, `seqlen_k == seqlen_q`,
+  `seqlen_k % Nk == 0`.
+- The hot softmax/dS helper uses exact-tile causal predicate
+  `owner_krow <= qrow` to remove runtime seqlen/full-valid control.
 - Output ownership is unique: every consumer owns one `Nk16 x D128` dV/dK
   slice. Do not duplicate score/dP for the same owner.
 
 ## Latest Evidence
 
-- Canonical raw2 H1/S1024 stats-only baseline:
-  `kernel_ticks=53,300,975`, `MMAC active=27.6518%`, `MMOP=131,072`,
-  `ldsBankConflict=0`.
+- 62C2 H1/S1024 full-perf stats:
+  `kernel_ticks=52,163,020`, `MMAC active=29.2001%`, `MMOP=131,072`,
+  `VALU=167,536`, `SCA=106,968`, `ldsBankConflict=0`.
+- Raw2 recert comparison:
+  `kernel_ticks=53,008,410`, `MMAC active=27.7754%`, `VALU=181,980`,
+  `SCA=296,328`.
 - Full perf archive:
-  `/Volumes/172.20.68.76/共享/shaobo/perf/20260704_221910_clean_raw2_tokens_h1s1024_sqc7_fullperf`.
-- XCU evidence: top bubble is still
-  `s_abarrier_try_wait -> s_xor_b32` at about `40.24%`; the selected
-  Raw1Used SIMD window is about `93.94%` bubble and only `1.05%` MMAC.
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_033019_clean_62c2_mq128_h1s1024_sqc7_fullperf`.
+- XCU evidence:
+  dispatch0 duration `114,644`, avg active waves `117.91`;
+  top bubbles are `s_abarrier_try_wait -> s_xor_b32` `44.65%` and
+  `s_abarrier_try_wait -> s_waitcnt` `9.57%`.
+- Representative xcu window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/62c2_mq128_h1s1024_fullperf_20260705_033019_dispatch0_window_bar6`;
+  `93000:113000`, `xcd0,se1,cu0,simd1,wave0`,
+  `Bubble=96.51%`, `MMAC=0.70%`.
 - Rejected after raw2: raw3 page depth, consumer1 score-prefetch stagger,
   causal=true specialization, score read batch2, WG-local duplicate Q/dO, and
   causal invalid-prefix page skip, raw release before softmax, and sidecar
@@ -41,22 +54,27 @@ SQTT evidence are required before any performance claim.
   sidecar register prefetch.  All
   resource/correctness-clean candidates regressed or failed to improve
   same-shape performance.
+- Rejected before 62C2: direct Mq128/C208, Mq128/C240, and 62A still spilled
+  SGPR.  62C2 is the first Mq128/R1 version that is no-spill and faster.
 
 ## Current Diagnosis
 
 The kernel does have MMAC and the matrix path is not the primary missing piece.
-The active limiter is packet ownership, topology, and causal redundant work:
+62C2 improves the top-level tile shape by halving raw ownership epochs at
+S1024, but the active limiter is still packet ownership and barrier lifetime:
 
-- producer1 is still thin after V startup plus dO publication;
-- both consumer groups share CTA-wide raw Q/dO page ownership;
-- RawUsed/ABarrier wait is not hidden by useful MMAC/VALU work;
-- local instruction tweaks raise coissue counters but do not shorten the
-  critical path.
-- for causal=true, pages with `q_tile_end < k_base` are mathematically all
-  invalid for the CTA, but the current baseline still computes the GEMMs and
-  masks the result to zero.
+- ABarrier waits dominate xcu despite lower SCA/VALU count.
+- `ds_read_matrix -> wait -> MMAC` is visible but secondary versus
+  `s_abarrier_try_wait` bubbles.
+- The Mq128 exact-tile route is a better baseline, not a 60% active solution.
+- Assembly is not the next default move; only a proven hot island should become
+  asm, and only after topology/resource work fails.
 
 ## Next Experiment
+
+Start from 62C2 and update the workbook before editing.  The next design should
+reduce or hide `s_abarrier_try_wait` ownership windows without duplicating Q/dO
+or score/dP, and without adding more token epochs that raise SCA/control cost.
 
 Workbook sheet `51_structural_pivot` records the rejected WG-local duplicate
 Q/dO structural probe:

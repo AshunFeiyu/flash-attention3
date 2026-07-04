@@ -100,12 +100,13 @@ def main() -> int:
             "missing_reference_path_contract")
     require(contract, r"kDkvPathCanonicalDkv", failures,
             "missing_canonical_path_contract")
-    require(contract, r"template\s*<\s*int\s+BlockMq\s*>", failures,
-            "missing_blockmq_template_contract")
-    require(contract, r"using\s+ActiveDkvTile\s*=\s*DkvTileD128MqNk128<64>",
-            failures, "missing_active_mq64_tile_contract")
-    require(contract, r"kRawBuffers\s*=\s*2", failures,
-            "canonical_route_must_use_two_raw_buffers")
+    require(contract, r"template\s*<\s*int\s+BlockMq,\s*int\s+RawBuffers\b",
+            failures, "missing_blockmq_rawbuffer_template_contract")
+    require(contract,
+            r"using\s+ActiveDkvTile\s*=\s*DkvTileD128MqNk128<128,\s*1>",
+            failures, "missing_active_mq128_r1_tile_contract")
+    require(source, r"softmax_ds_owner16_causal_exact_tile_ctx", failures,
+            "missing_causal_exact_tile_helper")
     require(contract, r"kOverlayRawOnResidentKv", failures,
             "missing_kv_raw_overlay_contract")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,

@@ -1,5 +1,80 @@
 # Source Status
 
+## 2026-07-05 Mq128 62C2 Candidate Active
+
+Status: `MQ128_R1_62C2_ACTIVE_CANDIDATE`.
+
+Current source state:
+
+- Active dKV route is the clean W16/Mq128/Nk128/D128 canonical kernel:
+  waves0-3 producer K+Q+sidecar, waves4-7 consumer0,
+  waves8-11 consumer1, waves12-15 producer V+dO.
+- `ActiveDkvTile = DkvTileD128MqNk128<128, 1>`.
+- Consumer WDRA window is 240; producer windows remain 16.
+- Canonical performance path requires exact causal tiles:
+  `causal == 1`, `seqlen_q % Mq == 0`, `seqlen_k == seqlen_q`,
+  `seqlen_k % Nk == 0`, `num_heads_kv == num_heads_q`.
+- Hot softmax/dS helper uses the canonical exact-tile predicate
+  `owner_krow <= qrow`; it no longer carries runtime seqlen bounds or
+  full-valid control in the hot path.
+- Main matrix path remains MLS/BPS + `ds_read_matrix` +
+  `v_mmac_f32_16x16x16_f16`; no asm island is active.
+- dQ remains frozen.
+
+Validation:
+
+- Static/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=96`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_032159`.
+- H1/S1024 correctness/stats PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_032222`.
+- Full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_033019`.
+- Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_033019_clean_62c2_mq128_h1s1024_sqc7_fullperf`.
+
+Metrics:
+
+- H1/S1024 full-perf stats:
+  `kernel_ticks=52,163,020`, `MMOP=131,072`,
+  `MMAC active=29.2001%`, `VALU=167,536`, `SCA=106,968`,
+  `LDS=83,856`, `VMEM=4,352`, coissue `25,179/15,960`,
+  `ldsBankConflict=0`.
+- Raw2 recert comparison:
+  `kernel_ticks=53,008,410`, `MMAC active=27.7754%`,
+  `VALU=181,980`, `SCA=296,328`.
+- XCU dispatch0:
+  duration `114,644`, avg active waves `117.91`.
+- XCU top bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` `44.65%`,
+  `s_abarrier_try_wait -> s_waitcnt` `9.57%`.
+- Representative window
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/62c2_mq128_h1s1024_fullperf_20260705_033019_dispatch0_window_bar6`
+  at `93000:113000`, `xcd0,se1,cu0,simd1,wave0`:
+  `Bubble=96.51%`, `MMAC=0.70%`.
+
+Conclusion:
+
+62C2 becomes the active candidate baseline because it finally makes Mq128/R1
+static/resource-clean and improves same-shape ticks/MMAC active versus raw2.
+It is not a pipeline solution.  The next top-level design must attack the
+steady Raw0Used/barId3-class ownership waits and make producer/consumer overlap
+real; barId6 `AllDone` tail wait is visible but should not be optimized in
+isolation.  Do not start by hand-writing the whole kernel in assembly.
+
+Next:
+
+- Keep 62C2 as the code baseline unless a new candidate fails and must be
+  reverted.
+- Update workbook before the next code change.
+- Design from xcu evidence: reduce or hide `s_abarrier_try_wait` windows, then
+  remeasure H1/S1024 with the same gates.
+- Assembly remains a short-island fallback only after C++/topology work and
+  xcu/asm prove a specific compiler-generated hot island is the blocker.
+
 ## 2026-07-05 Raw2 Canonical After ASM And Causal-Skip Negatives
 
 Status: `RAW2_CANONICAL_ACTIVE`.

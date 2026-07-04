@@ -61,7 +61,8 @@ inline bool valid_canonical_shape(const ShaoboFa3Params* p) {
            p->seqlen_q % dkv::ActiveDkvTile::kBlockMq == 0 &&
            p->seqlen_k == p->seqlen_q &&
            p->seqlen_k % dkv::ActiveDkvTile::kResidentNk == 0 &&
-           p->num_heads_kv == p->num_heads_q;
+           p->num_heads_kv == p->num_heads_q &&
+           p->causal == 1;
 }
 
 inline bool valid_reference_shape(const ShaoboFa3Params* p) {
@@ -143,9 +144,14 @@ __device__ __forceinline__ int kv_block_offset(int row_block, int d_block) {
 
 template <typename Tile>
 __device__ __forceinline__ int raw_page_for_q_tile(int q_tile) {
-    static_assert(Tile::kRawBuffers == 2,
-                  "canonical dKV route uses two raw Q/dO pages");
-    return q_tile & 1;
+    static_assert(Tile::kRawBuffers == 1 || Tile::kRawBuffers == 2,
+                  "canonical dKV route supports one or two raw Q/dO pages");
+    if constexpr (Tile::kRawBuffers == 1) {
+        (void)q_tile;
+        return 0;
+    } else {
+        return q_tile & 1;
+    }
 }
 
 template <typename Tile>
@@ -699,6 +705,61 @@ __device__ __forceinline__ void softmax_ds_owner16_from_lds_sidecar_dyn(
     }
 }
 
+template <typename Tile, int MBlockBase>
+__device__ __forceinline__ void softmax_ds_owner16_causal_exact_tile_ctx(
+    const ins::F32x4 (&score)[2],
+    const ins::F32x4 (&dp)[2],
+    const float* sidecar_page,
+    int q_pair_base,
+    int owner_krow,
+    int lane_col_group,
+    float softmax_scale,
+    float softmax_scale_log2,
+    ins::Vec4F16 (&p_frag)[2],
+    ins::Vec4F16 (&ds_frag)[2]) {
+    static_assert(MBlockBase + 1 < DkvLdsLayout<Tile>::kRawMBlocksPerMqTile,
+                  "softmax/dS consumes two adjacent M16 blocks");
+    const float* sidecar_pair = sidecar_page + MBlockBase * 16;
+
+#pragma unroll
+    for (int m_idx = 0; m_idx < 2; ++m_idx) {
+        const int local_m_base = m_idx * 16 + lane_col_group * 4;
+        ins::Vec4F16 p_vec;
+        ins::Vec4F16 ds_vec;
+#pragma unroll
+        for (int vec_id = 0; vec_id < 4; ++vec_id) {
+            const int local_m = local_m_base + vec_id;
+            const int qrow = q_pair_base + local_m;
+            const bool valid_pair = owner_krow <= qrow;
+            float p_val;
+            float ds_val;
+            if (valid_pair) {
+                const float row_max_log2 =
+                    sidecar_pair[Tile::kSidecarMaxLog2Base + local_m];
+                const float row_inv_sum =
+                    sidecar_pair[Tile::kSidecarInvSumBase + local_m];
+                const float row_delta =
+                    sidecar_pair[Tile::kSidecarDeltaBase + local_m];
+                p_val =
+                    exp2f(score[m_idx].scalar[vec_id] *
+                              softmax_scale_log2 -
+                          row_max_log2) *
+                    row_inv_sum;
+                ds_val =
+                    p_val * (dp[m_idx].scalar[vec_id] - row_delta) *
+                    softmax_scale;
+            } else {
+                p_val = 0.0f;
+                ds_val = 0.0f;
+            }
+            p_vec[vec_id] = static_cast<_Float16>(p_val);
+            ds_vec[vec_id] = static_cast<_Float16>(ds_val);
+        }
+        p_frag[m_idx] = p_vec;
+        ds_frag[m_idx] = ds_vec;
+    }
+}
+
 struct DvDkSourceRegs4 {
     ins::F16x8 dout_m0_d0;
     ins::F16x8 dout_m1_d0;
@@ -1091,6 +1152,50 @@ __device__ __forceinline__ void consume_mq_mpair_owner16(
 template <typename Tile,
           typename Wdra,
           int MBlockBase,
+          bool FirstAccum,
+          bool ReleasePage>
+__device__ __forceinline__ void consume_mq_mpair_owner16_causal_exact_tile(
+    __half* lds,
+    int q_pair_base,
+    int owner_krow,
+    int lane_col_group,
+    float softmax_scale,
+    float softmax_scale_log2,
+    int page,
+    const Owner16KvRegs& kv_regs,
+    ins::F32x4 (&dv_acc)[8],
+    ins::F32x4 (&dk_acc)[8]) {
+    ins::F32x4 score[2];
+    ins::F32x4 dp[2];
+    score_dp_mmac_owner16<Tile, MBlockBase>(
+        lds, page, kv_regs, score, dp);
+
+    DvDkSourceRegs4 dvdk_low;
+    dv_dk_read_owner16_sources4<Tile, 0, MBlockBase>(
+        lds, page, dvdk_low);
+
+    ins::Vec4F16 p_frag[2];
+    ins::Vec4F16 ds_frag[2];
+    const float* sidecar_page = sidecar_page_ptr<Tile>(lds, page);
+    softmax_ds_owner16_causal_exact_tile_ctx<Tile, MBlockBase>(
+        score, dp, sidecar_page, q_pair_base, owner_krow, lane_col_group,
+        softmax_scale, softmax_scale_log2, p_frag, ds_frag);
+
+    if constexpr (ReleasePage) {
+        dv_dk_mmac_owner16_read4x2_early_release<Tile,
+                                                  Wdra,
+                                                  MBlockBase,
+                                                  FirstAccum>(
+            lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+    } else {
+        dv_dk_mmac_owner16_read4x2<Tile, MBlockBase, FirstAccum>(
+            lds, p_frag, ds_frag, dvdk_low, dv_acc, dk_acc, page);
+    }
+}
+
+template <typename Tile,
+          typename Wdra,
+          int MBlockBase,
           bool FirstAccum>
 __device__ __forceinline__ void consume_mq_tile_owner16(
     __half* lds,
@@ -1187,6 +1292,11 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     static_assert(ConsumerGroup == 0 || ConsumerGroup == 1,
                   "dKV consumer group must be 0 or 1");
     const int owner_nblock = ConsumerGroup * 4 + wave_local;
+    const int lane_n = lane & 15;
+    const int lane_col_group = lane >> 4;
+    const int owner_k_base = k_base + owner_nblock * 16;
+    const int owner_krow = owner_k_base + lane_n;
+    const float softmax_scale_log2 = softmax_scale * kLog2E;
 
     ins::F32x4 dv_acc[8];
     ins::F32x4 dk_acc[8];
@@ -1210,6 +1320,40 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
             consume_mq_mpair_owner16<Tile, Wdra, 2, false, true>(
                 lds, seqlen, k_base, q_tile, causal, softmax_scale,
                 owner_nblock, lane, page, kv_regs, dv_acc, dk_acc);
+        } else if constexpr (Tile::kBlockMq == 128) {
+            constexpr int q_tile_base = 0;
+            consume_mq_mpair_owner16_causal_exact_tile<Tile,
+                                                        Wdra,
+                                                        0,
+                                                        true,
+                                                        false>(
+                lds, q_tile_base + 0, owner_krow, lane_col_group,
+                softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc,
+                dk_acc);
+            consume_mq_mpair_owner16_causal_exact_tile<Tile,
+                                                        Wdra,
+                                                        2,
+                                                        false,
+                                                        false>(
+                lds, q_tile_base + 32, owner_krow, lane_col_group,
+                softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc,
+                dk_acc);
+            consume_mq_mpair_owner16_causal_exact_tile<Tile,
+                                                        Wdra,
+                                                        4,
+                                                        false,
+                                                        false>(
+                lds, q_tile_base + 64, owner_krow, lane_col_group,
+                softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc,
+                dk_acc);
+            consume_mq_mpair_owner16_causal_exact_tile<Tile,
+                                                        Wdra,
+                                                        6,
+                                                        false,
+                                                        true>(
+                lds, q_tile_base + 96, owner_krow, lane_col_group,
+                softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc,
+                dk_acc);
         } else {
             consume_mq_tile_owner16_dyn<Tile, Wdra>(
                 lds, seqlen, k_base, q_tile, causal, softmax_scale,
@@ -1229,6 +1373,40 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
             consume_mq_mpair_owner16<Tile, Wdra, 2, false, true>(
                 lds, seqlen, k_base, q_tile, causal, softmax_scale,
                 owner_nblock, lane, page, kv_regs, dv_acc, dk_acc);
+        } else if constexpr (Tile::kBlockMq == 128) {
+            const int q_tile_base = q_tile * Tile::kBlockMq;
+            consume_mq_mpair_owner16_causal_exact_tile<Tile,
+                                                        Wdra,
+                                                        0,
+                                                        false,
+                                                        false>(
+                lds, q_tile_base + 0, owner_krow, lane_col_group,
+                softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc,
+                dk_acc);
+            consume_mq_mpair_owner16_causal_exact_tile<Tile,
+                                                        Wdra,
+                                                        2,
+                                                        false,
+                                                        false>(
+                lds, q_tile_base + 32, owner_krow, lane_col_group,
+                softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc,
+                dk_acc);
+            consume_mq_mpair_owner16_causal_exact_tile<Tile,
+                                                        Wdra,
+                                                        4,
+                                                        false,
+                                                        false>(
+                lds, q_tile_base + 64, owner_krow, lane_col_group,
+                softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc,
+                dk_acc);
+            consume_mq_mpair_owner16_causal_exact_tile<Tile,
+                                                        Wdra,
+                                                        6,
+                                                        false,
+                                                        true>(
+                lds, q_tile_base + 96, owner_krow, lane_col_group,
+                softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc,
+                dk_acc);
         } else {
             consume_mq_tile_owner16_dyn<Tile, Wdra>(
                 lds, seqlen, k_base, q_tile, causal, softmax_scale,

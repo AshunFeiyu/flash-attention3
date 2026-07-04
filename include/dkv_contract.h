@@ -7,7 +7,7 @@ namespace shaobo::fa3::bwd::dkv {
 inline constexpr int kDkvPathReferenceCorrectness = 1;
 inline constexpr int kDkvPathCanonicalDkv = 5;
 
-template <int BlockMq>
+template <int BlockMq, int RawBuffers = 2>
 struct DkvTileD128MqNk128 {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = BlockMq;
@@ -41,7 +41,7 @@ struct DkvTileD128MqNk128 {
     static constexpr int kHalfBytes = 2;
     static constexpr int kKvBytes =
         2 * kResidentNk * kHeadDim * kHalfBytes;
-    static constexpr int kRawBuffers = 2;
+    static constexpr int kRawBuffers = RawBuffers;
     static constexpr int kRawBytes =
         kRawBuffers * 2 * kBlockMq * kHeadDim * kHalfBytes;
     static constexpr int kSidecarRows = kBlockMq;
@@ -74,7 +74,7 @@ struct DkvTileD128MqNk128 {
                   "dKV clean LDS plan must fit 128KB");
 };
 
-using ActiveDkvTile = DkvTileD128MqNk128<64>;
+using ActiveDkvTile = DkvTileD128MqNk128<128, 1>;
 
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
@@ -96,7 +96,7 @@ struct OptimizationTargets {
 
 struct WdraResourceWindows {
     static constexpr int kProducerVgprs = 16;
-    static constexpr int kConsumerVgprs = 208;
+    static constexpr int kConsumerVgprs = 240;
     static constexpr int kConsumerTargetVgprs = 200;
     static constexpr int kConsumerCeilingVgprs = 248;
 };

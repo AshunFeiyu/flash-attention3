@@ -1,5 +1,76 @@
 # Optimization Log
 
+## 2026-07-05 Mq128 62C2 Causal Exact-Tile Helper
+
+Decision: `ACCEPT_STATS_XCU_CANDIDATE`
+
+Hypothesis:
+
+`Sheet 62C keeps the Mq128/R1 long useful MMAC island, but removes the remaining
+runtime seqlen/causal/full-valid control from the hot softmax/dS helper.  In
+the canonical target path, seqlen is an exact multiple of Mq and Nk, seqlen_k
+equals seqlen_q, and causal is fixed true, so the hot predicate can be reduced
+to owner_krow <= qrow.  If sheet 62A's remaining SGPR spill is caused by
+scalar/control lifetime, this should make Mq128 resource-clean without assembly.`
+
+Implemented in the single canonical dKV route:
+
+- `ActiveDkvTile = DkvTileD128MqNk128<128, 1>`.
+- Consumer WDRA window remains 240.
+- Canonical path requires `causal == 1` and exact tiles.
+- Added a causal exact-tile softmax/dS helper and static MBlockBase
+  `0/2/4/6` Mq128 chain.
+- No new kernel, no phase stack, no asm island.
+
+Evidence:
+
+- First 62C version with `owner_kmax/full_valid` still failed metadata:
+  `private=0`, `sgpr=100`, `sgpr_spill=2`, `vgpr=128`,
+  `vgpr_spill=0`.
+- 62C2 simplified the predicate to `owner_krow <= qrow` and passed static
+  metadata: `private=0`, `sgpr=96`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_032159`.
+- H1/S1024 correctness/stats PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_032222`.
+- Full perf PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_033019`.
+- Shared perf:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_033019_clean_62c2_mq128_h1s1024_sqc7_fullperf/62C2.perf`.
+- H1/S1024 full-perf stats:
+  `kernel_ticks=52,163,020`, `MMOP=131,072`,
+  `MMAC active=29.2001%`, `VALU=167,536`, `SCA=106,968`,
+  `LDS=83,856`, `VMEM=4,352`, coissue `25,179/15,960`,
+  `ldsBankConflict=0`.
+- Raw2 recert comparison:
+  `kernel_ticks=53,008,410`, `MMAC active=27.7754%`,
+  `VALU=181,980`, `SCA=296,328`.
+
+XCU:
+
+- Dispatch0 duration `114,644`, avg active waves `117.91`.
+- Top bubbles remain structural:
+  `s_abarrier_try_wait -> s_xor_b32` `44.65%` and
+  `s_abarrier_try_wait -> s_waitcnt` `9.57%`.
+- Representative window
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/62c2_mq128_h1s1024_fullperf_20260705_033019_dispatch0_window_bar6`
+  at `93000:113000`, `xcd0,se1,cu0,simd1,wave0` reports
+  `Bubble=96.51%`, `MMAC=0.70%`, top bubble
+  `s_abarrier_try_wait -> s_waitcnt`.
+
+Conclusion:
+
+62C2 is a valid new candidate baseline: it passes correctness/resource gates,
+keeps the matrixized path, improves same-shape ticks by about `1.59%` versus
+raw2 recert, improves MMAC active by about `1.42` percentage points, and cuts
+large scalar/control instruction count.  It is not a final pipeline solution:
+xcu still says the dominant critical path is ABarrier ownership wait.  Next
+work should start from 62C2 and redesign Raw/sidecar ownership or useful
+producer work to reduce/hide Raw0Used/barId3-class waits.  The barId6
+`AllDone` tail wait is also visible in xcu, but it should not be optimized in
+isolation before the steady RawUsed ownership path.
+
 ## 2026-07-05 Mq128 62A Causal-Control Shrink
 
 Decision: `REJECT_STATIC_SGPR_SPILL`
