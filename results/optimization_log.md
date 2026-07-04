@@ -4326,3 +4326,39 @@ Conclusion:
 - The remaining limiter is still packet ownership/wait shape, not simply the
   runtime `causal` boolean.
 - Do not keep this specialization in the canonical route.
+
+### Score/dP Read Batch2 Probe
+
+Status: `REJECT_PERF_STATS_ONLY`; code reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `50_score_read_batch2` records the hypothesis:
+  change score/dP from `4 ds_read_matrix -> wait -> 8 MMAC` per D block to
+  `8 ds_read_matrix -> wait -> 16 MMAC` per two D blocks.
+- This directly targeted XCU `v_mmac->v_mmac`, `v_mmac->s_waitcnt`, and
+  `s_waitcnt->v_mmac` gaps without adding ABarrier tokens or changing output
+  ownership.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=60`, `vgpr=112`, no scratch/spill.
+- Branch windows stayed unchanged:
+  producerKQ `6/16`, consumer0 `198/208`, consumer1 `198/208`,
+  producerVDout `1/16`.
+- H1/S128 and H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- H1/S1024 stats:
+  `kernel_ticks=56,275,310`, `MMAC active=27.9218%`,
+  VALU `181,980`, SCA `296,328`, coissue `33,010/21,199`.
+- Raw2 stats-only baseline:
+  `kernel_ticks=53,300,975`, `MMAC active=27.6518%`.
+
+Conclusion:
+
+- Batching score reads is resource-clean, but it does not shorten the critical
+  path.  It increases coissue activity and failed coissue while ticks regress
+  by about `5.6%`.
+- Do not keep this as live code.  Larger read/MMAC bricks need to be applied
+  only where XCU proves the wait is the critical path and not hidden by other
+  packet ownership/control costs.

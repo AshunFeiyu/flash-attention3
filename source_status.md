@@ -30,6 +30,10 @@ Latest rejected probe:
 - `w16_raw2_causal_true_specialize` required canonical `causal==1` and passed
   literal causal into consumers.  It reduced SGPR/SCA but regressed H1/S1024
   to `kernel_ticks=56,200,690`, so it was also rejected and removed.
+- `w16_raw2_score_read_batch2` changed score/dP to
+  `8 ds_read_matrix -> wait -> 16 MMAC` chunks.  It was resource/correctness
+  clean, but H1/S1024 regressed to `kernel_ticks=56,275,310`, so it was
+  rejected and removed.
 
 Next:
 
