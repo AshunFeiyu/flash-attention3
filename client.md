@@ -43,10 +43,20 @@ SQTT evidence are required before any performance claim.
   dispatch0 duration `114,644`, avg active waves `117.91`;
   top bubbles are `s_abarrier_try_wait -> s_xor_b32` `44.65%` and
   `s_abarrier_try_wait -> s_waitcnt` `9.57%`.
+- XCU top2000 diagnosis:
+  `bar3 Raw0Used` totals `4,623,276` cycles across `448` bubbles
+  (`avg=10,319.8`, `max=13,427`, window `7700:94648`);
+  `bar6 AllDone` totals `1,238,870` cycles across `110` bubbles.
 - Representative xcu window:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/62c2_mq128_h1s1024_fullperf_20260705_033019_dispatch0_window_bar6`;
   `93000:113000`, `xcd0,se1,cu0,simd1,wave0`,
   `Bubble=96.51%`, `MMAC=0.70%`.
+- Focused Raw0Used window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/62c2_mq128_h1s1024_raw0used_window_7000_22000`;
+  `7000:22000`, `xcd0,se0,cu0,simd3,wave3`,
+  pipeline `Bubble=98.60%`, same-SIMD mix `Bubble=95.59%`,
+  `MMAC=0.85%`, `VALU=1.19%`.  Consumer slots issue MMAC but
+  MMAC+VALU coissue is only `6.54%` and `8.27%`.
 - Rejected after raw2: raw3 page depth, consumer1 score-prefetch stagger,
   causal=true specialization, score read batch2, WG-local duplicate Q/dO, and
   causal invalid-prefix page skip, raw release before softmax, and sidecar
@@ -73,7 +83,8 @@ The kernel does have MMAC and the matrix path is not the primary missing piece.
 62C2 improves the top-level tile shape by halving raw ownership epochs at
 S1024, but the active limiter is still packet ownership and barrier lifetime:
 
-- ABarrier waits dominate xcu despite lower SCA/VALU count.
+- ABarrier waits dominate xcu despite lower SCA/VALU count.  The main steady
+  culprit is `Raw0Used`, not the tail `AllDone` wait.
 - `ds_read_matrix -> wait -> MMAC` is visible but secondary versus
   `s_abarrier_try_wait` bubbles.
 - The Mq128 exact-tile route is a better baseline, not a 60% active solution.
@@ -83,8 +94,12 @@ S1024, but the active limiter is still packet ownership and barrier lifetime:
 ## Next Experiment
 
 Start from 62C2 and update the workbook before editing.  The next design should
-reduce or hide `s_abarrier_try_wait` ownership windows without duplicating Q/dO
-or score/dP, and without adding more token epochs that raise SCA/control cost.
+reduce or hide `Raw0Used` ownership windows without duplicating Q/dO or
+score/dP, and without adding more token epochs that raise SCA/control cost.
+Workbook sheet `65_mq128_rawused_xcu` now records the xcu top2000 evidence and
+the next candidate thesis: split Q and dO lifetimes, because `dO` is last used
+by dV and `Q` is last used by dK.  This may let producers refill one operand
+half while the other remains live.
 Do not directly retry sheet 63's release-before-softmax path: long q-loop
 correctness failed even though H1/S128 passed.
 Do not directly retry sheet 64's full-valid two-path helper: it fails the

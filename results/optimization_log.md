@@ -1,5 +1,62 @@
 # Optimization Log
 
+## 2026-07-05 Mq128 62C2 RawUsed XCU Top2000 Diagnosis
+
+Decision: `OBSERVE_XCU_DIAGNOSIS`
+
+No kernel source change in this pass.  The purpose was to use `xcu` SQTT data
+to explain why the current 62C2 Mq128/R1 route is still at about 29.2% MMAC
+active, before making another code edit.
+
+Evidence:
+
+- Full perf source:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_033019`.
+- Shared archive now includes the copied xcu artifacts:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_033019_clean_62c2_mq128_h1s1024_sqc7_fullperf`.
+- Top2000 xcu aggregate:
+  - `bar3 Raw0Used`, `s_abarrier_try_wait -> s_xor_b32`:
+    total `4,623,276` cycles, count `448`, average `10,319.8`,
+    max `13,427`, window `7700:94648`.
+  - `bar6 AllDone`, `s_abarrier_try_wait -> s_waitcnt`:
+    total `1,238,870` cycles, count `110`, average `11,262.5`,
+    max `17,667`.
+  - `bar2 Raw0Filled`: total `876,540` cycles, count `512`.
+- Focused Raw0Used window `7000:22000`,
+  `xcd=0,se=0,cu=0,simd=3,wave=3`:
+  pipeline bubble `98.60%`, 210 insts, top bubble
+  `s_abarrier_try_wait -> s_xor_b32`.
+- Same SIMD mix for that window:
+  `Bubble=95.59%`, `MMAC=0.85%`, `VALU=1.19%`, `LDS=0.55%`,
+  `SALU=1.78%`.
+- Same SIMD coissue:
+  wave slots 1 and 2 each issue 256 MMAC, but MMAC+VALU coissue is only
+  `6.54%` and `8.27%`; producer slots 0 and 3 have no MMAC and are mostly
+  waiting.
+
+Code mapping:
+
+- `DkvBarrierLedger`: `Raw0Used=3`, `AllDone=6`.
+- In 62C2, `RawBuffers=1`; `producer_kq_loop` and `producer_vdout_loop` wait
+  `Raw0Used` for every `q_tile >= 1`.
+- With `S=1024` and `Mq=128`, `q_tiles=8`, so seven raw-page reuse waits are
+  on the steady path.
+- Consumers release the page only on the final M-pair through
+  `ReleasePage=true`, after high Q/dO source reads and before the final dV/dK
+  MMAC island.
+
+Conclusion:
+
+- The current blocker is raw page ownership lifetime, not absence of MMAC or a
+  narrow compiler scheduling artifact.  Assembly is not the next default move.
+- `AllDone` is visible but mostly a tail/cleanup issue; optimizing it alone has
+  already been a negative pattern.
+- The next top-level candidate should split Q and dO lifetimes, not simply add
+  raw buffers or token families.  Q and dO have different last-use points:
+  `dO` feeds dV, while `Q` feeds dK.
+- Workbook sheet `65_mq128_rawused_xcu` records this evidence and the draft
+  Q/dO lifetime split stress plan.
+
 ## 2026-07-05 Mq128 64 Full-Valid Softmax Helper
 
 Decision: `REJECT_STATIC_SGPR_SPILL`

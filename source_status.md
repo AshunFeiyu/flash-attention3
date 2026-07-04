@@ -1,5 +1,44 @@
 # Source Status
 
+## 2026-07-05 62C2 RawUsed XCU Diagnosis
+
+Status: `MQ128_R1_62C2_ACTIVE_AFTER_XCU_DIAGNOSIS`.
+
+No kernel source change was made.  The active source remains 62C2:
+W16/Mq128/Nk128/D128, `ActiveDkvTile=DkvTileD128MqNk128<128,1>`,
+consumer VGPR window 240, exact causal predicate, no asm island.
+
+New evidence:
+
+- xcu top2000 output:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/62c2_mq128_h1s1024_fullperf_20260705_033019_dispatch0_top2000`.
+- Focused Raw0Used window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/62c2_mq128_h1s1024_raw0used_window_7000_22000`.
+- Shared archive copy:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_033019_clean_62c2_mq128_h1s1024_sqc7_fullperf`.
+
+Findings:
+
+- `bar3 Raw0Used`, `s_abarrier_try_wait -> s_xor_b32`:
+  total `4,623,276` cycles, count `448`, average `10,319.8`,
+  max `13,427`.
+- `bar6 AllDone` is also visible:
+  total `1,238,870` cycles, count `110`, but this is tail/cleanup and should
+  not be optimized before Raw0Used.
+- Raw0Used window `7000:22000` on `xcd0,se0,cu0,simd3,wave3`:
+  pipeline bubble `98.60%`; same-SIMD mix reports `Bubble=95.59%`,
+  `MMAC=0.85%`, `VALU=1.19%`.
+- Same-SIMD consumer slots still issue MMAC, but MMAC+VALU coissue is only
+  `6.54%` and `8.27%`; producer slots are mostly waiting.
+
+Conclusion:
+
+Current 62C2 is the best clean baseline but not a 60% active design.  The next
+candidate should be designed around raw Q/dO ownership lifetime, especially a
+possible split between Q and dO half-page lifetimes.  Assembly is not the next
+default move because the dominant evidence is an ownership/barrier bubble, not
+a single compiler-generated hot island.
+
 ## 2026-07-05 Mq128 64 Rejected, 62C2 Still Active
 
 Status: `MQ128_R1_62C2_ACTIVE_AFTER_64_REJECT`.
