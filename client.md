@@ -61,6 +61,11 @@ SQTT evidence are required before any performance claim.
   `190/240`) and H1/S128 passed, but H1/S1024 failed for both no-wait and
   wait-before-release variants.  Do not keep or retry release-before-softmax in
   the canonical kernel without a focused lifetime/instruction probe.
+- Rejected after 62C2: sheet 64 full-valid softmax helper.  It targets xcu
+  softmax branch bubbles and covers 48.4375% of M-pairs analytically, but both
+  saved-bool and inline-predicate variants failed metadata with
+  `sgpr_spill=4`.  Do not stack another full-valid branch into the hot helper
+  unless the design first removes SGPR/control pressure.
 
 ## Current Diagnosis
 
@@ -82,6 +87,8 @@ reduce or hide `s_abarrier_try_wait` ownership windows without duplicating Q/dO
 or score/dP, and without adding more token epochs that raise SCA/control cost.
 Do not directly retry sheet 63's release-before-softmax path: long q-loop
 correctness failed even though H1/S128 passed.
+Do not directly retry sheet 64's full-valid two-path helper: it fails the
+no-spill static gate.
 
 Workbook sheet `51_structural_pivot` records the rejected WG-local duplicate
 Q/dO structural probe:

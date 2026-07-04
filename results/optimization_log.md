@@ -1,5 +1,49 @@
 # Optimization Log
 
+## 2026-07-05 Mq128 64 Full-Valid Softmax Helper
+
+Decision: `REJECT_STATIC_SGPR_SPILL`
+
+Hypothesis:
+
+`62C2 xcu shows secondary consumer bubbles inside softmax/dS:
+ds_read_b32 -> s_waitcnt, s_cbranch_execz -> s_or_b64, and
+s_and_saveexec_b64 -> s_cbranch_execz.  For H1/S1024 exact causal tiles,
+48.4375% of M-pairs are full-valid and only 3.125% are boundary.  A full-valid
+helper can remove the per-element causal branch for almost half the M-pairs
+without changing output ownership or raw lifetime.`
+
+Implemented as a temporary static probe:
+
+- Added a full-valid exact-tile softmax/dS helper with no per-element
+  `valid_pair` branch.
+- Kept boundary/invalid M-pairs on the 62C2 helper.
+- Did not skip full-invalid M-pairs, because accumulator first-valid
+  initialization was intentionally left unchanged.
+- No raw release change, no sidecar split, no new barrier, no asm island.
+
+Evidence:
+
+- 64A remote build/source gate PASS, branch windows:
+  producer0 `14/16`, consumer0 `186/240`, consumer1 `186/240`,
+  producer1 `8/16`.
+- 64A metadata FAIL:
+  `private=0`, `sgpr=100`, `sgpr_spill=4`, `vgpr=128`,
+  `vgpr_spill=0`.
+- 64B removed four saved `full_valid_*` booleans and passed the predicate
+  expression directly into each call.
+- 64B metadata stayed identical:
+  `private=0`, `sgpr=100`, `sgpr_spill=4`, `vgpr=128`,
+  `vgpr_spill=0`.
+
+Conclusion:
+
+Reject before PMD.  The analytical coverage is good, and consumer branch VGPR
+pressure even drops, but the two-path full-valid helper raises scalar/control
+pressure enough to spill SGPR.  The active source was reverted to 62C2.  Revisit
+only with a lower-SGPR formulation or focused codegen probe; do not stack more
+branches in the hot dKV helper.
+
 ## 2026-07-05 Mq128 63 Sidecar Split Raw Release
 
 Decision: `REJECT_CORRECTNESS`

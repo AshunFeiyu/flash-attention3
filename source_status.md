@@ -1,5 +1,28 @@
 # Source Status
 
+## 2026-07-05 Mq128 64 Rejected, 62C2 Still Active
+
+Status: `MQ128_R1_62C2_ACTIVE_AFTER_64_REJECT`.
+
+Sheet 64 tried a full-valid softmax/dS helper to remove per-element causal
+branches for the 48.4375% full-valid M-pairs in H1/S1024.  The candidate was
+reverted before PMD because it failed the no-spill static gate.
+
+Evidence:
+
+- 64A build/source gate PASS; branch windows `14/186/186/8`.
+- 64A metadata FAIL:
+  `private=0`, `sgpr=100`, `sgpr_spill=4`, `vgpr=128`,
+  `vgpr_spill=0`.
+- 64B removed saved `full_valid_*` booleans, but metadata stayed identical:
+  `sgpr_spill=4`.
+
+Conclusion:
+
+Current active source remains 62C2.  Full-valid specialization is not promoted
+until a lower-SGPR formulation exists.  Do not run PMD or perf on a spilling
+variant.
+
 ## 2026-07-05 Mq128 63 Rejected, 62C2 Restored
 
 Status: `MQ128_R1_62C2_ACTIVE_AFTER_63_REJECT`.
