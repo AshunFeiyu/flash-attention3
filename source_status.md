@@ -2784,3 +2784,23 @@ Further Mq128 resource probes:
   - lesson: causal mask scalar work contributes, but only slightly; it is not
     enough to make Mq128 static resource-clean
 - baseline Mq64 source and remote binary were restored and metadata PASS.
+
+Mq128 dynamic causal=true probe:
+
+- temporary change:
+  - `ActiveDkvTile = DkvTileD128MqNk128<128>`
+  - dynamic M-loop retained
+  - consumer calls passed literal `causal=1`
+- resource/correctness:
+  - metadata PASS: `private=0`, `sgpr=58`, `vgpr=112`, no spill
+  - H1/S128 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mq128_dyn_causal1_20260704_201845_s128`
+  - H1/S1024 PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mq128_dyn_causal1_20260704_201914_s1024`
+- performance:
+  - `simTicks=65580515`, `MMAC active=23.6126%`
+  - baseline Mq64 is `simTicks=58424275`, `MMAC active=26.6364%`
+  - `VALU=269724` versus baseline `180570`
+- decision: `REJECT_PERF`; code reverted
+- lesson: dynamic Mq128 can be resource-clean, but its dynamic control/VALU
+  overhead overwhelms the reduced raw barrier count.

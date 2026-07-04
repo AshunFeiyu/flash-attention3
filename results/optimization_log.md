@@ -3988,3 +3988,43 @@ Additional Mq128 resource probes:
   - conclusion: causal mask contributes about two SGPR spills but is not the
     root cause
 - Baseline source and remote binary were restored clean after these probes.
+
+### Mq128 Dynamic Causal-True Probe
+
+Status: `REJECT_PERF`, code reverted.
+
+Hypothesis:
+
+- The dynamic Mq128 path is resource-clean but previously slow.
+- Specializing the canonical performance path to `causal=true` could reduce
+  mask/predicate VALU and recover enough of the larger raw packet benefit.
+
+Evidence:
+
+- Temporary implementation:
+  `ActiveDkvTile = DkvTileD128MqNk128<128>`, dynamic M-loop retained,
+  consumer calls passed literal `causal=1`.
+- Metadata PASS:
+  `private=0`, `sgpr=58`, `vgpr=112`, no spill.
+- Branch windows:
+  producerKQ `14/16`, consumer0 `190/208`, consumer1 `190/208`,
+  producerVDout `8/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mq128_dyn_causal1_20260704_201845_s128`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mq128_dyn_causal1_20260704_201914_s1024`.
+- H1/S1024 stats:
+  `simTicks=65580515`, `MMAC active=23.6126%`,
+  coissue `35928/19195`, `VALU=269724`, `SCA=230936`,
+  `LDS=91996`, `VMEM=4352`, `ldsBankConflict=0`.
+- Baseline Mq64:
+  `simTicks=58424275`, `MMAC active=26.6364%`,
+  `VALU=180570`, `SCA=215792`.
+
+Conclusion:
+
+- Causal specialization helps resource cleanliness but not performance.
+- Dynamic Mq128 remains too VALU/control-heavy and about `12.3%` slower than
+  the Mq64 baseline.
+- PMD emitted `read vgpr68 before writing`, but numerical correctness passed;
+  this warning is noted and not promoted.
