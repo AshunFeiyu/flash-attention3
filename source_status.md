@@ -67,6 +67,21 @@ Negative follow-up:
 - Active source was restored to keep `AllDone`; do not retry this cleanup
   without a focused WDRA CFG/codegen probe.
 
+Focused XCU follow-up:
+
+- Workbook sheet `68_qdo_focused_xcu` drills into representative ownership
+  windows from the Q/dO split perf.
+- `bar3 QUsed` window `7600:21000`, `xcd0/se0/cu0/simd1/wave0`:
+  producer pipeline bubble `99.60%`; same-SIMD mix bubble `95.46%`,
+  MMAC `0.93%`, VALU `1.35%`.
+- `bar5 DoutUsed` window `19400:31300`, `xcd0/se0/cu0/simd3/wave3`:
+  producer pipeline bubble `99.70%`; same-SIMD mix bubble `94.97%`,
+  MMAC `1.07%`, VALU `1.74%`.
+- Coissue in the consumer slots is dominated by `v_mov_b32/e32` or
+  `v_mov_b64/e32`, not the desired softmax/dS VALU covering MMAC.
+- Next design must change the steady q-loop ownership/pipeline shape; token
+  renaming and tail cleanup are not enough.
+
 ## 2026-07-05 62C2 RawUsed XCU Diagnosis
 
 Status: `MQ128_R1_62C2_ACTIVE_AFTER_XCU_DIAGNOSIS`.

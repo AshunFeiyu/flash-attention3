@@ -132,6 +132,11 @@ Do not directly delete the tail `AllDone` ABarrier: sheet
 `67_mq128_prune_alldone` showed static regression to
 `private_segment_fixed_size=244` and `vgpr_spill_count=60`, likely because the
 current WDRA CFG/codegen uses it to limit post-branch live range.
+Workbook sheet `68_qdo_focused_xcu` adds the current focused-window rule:
+`bar3 QUsed` and `bar5 DoutUsed` representative windows still show about
+`95%` same-SIMD bubble and only about `1%` MMAC; visible coissue is mostly
+`v_mov`, not useful softmax/dS.  The next successful topology must improve
+these focused windows, not only aggregate coissue.
 
 Workbook sheet `51_structural_pivot` records the rejected WG-local duplicate
 Q/dO structural probe:

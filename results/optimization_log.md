@@ -5331,3 +5331,34 @@ Conclusion:
   current WDRA CFG/codegen shape it acts as a useful live-range/control sink.
 - Do not remove tail ABarrier by inspection.  A future attempt needs a focused
   CFG/codegen probe or an alternative cleanup that preserves no-spill metadata.
+
+### Mq128 Q/dO Focused XCU Drilldown
+
+Status: `OBSERVE_XCU_DRILLDOWN`.
+
+Evidence:
+
+- Workbook sheet `68_qdo_focused_xcu`.
+- Source perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_044647_clean_qdo_split_h1s1024_sqc7_fullperf`.
+- Focused xcu exports:
+  `xcu_bar3_qused_7600_21000` and
+  `xcu_bar5_doutused_19400_31300` under the same archive.
+- `bar3 QUsed`, `7600:21000`, `xcd0/se0/cu0/simd1/wave0`:
+  pipeline bubble `99.60%`; same-SIMD bubble `95.46%`, MMAC `0.93%`,
+  VALU `1.35%`.  Consumer slots issue MMAC, but MMAC+VALU coissue is only
+  `4.74%`/`6.87%`, with top coissue VALU `v_mov_b64_e32`.
+- `bar5 DoutUsed`, `19400:31300`, `xcd0/se0/cu0/simd3/wave3`:
+  pipeline bubble `99.70%`; same-SIMD bubble `94.97%`, MMAC `1.07%`,
+  VALU `1.74%`.  Consumer slots issue MMAC, but MMAC+VALU coissue is only
+  `12.09%`/`11.92%`, with top coissue VALU `v_mov_b32_e32`.
+
+Conclusion:
+
+- The ownership stalls are not being covered by peer-wave useful work.  The
+  SIMD remains mostly bubble during the representative QUsed/DoutUsed windows.
+- Visible coissue is mostly move/control, not the FWD-style softmax/dS VALU
+  hidden under peer MMAC.
+- The next design must change the steady q-loop ownership/pipeline shape:
+  reduce the number of full-page ownership cliffs per useful MMAC, or create
+  real consumer-group stagger before producers hit QUsed/DoutUsed.
