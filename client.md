@@ -52,6 +52,13 @@ SQTT evidence are required before any performance claim.
   `bar3 Q0Used` same-SIMD bubble `96.04%`, `bar5 Dout0Used` `94.39%`,
   and `bar7 Q1Used` `94.25%`.  Individual cliffs are shorter than the Q/dO
   split, but they are still not covered by useful peer-wave work.
+- Rejected follow-up: sheet `70_mq128_half_ring3_design` implemented a
+  three-slot M64 ring (`Slot0/1/2 Filled/Used`, count=8) and passed
+  static/resource/correctness, but regressed H1/S1024 stats-only:
+  `kernel_ticks=50,617,385`, `MMAC active=30.2521%`, `SCA=213,896`
+  versus same-debug half-page `48,268,220`, `31.6990%`, `SCA=115,608`.
+  Do not keep or retry ring depth alone; pairing Q and dO at slot granularity
+  lost the early lifetime benefit and added control/SCA cost.
 - Q/dO lifetime split comparison:
   `kernel_ticks=51,238,915`, `MMAC active=29.6586%`.
 - 62C2 H1/S1024 full-perf stats:
@@ -118,24 +125,18 @@ limiter is still packet ownership and barrier lifetime:
 
 ## Next Experiment
 
-Workbook sheet `70_mq128_half_ring3_design` is the next candidate.  Start from
-commit `7909188` and implement only after re-checking the resource budget:
+Return canonical source to the half-page conveyor baseline before the next
+experiment.  The next design should be workbook-first and must not repeat
+ring-depth alone.  A viable candidate needs one of:
 
-- Represent the q stream as M64 half packets and allocate three half slots in
-  LDS.
-- Each half slot holds Q, dO, and sidecar for 64 rows.
-- Use slot-local paired `Filled/Used` counted tokens if static/resource gates
-  allow it: Filled count `8` from producer0 Q/sidecar plus producer1 dO;
-  Used count `8` from both consumer groups.
-- Expected pipeline:
-  `q0h0 slot0 -> q0h1 slot1 -> q1h0 slot2 -> q1h1 slot0`.
-- Promotion target versus half-page baseline:
-  `kernel_ticks < 48,279,140`, `MMAC active > 31.7858%`,
-  no spill/scratch, `ldsBankConflict=0`, and xcu focused `SlotUsed` windows
-  better than the current `94-96%` bubble.
+- preserve early Q/dO lifetime separation while adding useful lookahead;
+- create real consumer-group softmax/dS or MMAC work under half-token waits;
+- lengthen useful MMAC islands without duplicating score/dP or increasing
+  ABarrier/SCA more than the work it hides.
 
-This is a topology/resource experiment, not an asm-island or instruction
-micro-patch.  If SGPR/control pressure spills, reject before PMD.
+This remains a topology/resource problem first.  Assembly is still only a
+last-resort short island after xcu/asm proves a specific compiler-generated
+loop is the blocker.
 
 Do not treat this split as the 60% active solution; it is a measured micro
 baseline and a better attribution scaffold.

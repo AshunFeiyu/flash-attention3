@@ -1,5 +1,70 @@
 # Optimization Log
 
+## 2026-07-05 Mq128 Half-Ring3 Slot
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Hypothesis:
+
+Sheet `70_mq128_half_ring3_design` proposed adding one extra M64 half slot
+instead of a full Mq128 double buffer.  The expected benefit was that producers
+could publish one more half packet ahead:
+`q0h0 slot0 -> q0h1 slot1 -> q1h0 slot2 -> q1h1 slot0`, reducing
+half-token ownership waits without duplicating Q/dO or changing output
+ownership.
+
+Implemented in the single canonical kernel:
+
+- LDS raw/sidecar layout changed from two M64 semantic halves on one Mq128
+  page to three local M64 slots.
+- Barrier ledger changed to `Slot0/1/2 Filled/Used = bar2..bar7`,
+  `Filled=8`, `Used=8`, `AllDone=bar8`.
+- Producers publish Q+sidecar and dO into `half_packet % 3`.
+- Consumers process each half slot with local `MBlockBase=0/2` and arrive
+  `SlotUsed` only after both dO and Q source reads are complete.
+- No new kernel, no phase stack, no asm island, no dQ change.
+
+Evidence:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `70_mq128_half_ring3_design`.
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=49`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- Branch windows:
+  producer0 `8/16`, consumer0 `189/240`, consumer1 `189/240`,
+  producer1 `1/16`.
+- Correctness PASS:
+  - H1/S128:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_060908`.
+  - H1/S1024 stats-only:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_060914`.
+- Stats-only metrics:
+  `kernel_ticks=50,617,385`, `simTicks=54,230,995`,
+  `MMOP=131,072`, `MMAC active=30.2521%`, `VALU=163,682`,
+  `SCA=213,896`, `LDS=83,920`, `VMEM=4,352`,
+  coissue `28,645/18,016`, `ldsBankConflict=0`.
+- Same-debug half-page baseline:
+  `kernel_ticks=48,268,220`, `simTicks=51,881,830`,
+  `MMAC active=31.6990%`, coissue `34,498/22,594`,
+  `SCA=115,608`.
+
+Conclusion:
+
+Reject before full perf/xcu.  The candidate is correctness- and resource-clean,
+but it regresses same-shape stats by about `+4.87%` kernel ticks and drops
+MMAC active by about `1.45` points.  The lower token-family count did not
+translate into useful overlap because pairing Q and dO at slot granularity lost
+the previous early lifetime split, and slot-control/SCA rose materially
+(`213,896` vs `115,608`).
+
+The canonical source should return to the half-page conveyor baseline.  Future
+topology work must either preserve early dO/Q release benefit or create real
+consumer-side work under ownership waits; adding ring depth alone is not
+enough.
+
 ## 2026-07-05 Mq128 Half-Page Conveyor
 
 Decision: `ACCEPT_CANDIDATE_CURRENT_BEST`

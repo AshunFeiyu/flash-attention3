@@ -1,5 +1,54 @@
 # Source Status
 
+## 2026-07-05 Half-Ring3 Slot Rejected
+
+Status: `MQ128_R1_HALF_RING3_REJECT_REVERT_TO_HALF_PAGE`.
+
+Sheet `70_mq128_half_ring3_design` was implemented in the single canonical
+dKV kernel as a three-slot M64 half-packet ring:
+
+- `Slot0Filled/Used = bar2/bar3`, `Slot1Filled/Used = bar4/bar5`,
+  `Slot2Filled/Used = bar6/bar7`, `AllDone = bar8`.
+- Each slot holds local M64 Q, dO, and sidecar.  Producers publish
+  `half_packet % 3`; consumers process local `MBlockBase=0/2` and release the
+  slot after both dO and Q source reads.
+- No new kernel, no phase stack, no asm island, no output ownership change.
+
+Validation:
+
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=49`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- WDRA branch windows:
+  producer0 `8/16`, consumer0 `189/240`, consumer1 `189/240`,
+  producer1 `1/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_060908`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_060914`.
+
+Performance:
+
+- Ring3 stats-only H1/S1024:
+  `kernel_ticks=50,617,385`, `simTicks=54,230,995`,
+  `MMOP=131,072`, `MMAC active=30.2521%`, `VALU=163,682`,
+  `SCA=213,896`, `LDS=83,920`, `VMEM=4,352`,
+  coissue `28,645/18,016`, `ldsBankConflict=0`.
+- Same-debug half-page baseline:
+  `kernel_ticks=48,268,220`, `simTicks=51,881,830`,
+  `MMAC active=31.6990%`, `SCA=115,608`,
+  coissue `34,498/22,594`, `ldsBankConflict=0`.
+
+Conclusion:
+
+Reject before full perf/xcu.  The extra half-slot lookahead and lower token
+family count did not compensate for paired Q/dO slot coupling and extra
+slot-control/SCA.  The active source should be restored to the half-page
+conveyor baseline.  Future topology work must preserve early Q/dO lifetime
+benefit or create useful consumer work during ownership waits; ring depth alone
+is not enough.
+
 ## 2026-07-05 Half-Page Conveyor Active
 
 Status: `MQ128_R1_HALF_PAGE_CONVEYOR_CURRENT_BEST`.
