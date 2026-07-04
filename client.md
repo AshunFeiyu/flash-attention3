@@ -34,6 +34,26 @@ SQTT evidence are required before any performance claim.
 
 ## Latest Evidence
 
+- Current best clean micro-baseline: workbook sheet
+  `71_mq128_score_dp_read8_design`.
+  It changes only `score_dp_mmac_owner16` from four small
+  `4 ds_read_matrix_trans -> wait -> 8 MMAC` islands into two larger
+  `8 ds_read_matrix_trans -> wait -> 16 MMAC` islands.
+- Read8 H1/S1024 full-perf stats:
+  `kernel_ticks=47,313,175`, `MMOP=131,072`, `VALU=165,872`,
+  `SCA=115,608`, `LDS=83,856`, `VMEM=4,352`,
+  `coissue=36,333/25,091`, `ldsBankConflict=0`.
+- Read8 static/resource:
+  branch windows producer0 `14/16`, consumer0 `180/240`,
+  consumer1 `180/240`, producer1 `8/16`; metadata `private=0`,
+  `sgpr=99`, `sgpr_spill=0`, `vgpr=128`, `vgpr_spill=0`.
+- Read8 full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_063337_clean_read8_score_dp_h1s1024_sqc7_fullperf`.
+- Read8 xcu result:
+  dispatch duration `106,108 -> 103,988` vs half-page, avg active waves
+  `114.79 -> 115.47`, `v_mmac -> s_waitcnt` gap `3.92% -> 1.62%`,
+  `s_waitcnt -> v_mmac` `0.96% -> 0.60%`.  The top bottleneck remains
+  `s_abarrier_try_wait -> s_xor_b32` at about `40.93%`.
 - Half-page conveyor H1/S1024 full-perf stats:
   `kernel_ticks=48,279,140`, `MMAC active=31.7858%`, `MMOP=131,072`,
   `VALU=165,872`, `SCA=115,608`, `LDS=83,856`, `VMEM=4,352`,
@@ -110,24 +130,25 @@ SQTT evidence are required before any performance claim.
 ## Current Diagnosis
 
 The kernel does have MMAC and the matrix path is not the primary missing piece.
-The half-page conveyor is the current best clean baseline, but the active
-limiter is still packet ownership and barrier lifetime:
+Read8 is the current best clean micro-baseline, but the active limiter is still
+packet ownership and barrier lifetime:
 
 - ABarrier waits dominate xcu despite better ticks and active share.  The main
   steady culprits are now split across half-page `Q0/Dout0/Q1` waits, not
   eliminated.
 - `ds_read_matrix -> wait -> MMAC` is visible but secondary versus
   `s_abarrier_try_wait` bubbles.
-- The Mq128 exact-tile route plus half-page split is a better baseline, not a
-  60% active solution.
+- The Mq128 exact-tile route plus half-page split plus read8 score/dP batching
+  is a better baseline, not a 60% active solution.
 - Assembly is not the next default move; only a proven hot island should become
   asm, and only after topology/resource work fails.
 
 ## Next Experiment
 
-Return canonical source to the half-page conveyor baseline before the next
-experiment.  The next design should be workbook-first and must not repeat
-ring-depth alone.  A viable candidate needs one of:
+Use the read8 score/dP batching source as the canonical baseline before the next
+experiment.  The next design should be workbook-first and must attack the
+remaining ABarrier/consumer lockstep, not repeat ring-depth alone and not just
+batch more reads.  A viable candidate needs one of:
 
 - preserve early Q/dO lifetime separation while adding useful lookahead;
 - create real consumer-group softmax/dS or MMAC work under half-token waits;

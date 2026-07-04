@@ -1,5 +1,70 @@
 # Optimization Log
 
+## 2026-07-05 Mq128 Score/dP Read8
+
+Decision: `ACCEPT_MICRO_CANDIDATE`
+
+Hypothesis:
+
+Sheet `71_mq128_score_dp_read8_design` targeted a secondary local stall rather
+than the main barrier topology.  The current half-page conveyor emits
+`score/dP` as four small islands per M-pair:
+`4 ds_read_matrix_trans -> wait_lgkm(0) -> 8 MMAC`.  The candidate batches
+adjacent D32 blocks into two larger islands:
+`8 ds_read_matrix_trans -> wait_lgkm(0) -> 16 MMAC`.
+
+Implementation:
+
+- Changed only the canonical `score_dp_mmac_owner16` helper.
+- Added one small read helper for a static DBlock and one small MMAC helper
+  for a static DBlock; no new kernel, no phase stack, no asm island.
+- Kept half-page ownership exactly the same:
+  `Q0/Dout0/Q1/Dout1` tokens and `AllDone` unchanged.
+- Kept the algorithm and work count unchanged:
+  per M-pair score+dP remains `32` MMAC and dV+dK remains `32` MMAC.
+
+Evidence:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `71_mq128_score_dp_read8_design`.
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- Branch windows unchanged from the half-page baseline:
+  producer0 `14/16`, consumer0 `180/240`, consumer1 `180/240`,
+  producer1 `8/16`.
+- Correctness PASS:
+  - H1/S128:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_062922`.
+  - H1/S1024 stats-only:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_062928`.
+  - H1/S1024 full perf:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_063337`.
+- Full perf metrics:
+  `kernel_ticks=47,313,175`, `MMOP=131,072`, `VALU=165,872`,
+  `SCA=115,608`, `LDS=83,856`, `VMEM=4,352`,
+  coissue `36,333/25,091`, `ldsBankConflict=0`.
+- Half-page conveyor baseline:
+  `kernel_ticks=48,279,140`, coissue `33,962/22,131`,
+  same `MMOP/VALU/SCA/LDS/VMEM`.
+- XCU detail:
+  duration `106,108 -> 103,988`, avg active waves `114.79 -> 115.47`.
+  `v_mmac -> s_waitcnt` improves `3.92% -> 1.62%`;
+  `s_waitcnt -> v_mmac` improves `0.96% -> 0.60%`.
+  `s_abarrier_try_wait -> s_xor_b32` remains dominant at about `40.93%`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_063337_clean_read8_score_dp_h1s1024_sqc7_fullperf`.
+
+Conclusion:
+
+Accept as the new clean micro-baseline because it improves full-perf ticks by
+about `2.00%` without changing algorithmic work, resource gates, LDS traffic,
+or instruction counts.  This does not change the main diagnosis: the next
+60%-oriented design must attack ABarrier/consumer lockstep, not simply batch
+more reads or jump to assembly.
+
 ## 2026-07-05 Mq128 Half-Ring3 Slot
 
 Decision: `REJECT_PERF_STATS_ONLY`

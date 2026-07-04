@@ -1,5 +1,65 @@
 # Source Status
 
+## 2026-07-05 Score/dP Read8 Active
+
+Status: `MQ128_R1_HALF_PAGE_SCORE_DP_READ8_CURRENT_BEST`.
+
+Current active source keeps the clean W16/Mq128/Nk128/D128 canonical dKV
+kernel and freezes dQ.  It starts from the half-page conveyor and changes only
+the score/dP read/MMAC island:
+
+- Old score/dP per M-pair:
+  four repetitions of `4 ds_read_matrix_trans -> wait_lgkm(0) -> 8 MMAC`.
+- New score/dP per M-pair:
+  two repetitions of `8 ds_read_matrix_trans -> wait_lgkm(0) -> 16 MMAC`.
+- Q0/Dout0/Q1/Dout1 half-page ownership tokens remain unchanged.
+- K/V resident latch, sidecar layout, dV/dK output ownership, and `AllDone`
+  remain unchanged.
+- No new kernel, no phase stack, no asm island, no dQ change.
+
+Validation:
+
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- WDRA branch windows:
+  producer0 `14/16`, consumer0 `180/240`, consumer1 `180/240`,
+  producer1 `8/16`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_062922`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_062928`.
+- H1/S1024 full perf correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_063337`.
+
+Performance:
+
+- Full perf `kernel_ticks=47,313,175`, `simTicks=50,926,785`.
+- `MMOP=131,072`, `VALU=165,872`, `SCA=115,608`,
+  `LDS=83,856`, `VMEM=4,352`.
+- Coissue `36,333/25,091`.
+- `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260705_063337_clean_read8_score_dp_h1s1024_sqc7_fullperf`.
+
+XCU finding:
+
+- Dispatch duration improves from half-page `106,108` to `103,988`.
+- Avg active waves improve from `114.79` to `115.47`.
+- `v_mmac -> s_waitcnt` gap improves from `3.92%` to `1.62%`.
+- `s_waitcnt -> v_mmac` gap improves from `0.96%` to `0.60%`.
+- `s_abarrier_try_wait -> s_xor_b32` remains dominant at about `40.93%`.
+
+Conclusion:
+
+Promote this as the current best clean micro-baseline because full-perf ticks
+improve by about `2.00%` versus the half-page conveyor without changing
+algorithmic work, instruction counts, resource gates, or LDS/global traffic.
+This is not a 60% MMAC-active solution.  The next workbook-first design must
+target ABarrier/consumer lockstep and useful overlap during half-token waits;
+do not just batch more reads or jump to assembly.
+
 ## 2026-07-05 Half-Ring3 Slot Rejected
 
 Status: `MQ128_R1_HALF_RING3_REJECT_REVERT_TO_HALF_PAGE`.

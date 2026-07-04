@@ -695,6 +695,76 @@ __device__ __forceinline__ void latch_owner16_kv_regs(
     }
 }
 
+template <typename Tile, int MBlockBase, int DBlock>
+__device__ __forceinline__ void read_score_dp_owner16_dblock(
+    __half* lds,
+    int page,
+    ins::F16x8& q0,
+    ins::F16x8& q1,
+    ins::F16x8& dout0,
+    ins::F16x8& dout1) {
+    using Layout = DkvLdsLayout<Tile>;
+    static_assert(MBlockBase + 1 < Layout::kRawMBlocksPerMqTile,
+                  "score/dP reads two adjacent M16 blocks");
+    static_assert(DBlock >= 0 && DBlock < 4,
+                  "score/dP DBlock must be in D128");
+
+    const int q_off0 =
+        Layout::kQBase +
+        raw_page_block_offset_m<Tile>(page, MBlockBase + 0, DBlock);
+    const int q_off1 =
+        Layout::kQBase +
+        raw_page_block_offset_m<Tile>(page, MBlockBase + 1, DBlock);
+    const int dout_off0 =
+        Layout::kDoutBase +
+        raw_page_block_offset_m<Tile>(page, MBlockBase + 0, DBlock);
+    const int dout_off1 =
+        Layout::kDoutBase +
+        raw_page_block_offset_m<Tile>(page, MBlockBase + 1, DBlock);
+
+    ins::ds_read_matrix_32x16_trans(lds, q_off0, q0.f16x8);
+    ins::ds_read_matrix_32x16_trans(lds, q_off1, q1.f16x8);
+    ins::ds_read_matrix_32x16_trans(lds, dout_off0, dout0.f16x8);
+    ins::ds_read_matrix_32x16_trans(lds, dout_off1, dout1.f16x8);
+}
+
+template <int DBlock>
+__device__ __forceinline__ void score_dp_mmac_owner16_dblock(
+    const Owner16KvRegs& kv_regs,
+    const ins::F16x8& q0,
+    const ins::F16x8& q1,
+    const ins::F16x8& dout0,
+    const ins::F16x8& dout1,
+    const ins::F16x8& zero,
+    ins::F32x4 (&score)[2],
+    ins::F32x4 (&dp)[2]) {
+    static_assert(DBlock >= 0 && DBlock < 4,
+                  "score/dP DBlock must be in D128");
+    const ins::F16x8& k_reg = kv_regs.k[DBlock];
+    const ins::F16x8& v_reg = kv_regs.v[DBlock];
+#pragma unroll
+    for (int m_idx = 0; m_idx < 2; ++m_idx) {
+        const ins::Vec4F16 q_frag[2] = {
+            m_idx == 0 ? q0.f16x4[0] : q1.f16x4[0],
+            m_idx == 0 ? q0.f16x4[1] : q1.f16x4[1],
+        };
+        const ins::Vec4F16 dout_frag[2] = {
+            m_idx == 0 ? dout0.f16x4[0] : dout1.f16x4[0],
+            m_idx == 0 ? dout0.f16x4[1] : dout1.f16x4[1],
+        };
+#pragma unroll
+        for (int k_half = 0; k_half < 2; ++k_half) {
+            const bool first = DBlock == 0 && k_half == 0;
+            score[m_idx].f32 = ins::mmac_f16_lit(
+                k_reg.f16x4[k_half], q_frag[k_half],
+                first ? zero.f32 : score[m_idx].f32);
+            dp[m_idx].f32 = ins::mmac_f16_lit(
+                v_reg.f16x4[k_half], dout_frag[k_half],
+                first ? zero.f32 : dp[m_idx].f32);
+        }
+    }
+}
+
 template <typename Tile, int MBlockBase>
 __device__ __forceinline__ void score_dp_mmac_owner16(
     __half* lds,
@@ -710,55 +780,34 @@ __device__ __forceinline__ void score_dp_mmac_owner16(
     ins::zero_f16x8(zero);
 
     ins::raise_priority_2();
-#pragma unroll
-    for (int d_block = 0; d_block < 4; ++d_block) {
-        ins::F16x8 q0;
-        ins::F16x8 q1;
-        ins::F16x8 dout0;
-        ins::F16x8 dout1;
-        const int q_off0 =
-            Layout::kQBase +
-            raw_page_block_offset_m<Tile>(page, MBlockBase + 0, d_block);
-        const int q_off1 =
-            Layout::kQBase +
-            raw_page_block_offset_m<Tile>(page, MBlockBase + 1, d_block);
-        const int dout_off0 =
-            Layout::kDoutBase +
-            raw_page_block_offset_m<Tile>(page, MBlockBase + 0, d_block);
-        const int dout_off1 =
-            Layout::kDoutBase +
-            raw_page_block_offset_m<Tile>(page, MBlockBase + 1, d_block);
+    ins::F16x8 q0_d0;
+    ins::F16x8 q1_d0;
+    ins::F16x8 dout0_d0;
+    ins::F16x8 dout1_d0;
+    ins::F16x8 q0_d1;
+    ins::F16x8 q1_d1;
+    ins::F16x8 dout0_d1;
+    ins::F16x8 dout1_d1;
 
-        ins::ds_read_matrix_32x16_trans(lds, q_off0, q0.f16x8);
-        ins::ds_read_matrix_32x16_trans(lds, q_off1, q1.f16x8);
-        ins::ds_read_matrix_32x16_trans(lds, dout_off0, dout0.f16x8);
-        ins::ds_read_matrix_32x16_trans(lds, dout_off1, dout1.f16x8);
-        ins::wait_lgkm(0);
+    read_score_dp_owner16_dblock<Tile, MBlockBase, 0>(
+        lds, page, q0_d0, q1_d0, dout0_d0, dout1_d0);
+    read_score_dp_owner16_dblock<Tile, MBlockBase, 1>(
+        lds, page, q0_d1, q1_d1, dout0_d1, dout1_d1);
+    ins::wait_lgkm(0);
+    score_dp_mmac_owner16_dblock<0>(
+        kv_regs, q0_d0, q1_d0, dout0_d0, dout1_d0, zero, score, dp);
+    score_dp_mmac_owner16_dblock<1>(
+        kv_regs, q0_d1, q1_d1, dout0_d1, dout1_d1, zero, score, dp);
 
-        const ins::F16x8& k_reg = kv_regs.k[d_block];
-        const ins::F16x8& v_reg = kv_regs.v[d_block];
-#pragma unroll
-        for (int m_idx = 0; m_idx < 2; ++m_idx) {
-            const ins::Vec4F16 q_frag[2] = {
-                m_idx == 0 ? q0.f16x4[0] : q1.f16x4[0],
-                m_idx == 0 ? q0.f16x4[1] : q1.f16x4[1],
-            };
-            const ins::Vec4F16 dout_frag[2] = {
-                m_idx == 0 ? dout0.f16x4[0] : dout1.f16x4[0],
-                m_idx == 0 ? dout0.f16x4[1] : dout1.f16x4[1],
-            };
-#pragma unroll
-            for (int k_half = 0; k_half < 2; ++k_half) {
-                const bool first = d_block == 0 && k_half == 0;
-                score[m_idx].f32 = ins::mmac_f16_lit(
-                    k_reg.f16x4[k_half], q_frag[k_half],
-                    first ? zero.f32 : score[m_idx].f32);
-                dp[m_idx].f32 = ins::mmac_f16_lit(
-                    v_reg.f16x4[k_half], dout_frag[k_half],
-                    first ? zero.f32 : dp[m_idx].f32);
-            }
-        }
-    }
+    read_score_dp_owner16_dblock<Tile, MBlockBase, 2>(
+        lds, page, q0_d0, q1_d0, dout0_d0, dout1_d0);
+    read_score_dp_owner16_dblock<Tile, MBlockBase, 3>(
+        lds, page, q0_d1, q1_d1, dout0_d1, dout1_d1);
+    ins::wait_lgkm(0);
+    score_dp_mmac_owner16_dblock<2>(
+        kv_regs, q0_d0, q1_d0, dout0_d0, dout1_d0, zero, score, dp);
+    score_dp_mmac_owner16_dblock<3>(
+        kv_regs, q0_d1, q1_d1, dout0_d1, dout1_d1, zero, score, dp);
     ins::lower_priority();
 }
 
