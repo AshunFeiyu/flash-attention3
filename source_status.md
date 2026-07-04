@@ -88,6 +88,10 @@ Next:
 - Future larger-Mq work must first reduce helper live ranges or change phasing;
   local static expansion of the current Mq64 helper shape spills.  Raising
   consumer VGPR to 240 is not enough if SGPR/control state is unchanged.
+- Next design basis is workbook sheet `62_mq128_sgpr_control_shrink`: start
+  with 62A causal-true control-context shrinking, then only consider 62B
+  two-half lexical scopes or 62C softmax helper split if static metadata proves
+  the earlier step is insufficient.
 
 ## 2026-07-04 Raw2 Canonical After Rejected Stagger
 

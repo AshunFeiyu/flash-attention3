@@ -210,6 +210,18 @@ no spill).  Conclusion: static Mq128 is blocked by SGPR/control live range and
 helper shape, not by consumer VGPR window alone.  Next larger-Mq work must
 redesign scalar lifetime/phasing before another PMD run.
 
+Workbook sheet `62_mq128_sgpr_control_shrink` is the next design basis:
+
+```text
+62A: specialize the hot canonical route to causal=true and shrink control args
+62B: if needed, split Mq128 into two lexical Mq64 halves without new tokens
+62C: if needed, split softmax/dS helper around precomputed q/k scalars
+```
+
+The point is to preserve Mq128's larger useful MMAC island while making static
+metadata spill-free.  Do not code 62B/62C before 62A proves whether causal
+control-context shrinking actually reduces SGPR pressure.
+
 ## Workflow Rules
 
 1. Update the shared workbook before changing tile shape, output ownership,
