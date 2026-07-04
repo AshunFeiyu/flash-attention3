@@ -4468,3 +4468,69 @@ Conclusion:
   blindly for score/dP raw M0/M1 reads.
 - Future asm islands must first prove exact LDS adjacency for the specific
   MLS layout and fragment pair before replacing correct scalar-addressed reads.
+
+### Causal Invalid-Prefix Page Skip
+
+Status: `REJECT_PERF_STATS_ONLY`; code will be reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `52_causal_page_skip`.
+- Goal was algorithm-level redundant-work removal, not an instruction micro
+  patch.  For causal=true, pages with `q_tile_end < k_start` have no valid
+  pairs for a dKV owner.
+- The first implementation used `accum_started` so the first actually valid
+  page initialized dV/dK accumulators.  That was mathematically clean but
+  failed the static gate: consumer branches hit `208/208`, with
+  `private_segment_fixed_size=216` and `vgpr_spill_count=114`.
+- The resource-clean implementation kept `q_tile0` always computed to preserve
+  the existing initialization path, then skipped only `q_tile>=1` invalid
+  causal prefixes using a small wait/release loop before the normal compute
+  loop.
+
+Evidence:
+
+- Static/resource PASS for prefix-only version:
+  `private=0`, `sgpr=62`, `vgpr=112`, no scratch/spill.
+- Branch windows:
+  producer0 `6/16`, consumer0 `199/208`, consumer1 `198/208`,
+  producer1 `1/16`.
+- Correctness PASS:
+  H1/S128 and H1/S1024 both pass; H1/S1024 has
+  `dk_rel_l2=0.0025563`, `dv_rel_l2=0.000337571`.
+- H1/S1024 stats:
+  `simTicks=57,087,940`, `kernel_ticks=53,474,330`,
+  `MMOP_instr=77,312`, `MMAC active=22.4979%`,
+  coissue `21,324/12,145`, `VALU=125,129`, `SCA=181,840`,
+  `LDS=58,844`, `VMEM=2,784`, `ldsBankConflict=0`.
+- Raw2 baseline:
+  `MMOP=131,072`, stats-only `kernel_ticks=53,300,975`,
+  `MMAC active=27.6518%`; raw2 full-perf kernel ticks were about
+  `53,462,955`.
+
+Conclusion:
+
+- The candidate proves invalid causal MMAC work can be removed: MMOP drops by
+  about `41%`.
+- It does not improve the target small-shape critical path.  Ticks are flat to
+  slightly worse and MMAC active share drops because barrier/release/control
+  and the slowest valid k tiles dominate.
+- Do not keep this in the canonical route.  Future causal optimization should
+  change launch/tile ownership or critical-path structure, not just add a
+  consumer-side invalid-prefix skip.
+
+Post-revert recertification:
+
+- The live source was restored to raw2 canonical; no causal-skip helper or
+  skip branch remains in `src/dkv_kernel.cpp`.
+- zys1 build/static PASS: branch windows `6/198/198/1`, `private=0`,
+  `sgpr=60`, `vgpr=112`, no scratch/spill.
+- Correctness PASS after restore:
+  H1/S128 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_010339`
+  and H1/S1024 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_010344`.
+- H1/S1024 raw2 recert stats:
+  `kernel_ticks=53,008,410`, `MMOP=131,072`,
+  `MMAC active=27.7754%`, coissue `32,341/18,768`,
+  `ldsBankConflict=0`.

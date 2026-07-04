@@ -1,5 +1,48 @@
 # Source Status
 
+## 2026-07-05 Raw2 Canonical After ASM And Causal-Skip Negatives
+
+Status: `RAW2_CANONICAL_ACTIVE`.
+
+Current source state:
+
+- Live source should remain the raw2 W16/Mq64/Nk128/D128 canonical dKV route:
+  waves0-3 producer K+Q+sidecar, waves4-7 consumer0,
+  waves8-11 consumer1, waves12-15 producer V+dO.
+- dQ is frozen.
+- No public phase stack, no alternate dKV kernel, and no asm island is active.
+- Post-revert remote validation:
+  - Build/static PASS on zys1, branch windows `6/198/198/1`.
+  - Symbol metadata PASS: `private=0`, `sgpr=60`, `vgpr=112`,
+    `sgpr_spill=0`, `vgpr_spill=0`.
+  - Correctness PASS:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_010339`
+    for H1/S128 and
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260705_010344`
+    for H1/S1024.
+  - H1/S1024 recert stats:
+    `kernel_ticks=53,008,410`, `MMOP=131,072`,
+    `MMAC active=27.7754%`, coissue `32,341/18,768`,
+    `ldsBankConflict=0`.
+
+Latest rejected probes:
+
+- `w16_score_dp_pair_asm_island` built cleanly, but failed H1/S128
+  correctness.  The mistake was applying the resident K/V `+1024` pair-read
+  relation to raw Q/dO M0/M1 score/dP reads, whose D128 raw-page separation is
+  `4 * 1024` bytes.
+- `w16_causal_prefix_page_skip` reduced H1/S1024 MMOP from `131,072` to
+  `77,312`, but did not improve same-shape ticks and dropped MMAC active to
+  `22.4979%`.  It is rejected even though it is correctness/resource clean.
+
+Next:
+
+- Keep raw2 canonical active.
+- Treat assembly only as a later short-island fallback after a layout proof and
+  xcu/asm evidence.
+- Future causal optimization should change launch/tile ownership or the
+  barrier-critical structure; do not keep adding consumer-side skip branches.
+
 ## 2026-07-04 Raw2 Canonical After Rejected Stagger
 
 Status: `RAW2_CANONICAL_ACTIVE`.

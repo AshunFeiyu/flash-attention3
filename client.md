@@ -35,8 +35,9 @@ SQTT evidence are required before any performance claim.
   `s_abarrier_try_wait -> s_xor_b32` at about `40.24%`; the selected
   Raw1Used SIMD window is about `93.94%` bubble and only `1.05%` MMAC.
 - Rejected after raw2: raw3 page depth, consumer1 score-prefetch stagger,
-  causal=true specialization, score read batch2, and WG-local duplicate Q/dO.
-  All were correct/resource clean, but regressed same-shape performance.
+  causal=true specialization, score read batch2, WG-local duplicate Q/dO, and
+  causal invalid-prefix page skip.  All resource/correctness-clean candidates
+  regressed or failed to improve same-shape performance.
 
 ## Current Diagnosis
 
@@ -69,7 +70,7 @@ It passed correctness/resource gates but regressed H1/S1024 full perf to
 `simTicks=58,310,070`, `MMAC active=26.7125%`, and doubled VMEM. Do not pursue
 independent warpgroup ownership by duplicating shared Q/dO.
 
-Workbook sheet `52_causal_page_skip` records a queued algorithm candidate:
+Workbook sheet `52_causal_page_skip` records a rejected algorithm candidate:
 
 ```text
 If causal && q_tile_end < k_base:
@@ -78,9 +79,12 @@ If causal && q_tile_end < k_base:
   score/dP/softmax/dV/dK for that page.
 ```
 
-This is an algorithm-level redundant-work fix. It preserves shared Q/dO,
-existing raw2 tokens, output ownership, and the matrixized path for valid or
-boundary pages.
+The resource-clean prefix-only implementation passed H1/S128 and H1/S1024
+correctness and reduced H1/S1024 MMOP from `131,072` to `77,312`, but
+`kernel_ticks` stayed flat/slightly worse at `53,474,330` and MMAC active
+dropped to `22.4979%`. Do not keep this consumer-side skip in the canonical
+route; future causal work needs launch/tile ownership or critical-path
+restructuring.
 
 Workbook sheet `53_score_dp_pair_asm` records the first asm-island negative:
 

@@ -227,6 +227,15 @@ M0/M1 layout, where the adjacent M-block at fixed D block is `4 * 1024` bytes
 away for D128. Keep this as a layout rule: an asm island must prove the exact
 LDS adjacency relation before using pair-read helpers from another layout.
 
+Workbook sheet `52_causal_page_skip` records a consumer-side causal prefix
+skip negative.  A direct first-valid accumulator version failed static
+resources; the prefix-only version passed correctness and reduced H1/S1024
+MMOP from `131,072` to `77,312`, but did not reduce same-shape ticks and
+lowered MMAC active share to about `22.5%`.  The lesson is that removing
+invalid causal work inside the existing CTA does not by itself shorten the
+small-case critical path; future causal work must alter launch/tile ownership
+or the barrier-critical structure.
+
 Required CLI sequence for a perf candidate:
 
 ```bash
