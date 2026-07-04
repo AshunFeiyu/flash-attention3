@@ -2720,3 +2720,25 @@ Tail `AllDone` wave0-only wait probe:
 - lesson: tail-only ABarrier cleanup does not reduce the dominant raw-loop
   `s_abarrier_try_wait -> s_xor_b32` bubble and slightly hurts same-shape
   ticks.
+
+Mq128 static-scoped direct probe:
+
+- temporary change:
+  - `ActiveDkvTile = DkvTileD128MqNk128<128>`
+  - `BlockMq != 64` consumer path used compile-time
+    `consume_mq_tile_owner16<Tile, Wdra, 0, FirstAccum>` instead of the
+    dynamic M-loop
+- intended benefit:
+  - double per-packet MMAC island from `128` to `256` MMAC per consumer
+  - halve raw Q/dO handshakes for fixed S
+  - directly attack the dominant raw ABarrier/control bubble
+- resource result:
+  - build completed but metadata gate failed
+  - `private_segment_fixed_size=8`
+  - `sgpr_count=104`, `sgpr_spill_count=18`
+  - `vgpr_count=112`, `vgpr_spill_count=2`
+  - branch consumer windows exactly `208/208`
+- decision: `REJECT_RESOURCE`; code reverted before PMD
+- lesson: Mq128 remains the right class of algorithmic lever, but direct static
+  expansion is not the implementation.  Future Mq128 work must first redesign
+  lifetime/ownership so metadata is clean.

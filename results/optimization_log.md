@@ -3909,3 +3909,46 @@ Conclusion:
 - Tail-only ABarrier cleanup does not attack the dominant xcu bubble
   `s_abarrier_try_wait -> s_xor_b32` inside the raw packet loop.
 - Do not continue optimizing `AllDone` tail handling in isolation.
+
+### Mq128 Static-Scoped Direct Probe
+
+Status: `REJECT_RESOURCE`, code reverted before PMD.
+
+Design intent:
+
+- Increase useful MMAC per raw-packet handshake rather than adding more
+  buffering.
+- `Mq64` does `128` MMAC per consumer per q tile and uses `S/64` raw handshakes.
+- `Mq128` would do `256` MMAC per consumer per q tile and use `S/128` raw
+  handshakes.  For fixed `S`, total MMOP is unchanged, but ABarrier/control
+  overhead should be amortized over a larger compute island.
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`
+  `41_mq128_static_plan`.
+
+Implementation tried:
+
+- Temporarily set `ActiveDkvTile = DkvTileD128MqNk128<128>`.
+- Replaced the `BlockMq != 64` dynamic M-loop with compile-time
+  `consume_mq_tile_owner16<Tile, Wdra, 0, FirstAccum>` recursion.
+- No new kernel, no new phase, no new output path.
+
+Static evidence:
+
+- Build completed but resource metadata failed:
+  `private_segment_fixed_size=8`, `sgpr_count=104`,
+  `sgpr_spill_count=18`, `vgpr_count=112`, `vgpr_spill_count=2`.
+- Branch windows:
+  producerKQ `15/16`, consumer0 `208/208`, consumer1 `208/208`,
+  producerVDout `9/16`.
+- Compiler also emitted repeated `found vgpr before wave branch` warnings.
+
+Conclusion:
+
+- Direct static Mq128 expansion is not viable.
+- The high-level idea is still plausible, because halving raw handshakes targets
+  the observed ABarrier bubble directly, but the implementation must first
+  solve SGPR/VGPR lifetime.
+- The next Mq128 attempt needs a resource redesign: either scoped/noinline
+  M-pair islands, a smaller accumulator/store ownership, or a different
+  producer/consumer split.  It must pass metadata before any PMD run.
