@@ -57,6 +57,18 @@ Conclusion:
 - Workbook sheet `65_mq128_rawused_xcu` records this evidence and the draft
   Q/dO lifetime split stress plan.
 
+Follow-up design note:
+
+- Workbook sheet `66_mq128_qdo_lifetime_split` refines the candidate into a
+  concrete schedule.  It does not split dV and dK into separate GEMM islands.
+  Instead, only the final M-pair changes order:
+  score/dP, read low/high dO normal sources, arrive `DoutUsed`, run
+  softmax/dS, read low/high Q normal sources, arrive `QUsed`, then execute the
+  combined dV/dK MMAC using the held dO and Q fragments.
+- This specifically targets the measured producer1/`producer_vdout_loop`
+  Raw0Used wait while preserving the compact final MMAC island.  It must still
+  pass resource metadata and H1/S1024 correctness before any perf claim.
+
 ## 2026-07-05 Mq128 64 Full-Valid Softmax Helper
 
 Decision: `REJECT_STATIC_SGPR_SPILL`

@@ -100,6 +100,12 @@ Workbook sheet `65_mq128_rawused_xcu` now records the xcu top2000 evidence and
 the next candidate thesis: split Q and dO lifetimes, because `dO` is last used
 by dV and `Q` is last used by dK.  This may let producers refill one operand
 half while the other remains live.
+Workbook sheet `66_mq128_qdo_lifetime_split` refines this into the concrete
+candidate: keep the combined dV/dK MMAC island, but on the final M-pair read
+dO normal sources first, arrive `DoutUsed`, run softmax/dS, read Q normal
+sources, arrive `QUsed`, then execute the combined dV/dK MMAC with held dO and
+Q fragments.  The intent is to free producer1 without splitting dV and dK into
+smaller GEMM islands.
 Do not directly retry sheet 63's release-before-softmax path: long q-loop
 correctness failed even though H1/S128 passed.
 Do not directly retry sheet 64's full-valid two-path helper: it fails the
