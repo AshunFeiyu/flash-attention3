@@ -88,6 +88,20 @@ per useful MMAC further, create real consumer-group stagger during half-token
 waits, or lengthen the useful MMAC island without reintroducing duplicate
 score/dP.
 
+Follow-up design note:
+
+- Workbook sheet `70_mq128_half_ring3_design` is the next planned topology
+  candidate.
+- It adds one extra M64 half slot, not a full Mq128 double buffer, so the
+  expected LDS after K/V latch is about `98.25KB`.
+- The preferred protocol is three slot-local paired `Filled/Used` counted
+  tokens.  This may reduce steady ABarrier names from the current separate
+  Q/Dout half-token protocol, but it couples Q and dO reuse.
+- Reject before PMD if slot modulo/control raises SGPR spill or private
+  segment.  Promote only if ticks and MMAC active beat this half-page baseline
+  and xcu focused `SlotUsed` windows improve beyond the current `94-96%`
+  bubble band.
+
 ## 2026-07-05 Mq128 62C2 RawUsed XCU Top2000 Diagnosis
 
 Decision: `OBSERVE_XCU_DIAGNOSIS`

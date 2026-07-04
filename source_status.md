@@ -71,6 +71,20 @@ It is not a final FWD-style conveyor: the focused windows remain
 half-token waits, reduce handshakes without restoring a full-page cliff, or
 lengthen useful MMAC islands without duplicate score/dP.
 
+Next workbook design:
+
+- Sheet `70_mq128_half_ring3_design` proposes a three-slot M64 half-packet
+  ring.  It adds one extra half slot rather than a full Mq128 double buffer:
+  q stream order becomes `q0h0 slot0 -> q0h1 slot1 -> q1h0 slot2 ->
+  q1h1 slot0`.
+- Estimated LDS after K/V latch is about `98.25KB` raw/sidecar, still below
+  128KB.
+- Preferred protocol is one paired `Filled/Used` counted token per slot
+  (`Filled=8`, `Used=8`) to reduce steady token count versus separate
+  Q/Dout half tokens.
+- Main risk is SGPR/control pressure and losing early dO release due to Q/dO
+  coupling.  Reject before PMD on any spill/private segment.
+
 ## 2026-07-05 Q/dO Lifetime Split Active
 
 Status: `MQ128_R1_QDO_LIFETIME_SPLIT_MICRO_BASELINE`.

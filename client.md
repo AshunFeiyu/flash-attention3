@@ -118,15 +118,24 @@ limiter is still packet ownership and barrier lifetime:
 
 ## Next Experiment
 
-Start from the half-page conveyor baseline and update the workbook before
-editing. The next design must reduce or hide the half-token ownership bubbles,
-not merely rename them.  Viable directions are:
+Workbook sheet `70_mq128_half_ring3_design` is the next candidate.  Start from
+commit `7909188` and implement only after re-checking the resource budget:
 
-- make more useful producer work happen while the producer waits, without
-  adding a new LDS page/token family;
-- reduce total ABarrier handshakes per useful MMAC island;
-- lengthen the consumer MMAC island or improve real softmax/dS coissue without
-  reintroducing duplicate score/dP.
+- Represent the q stream as M64 half packets and allocate three half slots in
+  LDS.
+- Each half slot holds Q, dO, and sidecar for 64 rows.
+- Use slot-local paired `Filled/Used` counted tokens if static/resource gates
+  allow it: Filled count `8` from producer0 Q/sidecar plus producer1 dO;
+  Used count `8` from both consumer groups.
+- Expected pipeline:
+  `q0h0 slot0 -> q0h1 slot1 -> q1h0 slot2 -> q1h1 slot0`.
+- Promotion target versus half-page baseline:
+  `kernel_ticks < 48,279,140`, `MMAC active > 31.7858%`,
+  no spill/scratch, `ldsBankConflict=0`, and xcu focused `SlotUsed` windows
+  better than the current `94-96%` bubble.
+
+This is a topology/resource experiment, not an asm-island or instruction
+micro-patch.  If SGPR/control pressure spills, reject before PMD.
 
 Do not treat this split as the 60% active solution; it is a measured micro
 baseline and a better attribution scaffold.
