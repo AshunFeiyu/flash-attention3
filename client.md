@@ -218,9 +218,13 @@ Workbook sheet `62_mq128_sgpr_control_shrink` is the next design basis:
 62C: if needed, split softmax/dS helper around precomputed q/k scalars
 ```
 
-The point is to preserve Mq128's larger useful MMAC island while making static
-metadata spill-free.  Do not code 62B/62C before 62A proves whether causal
-control-context shrinking actually reduces SGPR pressure.
+62A has now been tested as a static-only probe.  It helped but did not pass:
+`sgpr_spill` dropped from `18` to `14`, and consumer branch windows improved
+from `209/240` to `182/240`, but metadata still failed with `sgpr=100`.
+No PMD was run, and the code is reverted to raw2.  The lesson is useful:
+causal/control state is part of the blocker, but 62A alone is too weak.
+Continue with 62B/62C only if they further reduce scalar/control live range
+without device-call private segment or dynamic Mq128 loop overhead.
 
 ## Workflow Rules
 

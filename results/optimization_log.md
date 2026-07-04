@@ -1,5 +1,61 @@
 # Optimization Log
 
+## 2026-07-05 Mq128 62A Causal-Control Shrink
+
+Decision: `REJECT_STATIC_SGPR_SPILL`
+
+Hypothesis:
+
+`Sheet 62A keeps the Mq128/R1 long useful MMAC island, but removes runtime
+causal control from the hot M-pair helper and precomputes scalar control such
+as q_tile_base, owner_krow, owner_kmax, lane_col_group, and
+softmax_scale_log2.  If sheet 61's SGPR spill is caused by duplicated causal
+and scalar address/control state, this should reduce SGPR pressure without
+touching the matrix path or using assembly.`
+
+Implemented as a temporary in-place static resource probe:
+
+- `ActiveDkvTile = DkvTileD128MqNk128<128, 1>`.
+- Consumer WDRA window set to 240.
+- Canonical performance path temporarily required `causal == 1`.
+- Added causal-true narrow softmax/control helper and static Mq128 four-pair
+  path.
+- No new kernel, no phase, no asm island, no PMD run before metadata.
+
+Evidence:
+
+- Remote build completed and source gate PASS.
+- Symbol metadata failed before correctness/PMD:
+  `private_segment_fixed_size=0`, `sgpr_count=100`,
+  `sgpr_spill_count=14`, `vgpr_count=128`, `vgpr_spill_count=0`.
+- Branch windows improved versus sheet 61:
+  producer0 `15/16`, consumer0 `182/240`, consumer1 `182/240`,
+  producer1 `9/16`.
+- Sheet 61 comparison:
+  `sgpr_spill_count=18`, consumers `209/240`.
+
+Conclusion:
+
+62A is directionally useful but not sufficient.  It reduces consumer branch
+VGPR pressure and SGPR spill, confirming that causal/control lifetime matters,
+but it still violates the no-spill hard gate.  No PMD correctness or perf was
+run.
+
+Post-revert recertification:
+
+- Live source restored to raw2 canonical.
+- zys1 build/static PASS after restore.
+- Symbol metadata PASS after restore:
+  `private=0`, `sgpr=60`, `sgpr_spill=0`, `vgpr=112`,
+  `vgpr_spill=0`.
+
+Next implication:
+
+Proceed only to a stronger scalar/control split, such as sheet 62B two-half
+lexical scopes or sheet 62C softmax helper split.  The next design must reduce
+remaining SGPR state without introducing device-call private segment or dynamic
+Mq128 loop overhead.
+
 ## 2026-07-05 Mq128 Consumer-240 Resource Retest
 
 Decision: `REJECT_STATIC_SGPR_SPILL`

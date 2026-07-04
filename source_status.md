@@ -92,6 +92,12 @@ Next:
   with 62A causal-true control-context shrinking, then only consider 62B
   two-half lexical scopes or 62C softmax helper split if static metadata proves
   the earlier step is insufficient.
+- `w16_mq128_62a_causal_control_shrink` has now been tested as a static-only
+  resource probe.  It improved consumer branch windows from `209/240` to
+  `182/240` and reduced `sgpr_spill` from `18` to `14`, but metadata still
+  failed (`private=0`, `sgpr=100`, `vgpr=128`, no VGPR spill).  No PMD was run.
+  The code is reverted to raw2 and remote recert PASS.  Continue only with a
+  stronger scalar/control split; 62A alone is rejected.
 
 ## 2026-07-04 Raw2 Canonical After Rejected Stagger
 
