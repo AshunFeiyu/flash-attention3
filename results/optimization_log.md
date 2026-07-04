@@ -4534,3 +4534,46 @@ Post-revert recertification:
   `kernel_ticks=53,008,410`, `MMOP=131,072`,
   `MMAC active=27.7754%`, coissue `32,341/18,768`,
   `ldsBankConflict=0`.
+
+### Raw Release Before Softmax
+
+Status: `REJECT_CORRECTNESS_RESOURCE`; code reverted to raw2 canonical.
+
+Design basis:
+
+- Workbook sheet `54_raw_release_before_softmax`.
+- Goal was to shorten the raw page lifetime on the full-valid critical path.
+  Current raw2 releases the page after the final M-pair softmax/dS and high
+  Q/dO source read, so producers can refill mainly during the final dV/dK
+  MMAC island.
+- Candidate moved the final M-pair low+high Q/dO source reads before
+  softmax/dS, then tried to arrive RawUsed before softmax so producer refill
+  could overlap both softmax/dS and dV/dK.
+
+Evidence:
+
+- First implementation protected Q/dO source reads but not the sidecar rows.
+  Static/resource passed with branch windows `6/200/200/1` and metadata
+  `private=0`, `sgpr=60`, `vgpr=112`, no spill/scratch.
+- Correctness:
+  H1/S128 PASS, but H1/S1024 FAIL:
+  `dk_rel_l2=0.17587`, `dv_rel_l2=0.106138`, `pass=0`.
+- H1/S1024 failed-run stats:
+  `kernel_ticks=54,011,685`, `MMOP=131,072`,
+  `MMAC active=26.9822%`, coissue `31,038/18,411`,
+  `ldsBankConflict=0`.
+- Diagnosis: sidecar max/sum/delta is part of the raw page lifetime.  Releasing
+  RawUsed before softmax lets producer overwrite sidecar before consumer reads
+  it on longer q loops.
+- Second implementation also prefetched sidecar rows into VGPR before release.
+  Static failed immediately: branch windows `6/208/208/1`,
+  `private_segment_fixed_size=52`, `sgpr=68`, `vgpr_spill_count=24`.
+
+Conclusion:
+
+- Raw page lifetime is constrained by both Q/dO matrix fragments and sidecar
+  rows.  Releasing before softmax is only correct if sidecar is also latched.
+- Latching sidecar plus high source exceeds the current consumer VGPR budget.
+- Do not pursue release-before-softmax in the current Mq64/208-VGPR route.
+  Future attempts would need a different sidecar ownership/lifetime design or
+  a larger feasible consumer VGPR window before this can be revisited.

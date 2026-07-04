@@ -34,6 +34,11 @@ Latest rejected probes:
 - `w16_causal_prefix_page_skip` reduced H1/S1024 MMOP from `131,072` to
   `77,312`, but did not improve same-shape ticks and dropped MMAC active to
   `22.4979%`.  It is rejected even though it is correctness/resource clean.
+- `w16_raw_release_before_softmax` tried to release RawUsed before softmax by
+  pre-reading the final M-pair Q/dO sources.  Q/dO-only preread passed static
+  but failed H1/S1024 correctness because sidecar rows were overwritten after
+  release.  Q/dO+sidecar preread failed static with `private=52` and
+  `vgpr_spill=24`.  Lesson: raw page ownership includes sidecar lifetime.
 
 Next:
 
@@ -42,6 +47,8 @@ Next:
   xcu/asm evidence.
 - Future causal optimization should change launch/tile ownership or the
   barrier-critical structure; do not keep adding consumer-side skip branches.
+- Future RawUsed work must either move sidecar out of the raw page lifetime or
+  reduce consumer live state before attempting release-before-softmax again.
 
 ## 2026-07-04 Raw2 Canonical After Rejected Stagger
 
