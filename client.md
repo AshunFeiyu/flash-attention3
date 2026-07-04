@@ -1022,3 +1022,25 @@ Next design rule:
   single-page Mq64 topology the added token/SCA/control cost is larger than
   the earlier release benefit.  Do not pursue more token families without a
   larger useful-work window or a larger GEMM island.
+
+## Rejected Probe: Nk32 Packed Owner16x2
+
+- Status: `REJECT_RESOURCE`; active source restored to baseline afterward.
+- Design workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  `44_nk32_four_consumer_probe`.
+- Goal was to test whether one active consumer wave can cover two adjacent
+  owner16 blocks (`Nk=32` logical ownership) using a 248-VGPR consumer window.
+- Temporary implementation shape:
+  - waves0-3: existing K/Q/sidecar producer
+  - waves4-7: packed owner16x2 consumers, owner pairs `(0,1)`, `(2,3)`,
+    `(4,5)`, `(6,7)`
+  - waves8-11: inactive helper waves, only arrive `AllDone`
+  - waves12-15: existing V/dO producer
+- Evidence:
+  - `16/248/16/16` branch windows failed compiler WDRA granularity.
+  - `16/248/40/16` branch windows built, but metadata failed:
+    `private_segment_fixed_size=236`, `vgpr_spill_count=58`.
+- Lesson: packing two owner16 blocks keeps two dV/dK accumulator sets live and
+  spills badly.  Larger GEMM islands need explicit accumulator phasing or a
+  different true-owner32 design; do not keep this route in active code.

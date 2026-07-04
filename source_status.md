@@ -2840,3 +2840,24 @@ Lesson:
   then consider finer lifetime release inside that window.
 - Active source and remote binary have been restored to the single
   `Raw0Filled/Raw0Used` baseline.
+
+## Rejected Probe: Nk32 Packed Owner16x2
+
+- Status: `REJECT_RESOURCE`; active code restored to baseline after this
+  evidence.
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `44_nk32_four_consumer_probe`.
+- The temporary source changed the canonical kernel so waves4-7 each processed
+  two adjacent owner16 blocks, logically covering `Nk=32` per active consumer
+  wave.
+- `Raw0Used` arrival count changed from eight consumers to four active
+  consumers; waves8-11 were inactive helper waves.
+- First build with VGPR windows `16/248/16/16` failed compiler WDRA
+  granularity.
+- After balancing the inactive branch to `40` VGPRs, build completed, but the
+  target kernel metadata failed:
+  `private_segment_fixed_size=236`, `vgpr_spill_count=58`, `sgpr_count=96`,
+  `vgpr_count=80`.
+- Conclusion: owner16x2 packing keeps two dV/dK accumulator sets live at once
+  and is not a viable resource shape.

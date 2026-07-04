@@ -4091,3 +4091,49 @@ Conclusion:
   design also creates a longer useful-work window, reduces token turns, or
   increases effective GEMM island size.
 - Baseline source and remote binary were restored after the probe.
+
+### Nk32 Packed-Owner Resource Probe
+
+Status: `REJECT_RESOURCE`, code reverted after metadata failure.
+
+Design basis:
+
+- Workbook sheet `44_nk32_four_consumer_probe` records the hypothesis:
+  make each active consumer wave logically cover `Nk=32` by packing two
+  adjacent owner16 blocks into one wave.
+- This keeps math/output ownership correct and avoids duplicating score/dP,
+  but doubles long-lived dV/dK accumulators and K/V owner registers in the
+  active consumer body.
+- This first cut is a resource-admission probe.  Waves8-11 are currently
+  inactive helper waves, so it is not yet the final 16-wave WASP topology.
+
+Local source change:
+
+- Added `consumer_dkv_mmac_loop_packed_owner16x2`.
+- waves4-7 process owner pairs `(0,1)`, `(2,3)`, `(4,5)`, `(6,7)`.
+- `Raw0Used` arrival count changes from 8 to 4 because four active consumers
+  release the raw page only after both packed owners are consumed.
+- `kConsumerVgprs` is temporarily set to `248` to test the high-WDRA window.
+- `scripts/check_dkv_kernel_gate.py` was updated to recognize this canonical
+  probe route and the local source gate passes.
+
+Remote evidence:
+
+- liuchang recovered through jump host `172.20.32.54`.
+- First build with windows `16/248/16/16` failed compile:
+  `branch-averaged vgpr size must be multiple of target's vgpr granularity`.
+- Setting the inactive branch to `40` VGPRs made the windows
+  `16/248/40/16`, and build/asm completed.
+- Symbol metadata gate for `fa3_bwd_dkv_kernel` then failed:
+  `private_segment_fixed_size=236`, `vgpr_spill_count=58`, `sgpr_count=96`,
+  `vgpr_count=80`.
+
+Conclusion:
+
+- Packing two owner16 blocks into one active wave doubles live dV/dK
+  accumulator families enough to spill badly, even with a 248-VGPR consumer
+  branch and a balanced inactive window.
+- Do not continue this owner16x2 packing route.
+- The next larger-island attempt needs phasing that does not keep two owner16
+  dV/dK accumulator sets live simultaneously, or it must move to a true
+  owner32 design with explicit accumulator lifetime control.
