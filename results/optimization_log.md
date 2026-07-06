@@ -6566,3 +6566,45 @@ Conclusion:
 - Keep the baseline canonical code.  The 40% route needs either a larger
   useful MMAC island per barrier token or a different dS/page ownership design,
   not this isolated Kt read motion.
+
+## 2026-07-07 dQ Direct MHalf Consumer No DsFilled
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Design:
+
+- Workbook sheet `23_dq_direct_mhalf_plan`.
+- Temporarily changed the canonical dQ role graph to remove the cross-role
+  `DsFilled` handoff:
+  waves0-3 stayed producers; wave4 owned MHalf0 and wave5 owned MHalf1; each
+  direct consumer computed `score/dP -> dS scratch -> dQ(D128)` locally and
+  then arrived `PageUsed`.  Waves6-11 only arrived `AllDone`.
+- The design did not duplicate score/dP inside dQ because the two heavy waves
+  owned disjoint M16 row slices and each owned all D128 output columns for its
+  rows.
+
+Evidence:
+
+- Static/resource PASS:
+  producer branch `8/40`, direct consumers `95/160` and `96/160`, tail `2/48`;
+  symbol metadata `private=0`, `sgpr=56`, `vgpr=136`, no SGPR/VGPR spill.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_075744`;
+  H1/S1024 one-dispatch
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_075749`.
+- H1/S1024 one-dispatch stats:
+  `simTicks=47,939,255`, `MMOP=52,224`, `MMAC active=5.95434%`,
+  `SCA=144,248`, `VALU=137,696`, `LDS=61,760`, `coissue=0/0`,
+  `ldsBankConflict=0`.
+- Same-shape baseline after recertification was
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_074751`,
+  `simTicks=34,002,150`, `MMAC active=8.21561%`.
+
+Conclusion:
+
+- Removing `DsFilled` is not sufficient when it collapses useful work to only
+  two heavy consumer waves.  The barrier bubble disappears structurally, but
+  SIMD occupancy/coissue collapses harder; `coissue=0` is especially telling.
+- Code was removed from the active path.  The next 40% design must keep at
+  least four heavy waves or otherwise fill all four SIMDs, while reducing dS
+  handoff cost with coarser/fewer tokens or a better page ownership pipeline.
