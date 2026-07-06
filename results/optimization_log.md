@@ -6358,3 +6358,30 @@ Decision:
   consumer `DsFilled` wait, consumer dQ MMAC or a realistic delay, `PageUsed`,
   and unequal worker progress.  Only a protocol that survives that probe should
   be translated back into `src/dq_kernel.cpp`.
+
+Follow-up worker+consumer+dS publication probe:
+
+- Added `probes/dq_qsubtile_ds_consumer_probe.cpp`.
+- The probe extends the accepted q_subtile matrix probe with:
+  unequal worker progress, dS-like LDS publication, `DsFilled`,
+  consumer `ds_read_matrix` plus two dQ-like MMACs, `PageUsed`, `QDoUsed`,
+  and `AllDone`.
+- Static/resource PASS:
+  `private=0`, `sgpr=23`, `vgpr=48`, no spill/scratch.
+- ASM evidence:
+  `matrix_load_32x32_b16=6`, `ds_read_matrix=10`, `v_mmac=4`,
+  `s_abarrier=34`, `s_set_vgpr_size=3`.
+- PMD PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_ds_consumer_probe_20260707_050746`,
+  `errors=0`, `done_waves=12`, `consumer_epochs=8`, `pass=1`,
+  `simTicks=12,012,455`, `ldsBankConflict=0`.
+
+Decision:
+
+- ACCEPT as focused protocol evidence.
+- Since this fuller probe passes while the full Mq64 kernel hangs, the
+  remaining blocker is probably not the abstract q_subtile barrier ledger.
+  Narrow the next probe toward the real helpers:
+  `dq_publish_ds_chunk` layout/math and `dq_consume_ds_kt_full_dtile`
+  read/MMAC path under two q_subtiles.  Do not re-edit the canonical kernel
+  until that more faithful helper-level probe passes.

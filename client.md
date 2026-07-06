@@ -538,3 +538,16 @@ Latest Mq64 main-kernel retry:
   build a focused worker+consumer+dS publication probe before touching
   `src/dq_kernel.cpp` again.  The active performance code remains the accepted
   Mq32 sidecar-LDS baseline.
+
+Follow-up probe result:
+
+- `probes/dq_qsubtile_ds_consumer_probe.cpp` passed PMD:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_ds_consumer_probe_20260707_050746`,
+  `errors=0`, `done_waves=12`, `consumer_epochs=8`, `pass=1`.
+- This probe includes unequal worker progress, dS-like LDS publication,
+  `DsFilled`, consumer matrix reads/MMAC, `PageUsed`, and `QDoUsed`.
+- Interpretation:
+  the q_subtile barrier protocol is viable even with a consumer path.  The full
+  Mq64 hang should be narrowed next to the real dQ helper bodies
+  (`dq_publish_ds_chunk` and `dq_consume_ds_kt_full_dtile`) before any further
+  canonical-kernel edit.

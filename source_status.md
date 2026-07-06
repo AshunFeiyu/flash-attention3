@@ -4082,3 +4082,25 @@ Current focus:
   focused worker+consumer+dS publication probe with unequal worker progress,
   `DsFilled`, dQ-like consumer work/release, and `PageUsed`; then port only a
   passing protocol back to the canonical kernel.
+
+## 2026-07-07 dQ q_subtile dS Consumer Probe Accepted
+
+- Added `probes/dq_qsubtile_ds_consumer_probe.cpp`.
+- It covers the previously missing q_subtile pieces:
+  unequal worker progress, dS-like LDS publication, `DsFilled`,
+  consumer `ds_read_matrix` and dQ-like MMAC, `PageUsed`, `QDoUsed`,
+  and `AllDone`.
+- Static/resource PASS:
+  `private=0`, `sgpr=23`, `vgpr=48`, no spill/scratch.
+- ASM evidence:
+  `matrix_load_32x32_b16=6`, `ds_read_matrix=10`, `v_mmac=4`,
+  `s_abarrier=34`.
+- PMD PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_ds_consumer_probe_20260707_050746`,
+  `errors=0`, `done_waves=12`, `consumer_epochs=8`, `pass=1`,
+  `simTicks=12,012,455`, `ldsBankConflict=0`.
+- Implication:
+  abstract q_subtile ownership with worker/consumer/dS is viable.  The full
+  Mq64 dQ hang is now more likely in the real `dq_publish_ds_chunk` or
+  `dq_consume_ds_kt_full_dtile` helper path, source-layout assumptions, or the
+  compiled control structure around those helpers.
