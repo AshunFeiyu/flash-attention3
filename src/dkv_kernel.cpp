@@ -672,25 +672,32 @@ __device__ __forceinline__ void latch_owner16_kv_regs(
     const int row_block32 = owner_nblock >> 1;
     const int n_half = owner_nblock & 1;
 
+    ins::F16x8 k0[4];
+    ins::F16x8 k1[4];
+    ins::F16x8 v0[4];
+    ins::F16x8 v1[4];
+
 #pragma unroll
     for (int d_block = 0; d_block < 4; ++d_block) {
-        ins::F16x8 k0;
-        ins::F16x8 k1;
-        ins::F16x8 v0;
-        ins::F16x8 v1;
         const int k_off =
             Layout::kKBase + kv_block_offset<Tile>(row_block32, d_block);
         const int v_off =
             Layout::kVBase + kv_block_offset<Tile>(row_block32, d_block);
-        ins::ds_read_matrix_trans_pair(lds, k_off, k0.f16x8, k1.f16x8);
-        ins::ds_read_matrix_trans_pair(lds, v_off, v0.f16x8, v1.f16x8);
-        ins::wait_lgkm(0);
+        ins::ds_read_matrix_trans_pair(
+            lds, k_off, k0[d_block].f16x8, k1[d_block].f16x8);
+        ins::ds_read_matrix_trans_pair(
+            lds, v_off, v0[d_block].f16x8, v1[d_block].f16x8);
+    }
+    ins::wait_lgkm(0);
+
+#pragma unroll
+    for (int d_block = 0; d_block < 4; ++d_block) {
         if (n_half == 0) {
-            regs.k[d_block].f16x8 = k0.f16x8;
-            regs.v[d_block].f16x8 = v0.f16x8;
+            regs.k[d_block].f16x8 = k0[d_block].f16x8;
+            regs.v[d_block].f16x8 = v0[d_block].f16x8;
         } else {
-            regs.k[d_block].f16x8 = k1.f16x8;
-            regs.v[d_block].f16x8 = v1.f16x8;
+            regs.k[d_block].f16x8 = k1[d_block].f16x8;
+            regs.v[d_block].f16x8 = v1[d_block].f16x8;
         }
     }
 }

@@ -1,5 +1,60 @@
 # Optimization Log
 
+## 2026-07-06 K/V Latch Wait Prune
+
+Decision: `ACCEPT_MICRO_OBSERVE`
+
+Hypothesis:
+
+Some explicit wait instructions are real data-safety waits, but the resident
+K/V latch waited after each DBlock pair even though K/V is latched only once
+before the steady q-loop.  Batching the four resident K/V reads and waiting
+once should be resource-safe and may trim a small front-end/LDS wait bubble.
+
+Implementation:
+
+- Single canonical kernel only.
+- In `latch_owner16_kv_regs`, issue all four K/V
+  `ds_read_matrix_trans_pair` groups first, then one `wait_lgkm(0)`.
+- No math, q-loop ownership, sidecar path, ABarrier ledger, output ownership,
+  or API change.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `14/188/188/8`;
+  metadata `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- ASM summary:
+  `s_waitcnt=347`, `ds_read_matrix=550`, `ds_read_b32=0`,
+  `ds_read_b128=96`.
+- Correctness PASS:
+  - H1/S128:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_202609`.
+  - H1/S1024:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_202706`.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_203150`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260706_203150_7gemm_wait_prune_kv_latch_h1s1024_sqc7_fullperf`.
+
+Result:
+
+- Full perf `simTicks`: `47,873,735 -> 47,871,005`.
+- `shaderActiveTicks`: `44,260,125 -> 44,257,395`.
+- MMAC active: `32.6559% -> 32.7888%`.
+- `VALU/SCA/LDS/VMEM`: `183136/115544/79360/4352`.
+- `ldsBankConflict=0`.
+- XCU still shows `s_waitcnt` at `19.99%` latency and
+  `s_abarrier_try_wait -> s_xor_b32` at `41.75%`.
+
+Conclusion:
+
+- Keep as a safe micro cleanup, but do not treat it as a main pipeline win.
+- The major limiter remains steady q-loop ownership/wait placement, especially
+  ABarrier waits and `ds_read_matrix -> wait` gaps that cannot be deleted
+  before `QUsed/DoutUsed` release without risking LDS overwrite.
+
 ## 2026-07-06 dO Normal Preread Under Score/dP
 
 Decision: `REJECT_STATS_ONLY`

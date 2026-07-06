@@ -1,5 +1,66 @@
 # Source Status
 
+## 2026-07-06 K/V Latch Wait-Prune Active
+
+Status: `MQ128_R1_WAIT_PRUNE_MICRO_CURRENT`.
+
+Current active source is still the clean W16/Mq128/Nk128/D128 canonical dKV
+kernel with dQ frozen.  It starts from the accepted Sidecar Vec4 LDS baseline
+and changes only the one-time resident K/V latch:
+
+- Old K/V latch:
+  four repetitions of K/V `ds_read_matrix_trans_pair` followed by
+  `wait_lgkm(0)`.
+- New K/V latch:
+  issue all four K/V read groups first, then one `wait_lgkm(0)` before
+  selecting the owner half.
+- No q-loop ownership, math, sidecar path, output ownership, ABarrier ledger,
+  API, or kernel count change.
+
+Validation:
+
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- WDRA branch windows:
+  producer0 `14/16`, consumer0 `188/240`, consumer1 `188/240`,
+  producer1 `8/16`.
+- Static asm evidence:
+  `s_waitcnt=347`, `ds_read_b32=0`, `ds_read_b128=96`,
+  `ds_read_matrix=550`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_202609`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_202706`.
+- H1/S1024 full perf correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_203150`.
+
+Performance:
+
+- Full perf `shaderActiveTicks=44,257,395`, `simTicks=47,871,005`.
+- `MMAC active=32.7888%`.
+- `MMOP=131,072`, `VALU=183,136`, `SCA=115,544`,
+  `LDS=79,360`, `VMEM=4,352`.
+- Coissue `36,652/26,646`.
+- `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260706_203150_7gemm_wait_prune_kv_latch_h1s1024_sqc7_fullperf`.
+
+XCU finding:
+
+- Dispatch duration is effectively flat against Sidecar Vec4
+  (`97,276 -> 97,268`).
+- Top bottlenecks remain `s_abarrier_try_wait -> s_xor_b32` at `41.75%`
+  and `s_waitcnt` at `19.99%` latency.
+
+Conclusion:
+
+Keep this as a safe micro cleanup because it removes a redundant latch wait
+pattern without hurting resources or correctness.  It is not a 60% MMAC-active
+solution; the next real optimization must attack ownership waits and useful
+overlap in the steady q-loop.
+
 ## 2026-07-06 Sidecar Vec4 LDS Reads Active
 
 Status: `MQ128_R1_SIDE_CAR_VEC4_CURRENT_BEST`.
