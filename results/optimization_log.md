@@ -5893,3 +5893,48 @@ Conclusion:
 - Lesson: batching sidecar reads can help when it reduces VALU/scattered
   readiness work, but it must be validated by PMD because static `s_waitcnt`
   counts can move in the wrong direction.
+
+### dQ Reference Correctness Bringup
+
+Status: `ACCEPT_BRINGUP_ONLY`.
+
+Scope:
+
+- New dQ branch: `shaobo/7gemm-dq-bringup`.
+- New design workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`.
+- New files: `include/dq_contract.h`, `src/dq_kernel.cpp`,
+  `scripts/check_dq_kernel_gate.py`, and `scripts/run_dq_correctness.sh`.
+- This is a correctness reference path only.  It is not the canonical MMAC dQ
+  performance kernel.
+
+Design boundary:
+
+- dQ owns Q tile and writes dQ without atomic add.
+- dQ may recompute score/dP across the separated dKV/dQ kernels, but must not
+  duplicate score/dP for the same `(Q tile, K tile)` inside the dQ kernel.
+- First canonical performance target remains `Mq=64,Nk=128,D=128,16 waves`,
+  with `Mq=32` only as a no-spill fallback.
+
+Evidence:
+
+- Remote build PASS:
+  `SRC=src/dq_kernel.cpp BIN=build/fa3_bwd_dq_clean ASM=build/fa3_bwd_dq_clean.asm ./build.sh`.
+- Static dQ gate PASS:
+  `python3 scripts/check_dq_kernel_gate.py`.
+- PMD H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260706_223246`.
+- Numerical result:
+  `dq_max_abs=5.82077e-11`, `dq_mean_abs=6.11585e-12`,
+  `dq_rmse=8.79944e-12`, `dq_rel_l2=2.36625e-07`, `bad=0`.
+- Reference dispatch `simTicks`:
+  softmax `2,108,136,030`, delta `1,400,708,855`, dP `12,980,695`,
+  dQ output `22,555,715`.
+
+Conclusion:
+
+- Promote as a stable dQ correctness harness and API entry point.
+- Do not use these ticks as performance evidence; this reference path is scalar
+  and intentionally separated from the future MLS/ds_read_matrix/MMAC path.
+- Next dQ work must implement the workbook's canonical MMAC kernel and compare
+  against this reference output.

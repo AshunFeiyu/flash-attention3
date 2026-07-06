@@ -2,10 +2,32 @@
 
 ## Mission
 
-Build one clean Shaobo FA3 BWD dKV kernel in the FA3 FWD style. dQ is frozen.
-The main optimization target is MMAC active share, with FA3 FWD as the hard
-benchmark. Correctness, no scratch/spill, `ldsBankConflict=0`, and explainable
-SQTT evidence are required before any performance claim.
+Build clean Shaobo FA3 BWD kernels in the FA3 FWD style.  The current preserved
+dKV baseline remains the 7-gemm focused dKV line; dQ is now reopened on a
+separate branch and must follow the same workbook-first discipline.  The main
+optimization target is MMAC active share, with FA3 FWD as the hard benchmark.
+Correctness, no scratch/spill, `ldsBankConflict=0`, and explainable SQTT
+evidence are required before any performance claim.
+
+## dQ Reopen Contract
+
+- Active branch: `shaobo/7gemm-dq-bringup`.
+- Design workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`.
+- Scope: implement a standalone dQ kernel after the dKV focused line.
+- Output ownership: Q tile owns dQ and stores once after reducing across all
+  K/V tiles; no atomic add in the first dQ path.
+- Algorithm boundary: because dKV and dQ are separate kernels, dQ may recompute
+  score/dP across kernels, but must not duplicate score/dP for the same
+  `(Q tile, K tile)` inside dQ.
+- First target tile from workbook: `Mq=64,Nk=128,D=128,16 waves`; fallback
+  `Mq=32,Nk=128,D=128` only if dQ accumulator VGPR pressure blocks correctness
+  or no-spill metadata.
+- Producer rule: producer publishes Q/dO plus packed sidecar to LDS, and streams
+  K/V through LDS; consumer should not direct-load sidecar global in the hot
+  path.
+- Evidence flow: design workbook -> code -> static gates -> H1/S128
+  correctness -> H1/S1024 PMD/xcu diagnosis -> update workbook/ledger/log.
 
 ## Current Canonical State
 

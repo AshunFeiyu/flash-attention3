@@ -1,5 +1,40 @@
 # Source Status
 
+## 2026-07-06 dQ Reopened
+
+Status: `DQ_WORKBOOK_FIRST_BRINGUP`.
+
+The preserved dKV source is not being rewritten in-place.  dQ work starts on
+branch `shaobo/7gemm-dq-bringup` with a separate design contract:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`.
+- Preview directory:
+  `/Volumes/172.20.68.76/共享/shaobo/dq_design_previews_20260706`.
+- dQ ownership: Q tile owns dQ, loops over K/V tiles, and stores dQ once.
+- First target: `Mq=64,Nk=128,D=128,16 waves`; fallback `Mq=32` only if the
+  first dQ accumulator design cannot pass no-spill/no-scratch.
+- No atomic add, no phase stack, no direct consumer sidecar global reads in the
+  intended hot path.
+
+Bringup validation:
+
+- dQ source/harness build PASS on remote:
+  `SRC=src/dq_kernel.cpp BIN=build/fa3_bwd_dq_clean ASM=build/fa3_bwd_dq_clean.asm ./build.sh`.
+- dQ gate PASS:
+  `python3 scripts/check_dq_kernel_gate.py`.
+- H1/S128 PMD correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260706_223246`.
+- Numerical result:
+  `dq_max_abs=5.82077e-11`, `dq_rel_l2=2.36625e-07`, `bad=0`, `pass=1`.
+- Dispatch `simTicks` for the reference chain:
+  softmax `2,108,136,030`, delta `1,400,708,855`, dP `12,980,695`,
+  dQ output `22,555,715`.
+
+This is accepted as `BRINGUP_ONLY`, not as a performance candidate.  The next
+dQ step is to implement the canonical `Mq=64,Nk=128,D=128` MMAC kernel from the
+workbook, using this reference path only for correctness.
+
 ## 2026-07-06 K/V Latch Wait-Prune Active
 
 Status: `MQ128_R1_WAIT_PRUNE_MICRO_CURRENT`.
