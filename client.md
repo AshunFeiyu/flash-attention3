@@ -506,3 +506,18 @@ Latest dQ evidence:
 - Nk128 single-page was rejected at static metadata:
   `private=68`, `sgpr_spill=2`, `vgpr_spill=64`; code reverted and remote
   recertified to the sidecar-LDS baseline.
+
+Latest q_subtile ownership probe:
+
+- `probes/dq_qsubtile_matrix_probe.cpp` is accepted as focused protocol
+  evidence for the next Mq64 attempt.
+- It uses the matrixized path (`matrix_load_32x32_b16 ... bps lds` plus
+  `ds_read_matrix_32x16_trans`) and repeats page0 across two q_subtiles.
+- PMD `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_matrix_probe_20260707_042323`,
+  `errors=0`, `done_waves=12`, `pass=1`, `ldsBankConflict=0`.
+- Implication:
+  the prior Mq64 hangs are likely in the full kernel's actual wait/release
+  wiring, not a fundamental ABarrier or matrix-path limitation.  Next canonical
+  dQ edit should retry Mq64 surgically with this release order, then measure
+  H1/S1024 whole-active MMAC toward the 40% target.

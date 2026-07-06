@@ -6287,3 +6287,34 @@ Focused q_subtile probe:
   scalar LDS writes/reads are not faithful enough to prove the FA path.  The
   next probe must use the same matrixized data path as the kernel:
   `matrix_load ... bps lds` plus `ds_read_matrix`, not scalar shared ints.
+
+Matrixized q_subtile ownership probe:
+
+- Added `probes/dq_qsubtile_matrix_probe.cpp` to test the same class of
+  matrixized data path as dQ: producer waves publish Q/dO with
+  `matrix_load_32x32_b16 ... bps lds`, worker waves consume with
+  `ds_read_matrix_32x16_trans`, and consumer waves release page ownership.
+- The probe intentionally repeats page0 across two q_subtiles to model the
+  causal `H1/S128` case that hung in the full Mq64 kernel.
+- Static/resource PASS:
+  `private=0`, `sgpr=31`, `vgpr=64`, `sgpr_spill=0`, `vgpr_spill=0`.
+  The probe uses uniform `s_set_vgpr_size(48)` windows to satisfy WDRA metadata;
+  it is a protocol probe, not a resource-optimized kernel.
+- ASM evidence:
+  `matrix_load_32x32_b16=10`, `ds_read_matrix=10`, `s_abarrier=35`,
+  `s_set_vgpr_size=4`.
+- PMD `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']` PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_matrix_probe_20260707_042323`,
+  `errors=0`, `done_waves=12`, `pass=1`,
+  `simTicks=10,955,945`, `ldsBankConflict=0`.
+
+Decision:
+
+- ACCEPT as focused protocol evidence.
+- The direct Mq64 hangs are not explained by a fundamental inability to reuse a
+  Q/dO page across q_subtiles.  The next Mq64 attempt should be a surgical main
+  kernel fix that mirrors the probe's release order: wait `QDoUsed` before
+  overwriting Q/dO, wait the specific page's `PageUsed` before refilling a
+  repeated page, and avoid a global page epoch that ignores repeated page0.
+- Do not promote any performance claim from this probe; it contains no MMOP and
+  was not designed for MMAC active measurement.

@@ -4025,3 +4025,29 @@ Current focus:
 - Remote recert after revert:
   dQ gate PASS, symbol metadata PASS with `private=0`, `sgpr=67`,
   `vgpr=168`, no spill/scratch.
+
+## 2026-07-07 dQ Matrixized q_subtile Probe Accepted
+
+- Active performance kernel remains `dq_sidecar_lds_staging`
+  (`Mq=32,Nk=64,D=128`, 12-wave CTA).
+- New focused probe:
+  `probes/dq_qsubtile_matrix_probe.cpp`.
+- Purpose:
+  test the Mq64 prerequisite ownership pattern outside the full kernel:
+  repeated page0, two q_subtiles, `QDoUsed`, `Page0Filled`,
+  `Page0DsFilled`, `Page0Used`, and `AllDone`.
+- Matrix path:
+  producer waves use `matrix_load_32x32_b16 ... bps lds` for Q/dO/K;
+  worker waves use `ds_read_matrix_32x16_trans` to verify Q/dO row ownership.
+- Static/resource PASS:
+  `private=0`, `sgpr=31`, `vgpr=64`, no spill/scratch.
+  ASM evidence includes `matrix_load_32x32_b16=10`,
+  `ds_read_matrix=10`, `s_abarrier=35`, `s_set_vgpr_size=4`.
+- PMD PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_matrix_probe_20260707_042323`,
+  `errors=0`, `done_waves=12`, `pass=1`,
+  `simTicks=10,955,945`, `ldsBankConflict=0`.
+- Decision:
+  accept as protocol evidence only.  Mq64 is reopened as a plausible
+  40%-MMAC-active route, but the next main-kernel edit must be surgical:
+  mirror the probe's QDo/page release order and keep one canonical dQ path.
