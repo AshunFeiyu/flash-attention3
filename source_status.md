@@ -65,6 +65,11 @@ Follow-up:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_035807`.
 - Source was restored and recertified again.  The remaining issue is not just
   page reuse; it is an unresolved q_subtile ABarrier phase/lifetime protocol.
+- Added focused probe `probes/dq_qsubtile_barrier_probe.cpp`.  It does not
+  hang under PMD, but scalar LDS data checks fail (`errors=16`, `done=0`) even
+  after adding `wait_lgkm(0)`.  Treat it as a synchronization smoke only, not as
+  proof for the matrixized FA path.  A faithful follow-up must use
+  `matrix_load ... bps lds` and `ds_read_matrix`.
 
 ## 2026-07-07 dQ Mq32 Double-Page Conveyor
 

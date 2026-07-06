@@ -77,6 +77,10 @@ evidence are required before any performance claim.
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_035807`.
   Larger Mq remains a likely 40% route, but it needs a focused q_subtile
   ABarrier ownership probe before re-entering the performance kernel.
+- Added `probes/dq_qsubtile_barrier_probe.cpp`.  It does not hang, but scalar
+  LDS checks fail (`errors=16`, `done=0`), so it is not a faithful proof for
+  the FA matrix path.  Next synchronization probe must use
+  `matrix_load ... bps lds` plus `ds_read_matrix`.
 - Current dQ source is restored to `dq_sidecar_lds_staging`; remote recertified
   static PASS with `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch,
   consumer branch `49/72`, worker `83/128`.

@@ -6271,3 +6271,19 @@ Updated decision:
   work needs a focused ABarrier q_subtile probe with tiny LDS writes/reads:
   producer writes QDo generation, worker reads and releases QDo, producer
   reuses QDo, and page0/page1 reuse is tested independently.
+
+Focused q_subtile probe:
+
+- Added `probes/dq_qsubtile_barrier_probe.cpp` to isolate the
+  `QDoUsed/PageFilled/DsFilled/PageUsed` sequence with two q_subtiles and
+  repeated page0 reuse.
+- PMD run did not hang:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_probe_20260707_040958`.
+- The scalar-LDS probe still failed data checks:
+  `errors=16`, `done=0`; adding `wait_lgkm(0)` after ordinary shared writes
+  did not change that result:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_probe_20260707_041119`.
+- Interpretation: this probe is useful as a synchronization smoke, but ordinary
+  scalar LDS writes/reads are not faithful enough to prove the FA path.  The
+  next probe must use the same matrixized data path as the kernel:
+  `matrix_load ... bps lds` plus `ds_read_matrix`, not scalar shared ints.
