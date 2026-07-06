@@ -46,8 +46,8 @@ def main() -> int:
             "missing_reference_path")
     require(source, r"kDqPathCanonicalDq", failures,
             "missing_canonical_path_contract_use")
-    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<64,\s*128>",
-            failures, "missing_active_mq64_nk128_tile")
+    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<64,\s*64>",
+            failures, "missing_active_mq64_nk64_tile")
     require(contract, r"kForbidDuplicateScoreDpInsideDq\s*=\s*true",
             failures, "missing_no_duplicate_score_dp_contract")
     require(contract, r"kForbidDqAtomicAdd\s*=\s*true",

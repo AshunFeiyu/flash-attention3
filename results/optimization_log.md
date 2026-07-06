@@ -5913,8 +5913,10 @@ Design boundary:
 - dQ owns Q tile and writes dQ without atomic add.
 - dQ may recompute score/dP across the separated dKV/dQ kernels, but must not
   duplicate score/dP for the same `(Q tile, K tile)` inside the dQ kernel.
-- First canonical performance target remains `Mq=64,Nk=128,D=128,16 waves`,
-  with `Mq=32` only as a no-spill fallback.
+- First canonical MMAC target is revised to `Mq=64,Nk=64,D=128,16 waves`
+  with source-layout `K^T` ABI and two serial `M32` q-subtiles.  The earlier
+  `Nk=128` target is deferred until one K LDS page can feed both normal and
+  transpose dQ views without duplicating Kt/dS storage.
 
 Evidence:
 
@@ -5936,5 +5938,5 @@ Conclusion:
 - Promote as a stable dQ correctness harness and API entry point.
 - Do not use these ticks as performance evidence; this reference path is scalar
   and intentionally separated from the future MLS/ds_read_matrix/MMAC path.
-- Next dQ work must implement the workbook's canonical MMAC kernel and compare
-  against this reference output.
+- Next dQ work must implement the revised workbook's canonical MMAC kernel and
+  compare against this reference output.

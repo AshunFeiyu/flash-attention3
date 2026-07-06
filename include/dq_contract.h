@@ -11,6 +11,7 @@ template <int BlockMq, int BlockNk>
 struct DqTileD128MqNk {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = BlockMq;
+    static constexpr int kSubMq = 32;
     static constexpr int kBlockNk = BlockNk;
     static constexpr int kWaveSize = 64;
     static constexpr int kWavesPerCta = 16;
@@ -29,15 +30,19 @@ struct DqTileD128MqNk {
 
     static constexpr int kHalfBytes = 2;
     static constexpr int kQDoBytes =
-        2 * kBlockMq * kHeadDim * kHalfBytes;
+        2 * kSubMq * kHeadDim * kHalfBytes;
     static constexpr int kKvBytes =
         2 * kBlockNk * kHeadDim * kHalfBytes;
+    static constexpr int kKtBytes =
+        kHeadDim * kBlockNk * kHalfBytes;
+    static constexpr int kDsBytes =
+        kSubMq * kBlockNk * kHalfBytes;
     static constexpr int kSidecarFloats = 3 * kBlockMq;
     static constexpr int kSidecarBytes =
         kSidecarFloats * static_cast<int>(sizeof(float));
     static constexpr int kLdsBudgetBytes = 128 * 1024;
     static constexpr int kPlannedLdsBytes =
-        kQDoBytes + kKvBytes + kSidecarBytes;
+        kQDoBytes + kKvBytes + kKtBytes + kDsBytes + kSidecarBytes;
 
     static_assert(kBlockMq % 32 == 0,
                   "dQ target consumes Mq in M32 consumer pairs");
@@ -48,7 +53,7 @@ struct DqTileD128MqNk {
                   "dQ target LDS plan must fit 128KB");
 };
 
-using ActiveDqTile = DqTileD128MqNk<64, 128>;
+using ActiveDqTile = DqTileD128MqNk<64, 64>;
 
 struct DqBarrierLedger {
     static constexpr int kQDoFilled = 0;

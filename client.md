@@ -20,9 +20,10 @@ evidence are required before any performance claim.
 - Algorithm boundary: because dKV and dQ are separate kernels, dQ may recompute
   score/dP across kernels, but must not duplicate score/dP for the same
   `(Q tile, K tile)` inside dQ.
-- First target tile from workbook: `Mq=64,Nk=128,D=128,16 waves`; fallback
-  `Mq=32,Nk=128,D=128` only if dQ accumulator VGPR pressure blocks correctness
-  or no-spill metadata.
+- First MMAC target tile from workbook revision: `Mq=64,Nk=64,D=128,16 waves`
+  using source-layout `K^T` ABI and two serial `M32` q-subtiles.  `Nk=128`
+  is a later upgrade only after the same K LDS page can feed both normal and
+  transpose dQ views without duplicating Kt/dS LDS.
 - Producer rule: producer publishes Q/dO plus packed sidecar to LDS, and streams
   K/V through LDS; consumer should not direct-load sidecar global in the hot
   path.

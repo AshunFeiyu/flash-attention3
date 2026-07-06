@@ -12,8 +12,11 @@ branch `shaobo/7gemm-dq-bringup` with a separate design contract:
 - Preview directory:
   `/Volumes/172.20.68.76/共享/shaobo/dq_design_previews_20260706`.
 - dQ ownership: Q tile owns dQ, loops over K/V tiles, and stores dQ once.
-- First target: `Mq=64,Nk=128,D=128,16 waves`; fallback `Mq=32` only if the
-  first dQ accumulator design cannot pass no-spill/no-scratch.
+- First MMAC target after old Stage60 evidence review:
+  `Mq=64,Nk=64,D=128,16 waves` with source-layout `K^T` ABI and two serial
+  `M32` q-subtiles.  The earlier workbook `Nk=128` target is deferred until
+  the same K LDS page can legally feed both normal and transpose dQ views
+  without a duplicate Kt page.
 - No atomic add, no phase stack, no direct consumer sidecar global reads in the
   intended hot path.
 
@@ -32,8 +35,8 @@ Bringup validation:
   dQ output `22,555,715`.
 
 This is accepted as `BRINGUP_ONLY`, not as a performance candidate.  The next
-dQ step is to implement the canonical `Mq=64,Nk=128,D=128` MMAC kernel from the
-workbook, using this reference path only for correctness.
+dQ step is to implement the canonical `Mq=64,Nk=64,D=128` MMAC kernel from the
+revised workbook, using this reference path only for correctness.
 
 ## 2026-07-06 K/V Latch Wait-Prune Active
 
