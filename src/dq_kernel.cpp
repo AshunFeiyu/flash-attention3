@@ -1558,6 +1558,9 @@ int main(int argc, char** argv) {
         arg_int(argc, argv, "--canonical", env_int("CANONICAL_DQ", 0));
     const int diag_store =
         arg_int(argc, argv, "--diag-store", env_int("DQ_DIAG_STORE", 0));
+    const int tiles_per_dispatch = arg_int(
+        argc, argv, "--tiles-per-dispatch",
+        env_int("DQ_TILES_PER_DISPATCH", 0));
 
     ShaoboFa3Params params{};
     params.struct_size = sizeof(params);
@@ -1578,6 +1581,7 @@ int main(int argc, char** argv) {
     params.block_threads = dq::ActiveDqTile::kThreadsPerCta;
     params.sync_after_launch = 1;
     params.reserved_i32[0] = diag_store;
+    params.reserved_i32[1] = tiles_per_dispatch;
 
     const size_t tensor_elems =
         static_cast<size_t>(batch) * static_cast<size_t>(heads) *

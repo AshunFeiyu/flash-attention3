@@ -6385,3 +6385,184 @@ Decision:
   `dq_publish_ds_chunk` layout/math and `dq_consume_ds_kt_full_dtile`
   read/MMAC path under two q_subtiles.  Do not re-edit the canonical kernel
   until that more faithful helper-level probe passes.
+
+## 2026-07-07 dQ Current S1024 Baseline And Dispatch Control
+
+Decision: `ACCEPT_BASELINE_AND_MEASUREMENT`
+
+Goal:
+
+- Current dQ optimization target is `MMAC active >= 40%` on
+  `B=1,H=1,S=1024,D=128,causal=true`, `GPU_CHIP=sb`,
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- The accepted canonical code remains `Mq=32,Nk=64,D=128,12 waves` with
+  sidecar staged in LDS.  Direct Mq64 remains rejected until a faithful
+  helper-level q_subtile probe proves the lifetime protocol.
+
+Baseline recertification:
+
+- Code was restored to the Mq32 sidecar-LDS canonical route.
+- Static/resource PASS:
+  branch windows producer `8/40`, consumer `49/72`, worker `83/128`,
+  dead/tail `2/48`; metadata `private=0`, `sgpr=67`, `vgpr=168`,
+  no SGPR/VGPR spill.
+- H1/S64 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063023`,
+  `dq_max_abs=6.10526e-08`, `dq_rmse=1.20621e-08`,
+  `l2_ratio=0.999981`.
+- H1/S1024 default two-dispatch correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063111`,
+  `dq_max_abs=1.85174e-07`, `dq_rmse=2.80325e-08`,
+  `dq_rel_l2=0.00208192`, `l2_ratio=0.999991`.
+- Two-dispatch H1/S1024 stats:
+  dispatch0 `simTicks=20,488,650`, `MMOP=13,824`,
+  `MMAC active=6.9912%`, coissue `203/171`;
+  dispatch1 `simTicks=31,593,835`, `MMOP=38,400`,
+  `MMAC active=9.7732%`, coissue `1,187/952`;
+  aggregate `simTicks=52,082,485`, `MMOP=52,224`,
+  `MMAC active=8.8385%`, `ldsBankConflict=0`.
+
+Dispatch-control measurement:
+
+- Added standalone `--tiles-per-dispatch` / `DQ_TILES_PER_DISPATCH` so the
+  S1024 target can run all 32 q tiles in one dispatch instead of the default
+  chunks of 16.  This is a measurement and launch-control knob only; it does
+  not change kernel math, tile shape, barriers, or matrix path.
+- H1/S1024 one-dispatch correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063334`.
+- One-dispatch stats:
+  `simTicks=34,346,130`, `MMOP=52,224`, `MMAC active=8.2338%`,
+  coissue `1,297/1,090`, `ldsBankConflict=0`.
+
+Conclusion:
+
+- One dispatch reduces PMD total `simTicks` versus summing two dispatches, but
+  it does not improve core utilization (`8.84% -> 8.23%` active).
+- Keep the knob for clean target-shape measurement and perf capture.
+- Do not count it as a 40% active optimization.  The next real optimization
+  must increase useful MMAC work per ownership epoch or materially reduce the
+  worker/consumer ABarrier and wait debt.
+
+## 2026-07-07 dQ Mq64 Clean Retry Boundary
+
+Decision: `REJECT_HANG`
+
+Hypothesis:
+
+After restoring Mq32 and proving smaller q_subtile protocol probes, a cleaner
+Mq64 retry tested whether explicit role-branch ordering plus branch-local
+setup could avoid the earlier full-kernel hangs.
+
+Evidence:
+
+- Temporary changes were reverted after the run:
+  `ActiveDqTile=Mq64,Nk64`, q-subtile `QDoUsed`, per-page `PageUsed` wait,
+  worker-before-consumer CFG order, and no pre-role high-VGPR setup.
+- Static/resource stayed clean:
+  `private=0`, `vgpr=168`, no spill/scratch; branch windows around
+  producer `9/40`, worker `87/128`, consumers `51/72`, tail `2/48`.
+- PMD H1/S64/H1/S128 still did not complete:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063717`.
+
+Conclusion:
+
+- Direct Mq64 in the canonical full kernel remains rejected.
+- The blocker is not wave-id semantics and not a simple page-seen bug.  The
+  next Mq64 work must be a helper-faithful probe that reuses the real
+  `dq_publish_ds_chunk` and `dq_consume_ds_kt_full_dtile` layout/math before
+  touching the performance route again.
+
+## 2026-07-07 Wave ID Semantics Probe
+
+Decision: `ACCEPT_PROBE`
+
+Evidence:
+
+- Added `probes/wave_id_semantics_probe.cpp`.
+- PMD run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/wave_id_semantics_20260707_061657`.
+- Output:
+  `wave_id_semantics hw_by_cta_wave=0,1,2,3,4,5,6,7,8,9,10,11`
+  and `cta_wave_echo=0,1,2,3,4,5,6,7,8,9,10,11`.
+
+Conclusion:
+
+- `__builtin_hcu_get_wave_id()` behaves as CTA-local wave id `0..11` in this
+  focused 12-wave probe.
+- Do not replace the kernel role id with `threadIdx.x / 64`; a prior attempt
+  using thread-derived role id failed compilation with
+  `Must get wave id in the entry block to set vgpr size`.
+
+## 2026-07-07 dQ Real-Helper q_subtile Probe
+
+Decision: `ACCEPT_PROBE`
+
+Purpose:
+
+- Preserve a focused local test for the Mq64 path without polluting the
+  canonical dQ kernel.
+- The probe exercises real dQ-style helper logic more closely than the tiny
+  scalar/barrier probes: Q/dO publish, sidecar staging, K/V/Kt LDS pages,
+  dS-like publication, consumer `ds_read_matrix` plus MMAC, and q_subtile page
+  reuse.
+
+Evidence:
+
+- Source: `probes/dq_qsubtile_real_helper_probe.cpp`.
+- One-page PMD PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_real_helper_probe_20260707_052352`,
+  `simTicks=15,582,840`, `MMOP=288`, `ldsBankConflict=0`.
+- Two-page PMD PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/qsubtile_real_helper_probe_2page_20260707_054104`,
+  `simTicks=15,570,100`, `MMOP=288`, `ldsBankConflict=0`.
+
+Conclusion:
+
+- The Mq64 hang is still not explained by basic q_subtile page reuse, matrix
+  path, or a small real-helper-like MMAC body.  The full canonical kernel likely
+  has a more specific control/lifetime mismatch in the exact
+  `dq_publish_ds_chunk` / `dq_consume_ds_kt_full_dtile` integration.
+- Keep this as an isolated probe only.  Do not add another production phase or
+  switch for it.
+
+## 2026-07-07 dQ Kt Preread Under DsFilled Wait
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Purpose:
+
+- XCU on the one-dispatch S1024 perf showed the dominant bubble was
+  `s_abarrier_try_wait -> s_xor_b32` on `Page0DsFilled`/`DsFilled`, and the
+  representative window had about `96%` bubble cost with `MMAC+VALU` coissue
+  still `0`.
+- The candidate tried to preread the stable `K^T` fragments after
+  `PageFilled` but before `DsFilled`, so the later dQ consume step would only
+  read `dS` and then MMAC.
+
+Evidence:
+
+- Temporary code added `dq_preload_kt_full_dtile` and
+  `dq_consume_ds_with_kt_full_dtile` in the canonical dQ path.  It was removed
+  after measurement.
+- Static/resource stayed clean:
+  branch windows remained producer `8/40`, consumers `49/72`, worker `83/128`,
+  tail `2/48`; metadata remained `private=0`, `sgpr=67`, `vgpr=168`, no
+  spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_073748`
+  and H1/S1024
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_073822`.
+- Same one-dispatch H1/S1024 stats:
+  baseline `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_065637`
+  was `simTicks=34,215,090`, `MMAC active=8.24798%`, `SCA=217,384`;
+  Kt preread was `simTicks=34,237,840`, `MMAC active=8.19433%`,
+  `SCA=225,640`.
+
+Conclusion:
+
+- Prereading Kt under the dS wait is correct and resource-clean, but it is a
+  small regression.  It likely lengthens the Kt live range and adds scalar
+  scheduling/control work without reducing the `DsFilled` critical bubble.
+- Keep the baseline canonical code.  The 40% route needs either a larger
+  useful MMAC island per barrier token or a different dS/page ownership design,
+  not this isolated Kt read motion.

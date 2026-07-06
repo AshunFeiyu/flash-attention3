@@ -1,5 +1,64 @@
 # Source Status
 
+## 2026-07-07 dQ 40% MMAC Active Target
+
+Status: `DQ_MQ32_SIDECAR_LDS_BASELINE_ACTIVE`.
+
+Current goal:
+
+- Optimize the clean dQ path toward `MMAC active >= 40%`.
+- Target shape is `B=1,H=1,S=1024,D=128,causal=true`,
+  `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.
+- Hard gates remain correctness PASS, `private=0`, no scratch/spill,
+  `ldsBankConflict=0`, and main matrix path through MLS/BPS +
+  `ds_read_matrix` + MMAC.
+
+Current code state:
+
+- Branch: `shaobo/7gemm-dq-bringup`.
+- Canonical dQ tile: `Mq=32,Nk=64,D=128,12 waves`.
+- Sidecar is staged by the producer into LDS; worker does not direct-load the
+  three sidecar streams from global in the hot path.
+- Added a standalone measurement knob:
+  `--tiles-per-dispatch` / `DQ_TILES_PER_DISPATCH`.  It controls how many q
+  tiles the standalone harness packs into one dispatch and does not alter the
+  kernel math or tile shape.
+
+Latest target-shape evidence:
+
+- Default two-dispatch H1/S1024:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063111`,
+  aggregate `simTicks=52,082,485`, `MMOP=52,224`,
+  `MMAC active=8.8385%`, `ldsBankConflict=0`, correctness PASS.
+- One-dispatch measurement with `DQ_TILES_PER_DISPATCH=32`:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063334`,
+  `simTicks=34,346,130`, `MMOP=52,224`,
+  `MMAC active=8.2338%`, `ldsBankConflict=0`, correctness PASS.
+- XCU full perf on the same one-dispatch shape:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_072949`,
+  helper perf
+  `m5out/0/0/2737677_fa3_bwd_dq_clean.perf`.  The dominant bubble is
+  `s_abarrier_try_wait -> s_xor_b32` on `DsFilled`; a representative window
+  showed about `96%` bubble cost and no `MMAC+VALU` coissue.
+- Rejected Kt-preread attempt:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_073822`,
+  correctness/resource PASS but `simTicks=34,237,840` and
+  `MMAC active=8.1943%` versus same one-dispatch baseline
+  `34,215,090` / `8.2480%`; code removed from the active path.
+
+Decision:
+
+- Keep `DQ_TILES_PER_DISPATCH=32` for S1024 perf capture because it avoids
+  artificial dispatch splitting.
+- Do not count it as an optimization; it lowers dispatch overhead but not core
+  MMAC active.
+- Direct Mq64 remains rejected by PMD hang.  Further Mq64 work must first pass
+  a helper-faithful q_subtile probe using the real dS publish and dQ consume
+  helper layout.
+- Do not retry isolated Kt preread/code motion.  The next 40% path should
+  either enlarge useful MMAC work per barrier token or redesign dS/page
+  ownership so consumer waves are not dominated by `DsFilled` waiting.
+
 ## 2026-07-07 dQ dS Chunk Token Rejected
 
 Status: `DQ_SOURCE_RESTORED_TO_SIDECAR_LDS_STAGING`.

@@ -35,6 +35,35 @@ evidence are required before any performance claim.
 - Evidence flow: design workbook -> code -> static gates -> H1/S128
   correctness -> H1/S1024 PMD/xcu diagnosis -> update workbook/ledger/log.
 
+## Active dQ Target
+
+- Current target: `MMAC active >= 40%` on
+  `B=1,H=1,S=1024,D=128,causal=true`, `GPU_CHIP=sb`,
+  `GPU_ARGS="['--SQCIPfLines=7']"`.
+- Current canonical dQ path: `Mq=32,Nk=64,D=128,12 waves`, sidecar-LDS,
+  two K/V/Kt/dS pages.
+- Current recertified baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063111`,
+  aggregate `MMAC active=8.8385%`, `simTicks=52,082,485`, correctness PASS,
+  `ldsBankConflict=0`.
+- S1024 one-dispatch measurement knob:
+  `DQ_TILES_PER_DISPATCH=32`, run
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063334`,
+  `simTicks=34,346,130`, `MMAC active=8.2338%`.  Use this for cleaner perf
+  capture, but do not count it as an optimization.
+- Latest xcu bottleneck:
+  one-dispatch full perf
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_072949`
+  is dominated by `DsFilled` ABarrier wait bubbles.  Kt preread under this wait
+  was correct/resource-clean but regressed to `simTicks=34,237,840`,
+  `MMAC active=8.1943%`, so it was removed.
+- Direct full-kernel Mq64 is still rejected by hang.  Larger Mq/Nk remains a
+  likely path to 40%, but only after a helper-faithful q_subtile probe proves
+  the real dS publication and dQ consume lifetime.
+- Next evidence step: redesign the canonical path around the `DsFilled` bubble:
+  increase MMAC island size per dS/page token or change dS/page ownership,
+  while keeping one clean kernel path and no code stacking.
+
 ## Current Canonical State
 
 - Repo focus: `/zys/shaobo/fa3_bwd_wasp_clean`.
