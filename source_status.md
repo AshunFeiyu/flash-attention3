@@ -3758,3 +3758,18 @@ Current focus:
 - Guardrail: do not carry tiny producer prefetch work just because it is
   correct and resource-clean.  Future producer-thickening needs enough
   independent work to change the critical path or a consumer-release redesign.
+
+## 2026-07-06 K/V Latch Uniform Half-Select Rejection
+
+- Active code remains the accepted `w16_mq128_kv_latch_wait_prune` route.
+- A temporary instruction-level candidate moved `owner_nblock & 1` selection
+  outside the K/V latch `d_block` loop with `readfirstlane`.
+- Static asm reduced `v_cndmask` by 64, but added vector move/control work.
+- H1/S128 and H1/S1024 correctness passed, but H1/S1024 stats regressed:
+  `simTicks=48,266,855` versus baseline `47,871,005`, and MMAC active fell
+  `32.7888% -> 32.6821%`.
+- Decision: `REJECT_STATS_ONLY`; candidate code was reverted locally and
+  synced out of `/zys/shaobo/fa3_bwd_wasp_clean`.
+- Guardrail: static instruction-count cleanup is not enough.  For dKV
+  instruction-level tuning, keep only changes that improve same-shape PMD
+  stats and do not reduce MMAC active.

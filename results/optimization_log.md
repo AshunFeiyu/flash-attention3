@@ -5774,3 +5774,57 @@ Conclusion:
 - The next design must change the steady q-loop ownership/pipeline shape:
   reduce the number of full-page ownership cliffs per useful MMAC, or create
   real consumer-group stagger before producers hit QUsed/DoutUsed.
+
+### K/V Latch Uniform Half-Select Rejection
+
+Status: `REJECT_STATS_ONLY`.
+
+Scope:
+
+- Single canonical dKV kernel only.
+- Temporary instruction-level candidate in `latch_owner16_kv_regs`.
+- No tile, wave role, ABarrier protocol, output ownership, or matrix path
+  change.
+
+Hypothesis:
+
+- `owner_nblock & 1` is wave-uniform for the owner16 K/V latch.
+- Moving the half select outside the `d_block` loop might replace 64
+  per-fragment `v_cndmask` instructions with one branch and reduce VALU
+  pressure.
+
+Evidence:
+
+- Static/resource gates PASS:
+  `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- Branch windows unchanged:
+  producer0 `14/16`, consumer0 `188/240`, consumer1 `188/240`,
+  producer1 `8/16`.
+- Static asm:
+  `v_cndmask` fell `203 -> 139`, but `v_mov_b64_e32` rose
+  `103 -> 135` and `v_mov_b64` rose `139 -> 171`; `s_waitcnt` remained
+  `347`.
+- Correctness PASS:
+  H1/S128 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_213349`,
+  and H1/S1024 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_213419`.
+- H1/S1024 stats-only:
+  `simTicks=48,266,855`, `kernel_ticks=44,653,245`,
+  `MMAC active=32.6821%`, `VALU=181,600`, `SCA=115,640`,
+  `LDS=79,360`, `VMEM=4,352`, coissue `36,600/26,562`,
+  `ldsBankConflict=0`.
+- Accepted wait-prune baseline:
+  `simTicks=47,871,005`, `kernel_ticks=44,257,395`,
+  `MMAC active=32.7888%`, coissue `36,652/26,646`.
+
+Conclusion:
+
+- Rejected and reverted from active code.
+- The compiler traded fewer `v_cndmask` instructions for more vector moves and
+  branch/control work; same-shape PMD stats regressed by about `0.83%` on
+  `simTicks` and reduced MMAC active.
+- Lesson: do not promote static instruction-count reductions unless PMD stats
+  and active-share evidence agree.  For this specific K/V latch half select,
+  the original loop-local select is better under the current compiler/PMD.
