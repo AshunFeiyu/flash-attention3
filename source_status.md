@@ -57,6 +57,15 @@ Decision:
   protocol must first be proven in a focused q_subtile ownership probe.  Do not
   retry direct Mq64 in the performance kernel.
 
+Follow-up:
+
+- Retried Mq64 with independent `page0_seen/page1_seen` tracking after finding
+  that the first QDo attempt could still overwrite page0 in causal H1/S128.
+- Static/resource remained clean, but H1/S128 hung again:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_035807`.
+- Source was restored and recertified again.  The remaining issue is not just
+  page reuse; it is an unresolved q_subtile ABarrier phase/lifetime protocol.
+
 ## 2026-07-07 dQ Mq32 Double-Page Conveyor
 
 Status: `DQ_MQ32_DOUBLEPAGE_CURRENT_BASELINE`.

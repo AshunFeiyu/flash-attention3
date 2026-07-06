@@ -6248,3 +6248,26 @@ Decision:
 - Larger Mq remains an important 40% route, but it now needs a focused
   q-subtile synchronization probe that uses tiny synthetic producer/worker
   roles before returning to the full dQ kernel.
+
+Follow-up Mq64 per-page-seen attempt:
+
+- The previous `page_epoch >= 2` proof had a real bug: for causal H1/S128,
+  both q_subtiles use page0, so q_subtile 1 can reuse page0 before a global
+  two-page epoch counter reaches 2.
+- Retried with independent `page0_seen/page1_seen` tracking: producer waits
+  `PageUsed(page)` whenever the specific page has already been filled.
+- Static/resource again passed:
+  `private=0`, `sgpr=69`, `vgpr=168`, no spill/scratch.
+- H1/S128 still hung:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_035807`.
+- Killed process group:
+  `2733728`, `2733729`, `2733731`, `2733732`.
+- Source was restored and remote recertified to Mq32 sidecar-LDS.
+
+Updated decision:
+
+- The page overwrite bug was real, but not the only deadlock source.
+- Mq64 cannot be debugged further inside the performance kernel.  Next Mq64
+  work needs a focused ABarrier q_subtile probe with tiny LDS writes/reads:
+  producer writes QDo generation, worker reads and releases QDo, producer
+  reuses QDo, and page0/page1 reuse is tested independently.
