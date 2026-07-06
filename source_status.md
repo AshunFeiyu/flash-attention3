@@ -4051,3 +4051,34 @@ Current focus:
   accept as protocol evidence only.  Mq64 is reopened as a plausible
   40%-MMAC-active route, but the next main-kernel edit must be surgical:
   mirror the probe's QDo/page release order and keep one canonical dQ path.
+
+## 2026-07-07 dQ Mq64 Main-Kernel Retry Rejected
+
+- Tried to translate the accepted matrixized q_subtile probe back into the
+  canonical dQ kernel with `Mq=64,Nk=64`.
+- Static/resource stayed clean in all variants:
+  `private=0`, `vgpr=168`, `sgpr=69..72`, no spill/scratch.
+- Correctness did not complete:
+  H1/S128 hung at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_043215`;
+  H1/S64 also hung at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_043539`.
+- Diagnostic variants:
+  disabling producer QDo wait did not unhang S64;
+  worker self-wait plus single-transition QDo avoided one phase-wrap hazard
+  but still hung;
+  a BRINGUP_ONLY q_subtile `__syncthreads()` boundary also still hung.
+- ABarrier evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_mq64_s64_abar_debug_20260707_044204`
+  exposed QDo phase wrap from fast worker waves; later logs still showed the
+  full kernel stalling around the consumer `DsFilled`/dS publication path.
+- Decision:
+  `REJECT_HANG`.  The active source is restored to Mq32 sidecar-LDS and the
+  remote build is recertified:
+  branch windows producer `8/40`, consumers `49/72`, worker `83/128`,
+  metadata `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+- Next Mq64 work:
+  do not add more tokens inside the full kernel directly.  First write a
+  focused worker+consumer+dS publication probe with unequal worker progress,
+  `DsFilled`, dQ-like consumer work/release, and `PageUsed`; then port only a
+  passing protocol back to the canonical kernel.

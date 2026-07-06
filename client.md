@@ -521,3 +521,20 @@ Latest q_subtile ownership probe:
   wiring, not a fundamental ABarrier or matrix-path limitation.  Next canonical
   dQ edit should retry Mq64 surgically with this release order, then measure
   H1/S1024 whole-active MMAC toward the 40% target.
+
+Latest Mq64 main-kernel retry:
+
+- Retried the canonical dQ kernel with `Mq=64,Nk=64`; resource gates remained
+  clean (`private=0`, `vgpr=168`, `sgpr=69..72`, no spill/scratch).
+- H1/S128 and H1/S64 both hung under PMD, so the code was reverted and the
+  remote source was recertified to the Mq32 sidecar-LDS baseline.
+- ABarrier logs exposed one concrete bug: a counted ABarrier is not a
+  unique-wave barrier.  Fast worker waves can arrive a later q_subtile before
+  slow waves finish the earlier q_subtile unless they also wait after arrive.
+- Even after fixing that QDo phase hazard, the full kernel still stalled around
+  the `DsFilled` / consumer path.  The accepted q_subtile probe was therefore
+  too thin: it did not include realistic dS publication plus consumer dQ work.
+- Next step for 40% MMAC active:
+  build a focused worker+consumer+dS publication probe before touching
+  `src/dq_kernel.cpp` again.  The active performance code remains the accepted
+  Mq32 sidecar-LDS baseline.

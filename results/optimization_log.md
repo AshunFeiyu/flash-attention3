@@ -6318,3 +6318,43 @@ Decision:
   repeated page, and avoid a global page epoch that ignores repeated page0.
 - Do not promote any performance claim from this probe; it contains no MMOP and
   was not designed for MMAC active measurement.
+
+Main-kernel Mq64 retry after the matrixized probe:
+
+- Retried the canonical dQ kernel with `ActiveDqTile=Mq64,Nk64`, adding
+  `QDoUsed`, per-page `PageUsed` tracking, and later worker-side QDo wait.
+- Static/resource stayed clean across attempts:
+  `private=0`, `vgpr=168`, `sgpr=69..72`, no spill/scratch.
+- PMD H1/S128 still hung:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_043215`.
+- PMD H1/S64 also hung, proving the issue is not page1 or multiple CTAs:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_043539`.
+- Removing producer QDo wait temporarily did not unhang S64:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_043929`.
+- ABarrier debug found a real phase hazard:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_mq64_s64_abar_debug_20260707_044204`
+  showed fast worker waves could advance `QDoUsed` twice before the producer
+  waited, so a counted ABarrier is not a unique-wave barrier unless the role
+  waits after arrive.
+- Added worker self-wait and then limited QDo to the single q_sub0->q_sub1
+  handoff to avoid phase wrap.  H1/S64 still hung:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_044449`,
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_045025`.
+- A conservative q_subtile `__syncthreads()` boundary also did not make S64
+  complete:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_045713`.
+- Later ABarrier logs indicate the full kernel can still stall with consumers
+  waiting on the dS publication path / `DsFilled`, not merely QDo.
+- All Mq64 code changes were reverted.  Remote source was recertified to the
+  accepted Mq32 sidecar-LDS baseline:
+  branch windows producer `8/40`, consumers `49/72`, worker `83/128`,
+  metadata `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+
+Decision:
+
+- REJECT_HANG for the main-kernel Mq64 retry.
+- Do not keep adding tokens inside the full kernel.  The next Mq64 attempt must
+  first build a faithful focused probe that includes worker dS publication,
+  consumer `DsFilled` wait, consumer dQ MMAC or a realistic delay, `PageUsed`,
+  and unequal worker progress.  Only a protocol that survives that probe should
+  be translated back into `src/dq_kernel.cpp`.
