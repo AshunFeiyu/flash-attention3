@@ -30,6 +30,33 @@ Decision:
   MMAC-active route must either reduce token count/LDS footprint or increase
   useful MMAC work per ownership epoch.
 
+## 2026-07-07 dQ Mq64 QDo Token Rejected
+
+Status: `DQ_SOURCE_RESTORED_TO_MQ32_SIDECAR_LDS_STAGING`.
+
+Tried to revive Mq64 with an explicit q-subtile lifetime proof:
+
+- `ActiveDqTile = Mq64,Nk64`.
+- Added `QDoUsed(count=4)` so worker waves release Q/dO/sidecar before
+  producer overwrites that LDS region for q_subtile 1.
+- Changed producer page reuse from `kt >= 2` to a cross-q_subtile
+  `page_epoch >= 2` test.
+
+Result:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=69`, `vgpr=168`, no spill/scratch.
+- H1/S128 PMD hung and was killed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_034822`.
+
+Decision:
+
+- Code was reverted and remote recertified to the accepted Mq32 sidecar-LDS
+  baseline.
+- Mq64 is still relevant for the 40% MMAC-active target, but the synchronization
+  protocol must first be proven in a focused q_subtile ownership probe.  Do not
+  retry direct Mq64 in the performance kernel.
+
 ## 2026-07-07 dQ Mq32 Double-Page Conveyor
 
 Status: `DQ_MQ32_DOUBLEPAGE_CURRENT_BASELINE`.

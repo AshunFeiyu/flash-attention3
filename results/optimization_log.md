@@ -6208,3 +6208,43 @@ Decision:
   useful MMAC per token, for example by eliminating the K^T page through a
   proven native layout, or by redesigning the tile so each page epoch has a
   larger dQ MMAC island without spill.
+
+### dQ Mq64 QDo Token Experiment
+
+Status: `REJECT_HANG`.
+
+Hypothesis:
+
+- `Mq32,Nk64` has too little useful MMAC work per CTA/page epoch to approach
+  the 40% whole-active MMAC target.
+- `Mq64` can increase per-CTA useful work without increasing the LDS Q/dO
+  footprint if two M32 q-subtiles reuse the same Q/dO/sidecar LDS region
+  serially.
+
+Lifetime proof attempted:
+
+- Added `QDoUsed(count=4)` so worker waves release Q/dO/sidecar after finishing
+  all K tiles for one q-subtile.
+- Producer waits `QDoUsed` before loading q_subtile 1.
+- Producer also used a monotonic `page_epoch` across q_subtiles so page0/page1
+  are not overwritten merely because `kt < 2` in a new q_subtile.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=69`, `vgpr=168`, no spill/scratch; branch windows
+  producer `9/40`, consumers `51/72`, worker `87/128`.
+- H1/S128 PMD did not complete after several minutes:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_034822`.
+- Killed process group:
+  `2733520`, `2733521`, `2733523`, `2733524`.
+- Source was reverted and remote recertified to the Mq32 sidecar-LDS baseline.
+
+Decision:
+
+- Do not retry Mq64 directly inside the performance kernel.
+- The old Mq64 hang was not fully solved by the first `QDoUsed` protocol.
+  There is still an ABarrier phase or cross-q_subtile ownership gap.
+- Larger Mq remains an important 40% route, but it now needs a focused
+  q-subtile synchronization probe that uses tiny synthetic producer/worker
+  roles before returning to the full dQ kernel.

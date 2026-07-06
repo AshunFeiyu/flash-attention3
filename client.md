@@ -69,6 +69,11 @@ evidence are required before any performance claim.
   `8.7319%` whole-active MMAC.  The conclusion is that finer-grain ABarrier
   readiness alone raises scalar/control debt faster than it exposes useful dQ
   MMAC.
+- dQ Mq64 with a new `QDoUsed` q-subtile token also rejected.  Static/resource
+  was clean (`private=0`, `sgpr=69`, no spill), but H1/S128 PMD hung at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_034822`.
+  Larger Mq remains a likely 40% route, but it needs a focused q_subtile
+  ownership probe before re-entering the performance kernel.
 - Current dQ source is restored to `dq_sidecar_lds_staging`; remote recertified
   static PASS with `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch,
   consumer branch `49/72`, worker `83/128`.
