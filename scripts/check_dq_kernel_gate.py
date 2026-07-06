@@ -52,6 +52,8 @@ def main() -> int:
             "missing_12wave_wdra_attribute")
     require(source, r"dq_publish_ds_chunk", failures,
             "missing_split_ds_publisher")
+    require(source, r"dq_load_sidecar_tile", failures,
+            "missing_producer_sidecar_lds_staging")
     require(source, r"dq_consume_ds_kt_full_dtile", failures,
             "missing_dq_mmac_consumer")
     require(source, r"materialize_k_t_source", failures,

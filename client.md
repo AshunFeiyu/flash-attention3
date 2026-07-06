@@ -429,3 +429,29 @@ This is a micro-baseline; XCU still shows ABarrier/control as the main bubble.
    Coissue dominated by `v_mov` is not a success.
 5. Commit every accepted or rejected evidence checkpoint before starting the
    next hypothesis.
+
+## dQ Current State
+
+Active branch: `shaobo/7gemm-dq-bringup`.
+
+Active dQ kernel: `src/dq_kernel.cpp`, canonical path
+`kDqPathCanonicalDq`, tile `Mq=32,Nk=64,D=128`, 12-wave CTA.
+
+Current accepted dQ candidate is `dq_sidecar_lds_staging`:
+
+- Producer writes `scores_max/scores_sum/delta` into a small LDS sidecar tail
+  before `PageFilled`.
+- Worker computes dS from LDS sidecar instead of direct global sidecar loads.
+- No new ABarrier token was added.
+- Static/resource PASS: `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+- Correctness PASS H1/S128 and H1/S1024.
+- H1/S1024 dispatch1:
+  `kernel_ticks=28,114,905`, `MMAC active=9.707%`,
+  `ldsBankConflict=0`.
+- Previous double-page dispatch1:
+  `kernel_ticks=35,671,545`, `MMAC active=7.8501%`.
+
+This is useful but still far from the 40% MMAC-active goal.  The next dQ
+design question is whether K and K^T can share the same LDS resident source
+layout, removing the 16KB K^T page copy and freeing LDS for deeper buffering or
+a larger MMAC island.

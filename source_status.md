@@ -3894,3 +3894,27 @@ Current focus:
   s_xor_b32`, about `41.91%`), so next instruction-level work should target
   ownership wait exposure or matrix-read/wait gaps, not another sidecar-only
   reshuffle.
+
+## 2026-07-07 dQ Producer Sidecar LDS Staging Accepted
+
+- Branch: `shaobo/7gemm-dq-bringup`.
+- Canonical dQ source: `src/dq_kernel.cpp`.
+- Active tile/topology: `Mq=32,Nk=64,D=128`, 12-wave CTA.
+- Current accepted dQ change: producer-side sidecar LDS staging.
+- Resource gate:
+  `private=0`, `sgpr=67`, `vgpr=168`, `sgpr_spill=0`, `vgpr_spill=0`;
+  branch windows producer `8/40`, consumers `49/72`, worker `83/128`.
+- Correctness:
+  H1/S128 PASS at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_022646`;
+  H1/S1024 PASS at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_022713`.
+- H1/S1024 stats:
+  dispatch0 `kernel_ticks=17,546,620`, `MMAC active=6.707%`;
+  dispatch1 `kernel_ticks=28,114,905`, `MMAC active=9.707%`;
+  `ldsBankConflict=0`.
+- Target gap:
+  current dQ is correctness/resource clean and faster, but still far below the
+  `MMAC active >= 40%` target.  Next work should reduce page ownership waits
+  by removing or sharing the K^T LDS page, not by adding another cosmetic
+  instruction shuffle.

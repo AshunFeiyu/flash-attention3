@@ -115,6 +115,9 @@ struct DqLdsLayout {
     static constexpr int kPageBytes =
         kKPageBytes + kVPageBytes + kKtPageBytes + kDsPageBytes;
     static constexpr int kPages = 2;
+    static constexpr int kSidecarBase = kPageBase + kPages * kPageBytes;
+    static constexpr int kSidecarRows = kSubMq;
+    static constexpr int kSidecarBytes = 3 * kSidecarRows * sizeof(float);
     static constexpr int kKBase(int page) {
         return kPageBase + page * kPageBytes;
     }
@@ -127,7 +130,7 @@ struct DqLdsLayout {
     static constexpr int kDsBase(int page) {
         return kKtBase(page) + kKtPageBytes;
     }
-    static constexpr int kBytes = kPageBase + kPages * kPageBytes;
+    static constexpr int kBytes = kSidecarBase + kSidecarBytes;
     static_assert(kBytes <= Tile::kLdsBudgetBytes,
                   "canonical dQ LDS plan must fit 128KB");
 };
@@ -193,6 +196,47 @@ __device__ __forceinline__ void dq_load_q_dout_tile(
     ins::matrix_load_32x32_b16_bps_lds(
         lds + DqLdsLayout<Tile>::kDoutBase / sizeof(__half), dout_src,
         producer_wave * MatrixBlockBytes, true);
+}
+
+template <typename Tile>
+__device__ __forceinline__ float* dq_sidecar_lds(
+    __half* __restrict__ lds) {
+    return reinterpret_cast<float*>(
+        lds + DqLdsLayout<Tile>::kSidecarBase / sizeof(__half));
+}
+
+template <typename Tile>
+__device__ __forceinline__ const float* dq_sidecar_lds(
+    const __half* __restrict__ lds) {
+    return reinterpret_cast<const float*>(
+        lds + DqLdsLayout<Tile>::kSidecarBase / sizeof(__half));
+}
+
+template <typename Tile>
+__device__ __forceinline__ void dq_load_sidecar_tile(
+    const float* __restrict__ scores_max,
+    const float* __restrict__ scores_sum,
+    const float* __restrict__ delta,
+    __half* __restrict__ lds,
+    int producer_wave,
+    int lane,
+    int q_base_sub,
+    int64_t row_base) {
+    constexpr int Rows = DqLdsLayout<Tile>::kSidecarRows;
+    float* sidecar = dq_sidecar_lds<Tile>(lds);
+    const int producer_lane = producer_wave * 64 + lane;
+    for (int idx = producer_lane; idx < 3 * Rows; idx += 4 * 64) {
+        const int field = idx / Rows;
+        const int local_row = idx - field * Rows;
+        const int64_t row = row_base + q_base_sub + local_row;
+        if (field == 0) {
+            sidecar[idx] = scores_max[row];
+        } else if (field == 1) {
+            sidecar[idx] = scores_sum[row];
+        } else {
+            sidecar[idx] = delta[row];
+        }
+    }
 }
 
 template <typename Tile>
@@ -298,9 +342,6 @@ __device__ __forceinline__ void dq_store_kt_tile_scalar(
 template <typename Tile, int MHalf, int NChunk>
 __device__ __forceinline__ void dq_publish_ds_chunk(
     const __half* __restrict__ lds,
-    const float* __restrict__ scores_max,
-    const float* __restrict__ scores_sum,
-    const float* __restrict__ delta,
     int lane,
     int kt,
     int page,
@@ -313,6 +354,9 @@ __device__ __forceinline__ void dq_publish_ds_chunk(
     constexpr int Dim = Tile::kHeadDim;
     constexpr int KBlocks = Dim / 32;
     constexpr int MatrixBlockBytes = DqLdsLayout<Tile>::kMatrixBlockBytes;
+    constexpr int SidecarRows = DqLdsLayout<Tile>::kSidecarRows;
+    (void)seqlen;
+    (void)row_base;
     const int lane_mq = lane % 16;
     const int lane_n = lane / 16;
     const int qrow = q_base_sub + MHalf * 16 + lane_mq;
@@ -331,6 +375,10 @@ __device__ __forceinline__ void dq_publish_ds_chunk(
     __half* ds_lds =
         const_cast<__half*>(lds) +
         DqLdsLayout<Tile>::kDsBase(page) / sizeof(__half);
+    const float* sidecar = dq_sidecar_lds<Tile>(lds);
+    const float row_max = sidecar[local_mq];
+    const float row_sum = sidecar[SidecarRows + local_mq];
+    const float row_delta = sidecar[2 * SidecarRows + local_mq];
 
     ins::F16x8 q_reg[KBlocks];
 #pragma unroll
@@ -382,16 +430,15 @@ __device__ __forceinline__ void dq_publish_ds_chunk(
 #pragma unroll
     for (int vec_id = 0; vec_id < 4; ++vec_id) {
         const int nk = NChunk * 16 + lane_n * 4 + vec_id;
-            const int krow = k_base_tile + nk;
-            float ds_value = 0.0f;
-            if (krow <= qrow) {
-                const int64_t row = row_base + qrow;
-                const float p =
-                exp2f((qk_acc.scalar[vec_id] - scores_max[row]) *
+        const int krow = k_base_tile + nk;
+        float ds_value = 0.0f;
+        if (krow <= qrow) {
+            const float p =
+                exp2f((qk_acc.scalar[vec_id] - row_max) *
                       softmax_scale_log2) /
-                scores_sum[row];
+                row_sum;
             ds_value =
-                p * (dp_acc.scalar[vec_id] - delta[row]) * softmax_scale;
+                p * (dp_acc.scalar[vec_id] - row_delta) * softmax_scale;
         }
         ds_lds[dq_pds_lds_dst(local_mq, nk)] = __float2half(ds_value);
     }
@@ -562,9 +609,6 @@ template <typename Tile, int MHalf>
 __device__ __forceinline__ void dq_publish_worker_chunk(
     int worker_slot,
     const __half* __restrict__ lds,
-    const float* __restrict__ scores_max,
-    const float* __restrict__ scores_sum,
-    const float* __restrict__ delta,
     int lane,
     int kt,
     int page,
@@ -575,19 +619,19 @@ __device__ __forceinline__ void dq_publish_worker_chunk(
     float softmax_scale_log2) {
     if (worker_slot == 0) {
         dq_publish_ds_chunk<Tile, MHalf, 0>(
-            lds, scores_max, scores_sum, delta, lane, kt, page, q_base_sub,
+            lds, lane, kt, page, q_base_sub,
             seqlen, row_base, softmax_scale, softmax_scale_log2);
     } else if (worker_slot == 1) {
         dq_publish_ds_chunk<Tile, MHalf, 1>(
-            lds, scores_max, scores_sum, delta, lane, kt, page, q_base_sub,
+            lds, lane, kt, page, q_base_sub,
             seqlen, row_base, softmax_scale, softmax_scale_log2);
     } else if (worker_slot == 2) {
         dq_publish_ds_chunk<Tile, MHalf, 2>(
-            lds, scores_max, scores_sum, delta, lane, kt, page, q_base_sub,
+            lds, lane, kt, page, q_base_sub,
             seqlen, row_base, softmax_scale, softmax_scale_log2);
     } else {
         dq_publish_ds_chunk<Tile, MHalf, 3>(
-            lds, scores_max, scores_sum, delta, lane, kt, page, q_base_sub,
+            lds, lane, kt, page, q_base_sub,
             seqlen, row_base, softmax_scale, softmax_scale_log2);
     }
 }
@@ -681,6 +725,7 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
     if (wave_id < 4) {
         __builtin_hcu_s_set_vgpr_size(40);
         const int producer_wave = static_cast<int>(wave_id);
+        const int lane = static_cast<int>(threadIdx.x % 64);
         int used0_phase = 0;
         int used1_phase = 0;
         for (int q_sub = 0; q_sub < BlockMq / SubMq; ++q_sub) {
@@ -689,6 +734,9 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
             const int active_k_tiles = (q_end + Nk - 1) / Nk;
             dq_load_q_dout_tile<Tile>(
                 q, dout, lds, producer_wave, q_base_sub, qkv_base);
+            dq_load_sidecar_tile<Tile>(
+                scores_max, scores_sum, delta, lds, producer_wave, lane,
+                q_base_sub, row_base);
             for (int kt = 0; kt < active_k_tiles; ++kt) {
                 const int page = kt & 1;
                 const int k_base_tile = kt * Nk;
@@ -739,13 +787,11 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
                 dq_wait_page_filled<Bar>(page, page0_phase, page1_phase);
                 dq_seq_ds_filled<Bar>(page);
                 dq_publish_worker_chunk<Tile, 0>(
-                    worker_slot, lds, scores_max, scores_sum, delta,
-                    lane, kt, page, q_base_sub, seqlen, row_base,
-                    softmax_scale, softmax_scale_log2);
+                    worker_slot, lds, lane, kt, page, q_base_sub, seqlen,
+                    row_base, softmax_scale, softmax_scale_log2);
                 dq_publish_worker_chunk<Tile, 1>(
-                    worker_slot, lds, scores_max, scores_sum, delta,
-                    lane, kt, page, q_base_sub, seqlen, row_base,
-                    softmax_scale, softmax_scale_log2);
+                    worker_slot, lds, lane, kt, page, q_base_sub, seqlen,
+                    row_base, softmax_scale, softmax_scale_log2);
                 dq_arrive_ds_filled<Bar>(page);
                 dq_arrive_page_used<Bar>(page);
             }

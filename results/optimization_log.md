@@ -6038,3 +6038,50 @@ Conclusion:
 - Direct Mq64 by serially looping two q-subtiles passed static resources but
   hung at H1/S128; do not retry without an explicit q-subtile token reset or
   page lifetime proof.
+
+### dQ Producer Sidecar LDS Staging
+
+Status: `ACCEPT_MICRO_CANDIDATE`.
+
+Scope:
+
+- Active branch: `shaobo/7gemm-dq-bringup`.
+- Active kernel: one canonical dQ path in `src/dq_kernel.cpp`.
+- Goal: remove the xcu-identified worker-side `global_load_dword ->
+  s_waitcnt` bubble from `dq_publish_ds_chunk`.
+
+Change:
+
+- Added a small sidecar tail in dQ LDS for `scores_max`, `scores_sum`, and
+  `delta`.
+- Producer writes those 96 floats once per M32 q-subtile before `PageFilled`.
+- dS worker reads sidecar from LDS and no longer receives global sidecar
+  pointers.
+- No new ABarrier token was added.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=67`, `vgpr=168`, no scratch/spill. Branch windows:
+  producer `8/40`, consumers `49/72`, worker `83/128`.
+- Correctness PASS:
+  H1/S128 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_022646`;
+  H1/S1024 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_022713`.
+- H1/S1024 stats:
+  dispatch0 `kernel_ticks=17,546,620`, `MMAC active=6.707%`;
+  dispatch1 `kernel_ticks=28,114,905`, `MMAC active=9.707%`;
+  `ldsBankConflict=0`.
+- Prior double-page dispatch1 baseline:
+  `kernel_ticks=35,671,545`, `MMAC active=7.8501%`.
+
+Conclusion:
+
+- Keep this dQ change.  It is the first meaningful dQ performance improvement
+  after the two-page conveyor.
+- It is still far from the 40% MMAC-active target.  The next limiter is page
+  ownership/control: current two pages consume about 120KB LDS because each
+  page holds K, V, K^T, and dS.  The next high-leverage design should prove
+  whether K and K^T can share one LDS resident source layout for dQ, freeing
+  enough LDS for a deeper page conveyor or a larger useful MMAC island.
