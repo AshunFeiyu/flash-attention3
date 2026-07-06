@@ -6085,3 +6085,39 @@ Conclusion:
   page holds K, V, K^T, and dS.  The next high-leverage design should prove
   whether K and K^T can share one LDS resident source layout for dQ, freeing
   enough LDS for a deeper page conveyor or a larger useful MMAC island.
+
+### dQ Same-K-LDS Fast Probe Rejected
+
+Status: `REJECT_CORRECTNESS`.
+
+Goal:
+
+- Test whether dQ can consume K^T from the same resident K LDS page, so the
+  16KB K^T page can be removed and the dQ conveyor can move beyond two pages.
+
+Tested combinations:
+
+- K `matrix_load_32x32_b16 t`, dQ reads K page with
+  `ds_read_matrix_32x16_normal`: H1/S128 `dq_rel_l2=1.03597`.
+- K `matrix_load_32x32_b16 t`, dQ reads K page with
+  `ds_read_matrix_32x16_trans`: H1/S128 `dq_rel_l2=1.46283`, `pass=0`.
+- K `matrix_load_32x16_b16` pairs, dQ reads K page with
+  `ds_read_matrix_32x16_normal`: H1/S128 `dq_rel_l2=0.535917`.
+- K `matrix_load_32x16_b16` pairs, dQ reads K page with
+  `ds_read_matrix_32x16_trans`: H1/S128 `dq_rel_l2=1.45385`, `pass=0`.
+
+Evidence paths:
+
+- `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_024052`
+- `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_024216`
+- `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_024400`
+- `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_024520`
+
+Decision:
+
+- Source was restored to `dq_sidecar_lds_staging`.
+- Do not remove the K^T page using guessed offset/format combinations.
+- Next same-K work must be a focused fragment-layout probe that stores or
+  prints expected versus actual K/K^T fragments for `matrix_load_32x16`,
+  `matrix_load_32x32`, `ds_read_matrix_format`, and
+  `ds_read_matrix_trans_format`.

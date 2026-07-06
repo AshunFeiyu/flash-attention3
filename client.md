@@ -455,3 +455,12 @@ This is useful but still far from the 40% MMAC-active goal.  The next dQ
 design question is whether K and K^T can share the same LDS resident source
 layout, removing the 16KB K^T page copy and freeing LDS for deeper buffering or
 a larger MMAC island.
+
+Fast same-K-LDS probe result:
+
+- Four guessed combinations of K `matrix_load_32x32`/`matrix_load_32x16` plus
+  dQ `ds_read_matrix_32x16_normal/trans` were static-clean but numerically
+  wrong on H1/S128 (`dq_rel_l2` between `0.535917` and `1.46283`).
+- The source was restored to `dq_sidecar_lds_staging`.
+- Next same-K work must be a focused fragment-layout probe that records actual
+  K/K^T fragments; do not delete the K^T page by guessing offsets.

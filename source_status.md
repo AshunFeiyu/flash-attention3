@@ -3918,3 +3918,15 @@ Current focus:
   `MMAC active >= 40%` target.  Next work should reduce page ownership waits
   by removing or sharing the K^T LDS page, not by adding another cosmetic
   instruction shuffle.
+
+### Same-K-LDS Probe Note
+
+- Four quick attempts to consume dQ K^T from the same K LDS page were rejected
+  on H1/S128 correctness:
+  `matrix_load_32x32 t + normal` (`rel_l2=1.03597`),
+  `matrix_load_32x32 t + trans` (`rel_l2=1.46283`),
+  `matrix_load_32x16 pairs + normal` (`rel_l2=0.535917`),
+  and `matrix_load_32x16 pairs + trans` (`rel_l2=1.45385`).
+- The active source is restored to `dq_sidecar_lds_staging`.
+- Any future same-K attempt needs an isolated fragment-layout probe before
+  touching the canonical dQ kernel again.
