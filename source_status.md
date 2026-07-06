@@ -1,5 +1,62 @@
 # Source Status
 
+## 2026-07-07 dQ Mq32 Double-Page Conveyor
+
+Status: `DQ_MQ32_DOUBLEPAGE_CURRENT_BASELINE`.
+
+Current dQ source on branch `shaobo/7gemm-dq-bringup` is a single canonical
+MMAC path, not a phase stack:
+
+- Tile: `Mq=32,Nk=64,D=128`, 12 waves.
+- Producer waves0-3 load Q/dO once per q-subtile and stream K/V/Kt into two
+  LDS pages.
+- Worker waves8-11 wait `PageFilled`, compute score/dP/softmax/dS, write dS
+  into the same page, then signal `DsFilled` and partial `PageUsed`.
+- Consumer waves4-7 wait `DsFilled`, compute `dQ = dS @ K^T` with MMAC, store
+  directly to global, and release `PageUsed`.
+- Page protocol:
+  `PageFilled(count=4)`, `DsFilled(count=4)`, `PageUsed(count=8)`,
+  `AllDone(count=12)`.
+
+Validation:
+
+- Remote build/gate PASS:
+  `TARGET_GFX=946 BUILD_ASM=1 SRC=src/dq_kernel.cpp BIN=build/fa3_bwd_dq_clean ASM=build/fa3_bwd_dq_clean.asm ./build.sh`.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=61`, `vgpr=168`, `sgpr_spill=0`, `vgpr_spill=0`.
+- WDRA branch windows:
+  producer `1/40`, consumers `49/72`, worker `91/128`, tail `2/48`.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_015920`;
+  H1/S512 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_015927`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_015941`.
+
+Performance:
+
+- H1/S1024 dispatch0:
+  `kernel_ticks=21,420,035`, `MMAC active=5.8039%`,
+  coissue `245/204`, `ldsBankConflict=0`.
+- H1/S1024 dispatch1:
+  `kernel_ticks=35,671,545`, `MMAC active=7.8501%`,
+  coissue `751/665`, `ldsBankConflict=0`.
+- Versus the serial Mq32 bringup dispatch1, ticks improved
+  `36,587,005 -> 35,671,545` and MMAC active improved
+  `7.6036% -> 7.8501%`.
+
+Rejected follow-up:
+
+- Direct `Mq=64,Nk=64` using the same two-page conveyor passed static/resource
+  (`private=0`, `sgpr=75`, no spill) but hung in H1/S128 PMD and was reverted.
+  Do not retry Mq64 by simply serializing two M32 q-subtiles; it needs explicit
+  q-subtile token reset/lifetime design.
+
+Conclusion:
+
+This is a useful correctness-clean dQ conveyor baseline, but not a 40%
+MMAC-active solution.  The next dQ design should increase useful MMAC island
+size or rebalance worker/consumer roles while preserving no duplicate score/dP
+inside one dQ tile.
+
 ## 2026-07-06 dQ Reopened
 
 Status: `DQ_WORKBOOK_FIRST_BRINGUP`.

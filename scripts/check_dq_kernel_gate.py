@@ -46,13 +46,25 @@ def main() -> int:
             "missing_reference_path")
     require(source, r"kDqPathCanonicalDq", failures,
             "missing_canonical_path_contract_use")
-    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<64,\s*64>",
-            failures, "missing_active_mq64_nk64_tile")
+    require(source, r"fa3_bwd_dq_kernel", failures,
+            "missing_canonical_dq_kernel")
+    require(source, r"hcu_wdra_waves_per_tg\(12\)", failures,
+            "missing_12wave_wdra_attribute")
+    require(source, r"dq_publish_ds_chunk", failures,
+            "missing_split_ds_publisher")
+    require(source, r"dq_consume_ds_kt_full_dtile", failures,
+            "missing_dq_mmac_consumer")
+    require(source, r"materialize_k_t_source", failures,
+            "missing_kt_source_layout_helper")
+    require(source, r"CANONICAL_DQ", failures,
+            "missing_canonical_standalone_switch")
+    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<32,\s*64>",
+            failures, "missing_active_mq32_nk64_tile")
     require(contract, r"kForbidDuplicateScoreDpInsideDq\s*=\s*true",
             failures, "missing_no_duplicate_score_dp_contract")
     require(contract, r"kForbidDqAtomicAdd\s*=\s*true",
             failures, "missing_no_atomic_contract")
-    require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60",
+    require(contract, r"kTargetMmacActiveSharePercent\s*=\s*40",
             failures, "missing_mmac_active_target")
     require(contract, r"kPlannedLdsBytes\s*=", failures,
             "missing_lds_budget_contract")
@@ -67,6 +79,15 @@ def main() -> int:
     if asm:
         require(asm, r"fa3_bwd_dq_ref_output_kernel", failures,
                 "asm_missing_dq_ref_output_kernel")
+        require(asm, r"fa3_bwd_dq_kernel", failures,
+                "asm_missing_canonical_dq_kernel")
+        require(asm, r"matrix_load_32x32_b16.*bps lds", failures,
+                "asm_missing_matrix_load_bps_lds")
+        require(asm, r"ds_read_matrix_trans_format", failures,
+                "asm_missing_ds_read_matrix_trans")
+        require(asm, r"v_mmac", failures, "asm_missing_mmac")
+        require(asm, r"s_set_vgpr_size", failures,
+                "asm_missing_wdra_vgpr_resize")
 
     if failures:
         print("dQ kernel gate: FAIL")

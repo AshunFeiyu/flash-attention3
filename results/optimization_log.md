@@ -5940,3 +5940,101 @@ Conclusion:
   and intentionally separated from the future MLS/ds_read_matrix/MMAC path.
 - Next dQ work must implement the revised workbook's canonical MMAC kernel and
   compare against this reference output.
+
+### dQ Canonical MMAC Bringup
+
+Status: `ACCEPT_BRINGUP_OBSERVE`, not a performance promotion.
+
+Scope:
+
+- Active branch: `shaobo/7gemm-dq-bringup`.
+- Implemented one canonical dQ MMAC path in `src/dq_kernel.cpp`.
+- Producer waves load `Q/dO/K/V/K^T`, worker waves compute score/dP and publish
+  fp16 dS to LDS, consumer waves compute `dQ = dS @ K^T` with MMAC and direct
+  global store.
+- Current topology is `Mq=32,Nk=64,D=128`, 12-wave CTA, q-tile chunked launches
+  with `tiles_per_dispatch=16` to keep S1024 stable under PMD.
+
+Evidence:
+
+- Static/resource gate PASS:
+  `private_segment=0`, `sgpr=86`, `vgpr=168`, no SGPR/VGPR spill. Branch
+  windows: producer `10/40`, consumers `49/72`, dS worker `91/128`, idle
+  branch `8/48`.
+- Correctness PASS:
+  H1/S512 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_013745`;
+  H1/S1024 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_013800`.
+- H1/S1024 stats:
+  dispatch0 `kernel_ticks=21,306,285`, `MMAC active=5.856%`,
+  `MMOP=13,824`, `ldsBankConflict=0`, coissue `0/0`;
+  dispatch1 `kernel_ticks=36,554,245`, `MMAC active=7.607%`,
+  `MMOP=38,400`, `ldsBankConflict=0`, coissue `0/0`.
+
+Negative evidence:
+
+- `ds_read_matrix_trans_pair` in the dQ hot path passed S512 but produced
+  long-seqlen row-half NaNs; single `ds_read_matrix_32x16_trans` reads are more
+  stable.
+- `+v` accumulator constraints on `s_barrier` made S512 fail and were rejected.
+- Consumer LDS scratch epilogue store reproduced PMD LDS index corruption and
+  segfault; direct consumer global store is the current stable path.
+- Split-MHalf consumer helper also triggered PMD segfault.
+- Producer-side LDS sidecar staging made S512 fail, likely because the current
+  barrier schedule does not safely publish sidecar in the same page lifetime.
+
+Conclusion:
+
+- Correctness and resource gates are now usable for dQ, but `MMAC active` is
+  only `~6-8%`, far below the 40% target.
+- Removing idle waves did not move the metric meaningfully; the dominant issue
+  is serial producer/worker/consumer barrier phasing and zero useful coissue.
+- Next design must add real double buffering or conveyor overlap between dS
+  publish for `kt+1` and dQ consume for `kt`, not more local instruction
+  shuffling.
+
+### dQ Mq32 Double-Page Conveyor
+
+Status: `ACCEPT_MICRO_OBSERVE`, current dQ baseline.
+
+Change:
+
+- Replaced CTA-wide producer/worker/consumer `__syncthreads()` phasing with
+  two K/V/Kt/dS LDS pages and ABarrier ownership tokens.
+- Page protocol:
+  `PageFilled(count=4) -> DsFilled(count=4) -> PageUsed(count=8)`, plus
+  `AllDone(count=12)`.
+- Producer now loads Q/dO once per q-subtile, then streams K/V/Kt by page.
+- Worker computes score/dP/softmax/dS into the page's dS region.
+- Consumer waits on dS, runs `dQ = dS @ K^T`, then releases the page.
+- Removed stale split-MHalf/LDS epilogue helpers from the live dQ source.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=61`, `vgpr=168`, `sgpr_spill=0`, `vgpr_spill=0`.
+  Branch windows: producer `1/40`, consumers `49/72`, worker `91/128`.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_015920`;
+  H1/S512 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_015927`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_015941`.
+- H1/S1024 dispatch0:
+  `kernel_ticks=21,420,035`, `MMAC active=5.8039%`,
+  coissue `245/204`, `ldsBankConflict=0`.
+- H1/S1024 dispatch1:
+  `kernel_ticks=35,671,545`, `MMAC active=7.8501%`,
+  coissue `751/665`, `ldsBankConflict=0`.
+- Previous serial Mq32 dispatch1 was
+  `kernel_ticks=36,587,005`, `MMAC active=7.6036%`, coissue `0/0`.
+
+Conclusion:
+
+- This is a correctness-clean structural baseline and proves tokenized
+  producer/worker/consumer overlap is legal.
+- It is still nowhere near the 40% MMAC-active goal.  The likely next limiter
+  is that dS worker and dQ consumer are still small islands with only four
+  consumer waves; the pipeline exists but not enough useful MMAC area is exposed.
+- Direct Mq64 by serially looping two q-subtiles passed static resources but
+  hung at H1/S128; do not retry without an explicit q-subtile token reset or
+  page lifetime proof.

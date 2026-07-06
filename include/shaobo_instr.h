@@ -66,14 +66,14 @@ __device__ __forceinline__ void matrix_load_32x32_b16_bps_lds(
             "matrix_load_32x32_b16 %0, %1 moffset:%2 t bps lds\n"
             :
             : "s"(srsrc), "s"(lds_addr), "n"(0)
-            :);
+            : "memory");
     } else {
         asm volatile(
             "s_nop 0\n\t"
             "matrix_load_32x32_b16 %0, %1 moffset:%2 bps lds\n"
             :
             : "s"(srsrc), "s"(lds_addr), "n"(0)
-            :);
+            : "memory");
     }
 #else
     (void)shared_addr;
@@ -118,7 +118,7 @@ __device__ __forceinline__ void ds_read_matrix_32x16_normal(
         "ds_read_matrix_format %0, %1 offset:0 element:0x2 row:0x2 col:0x1 alt:0x0\n"
         : "=v"(frag)
         : "s"(lds_addr)
-        :);
+        : "memory");
 #else
     (void)lds;
     (void)lds_offset;
@@ -137,7 +137,7 @@ __device__ __forceinline__ void ds_read_matrix_32x16_trans(
         "ds_read_matrix_trans_format %0, %1 offset:0 element:0x2 row:0x2 col:0x1 alt:0x0\n"
         : "=v"(frag)
         : "s"(lds_addr)
-        :);
+        : "memory");
 #else
     (void)lds;
     (void)lds_offset;
@@ -158,7 +158,7 @@ __device__ __forceinline__ void ds_read_matrix_trans_pair(
         "ds_read_matrix_trans_format %1, %2 offset:1024 element:0x2 row:0x2 col:0x1 alt:0x0\n"
         : "=v"(frag0), "=v"(frag1)
         : "s"(lds_addr)
-        :);
+        : "memory");
 #else
     (void)lds;
     (void)lds_offset;
@@ -186,6 +186,43 @@ __device__ __forceinline__ Vec4F32 mmac_f16_lit(Vec4F16 lhs,
     (void)lhs;
     (void)rhs;
     return acc;
+#endif
+}
+
+__device__ __forceinline__ void keep_accumulator_live(F32x4& acc) {
+#if defined(__gfx946__) || defined(__gfx938__) || defined(__gfx92a__)
+    asm volatile("" : "+v"(acc.f32) : : "memory");
+    __builtin_amdgcn_sched_barrier(0);
+#else
+    (void)acc;
+#endif
+}
+
+__device__ __forceinline__ void s_barrier_after_accumulators(F32x4& acc0,
+                                                             F32x4& acc1) {
+#if defined(__gfx946__) || defined(__gfx938__) || defined(__gfx92a__)
+    asm volatile("s_barrier\n" ::: "memory");
+    __builtin_amdgcn_sched_barrier(0);
+#else
+    (void)acc0;
+    (void)acc1;
+    __syncthreads();
+#endif
+}
+
+__device__ __forceinline__ void s_barrier_after_accumulators(F32x4& acc0,
+                                                             F32x4& acc1,
+                                                             F32x4& acc2,
+                                                             F32x4& acc3) {
+#if defined(__gfx946__) || defined(__gfx938__) || defined(__gfx92a__)
+    asm volatile("s_barrier\n" ::: "memory");
+    __builtin_amdgcn_sched_barrier(0);
+#else
+    (void)acc0;
+    (void)acc1;
+    (void)acc2;
+    (void)acc3;
+    __syncthreads();
 #endif
 }
 
@@ -266,3 +303,7 @@ __device__ __forceinline__ void lower_priority() {
 }
 
 }  // namespace shaobo::fa3::bwd::dkv::instr
+
+namespace shaobo::fa3::bwd::instr {
+using namespace shaobo::fa3::bwd::dkv::instr;
+}  // namespace shaobo::fa3::bwd::instr

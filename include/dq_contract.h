@@ -14,7 +14,7 @@ struct DqTileD128MqNk {
     static constexpr int kSubMq = 32;
     static constexpr int kBlockNk = BlockNk;
     static constexpr int kWaveSize = 64;
-    static constexpr int kWavesPerCta = 16;
+    static constexpr int kWavesPerCta = 12;
     static constexpr int kThreadsPerCta = kWaveSize * kWavesPerCta;
 
     static constexpr int kMmacM = 16;
@@ -53,18 +53,20 @@ struct DqTileD128MqNk {
                   "dQ target LDS plan must fit 128KB");
 };
 
-using ActiveDqTile = DqTileD128MqNk<64, 64>;
+using ActiveDqTile = DqTileD128MqNk<32, 64>;
 
 struct DqBarrierLedger {
-    static constexpr int kQDoFilled = 0;
-    static constexpr int kQDoUsed = 1;
-    static constexpr int kKvFilled = 2;
-    static constexpr int kKvUsed = 3;
-    static constexpr int kAllDone = 4;
+    static constexpr int kPage0Filled = 0;
+    static constexpr int kPage0DsFilled = 1;
+    static constexpr int kPage0Used = 2;
+    static constexpr int kPage1Filled = 3;
+    static constexpr int kPage1DsFilled = 4;
+    static constexpr int kPage1Used = 5;
+    static constexpr int kAllDone = 6;
 };
 
 struct OptimizationTargets {
-    static constexpr int kTargetMmacActiveSharePercent = 60;
+    static constexpr int kTargetMmacActiveSharePercent = 40;
     static constexpr bool kRequireNoScratch = true;
     static constexpr bool kRequireNoSpill = true;
     static constexpr bool kRequireNoLdsBankConflict = true;

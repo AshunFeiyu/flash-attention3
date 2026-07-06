@@ -20,10 +20,15 @@ evidence are required before any performance claim.
 - Algorithm boundary: because dKV and dQ are separate kernels, dQ may recompute
   score/dP across kernels, but must not duplicate score/dP for the same
   `(Q tile, K tile)` inside dQ.
-- First MMAC target tile from workbook revision: `Mq=64,Nk=64,D=128,16 waves`
-  using source-layout `K^T` ABI and two serial `M32` q-subtiles.  `Nk=128`
-  is a later upgrade only after the same K LDS page can feed both normal and
-  transpose dQ views without duplicating Kt/dS LDS.
+- Current correctness-clean MMAC tile: `Mq=32,Nk=64,D=128,12 waves`, using
+  source-layout `K^T` ABI.
+- Current dQ pipeline baseline is a two-page K/V/Kt/dS conveyor:
+  producer publishes page input, worker publishes dS, consumer computes dQ and
+  releases the page.  Q/dO are loaded once per q-subtile.
+- Direct `Mq=64` by serially looping two `M32` q-subtiles hung at H1/S128.
+  Revisit only with explicit q-subtile token reset or a new lifetime proof.
+- `Nk=128` is a later upgrade only after the same K LDS page can feed both
+  normal and transpose dQ views without duplicating Kt/dS LDS.
 - Producer rule: producer publishes Q/dO plus packed sidecar to LDS, and streams
   K/V through LDS; consumer should not direct-load sidecar global in the hot
   path.
@@ -56,6 +61,21 @@ evidence are required before any performance claim.
   slice. Do not duplicate score/dP for the same owner.
 
 ## Latest Evidence
+
+- dQ current baseline:
+  `Mq=32,Nk=64,D=128,12 waves`, two K/V/Kt/dS LDS pages.
+- dQ H1/S1024 correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_015941`,
+  `dq_max_abs=1.85174e-07`, `dq_rel_l2=0.00208192`, `bad=0`, `pass=1`.
+- dQ static/resource:
+  `private=0`, `sgpr=61`, `vgpr=168`, no spill; branch windows producer
+  `1/40`, consumers `49/72`, worker `91/128`.
+- dQ H1/S1024 stats:
+  dispatch0 `kernel_ticks=21,420,035`, `MMAC active=5.8039%`,
+  coissue `245/204`; dispatch1 `kernel_ticks=35,671,545`,
+  `MMAC active=7.8501%`, coissue `751/665`; `ldsBankConflict=0`.
+- dQ is still far from the 40% MMAC-active target.  The next dQ change must
+  increase useful MMAC island/role balance, not just replace barriers.
 
 - Current best clean micro-baseline: sidecar Vec4 LDS read aggregation on top
   of workbook sheet `71_mq128_score_dp_read8_design`.

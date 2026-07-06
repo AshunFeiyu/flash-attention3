@@ -37,7 +37,9 @@ export H="\${H:-1}"
 export S="\${S:-128}"
 export D="\${D:-128}"
 export CAUSAL="\${CAUSAL:-1}"
-./${DQ_BIN} --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
+export CANONICAL_DQ="\${CANONICAL_DQ:-0}"
+export DQ_DIAG_STORE="\${DQ_DIAG_STORE:-0}"
+./${DQ_BIN} --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL} --canonical=\${CANONICAL_DQ} --diag-store=\${DQ_DIAG_STORE}
 EOF
 chmod +x "${case_script}"
 
