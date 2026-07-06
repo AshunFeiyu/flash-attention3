@@ -3773,3 +3773,29 @@ Current focus:
 - Guardrail: static instruction-count cleanup is not enough.  For dKV
   instruction-level tuning, keep only changes that improve same-shape PMD
   stats and do not reduce MMAC active.
+
+## 2026-07-06 Sidecar Pair Read6 Accepted
+
+- Active code now includes `w16_mq128_sidecar_pair_read6` in the canonical dKV
+  kernel.
+- Change: `softmax_ds_owner16_causal_exact_tile_ctx` reads both M rows'
+  sidecar Vec4 triples first, then computes both rows' softmax/dS.
+- Static/resource PASS:
+  producer0 `14/16`, consumer0 `189/240`, consumer1 `189/240`,
+  producer1 `8/16`; metadata `private=0`, `sgpr=99`, `vgpr=128`,
+  no scratch/spill.
+- Correctness PASS:
+  H1/S128 and H1/S1024.
+- Full perf H1/S1024:
+  `simTicks=47,731,775`, `kernel_ticks=44,118,165`,
+  `MMAC active=32.8831%`, `VALU=168,514`, `SCA=115,544`,
+  `ldsBankConflict=0`.
+- Previous accepted wait-prune full perf:
+  `simTicks=47,871,005`, `kernel_ticks=44,257,395`,
+  `MMAC active=32.7888%`, `VALU=183,136`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260706_215636_7gemm_sidecar_read6_h1s1024_sqc7_fullperf`.
+- XCU note: top bubble is still ABarrier/control (`s_abarrier_try_wait ->
+  s_xor_b32`, about `41.91%`), so next instruction-level work should target
+  ownership wait exposure or matrix-read/wait gaps, not another sidecar-only
+  reshuffle.

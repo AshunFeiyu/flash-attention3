@@ -5828,3 +5828,68 @@ Conclusion:
 - Lesson: do not promote static instruction-count reductions unless PMD stats
   and active-share evidence agree.  For this specific K/V latch half select,
   the original loop-local select is better under the current compiler/PMD.
+
+### Sidecar Pair Read6 Instruction Scheduling
+
+Status: `ACCEPT_MICRO_INSTRUCTION`.
+
+Scope:
+
+- Single canonical dKV kernel only.
+- Active helper changed:
+  `softmax_ds_owner16_causal_exact_tile_ctx`.
+- No tile, wave role, ABarrier token, output ownership, matrix path, or
+  external API change.
+
+Hypothesis:
+
+- The softmax/dS helper read sidecar for one M row, computed it, then repeated
+  for the second row.  Source/XCU showed significant `s_waitcnt` exposure
+  around this sidecar/softmax region.
+- Reading both rows' sidecar Vec4 triples first gives the compiler a larger
+  LDS-read island and lets the following VALU run with fewer scattered
+  readiness stalls.
+
+Evidence:
+
+- Static/resource gates PASS:
+  branch windows producer0 `14/16`, consumer0 `189/240`, consumer1 `189/240`,
+  producer1 `8/16`; metadata `private=0`, `sgpr=99`, `sgpr_spill=0`,
+  `vgpr=128`, `vgpr_spill=0`.
+- Static asm:
+  `v_mov_b32_e32` fell `553 -> 539`; main path remains
+  `ds_read_b32=0`, `ds_read_b128=96`, `ds_read_matrix=550`.
+  `s_waitcnt` count increases in static asm, so this was not promoted from
+  static inspection alone.
+- Correctness PASS:
+  H1/S128 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_214952`,
+  and H1/S1024 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_214959`.
+- Full perf H1/S1024:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_215636`.
+  `simTicks=47,731,775`, `kernel_ticks=44,118,165`,
+  `MMAC active=32.8831%`, `VALU=168,514`, `SCA=115,544`,
+  `LDS=79,360`, `VMEM=4,352`, coissue `35,265/24,888`,
+  `ldsBankConflict=0`.
+- Previous accepted wait-prune full perf:
+  `simTicks=47,871,005`, `kernel_ticks=44,257,395`,
+  `MMAC active=32.7888%`, `VALU=183,136`.
+- XCU first-pass:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2723088_fa3_bwd_wasp_clean_20260706_215931`.
+  Dispatch duration `96,964`, avg active waves `120.92`.
+  Top bubble remains `s_abarrier_try_wait -> s_xor_b32`, about `41.91%`;
+  `s_waitcnt` remains about `19.78%`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260706_215636_7gemm_sidecar_read6_h1s1024_sqc7_fullperf`.
+
+Conclusion:
+
+- Keep as a small instruction-level cleanup.  It reduces VALU by `14,622`
+  instructions and improves full-perf ticks by about `0.29%` while slightly
+  raising MMAC active.
+- This is not a structural path to 60% MMAC active.  The dominant issue remains
+  ABarrier/ownership control, followed by wait/matrix-read gaps.
+- Lesson: batching sidecar reads can help when it reduces VALU/scattered
+  readiness work, but it must be validated by PMD because static `s_waitcnt`
+  counts can move in the wrong direction.

@@ -364,6 +364,16 @@ causal/control state is part of the blocker, but 62A alone is too weak.
 Continue with 62B/62C only if they further reduce scalar/control live range
 without device-call private segment or dynamic Mq128 loop overhead.
 
+Current accepted instruction-level baseline is `w16_mq128_sidecar_pair_read6`
+on the canonical dKV kernel.  It keeps Mq128/Nk128/16-wave and only changes the
+softmax sidecar schedule: read both M rows' sidecar Vec4 triples, then compute
+both rows.  H1/S1024 full perf improved from wait-prune
+`simTicks=47,871,005`, `MMAC active=32.7888%`, `VALU=183,136` to
+`simTicks=47,731,775`, `MMAC active=32.8831%`, `VALU=168,514`, with no
+spill/scratch and `ldsBankConflict=0`.  Perf archive:
+`/Volumes/172.20.68.76/共享/shaobo/perf/20260706_215636_7gemm_sidecar_read6_h1s1024_sqc7_fullperf`.
+This is a micro-baseline; XCU still shows ABarrier/control as the main bubble.
+
 ## Workflow Rules
 
 1. Update the shared workbook before changing tile shape, output ownership,

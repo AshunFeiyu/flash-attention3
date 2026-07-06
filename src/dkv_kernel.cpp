@@ -1043,18 +1043,30 @@ __device__ __forceinline__ void softmax_ds_owner16_causal_exact_tile_ctx(
                   "softmax/dS consumes two adjacent M16 blocks");
     const float* sidecar_pair = sidecar_page + MBlockBase * 16;
 
+    ins::Vec4F32 row_max_log2_vecs[2];
+    ins::Vec4F32 row_inv_sum_vecs[2];
+    ins::Vec4F32 row_delta_vecs[2];
+
 #pragma unroll
     for (int m_idx = 0; m_idx < 2; ++m_idx) {
         const int local_m_base = m_idx * 16 + lane_col_group * 4;
-        const ins::Vec4F32 row_max_log2_vec =
+        row_max_log2_vecs[m_idx] =
             *reinterpret_cast<const ins::Vec4F32*>(
                 sidecar_pair + Tile::kSidecarMaxLog2Base + local_m_base);
-        const ins::Vec4F32 row_inv_sum_vec =
+        row_inv_sum_vecs[m_idx] =
             *reinterpret_cast<const ins::Vec4F32*>(
                 sidecar_pair + Tile::kSidecarInvSumBase + local_m_base);
-        const ins::Vec4F32 row_delta_vec =
+        row_delta_vecs[m_idx] =
             *reinterpret_cast<const ins::Vec4F32*>(
                 sidecar_pair + Tile::kSidecarDeltaBase + local_m_base);
+    }
+
+#pragma unroll
+    for (int m_idx = 0; m_idx < 2; ++m_idx) {
+        const int local_m_base = m_idx * 16 + lane_col_group * 4;
+        const ins::Vec4F32 row_max_log2_vec = row_max_log2_vecs[m_idx];
+        const ins::Vec4F32 row_inv_sum_vec = row_inv_sum_vecs[m_idx];
+        const ins::Vec4F32 row_delta_vec = row_delta_vecs[m_idx];
         ins::Vec4F16 p_vec;
         ins::Vec4F16 ds_vec;
 #pragma unroll
