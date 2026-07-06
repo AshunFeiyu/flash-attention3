@@ -902,16 +902,25 @@ __device__ __forceinline__ void softmax_ds_owner16_from_lds_sidecar(
         q_base + 32 <= seqlen &&
         k_base + owner_nblock * 16 + 15 < seqlen &&
         (!causal || (k_base + owner_nblock * 16 + 15 <= q_base));
+    const float* sidecar_pair = sidecar_page + local_q_base;
 
 #pragma unroll
     for (int m_idx = 0; m_idx < 2; ++m_idx) {
         const int local_m_base = m_idx * 16 + lane_col_group * 4;
+        const ins::Vec4F32 row_max_log2_vec =
+            *reinterpret_cast<const ins::Vec4F32*>(
+                sidecar_pair + Tile::kSidecarMaxLog2Base + local_m_base);
+        const ins::Vec4F32 row_inv_sum_vec =
+            *reinterpret_cast<const ins::Vec4F32*>(
+                sidecar_pair + Tile::kSidecarInvSumBase + local_m_base);
+        const ins::Vec4F32 row_delta_vec =
+            *reinterpret_cast<const ins::Vec4F32*>(
+                sidecar_pair + Tile::kSidecarDeltaBase + local_m_base);
         ins::Vec4F16 p_vec;
         ins::Vec4F16 ds_vec;
 #pragma unroll
         for (int vec_id = 0; vec_id < 4; ++vec_id) {
             const int local_m = local_m_base + vec_id;
-            const int sidecar_m = local_q_base + local_m;
             const int qrow = q_base + local_m;
             const bool valid_pair =
                 full_valid_tile ||
@@ -920,19 +929,13 @@ __device__ __forceinline__ void softmax_ds_owner16_from_lds_sidecar(
             float p_val;
             float ds_val;
             if (valid_pair) {
-                const float row_max_log2 =
-                    sidecar_page[Tile::kSidecarMaxLog2Base + sidecar_m];
-                const float row_inv_sum =
-                    sidecar_page[Tile::kSidecarInvSumBase + sidecar_m];
-                const float row_delta =
-                    sidecar_page[Tile::kSidecarDeltaBase + sidecar_m];
                 p_val =
                     exp2f(score[m_idx].scalar[vec_id] *
                               softmax_scale * kLog2E -
-                          row_max_log2) *
-                    row_inv_sum;
+                          row_max_log2_vec[vec_id]) *
+                    row_inv_sum_vec[vec_id];
                 ds_val =
-                    p_val * (dp[m_idx].scalar[vec_id] - row_delta) *
+                    p_val * (dp[m_idx].scalar[vec_id] - row_delta_vec[vec_id]) *
                     softmax_scale;
             } else {
                 p_val = 0.0f;
@@ -970,16 +973,25 @@ __device__ __forceinline__ void softmax_ds_owner16_from_lds_sidecar_dyn(
         q_base + 32 <= seqlen &&
         k_base + owner_nblock * 16 + 15 < seqlen &&
         (!causal || (k_base + owner_nblock * 16 + 15 <= q_base));
+    const float* sidecar_pair = sidecar_page + local_q_base;
 
 #pragma unroll
     for (int m_idx = 0; m_idx < 2; ++m_idx) {
         const int local_m_base = m_idx * 16 + lane_col_group * 4;
+        const ins::Vec4F32 row_max_log2_vec =
+            *reinterpret_cast<const ins::Vec4F32*>(
+                sidecar_pair + Tile::kSidecarMaxLog2Base + local_m_base);
+        const ins::Vec4F32 row_inv_sum_vec =
+            *reinterpret_cast<const ins::Vec4F32*>(
+                sidecar_pair + Tile::kSidecarInvSumBase + local_m_base);
+        const ins::Vec4F32 row_delta_vec =
+            *reinterpret_cast<const ins::Vec4F32*>(
+                sidecar_pair + Tile::kSidecarDeltaBase + local_m_base);
         ins::Vec4F16 p_vec;
         ins::Vec4F16 ds_vec;
 #pragma unroll
         for (int vec_id = 0; vec_id < 4; ++vec_id) {
             const int local_m = local_m_base + vec_id;
-            const int sidecar_m = local_q_base + local_m;
             const int qrow = q_base + local_m;
             const bool valid_pair =
                 full_valid_tile ||
@@ -988,19 +1000,13 @@ __device__ __forceinline__ void softmax_ds_owner16_from_lds_sidecar_dyn(
             float p_val;
             float ds_val;
             if (valid_pair) {
-                const float row_max_log2 =
-                    sidecar_page[Tile::kSidecarMaxLog2Base + sidecar_m];
-                const float row_inv_sum =
-                    sidecar_page[Tile::kSidecarInvSumBase + sidecar_m];
-                const float row_delta =
-                    sidecar_page[Tile::kSidecarDeltaBase + sidecar_m];
                 p_val =
                     exp2f(score[m_idx].scalar[vec_id] *
                               softmax_scale * kLog2E -
-                          row_max_log2) *
-                    row_inv_sum;
+                          row_max_log2_vec[vec_id]) *
+                    row_inv_sum_vec[vec_id];
                 ds_val =
-                    p_val * (dp[m_idx].scalar[vec_id] - row_delta) *
+                    p_val * (dp[m_idx].scalar[vec_id] - row_delta_vec[vec_id]) *
                     softmax_scale;
             } else {
                 p_val = 0.0f;
@@ -1033,6 +1039,15 @@ __device__ __forceinline__ void softmax_ds_owner16_causal_exact_tile_ctx(
 #pragma unroll
     for (int m_idx = 0; m_idx < 2; ++m_idx) {
         const int local_m_base = m_idx * 16 + lane_col_group * 4;
+        const ins::Vec4F32 row_max_log2_vec =
+            *reinterpret_cast<const ins::Vec4F32*>(
+                sidecar_pair + Tile::kSidecarMaxLog2Base + local_m_base);
+        const ins::Vec4F32 row_inv_sum_vec =
+            *reinterpret_cast<const ins::Vec4F32*>(
+                sidecar_pair + Tile::kSidecarInvSumBase + local_m_base);
+        const ins::Vec4F32 row_delta_vec =
+            *reinterpret_cast<const ins::Vec4F32*>(
+                sidecar_pair + Tile::kSidecarDeltaBase + local_m_base);
         ins::Vec4F16 p_vec;
         ins::Vec4F16 ds_vec;
 #pragma unroll
@@ -1043,19 +1058,13 @@ __device__ __forceinline__ void softmax_ds_owner16_causal_exact_tile_ctx(
             float p_val;
             float ds_val;
             if (valid_pair) {
-                const float row_max_log2 =
-                    sidecar_pair[Tile::kSidecarMaxLog2Base + local_m];
-                const float row_inv_sum =
-                    sidecar_pair[Tile::kSidecarInvSumBase + local_m];
-                const float row_delta =
-                    sidecar_pair[Tile::kSidecarDeltaBase + local_m];
                 p_val =
                     exp2f(score[m_idx].scalar[vec_id] *
                               softmax_scale_log2 -
-                          row_max_log2) *
-                    row_inv_sum;
+                          row_max_log2_vec[vec_id]) *
+                    row_inv_sum_vec[vec_id];
                 ds_val =
-                    p_val * (dp[m_idx].scalar[vec_id] - row_delta) *
+                    p_val * (dp[m_idx].scalar[vec_id] - row_delta_vec[vec_id]) *
                     softmax_scale;
             } else {
                 p_val = 0.0f;

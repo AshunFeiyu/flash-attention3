@@ -1,5 +1,74 @@
 # Optimization Log
 
+## 2026-07-06 Mq128 Sidecar Vec4 LDS Reads
+
+Decision: `ACCEPT_MICRO_CANDIDATE`
+
+Hypothesis:
+
+The read8 score/dP baseline still had a visible sidecar LDS read bubble:
+`ds_read_b32 -> s_waitcnt` was about `4.16%` in xcu.  The hot softmax/dS
+helper reads three sidecar streams, row max, inverse sum, and delta, one float
+at a time for four rows.  Reading each stream as a `Vec4F32` should let the
+compiler emit wider LDS reads, reduce scattered sidecar LDS waits, and preserve
+the existing half-page ownership protocol.
+
+Implementation:
+
+- Changed only the canonical softmax/dS sidecar helpers.
+- Replaced scalar sidecar loads with one `Vec4F32` load per sidecar family and
+  M-pair: max-log2, inverse-sum, and delta.
+- Kept the same algorithm, same Q0/Dout0/Q1/Dout1 half-page tokens, same output
+  ownership, same MMOP count, and same external API.
+- No new kernel, no phase stack, no asm island, no dQ change.
+
+Evidence:
+
+- Branch: `shaobo/7gemm-dkv-sidecar-vec4-read`.
+- Baseline: `shaobo/7gemm-dkv-read8-baseline` commit `e2d445b`.
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- Branch windows:
+  producer0 `14/16`, consumer0 `188/240`, consumer1 `188/240`,
+  producer1 `8/16`.
+- Static asm evidence:
+  `ds_read_b32=0`, `ds_read_b128=96`, `ds_read_matrix=550`.
+- Correctness PASS:
+  - H1/S128:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_193914`.
+  - H1/S1024 stats-only:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_193944`.
+  - H1/S1024 full perf:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_194400`.
+- Full perf metrics:
+  `kernel_ticks=44,260,125`, `simTicks=47,873,735`,
+  `MMAC active=32.6559%`, `MMOP=131,072`, `VALU=183,136`,
+  `SCA=115,608`, `LDS=79,360`, `VMEM=4,352`,
+  coissue `36,479/26,644`, `ldsBankConflict=0`.
+- Read8 baseline full perf:
+  `kernel_ticks=47,313,175`, `simTicks=50,926,785`,
+  `MMAC active=32.0455%`, `VALU=165,872`, `SCA=115,608`,
+  `LDS=83,856`, coissue `36,333/25,091`, `ldsBankConflict=0`.
+- XCU detail:
+  duration `103,988 -> 97,276`, avg active waves `115.47 -> 120.93`.
+  The old `ds_read_b32 -> s_waitcnt` bubble disappears.  Top remaining issue
+  gaps are still `s_abarrier_try_wait -> s_xor_b32` about `41.86%` and
+  `s_abarrier_try_wait -> s_waitcnt` about `8.43%`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260706_194400_7gemm_sidecar_vec4_h1s1024_sqc7_fullperf`.
+
+Conclusion:
+
+Accept as the new clean micro-baseline.  It improves same-shape full-perf
+ticks by about `6.0%` versus read8, removes the scattered sidecar
+`ds_read_b32` wait source, and keeps correctness/no-spill/no-bank-conflict.
+This is still not a 60% MMAC-active solution: VALU and coissue-fail rise, and
+the dominant ABarrier ownership bubble remains.  The next optimization should
+target half-page ownership waits and useful consumer/producer overlap, not
+another sidecar-only cleanup.
+
 ## 2026-07-05 Mq128 Score/dP Read8
 
 Decision: `ACCEPT_MICRO_CANDIDATE`

@@ -34,6 +34,27 @@ SQTT evidence are required before any performance claim.
 
 ## Latest Evidence
 
+- Current best clean micro-baseline: sidecar Vec4 LDS read aggregation on top
+  of workbook sheet `71_mq128_score_dp_read8_design`.
+  It changes only the softmax/dS sidecar reads from scalar per-row loads into
+  `Vec4F32` loads for row max-log2, inverse-sum, and delta.
+- Sidecar Vec4 H1/S1024 full-perf stats:
+  `kernel_ticks=44,260,125`, `simTicks=47,873,735`,
+  `MMAC active=32.6559%`, `MMOP=131,072`, `VALU=183,136`,
+  `SCA=115,608`, `LDS=79,360`, `VMEM=4,352`,
+  `coissue=36,479/26,644`, `ldsBankConflict=0`.
+- Sidecar Vec4 static/resource:
+  branch windows producer0 `14/16`, consumer0 `188/240`,
+  consumer1 `188/240`, producer1 `8/16`; metadata `private=0`,
+  `sgpr=99`, `sgpr_spill=0`, `vgpr=128`, `vgpr_spill=0`;
+  asm `ds_read_b32=0`, `ds_read_b128=96`, `ds_read_matrix=550`.
+- Sidecar Vec4 full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260706_194400_7gemm_sidecar_vec4_h1s1024_sqc7_fullperf`.
+- Sidecar Vec4 xcu result:
+  dispatch duration `103,988 -> 97,276` vs read8, avg active waves
+  `115.47 -> 120.93`; the old `ds_read_b32 -> s_waitcnt` sidecar bubble
+  disappears.  The top bottleneck remains ABarrier:
+  `s_abarrier_try_wait -> s_xor_b32` about `41.86%`.
 - Current best clean micro-baseline: workbook sheet
   `71_mq128_score_dp_read8_design`.
   It changes only `score_dp_mmac_owner16` from four small

@@ -1,5 +1,69 @@
 # Source Status
 
+## 2026-07-06 Sidecar Vec4 LDS Reads Active
+
+Status: `MQ128_R1_SIDE_CAR_VEC4_CURRENT_BEST`.
+
+Current active source keeps the clean W16/Mq128/Nk128/D128 canonical dKV
+kernel and freezes dQ.  It starts from the read8 score/dP baseline and changes
+only the sidecar reads inside the softmax/dS helpers:
+
+- Old sidecar path:
+  scalar `float` loads for row max-log2, inverse-sum, and delta.
+- New sidecar path:
+  one `Vec4F32` LDS load per sidecar family for the four rows owned by the
+  lane group.
+- Q0/Dout0/Q1/Dout1 half-page ownership tokens remain unchanged.
+- K/V resident latch, dV/dK output ownership, score/dP read8 batching, and
+  `AllDone` remain unchanged.
+- No new kernel, no phase stack, no asm island, no dQ change.
+
+Validation:
+
+- Remote build/source gate PASS.
+- Symbol metadata PASS:
+  `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- WDRA branch windows:
+  producer0 `14/16`, consumer0 `188/240`, consumer1 `188/240`,
+  producer1 `8/16`.
+- Static asm evidence:
+  `ds_read_b32=0`, `ds_read_b128=96`, `ds_read_matrix=550`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_193914`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_193944`.
+- H1/S1024 full perf correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_194400`.
+
+Performance:
+
+- Full perf `kernel_ticks=44,260,125`, `simTicks=47,873,735`.
+- `MMAC active=32.6559%`.
+- `MMOP=131,072`, `VALU=183,136`, `SCA=115,608`,
+  `LDS=79,360`, `VMEM=4,352`.
+- Coissue `36,479/26,644`.
+- `ldsBankConflict=0`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260706_194400_7gemm_sidecar_vec4_h1s1024_sqc7_fullperf`.
+
+XCU finding:
+
+- Dispatch duration improves from read8 `103,988` to `97,276`.
+- Avg active waves improve from `115.47` to `120.93`.
+- The old `ds_read_b32 -> s_waitcnt` sidecar bubble disappears.
+- Top bottlenecks remain `s_abarrier_try_wait -> s_xor_b32` at about
+  `41.86%` and `s_abarrier_try_wait -> s_waitcnt` at about `8.43%`.
+
+Conclusion:
+
+Promote this as the current best clean micro-baseline because it improves
+read8 full-perf ticks by about `6.0%`, removes scattered sidecar LDS reads,
+and preserves correctness/no-spill/no-bank-conflict.  It is not a final
+FWD-style conveyor: the dominant ABarrier ownership bubble is still present,
+VALU rose, and coissue-fail rose.  The next design must attack half-page
+ownership waits and useful overlap, not another sidecar-only cleanup.
+
 ## 2026-07-05 Score/dP Read8 Active
 
 Status: `MQ128_R1_HALF_PAGE_SCORE_DP_READ8_CURRENT_BEST`.
