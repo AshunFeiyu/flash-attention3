@@ -62,6 +62,19 @@ evidence are required before any performance claim.
 
 ## Latest Evidence
 
+- dQ chunk-token experiment was rejected and removed from source.  It replaced
+  full-page `DsFilled` with per-worker dS chunk barriers, passed static and
+  H1/S128/H1/S1024 correctness, but H1/S1024 dispatch1 regressed from
+  `28,114,905` ticks / `9.7068%` whole-active MMAC to `31,380,440` ticks /
+  `8.7319%` whole-active MMAC.  The conclusion is that finer-grain ABarrier
+  readiness alone raises scalar/control debt faster than it exposes useful dQ
+  MMAC.
+- Current dQ source is restored to `dq_sidecar_lds_staging`; remote recertified
+  static PASS with `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch,
+  consumer branch `49/72`, worker `83/128`.
+- The next dQ 40% route should reduce token count or increase useful MMAC per
+  ownership epoch, not split existing tokens more finely.
+
 - dQ current baseline:
   `Mq=32,Nk=64,D=128,12 waves`, two K/V/Kt/dS LDS pages.
 - dQ H1/S1024 correctness:

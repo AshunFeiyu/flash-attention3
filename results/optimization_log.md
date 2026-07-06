@@ -6159,3 +6159,52 @@ Nk128 single-page test:
   MMAC active, but current worker/consumer fragment lifetime spills.  Revisit
   only after K/K^T same-LDS layout is proven or after reducing dQ fragment
   lifetime.
+
+### dQ dS Chunk Token Experiment
+
+Status: `REJECT_PERF_STATS_ONLY`.
+
+Hypothesis:
+
+- The accepted `dq_sidecar_lds_staging` baseline waits on full-page
+  `DsFilled(count=4)` before any dQ consumer MMAC starts.
+- Replacing that with per-worker dS chunk tokens might let consumers start the
+  first 32-column `dS @ K^T` block while later worker chunks are still being
+  computed.
+
+Implementation tested:
+
+- Added eight chunk barriers: four dS chunks for page0 and four for page1.
+- Each worker wave called `seq -> publish dS chunk -> arrive` for its own
+  chunk.
+- Consumers waited chunk0+1, consumed n-block0 with one native
+  `ds_read_matrix_trans_pair` group, then waited chunk2+3 and consumed
+  n-block1.
+- No new phase or kernel was kept in source; the experiment was reverted.
+
+Evidence:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch; branch windows
+  producer `8/40`, consumer `33/72`, worker `83/128`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_033505`.
+- H1/S1024 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_033527`.
+- H1/S1024 dispatch1:
+  `kernel_ticks=31,380,440`, whole-active `MMAC=8.7319%`,
+  `VALU=92,416`, `SCA=194,600`, `LDS=42,016`, `VMEM=4,928`,
+  coissue `1316/905`, `ldsBankConflict=0`.
+- Accepted sidecar-LDS baseline dispatch1:
+  `kernel_ticks=28,114,905`, whole-active `MMAC=9.7068%`.
+
+Decision:
+
+- Reject and keep source at `dq_sidecar_lds_staging`.
+- The experiment proves that finer dS readiness tokens alone are the wrong
+  direction: they reduce consumer live VGPR but increase scalar/control work
+  and do not hide the ownership wait enough.
+- Next dQ route toward 40% MMAC active should reduce token count or increase
+  useful MMAC per token, for example by eliminating the K^T page through a
+  proven native layout, or by redesigning the tile so each page epoch has a
+  larger dQ MMAC island without spill.

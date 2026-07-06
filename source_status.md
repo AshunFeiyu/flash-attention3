@@ -1,5 +1,35 @@
 # Source Status
 
+## 2026-07-07 dQ dS Chunk Token Rejected
+
+Status: `DQ_SOURCE_RESTORED_TO_SIDECAR_LDS_STAGING`.
+
+The source was briefly modified to replace full-page `DsFilled(count=4)` with
+per-worker dS chunk tokens.  Consumers waited chunk0+1 before consuming the
+first 32-column dQ n-block, then chunk2+3 before consuming the second n-block.
+
+Result:
+
+- Static/resource PASS:
+  `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+- H1/S128 and H1/S1024 correctness PASS.
+- H1/S1024 dispatch1 regressed:
+  `kernel_ticks=31,380,440`, whole-active `MMAC=8.7319%`,
+  compared with accepted `dq_sidecar_lds_staging`
+  `kernel_ticks=28,114,905`, whole-active `MMAC=9.7068%`.
+- `SCA=194,600` shows that finer-grain barriers added too much scalar/control
+  debt.
+
+Decision:
+
+- Code was reverted and remote recertified to the accepted sidecar-LDS
+  baseline:
+  consumer branch `49/72`, worker `83/128`, metadata `private=0`,
+  `sgpr=67`, `vgpr=168`, no spill.
+- Do not retry finer dS chunking as an isolated optimization.  The next 40%
+  MMAC-active route must either reduce token count/LDS footprint or increase
+  useful MMAC work per ownership epoch.
+
 ## 2026-07-07 dQ Mq32 Double-Page Conveyor
 
 Status: `DQ_MQ32_DOUBLEPAGE_CURRENT_BASELINE`.
