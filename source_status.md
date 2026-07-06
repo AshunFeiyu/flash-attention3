@@ -64,6 +64,16 @@ FWD-style conveyor: the dominant ABarrier ownership bubble is still present,
 VALU rose, and coissue-fail rose.  The next design must attack half-page
 ownership waits and useful overlap, not another sidecar-only cleanup.
 
+Rejected follow-up:
+
+- Sheet `72_dout_preread` tried to pre-issue final M-pair dO normal source
+  reads under the score/dP DBlock2/3 MMAC island.  It was static-clean and
+  correct, but H1/S1024 stats-only regressed from sidecar Vec4
+  `simTicks=48,445,215`, `MMAC active=32.6312%` to
+  `simTicks=48,590,815`, `MMAC active=32.2856%`.  The source was restored to
+  the sidecar Vec4 baseline.  Do not retry this as simple code motion; the next
+  dO attempt needs a structural lifetime or producer1-work redesign.
+
 ## 2026-07-05 Score/dP Read8 Active
 
 Status: `MQ128_R1_HALF_PAGE_SCORE_DP_READ8_CURRENT_BEST`.

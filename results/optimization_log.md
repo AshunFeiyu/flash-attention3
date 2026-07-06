@@ -1,5 +1,61 @@
 # Optimization Log
 
+## 2026-07-06 dO Normal Preread Under Score/dP
+
+Decision: `REJECT_STATS_ONLY`
+
+Hypothesis:
+
+XCU top2000 on the sidecar Vec4 baseline showed the dominant steady ownership
+waits were `bar5=Dout0Used` and `bar9=Dout1Used`, about `1.045M` and
+`0.994M` cycles respectively.  The candidate tried to issue the final M-pair
+dO normal source reads before the second score/dP MMAC block, so the
+`ds_read_matrix_normal` latency could be hidden under useful score/dP MMAC and
+`DoutUsed` could arrive earlier.
+
+Implementation:
+
+- Single canonical kernel only.
+- Added a temporary ReleasePage helper that kept the score/dP read8 schedule,
+  but inserted dO normal source reads before score/dP DBlock2/3 MMAC.
+- No API, tile, barrier-ledger, output-ownership, or MMOP-count change.
+
+Evidence:
+
+- Design workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`,
+  sheet `72_dout_preread`.
+- Static gates PASS:
+  branch windows producer0 `14/16`, consumer0 `188/240`,
+  consumer1 `188/240`, producer1 `8/16`;
+  metadata `private=0`, `sgpr=99`, `sgpr_spill=0`, `vgpr=128`,
+  `vgpr_spill=0`.
+- Static asm remained clean:
+  `ds_read_b32=0`, `ds_read_b128=96`, `ds_read_matrix=550`.
+- Correctness PASS:
+  - H1/S128:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_200711`.
+  - H1/S1024:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260706_200742`.
+- H1/S1024 stats-only metrics:
+  `simTicks=48,590,815`, `shaderActiveTicks=44,977,205`,
+  `MMAC active=32.2856%`, `MMOP=131,072`, `VALU=183,136`,
+  `SCA=115,608`, `LDS=79,360`, `VMEM=4,352`,
+  coissue `37,081/26,440`, `ldsBankConflict=0`.
+- Same-code-family sidecar Vec4 stats-only baseline:
+  `simTicks=48,445,215`, `shaderActiveTicks=44,831,605`,
+  `MMAC active=32.6312%`, coissue `35,844/26,232`.
+
+Conclusion:
+
+Reject without full perf.  The candidate was correct and resource-clean, but it
+regressed same-shape stats by about `0.30%` simTicks and lowered MMAC active by
+about `0.35` points.  Instruction counts were identical, so this was pure
+scheduling/code-motion and did not shorten the dO critical path enough to
+matter.  The kernel source was restored to the sidecar Vec4 baseline; the next
+attempt should redesign dO lifetime or producer1 useful work structurally
+instead of only moving the dO source reads across the final score/dP MMAC.
+
 ## 2026-07-06 Mq128 Sidecar Vec4 LDS Reads
 
 Decision: `ACCEPT_MICRO_CANDIDATE`
