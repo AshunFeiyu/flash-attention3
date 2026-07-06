@@ -464,3 +464,20 @@ Fast same-K-LDS probe result:
 - The source was restored to `dq_sidecar_lds_staging`.
 - Next same-K work must be a focused fragment-layout probe that records actual
   K/K^T fragments; do not delete the K^T page by guessing offsets.
+
+Latest dQ evidence:
+
+- Fresh xcu for `dq_sidecar_lds_staging`:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2732630_fa3_bwd_dq_clean_20260707_030530`.
+- Dispatch1 top issue gap is still ABarrier:
+  `s_abarrier_try_wait -> s_xor_b32 = 53.17%`.
+- Use whole-active MMAC as the target metric:
+  `sum(mmopRunTimeCounter) / sum(activeTimeCounter)`.  The local busy-window
+  ratio `sum(mmopRunTimeCounter) / sum(runTimeCounter)` is already about
+  `40.8%`, but it hides ABarrier idle/bubble time and is not the 40% target.
+- PageUsed `8 -> 4` was logically correct and raised whole-active MMAC
+  `9.7068% -> 9.9346%`, but regressed dispatch1 ticks
+  `28,114,905 -> 28,360,605`; code reverted.
+- Nk128 single-page was rejected at static metadata:
+  `private=68`, `sgpr_spill=2`, `vgpr_spill=64`; code reverted and remote
+  recertified to the sidecar-LDS baseline.

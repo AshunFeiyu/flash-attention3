@@ -6121,3 +6121,41 @@ Decision:
   prints expected versus actual K/K^T fragments for `matrix_load_32x16`,
   `matrix_load_32x32`, `ds_read_matrix_format`, and
   `ds_read_matrix_trans_format`.
+
+### dQ ABarrier And Nk128 Experiments
+
+Status: `REJECT_TICKS_OBSERVE` and `REJECT_STATIC_SPILL`.
+
+Evidence:
+
+- Fresh full-perf/xcu for the accepted `dq_sidecar_lds_staging` baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_030342`
+  and xcu output
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2732630_fa3_bwd_dq_clean_20260707_030530`.
+- xcu dispatch1 top issue gap is `s_abarrier_try_wait -> s_xor_b32` at
+  `53.17%`.  `ds_read_matrix_trans_format -> s_waitcnt` is only `3.94%`,
+  and `v_mmac` latency share is `3.71%`.
+
+PageUsed consumer-only test:
+
+- Changed `PageUsed` expected count from `8` to `4` and removed the worker's
+  `PageUsed` arrive.  Correctness proof: a consumer can arrive `PageUsed` only
+  after `DsFilled`, and `DsFilled` means the worker has finished the page.
+- H1/S128 and H1/S1024 correctness passed.
+- H1/S1024 dispatch1 whole-active MMAC improved slightly from `9.7068%` to
+  `9.9346%`, but `kernel_ticks` regressed from `28,114,905` to `28,360,605`
+  and coissue fell from `1395/1108` to `1173/926`.
+- Decision: do not promote; the code is reverted to `dq_sidecar_lds_staging`.
+
+Nk128 single-page test:
+
+- Workbook sheet `14_dq_nk128_single_page` records the design: `Mq32,Nk128`
+  with one LDS page, about `120.4KB` LDS, total `384` MMAC per page versus
+  `192` for Nk64, and half the page/barrier epochs.
+- Static build completed, but symbol metadata failed:
+  `private_segment_fixed_size=68`, `sgpr_spill_count=2`,
+  `vgpr_spill_count=64`.
+- Decision: reject before PMD.  The idea is still a plausible route to higher
+  MMAC active, but current worker/consumer fragment lifetime spills.  Revisit
+  only after K/K^T same-LDS layout is proven or after reducing dQ fragment
+  lifetime.

@@ -3930,3 +3930,27 @@ Current focus:
 - The active source is restored to `dq_sidecar_lds_staging`.
 - Any future same-K attempt needs an isolated fragment-layout probe before
   touching the canonical dQ kernel again.
+
+## 2026-07-07 dQ ABarrier And Nk128 Static Rejection
+
+- Active dQ source remains `dq_sidecar_lds_staging`.
+- Full perf/xcu for the active baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_030342`,
+  xcu
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2732630_fa3_bwd_dq_clean_20260707_030530`.
+- xcu dispatch1 bottleneck:
+  `s_abarrier_try_wait -> s_xor_b32` is `53.17%`; matrix-read wait is much
+  smaller (`ds_read_matrix_trans_format -> s_waitcnt = 3.94%`).
+- Metric guardrail: the 40% goal uses whole-active MMAC
+  `sum(mmopRunTimeCounter) / sum(activeTimeCounter)`, not the local
+  non-empty-SIMD ratio `sum(mmopRunTimeCounter) / sum(runTimeCounter)`.
+- PageUsed consumer-only test:
+  correctness PASS, whole-active MMAC `9.7068% -> 9.9346%`, but dispatch1
+  ticks regressed `28,114,905 -> 28,360,605`; rejected and reverted.
+- Nk128 single-page test:
+  workbook sheet `14_dq_nk128_single_page`; build completed but static
+  metadata failed with `private=68`, `sgpr_spill=2`, `vgpr_spill=64`.
+  Rejected before PMD and reverted.
+- Remote recert after revert:
+  dQ gate PASS, symbol metadata PASS with `private=0`, `sgpr=67`,
+  `vgpr=168`, no spill/scratch.
