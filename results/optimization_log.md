@@ -7424,3 +7424,14 @@ Next:
 - Do not blindly delete all `v_mov`: the remaining large clusters include
   store-helper copies and softmax/default-zero moves, which need separate asm
   attribution plus correctness/perf evidence.
+
+Follow-up static reject:
+
+- Tried removing the consumer hot-path `if (diag_store == 0)` branch by always
+  storing dQ in the consumer and leaving `DQ_DIAG_STORE` as a tail diagnostic
+  overlay.
+- Static/resource still passed and consumer branch windows shrank
+  `122/216 -> 120/216`, but asm `v_mov` got worse:
+  total `359 -> 367`, copy category `173 -> 181`.
+- Decision: `REJECT_STATIC_ASM`; do not pursue this as a v_mov cleanup without a
+  different store-helper design.
