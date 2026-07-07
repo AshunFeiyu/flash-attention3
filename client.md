@@ -613,3 +613,9 @@ Current dQ baseline for the 40% MMAC-active goal:
   correctness/resource gates but regressed ticks to `33,754,630`; it was
   reverted.  The `s_xor_b32` hot row should be read as true ABarrier wait debt,
   not merely wrapper overhead.
+- Rejected structural candidate:
+  splitting `DsFilled` into pair0/pair1 was correct but did not improve
+  performance.  Pair-all workers regressed to `33,548,970` ticks because both
+  pairs were still ready together; two-worker sequential pair streaming
+  regressed to `33,989,410` ticks because waves10-11 became thin.  The active
+  source is restored to the accepted PageUsed consumer-owned baseline.

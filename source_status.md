@@ -4196,3 +4196,10 @@ Current focus:
   correctness/resource gates but regressed S1024 ticks
   `33,372,430 -> 33,754,630`; code was reverted.  Treat the xcu
   `s_xor_b32` row as an ABarrier wait symptom, not a standalone wrapper issue.
+- Rejected structural candidate:
+  dS pair-level streaming split `DsFilled` into NChunk0/1 and NChunk2/3 pairs.
+  Pair-all workers were correct but slower (`33,548,970` ticks); two-worker
+  sequential pair streaming was also correct but slower (`33,989,410` ticks).
+  Code was reverted.  Lesson: finer `DsFilled` barriers do not help unless the
+  wave-role design preserves enough worker parallelism and creates useful
+  work for all resident waves.

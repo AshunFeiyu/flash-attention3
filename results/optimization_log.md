@@ -6825,3 +6825,58 @@ Conclusion:
 - The `s_xor_b32` hot row is mostly a symptom of true ABarrier waiting rather
   than a wrapper-only codegen issue.  Continue toward a topology/lifetime
   change for `PageFilled/DsFilled/PageUsed`.
+
+## 2026-07-07 dQ dS Pair Streaming
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Design:
+
+- Workbook sheet `30_dq_ds_pair_stream_plan`.
+- xcu top-bubble aggregation on the accepted baseline showed barrier id `1`
+  (`Page0DsFilled`) dominating the sampled `s_abarrier_try_wait -> s_xor_b32`
+  issue gaps.  The candidate split each page's dS handoff into two natural
+  `ds_read_matrix_trans_pair` groups:
+  pair0 = NChunk0/1, pair1 = NChunk2/3.
+
+Candidate A, pair-all workers:
+
+- Worker waves8-11 still ran in parallel.  Waves8/9 published pair0 and
+  waves10/11 published pair1; consumers waited pair0, consumed half of dQ,
+  then waited pair1.
+- Static/resource PASS:
+  `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_090341`;
+  H1/S1024 one-dispatch
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_090406`.
+- H1/S1024 stats:
+  `simTicks=33,548,970`, `MMAC active=8.45499%`, `coissue=1,157/945`,
+  `ldsBankConflict=0`.
+
+Candidate B, pair-sequential workers:
+
+- Only waves8/9 worked; each published pair0 first, then pair1.  Waves10/11
+  were tail waves.  This attempted to create real overlap between consumer
+  pair0 MMAC and worker pair1 dS.
+- Static/resource PASS:
+  `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_090749`;
+  H1/S1024 one-dispatch
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_090813`.
+- H1/S1024 stats:
+  `simTicks=33,989,410`, `MMAC active=8.47049%`, `coissue=1,245/1,033`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Both variants were correct and resource-clean, but both were slower than the
+  accepted baseline `33,372,430` ticks.  Code was reverted.
+- Pair-all did not create useful stagger because pair0 and pair1 were produced
+  concurrently and became ready at nearly the same time.
+- Pair-sequential created the intended stagger but made the worker/helper side
+  too thin; the lost parallelism outweighed any overlap.
+- The next 40% route should not add finer-grained barriers alone.  It needs a
+  larger useful MMAC island or a different output/reduction ownership that keeps
+  all resident waves doing useful work while reducing the dS handoff bubble.
