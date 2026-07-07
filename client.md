@@ -20,22 +20,24 @@ evidence are required before any performance claim.
 - dS is no longer staged in LDS.  Each consumer computes its complete dQ
   chain in VGPR: `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
 - Current evidence:
-  after K-normal read-batch, H1/S128
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164521`
+  after K-normal split-wait, H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_173804`
   and H1/S1024
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164530`
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_173814`
   both PASS; full perf archive
-  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_164850_dq_k_normal_read_batch_h1s1024_sqc7_fullperf`
-  reports `simTicks=51,460,500`, `kernel_ticks=47,846,890`,
-  `MMAC active=19.9938%`, `ldsBankConflict=0`.
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_174046_dq_k_normal_split_wait_h1s1024_sqc7_fullperf`
+  reports `simTicks=50,760,255`, `kernel_ticks=47,146,645`,
+  `MMAC active=20.1315%`, `ldsBankConflict=0`.
 - This is a clean micro improvement over the structural bring-up
-  (`55,191,955 -> 51,460,500` simTicks), but not a performance win over the
+  (`55,191,955 -> 50,760,255` simTicks), but not a performance win over the
   older Mq32 K-native baseline.  XCU still shows ABarrier wait exposure:
-  `s_abarrier_try_wait -> s_xor_b32` about `49.39%`; a smaller
-  `ds_read_matrix_format -> s_waitcnt` bubble remains about `4.83%`.
-- Next direction: first try dKV/C102-style split wait inside the K-normal read
-  batch; then design the larger `BlockM` route by latching Q/dO into consumer
-  VGPRs and freeing their LDS region before increasing M.
+  `s_abarrier_try_wait -> s_xor_b32` about `49.71%`.  The targeted
+  `ds_read_matrix_format -> s_waitcnt` bubble improved from about `4.83%` to
+  `2.72%`, while `v_mmac -> s_waitcnt` grew to about `2.95%`.
+- Next direction: stop local wait micro-tuning unless xcu points to a new
+  concrete bubble; design the larger `BlockM` route by latching Q/dO into
+  consumer VGPRs and freeing their LDS region before increasing M, or reduce
+  PageFilled/PageUsed ownership exposure directly.
 
 ## dQ Reopen Contract
 

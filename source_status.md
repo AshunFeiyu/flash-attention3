@@ -38,6 +38,25 @@ Current code state:
 
 Latest target-shape evidence:
 
+- Accepted dQ K-normal split-wait micro-optimization:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_173804`
+  and H1/S1024
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_173814`
+  correctness PASS, static/resource PASS with branch windows
+  `8/40`, `118/216`, `118/216`, `9/40`, metadata `private=0`,
+  `sgpr=76`, `vgpr=128`, no spill/scratch, `ldsBankConflict=0`.
+  The change splits the K-normal read-batch wait:
+  `wait_lgkm(4)` then MMAC DBlock0/1, then `wait_lgkm(0)` and MMAC
+  DBlock2/3.
+  Stats-only H1/S1024: `simTicks=50,638,315`,
+  `kernel_ticks=47,024,705`, `MMAC active=20.1654%`,
+  coissue `13,798/13,342`.
+  Full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_174046_dq_k_normal_split_wait_h1s1024_sqc7_fullperf`.
+  XCU shows the targeted `ds_read_matrix_format -> s_waitcnt` bubble dropped
+  from about `4.83%` to about `2.72%`, but ABarrier ownership remains the top
+  bottleneck at about `49.71%`.
+  This is the current 16-wave dQ micro-baseline.
 - Accepted dQ K-normal read-batch micro-optimization:
   H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164521`
   and H1/S1024

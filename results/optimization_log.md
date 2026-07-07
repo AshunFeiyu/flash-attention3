@@ -1,5 +1,63 @@
 # Optimization Log
 
+## 2026-07-07 dQ K-Normal Split Wait
+
+Decision: `ACCEPT_MICRO`
+
+Hypothesis:
+
+After batching all four D-block K-normal reads, one `wait_lgkm(0)` still
+exposed a `ds_read_matrix_format -> s_waitcnt` bubble.  The read stream is
+issued in D-block order, two LDS matrix reads per D-block.  A split wait should
+allow the first half of the dQ MMAC island to start once the first four LDS
+reads are ready, while the latter four reads continue to mature.
+
+Implementation:
+
+- Single canonical dQ kernel only.
+- In `dq_update_from_ds_vec`, keep the four D-block read batch, but replace the
+  single `wait_lgkm(0)` with:
+  `wait_lgkm(4) -> MMAC DBlock0/1 -> wait_lgkm(0) -> MMAC DBlock2/3`.
+- No tile, role, barrier, LDS layout, sidecar, API, or output ownership change.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `8/40`, `118/216`, `118/216`, `9/40`;
+  metadata `private=0`, `sgpr=76`, `vgpr=128`, no SGPR/VGPR spill.
+- Correctness PASS:
+  - H1/S128:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_173804`.
+  - H1/S1024:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_173814`.
+- H1/S1024 stats-only:
+  `simTicks=50,638,315`, `kernel_ticks=47,024,705`,
+  `MMOP=55,296`, `VALU=140,320`, `SCA=65,824`, `LDS=37,872`,
+  coissue `13,798/13,342`, `ldsBankConflict=0`,
+  `MMAC active=20.1654%`.
+- H1/S1024 full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_174046`.
+  Helper perf archived at
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_174046_dq_k_normal_split_wait_h1s1024_sqc7_fullperf/DQ_K_NORMAL_SPLIT_WAIT_H1S1024.perf`.
+  Full-perf stats: `simTicks=50,760,255`, `kernel_ticks=47,146,645`,
+  coissue `13,860/13,016`, `MMAC active=20.1315%`.
+- XCU CLI:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_k_normal_split_wait_20260707_174046`.
+  `ds_read_matrix_format -> s_waitcnt` drops from about `4.83%` in the
+  read-batch baseline to about `2.72%`.  The tradeoff is that
+  `v_mmac -> s_waitcnt` rises to about `2.95%`.
+  The dominant bubble remains `s_abarrier_try_wait -> s_xor_b32` at about
+  `49.71%`.
+
+Conclusion:
+
+Keep as the current 16-wave dQ micro-baseline.  It improves stats-only
+H1/S1024 simTicks by about `1.59%` over K-normal read-batch and about `8.25%`
+over the structural full-3GEMM baseline, with no spill or bank conflict.  It
+confirms that dKV-style wait placement helps dQ, but the main route to higher
+MMAC active is still reducing ABarrier ownership exposure or increasing useful
+MMAC work per ownership epoch, not more local wait splitting.
+
 ## 2026-07-07 dQ K-Normal Read Batch
 
 Decision: `ACCEPT_MICRO`
