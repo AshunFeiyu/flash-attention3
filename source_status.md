@@ -19,6 +19,9 @@ Current code state:
 - Canonical dQ tile: `Mq=32,Nk=64,D=128,12 waves`.
 - Sidecar is staged by the producer into LDS; worker does not direct-load the
   three sidecar streams from global in the hot path.
+- `PageUsed` is consumer-only: producer waits for 4 consumer arrivals before
+  overwriting a page.  Worker-side `PageUsed` arrival was removed because
+  workers finish page reads before `DsFilled`.
 - Added a standalone measurement knob:
   `--tiles-per-dispatch` / `DQ_TILES_PER_DISPATCH`.  It controls how many q
   tiles the standalone harness packs into one dispatch and does not alter the
@@ -45,6 +48,10 @@ Latest target-shape evidence:
   correctness/resource PASS but `simTicks=34,237,840` and
   `MMAC active=8.1943%` versus same one-dispatch baseline
   `34,215,090` / `8.2480%`; code removed from the active path.
+- Accepted PageUsed consumer-only update:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082245`,
+  correctness/resource PASS, `simTicks=33,372,430`,
+  `MMAC active=8.44342%`, `SCA=212,520`, `ldsBankConflict=0`.
 
 Decision:
 
@@ -52,12 +59,13 @@ Decision:
   artificial dispatch splitting.
 - Do not count it as an optimization; it lowers dispatch overhead but not core
   MMAC active.
-- Direct Mq64 remains rejected by PMD hang.  Further Mq64 work must first pass
-  a helper-faithful q_subtile probe using the real dS publish and dQ consume
-  helper layout.
-- Do not retry isolated Kt preread/code motion.  The next 40% path should
-  either enlarge useful MMAC work per barrier token or redesign dS/page
-  ownership so consumer waves are not dominated by `DsFilled` waiting.
+- Direct Mq64 in the old q_subtile path remains rejected by hang; Mq64
+  single-page direct and split variants are also rejected by perf because they
+  lose overlap/coissue.
+- Do not retry isolated Kt preread/code motion or Mq64 single-page designs.
+  The next 40% path should stay on the legal two-page pipeline, preserve
+  worker/consumer coissue, and continue removing unnecessary barrier/control
+  debt before another larger-tile redesign.
 
 ## 2026-07-07 dQ dS Chunk Token Rejected
 

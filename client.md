@@ -25,6 +25,8 @@ evidence are required before any performance claim.
 - Current dQ pipeline baseline is a two-page K/V/Kt/dS conveyor:
   producer publishes page input, worker publishes dS, consumer computes dQ and
   releases the page.  Q/dO are loaded once per q-subtile.
+- `PageUsed` is consumer-only in the current code; worker-side PageUsed arrival
+  was removed after proving it was redundant for page overwrite lifetime.
 - Direct `Mq=64` by serially looping two `M32` q-subtiles hung at H1/S128.
   Revisit only with explicit q-subtile token reset or a new lifetime proof.
 - `Nk=128` is a later upgrade only after the same K LDS page can feed both
@@ -57,12 +59,15 @@ evidence are required before any performance claim.
   is dominated by `DsFilled` ABarrier wait bubbles.  Kt preread under this wait
   was correct/resource-clean but regressed to `simTicks=34,237,840`,
   `MMAC active=8.1943%`, so it was removed.
-- Direct full-kernel Mq64 is still rejected by hang.  Larger Mq/Nk remains a
-  likely path to 40%, but only after a helper-faithful q_subtile probe proves
-  the real dS publication and dQ consume lifetime.
-- Next evidence step: redesign the canonical path around the `DsFilled` bubble:
-  increase MMAC island size per dS/page token or change dS/page ownership,
-  while keeping one clean kernel path and no code stacking.
+- Current accepted one-dispatch improvement:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082245`,
+  `simTicks=33,372,430`, `MMAC active=8.44342%`, `SCA=212,520`,
+  correctness PASS, `ldsBankConflict=0`.
+- Mq64 single-page direct/split variants are rejected: they are correct and
+  resource-clean, but lose overlap/coissue and regress ticks badly.
+- Next evidence step: stay on Mq32 two-page baseline, preserve worker/consumer
+  overlap, and remove more unnecessary wait/barrier/control debt before another
+  larger-tile redesign.
 
 ## Current Canonical State
 

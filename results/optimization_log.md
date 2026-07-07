@@ -6689,3 +6689,40 @@ Conclusion:
 - Code was removed from the active path.  The next changes should stay on the
   Mq32 two-page baseline and reduce unnecessary barrier/control debt before
   attempting another larger-tile design.
+
+## 2026-07-07 dQ PageUsed Consumer-Only
+
+Decision: `ACCEPT_MICRO`
+
+Design:
+
+- Workbook sheet `26_dq_pageused_consumer_only`.
+- Baseline `PageUsed` count was `8`, with both worker waves and consumer waves
+  arriving after each page.  Producer only needs to know the page is safe to
+  overwrite; workers finish reading K/V/Q/dO before `DsFilled`, so their
+  `PageUsed` arrival is redundant for page lifetime.
+- Changed `Page0Used/Page1Used` count from `8` to `4` and removed the worker
+  `dq_arrive_page_used` call.  Consumer arrivals remain unchanged.
+
+Evidence:
+
+- Static/resource unchanged and PASS:
+  producer `8/40`, consumers `49/72` x4, worker `83/128`, tail `2/48`;
+  metadata `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082239`;
+  H1/S1024 one-dispatch
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082245`.
+- H1/S1024 one-dispatch stats:
+  `simTicks=33,372,430`, `MMOP=52,224`, `MMAC active=8.44342%`,
+  `SCA=212,520`, `coissue=1,223/992`, `ldsBankConflict=0`.
+- Recertified same-code-family baseline was
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_074751`,
+  `simTicks=34,002,150`, `MMAC active=8.21561%`, `SCA=217,384`.
+
+Conclusion:
+
+- Accepted as a small but clean improvement: about `1.85%` lower `simTicks`,
+  `+0.23pt` MMAC active, and lower SCA with no resource/correctness cost.
+- This supports the current direction: stay on the two-page Mq32 pipeline and
+  remove unnecessary barrier/control work before another major tiling attempt.

@@ -705,10 +705,10 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
     if (wave_id == 0) {
         __builtin_hcu_s_abarrier_init(Bar::kPage0Filled, 4);
         __builtin_hcu_s_abarrier_init(Bar::kPage0DsFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kPage0Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kPage0Used, 4);
         __builtin_hcu_s_abarrier_init(Bar::kPage1Filled, 4);
         __builtin_hcu_s_abarrier_init(Bar::kPage1DsFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kPage1Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kPage1Used, 4);
         __builtin_hcu_s_abarrier_init(Bar::kAllDone, 12);
     }
     __builtin_hcu_s_ebarrier_sync(0);
@@ -793,7 +793,6 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
                     worker_slot, lds, lane, kt, page, q_base_sub, seqlen,
                     row_base, softmax_scale, softmax_scale_log2);
                 dq_arrive_ds_filled<Bar>(page);
-                dq_arrive_page_used<Bar>(page);
             }
         }
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
