@@ -4354,3 +4354,37 @@ Current focus:
   versus `dq_qdo_latched_kv_double_page` full perf, ticks improve
   `41,823,145 -> 39,716,950` (`+5.04%`) and MMAC active improves
   `22.9566% -> 23.8706%`.
+
+## 2026-07-07 dQ MMAC Zero Seed Accepted
+
+- Active source is now the canonical 16-wave dQ full-3GEMM kernel with the
+  qk/dP hot-loop accumulator zeros replaced by an MMAC zero seed.
+- Code change:
+  one branch-local `mmac_zero` is initialized after `dq_reg`, then the first
+  score/dP MMAC uses it as the accumulator input.  The old per-`n_chunk`
+  `qk_acc`/`dp_acc` explicit zeroing is gone.
+- ASM evidence:
+  `v_mov` total `419 -> 359`; `v_mov_b64 96 -> 36`; zero-move category
+  `186 -> 126`; copy moves unchanged.
+- Static/resource PASS:
+  branch windows `8/40`, `122/216`, `122/216`, `9/40`; metadata
+  `private=0`, `sgpr=54`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_211841`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_211851`.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_212125/m5out/0/0/2749254_fa3_bwd_dq_clean.perf`.
+  Shared copy:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_212125_dq_mmac_zero_seed_h1s1024_sqc7_fullperf/dq_mmac_zero_seed.perf`.
+- H1/S1024 full-perf metrics:
+  `kernel_ticks=39,471,705`, `MMOP=55,296`, `VALU=131,232`,
+  `SCA=96,904`, `LDS=37,872`, `coissue=13,167/10,241`,
+  `MMAC active=24.0973%`, `ldsBankConflict=0`.
+- Baseline comparison:
+  versus `dq_kv_trans_split_wait` full perf, ticks improve
+  `39,716,950 -> 39,471,705` (`+0.62%`), VALU drops
+  `140,320 -> 131,232`, and MMAC active improves
+  `23.8706% -> 24.0973%`.
+- Next v_mov work should be evidence-scoped to store-helper copy clusters or
+  softmax/default-zero moves.  Do not broaden this into a pipeline rewrite
+  without a separate design row.

@@ -7368,3 +7368,59 @@ Next:
   the previous QDo-latched baseline.
 - Keep avoiding blind wait deletion: only waits with clear producer/consumer
   lifetime proof should move or disappear.
+
+## 2026-07-07 dQ MMAC Zero Seed
+
+Decision: `ACCEPT_MICRO`
+
+Hypothesis:
+
+- The hot qk/dP score loop still paid repeated explicit zero initialization for
+  fresh `qk_acc` and `dp_acc`.
+- Seeding the first score/dP MMAC with a branch-local zero accumulator should
+  remove repeated `v_mov_b64` zero moves without increasing copy moves.
+
+Change:
+
+- Added one branch-local `mmac_zero` after long-lived `dq_reg` initialization.
+- Removed per-`n_chunk` `dq_zero_f32x4(qk_acc/dp_acc)`.
+- Rewrote the first score/dP MMAC as the accumulator seed and then accumulated
+  the remaining K/D halves normally.
+- Did not change wave roles, LDS layout, external API, wait/barrier protocol, or
+  output ownership.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `8/40`, `122/216`, `122/216`, `9/40`;
+  metadata `private=0`, `sgpr=54`, `vgpr=128`, no scratch/spill.
+- ASM v_mov count:
+  total `419 -> 359`, `v_mov_b64 96 -> 36`, zero-move category
+  `186 -> 126`; copy moves did not increase.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_211841`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_211851`.
+- Full perf H1/S1024:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_212125/m5out/0/0/2749254_fa3_bwd_dq_clean.perf`.
+  Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_212125_dq_mmac_zero_seed_h1s1024_sqc7_fullperf`.
+  Metrics: `simTicks=43,085,315`, `kernel_ticks=39,471,705`,
+  `MMOP=55,296`, `VALU=131,232`, `SCA=96,904`, `LDS=37,872`,
+  `coissue=13,167/10,241`, `MMAC active=24.0973%`,
+  `ldsBankConflict=0`.
+
+Comparison:
+
+- Prior full perf `dq_kv_trans_split_wait`:
+  `kernel_ticks=39,716,950`, `VALU=140,320`, `MMAC active=23.8706%`.
+- New zero-seed version:
+  `kernel_ticks=39,471,705`, `VALU=131,232`, `MMAC active=24.0973%`.
+- Improvement:
+  ticks down about `0.62%`, VALU down `9,088`, active up `0.227` point.
+
+Next:
+
+- This proves the qk/dP accumulator-zero moves were real debt.
+- Do not blindly delete all `v_mov`: the remaining large clusters include
+  store-helper copies and softmax/default-zero moves, which need separate asm
+  attribution plus correctness/perf evidence.

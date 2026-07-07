@@ -20,19 +20,26 @@ evidence are required before any performance claim.
 - dS is no longer staged in LDS.  Each consumer computes its complete dQ
   chain in VGPR: `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
 - Current evidence:
-  after Q/dO latch, K/V double-page reuse, and K/V trans split-wait, H1/S128
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202017`
+  after Q/dO latch, K/V double-page reuse, K/V trans split-wait, and qk/dP
+  MMAC-zero seeding, H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_211841`
   and H1/S1024
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202030`
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_211851`
   both PASS; full perf archive
-  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_202545_dq_kv_wait_split_h1s1024_sqc7_fullperf`
-  reports `simTicks=43,330,560`, `kernel_ticks=39,716,950`,
-  `MMAC active=23.8706%`, `ldsBankConflict=0`.
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_212125_dq_mmac_zero_seed_h1s1024_sqc7_fullperf`
+  reports `simTicks=43,085,315`, `kernel_ticks=39,471,705`,
+  `VALU=131,232`, `MMAC active=24.0973%`, `ldsBankConflict=0`.
 - This promotes a real pipeline change over the K-normal split-wait baseline:
   Q/dO are latched into consumer VGPR, producers wait `QDoLatched`, then reuse
   the released Q LDS region as page1 for K/V; then K/V trans fragment reads use
   `wait_lgkm(4)` for the first half and `wait_lgkm(0)` for the second half.
   The latter improves full-perf ticks about `5.04%` over the QDo-latched
+  baseline.
+- Latest micro-win:
+  the qk/dP hot loop now seeds the first score/dP MMAC with a branch-local
+  `mmac_zero` instead of zeroing `qk_acc` and `dp_acc` every `n_chunk`.
+  ASM `v_mov` total drops `419 -> 359`, `v_mov_b64` drops `96 -> 36`, and
+  same-shape full-perf ticks improve about `0.62%` versus the K/V split-wait
   baseline.
 - Rejected guardrail:
   removing the first `__syncthreads()` after `AllDone` caused

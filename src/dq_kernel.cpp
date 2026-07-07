@@ -425,6 +425,8 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
     for (int d_idx = 0; d_idx < 8; ++d_idx) {
         dq_zero_f32x4(dq_reg[d_idx]);
     }
+    ins::F32x4 mmac_zero;
+    dq_zero_f32x4(mmac_zero);
 
     for (int kt = 0; kt < active_k_tiles; ++kt) {
         const int page = kt & 1;
@@ -456,11 +458,22 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
 
             ins::F32x4 qk_acc;
             ins::F32x4 dp_acc;
-            dq_zero_f32x4(qk_acc);
-            dq_zero_f32x4(dp_acc);
             ins::wait_lgkm(4);
+            qk_acc.f32 = ins::mmac_f16_lit(
+                q_reg[0].f16x4[0], k_frag[0].f16x4[0], mmac_zero.f32);
+            dp_acc.f32 = ins::mmac_f16_lit(
+                dout_reg[0].f16x4[0], v_frag[0].f16x4[0], mmac_zero.f32);
 #pragma unroll
-            for (int d_block = 0; d_block < KBlocks / 2; ++d_block) {
+            for (int k_half = 1; k_half < 2; ++k_half) {
+                qk_acc.f32 = ins::mmac_f16_lit(
+                    q_reg[0].f16x4[k_half], k_frag[0].f16x4[k_half],
+                    qk_acc.f32);
+                dp_acc.f32 = ins::mmac_f16_lit(
+                    dout_reg[0].f16x4[k_half], v_frag[0].f16x4[k_half],
+                    dp_acc.f32);
+            }
+#pragma unroll
+            for (int d_block = 1; d_block < KBlocks / 2; ++d_block) {
 #pragma unroll
                 for (int k_half = 0; k_half < 2; ++k_half) {
                     qk_acc.f32 = ins::mmac_f16_lit(
