@@ -453,14 +453,27 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
                     v_lds, block * MatrixBlockBytes + n_half_offset,
                     v_frag[d_block].f16x8);
             }
-            ins::wait_lgkm(0);
 
             ins::F32x4 qk_acc;
             ins::F32x4 dp_acc;
             dq_zero_f32x4(qk_acc);
             dq_zero_f32x4(dp_acc);
+            ins::wait_lgkm(4);
 #pragma unroll
-            for (int d_block = 0; d_block < KBlocks; ++d_block) {
+            for (int d_block = 0; d_block < KBlocks / 2; ++d_block) {
+#pragma unroll
+                for (int k_half = 0; k_half < 2; ++k_half) {
+                    qk_acc.f32 = ins::mmac_f16_lit(
+                        q_reg[d_block].f16x4[k_half],
+                        k_frag[d_block].f16x4[k_half], qk_acc.f32);
+                    dp_acc.f32 = ins::mmac_f16_lit(
+                        dout_reg[d_block].f16x4[k_half],
+                        v_frag[d_block].f16x4[k_half], dp_acc.f32);
+                }
+            }
+            ins::wait_lgkm(0);
+#pragma unroll
+            for (int d_block = KBlocks / 2; d_block < KBlocks; ++d_block) {
 #pragma unroll
                 for (int k_half = 0; k_half < 2; ++k_half) {
                     qk_acc.f32 = ins::mmac_f16_lit(

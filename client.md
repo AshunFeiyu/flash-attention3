@@ -20,24 +20,27 @@ evidence are required before any performance claim.
 - dS is no longer staged in LDS.  Each consumer computes its complete dQ
   chain in VGPR: `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
 - Current evidence:
-  after Q/dO latch plus K/V double-page reuse, H1/S128
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_194910`
+  after Q/dO latch, K/V double-page reuse, and K/V trans split-wait, H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202017`
   and H1/S1024
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_194922`
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202030`
   both PASS; full perf archive
-  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_195218_dq_qdo_latched_kv_double_page_h1s1024_sqc7_fullperf`
-  reports `simTicks=45,436,755`, `kernel_ticks=41,823,145`,
-  `MMAC active=22.9566%`, `ldsBankConflict=0`.
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_202545_dq_kv_wait_split_h1s1024_sqc7_fullperf`
+  reports `simTicks=43,330,560`, `kernel_ticks=39,716,950`,
+  `MMAC active=23.8706%`, `ldsBankConflict=0`.
 - This promotes a real pipeline change over the K-normal split-wait baseline:
   Q/dO are latched into consumer VGPR, producers wait `QDoLatched`, then reuse
-  the released Q LDS region as page1 for K/V.  Full-perf kernel ticks improve
-  about `11.3%` versus split-wait and XCU shows
-  `s_abarrier_try_wait -> s_xor_b32` falling from about `49.71%` to
-  `38.54%`.
-- Next direction: optimize the new `s_abarrier_try_wait -> s_waitcnt` tail
-  exposure around bar5/page cadence without losing the two-page correctness
-  proof.  Do not go back to local wait-only tuning unless xcu identifies a
-  concrete non-barrier read gap.
+  the released Q LDS region as page1 for K/V; then K/V trans fragment reads use
+  `wait_lgkm(4)` for the first half and `wait_lgkm(0)` for the second half.
+  The latter improves full-perf ticks about `5.04%` over the QDo-latched
+  baseline.
+- Rejected guardrail:
+  removing the first `__syncthreads()` after `AllDone` caused
+  `ABARRIER_ILL_OP_ERROR` (`barId 5` already invalidated), so it is required
+  for barrier invalidation lifetime.
+- Next direction: run xcu on the current perf once CLI is available, then attack
+  remaining ABarrier/page cadence bubbles.  Do not blindly remove waits unless
+  producer/consumer data lifetime proves it safe.
 
 ## dQ Reopen Contract
 

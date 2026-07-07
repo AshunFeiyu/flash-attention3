@@ -4321,3 +4321,36 @@ Current focus:
   Code was reverted.  Lesson: finer `DsFilled` barriers do not help unless the
   wave-role design preserves enough worker parallelism and creates useful
   work for all resident waves.
+
+## 2026-07-07 dQ K/V Trans Split-Wait Accepted
+
+- Active source is now the canonical 16-wave dQ full-3GEMM kernel with Q/dO
+  latched in VGPR and K/V double-paged through released Q LDS.
+- Rejected wait-removal probe:
+  removing the first `__syncthreads()` after `AllDone` caused PMD
+  `ABARRIER_ILL_OP_ERROR` (`barId 5 has already been invalidated`) at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_201811`.
+  Conclusion: that sync is not a redundant wait; it protects barrier
+  invalidation lifetime after all roles arrive.
+- Accepted wait-placement change:
+  K/V trans fragments now issue all `ds_read_matrix_trans` reads, zero the
+  `qk/dp` accumulators while LDS data is in flight, then use `wait_lgkm(4)` for
+  the first two D-blocks and `wait_lgkm(0)` for the second half.
+- Static/resource PASS:
+  branch windows `8/40`, `118/216`, `118/216`, `9/40`; metadata
+  `private=0`, `sgpr=54`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202017`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202030`.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202545/m5out/0/0/2748931_fa3_bwd_dq_clean.perf`.
+  Shared copy:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_202545_dq_kv_wait_split_h1s1024_sqc7_fullperf/dq_kv_wait_split.perf`.
+- H1/S1024 full-perf metrics:
+  `kernel_ticks=39,716,950`, `MMOP=55,296`, `VALU=140,320`,
+  `SCA=96,904`, `LDS=37,872`, `coissue=13,023/10,125`,
+  `MMAC active=23.8706%`, `ldsBankConflict=0`.
+- Baseline comparison:
+  versus `dq_qdo_latched_kv_double_page` full perf, ticks improve
+  `41,823,145 -> 39,716,950` (`+5.04%`) and MMAC active improves
+  `22.9566% -> 23.8706%`.

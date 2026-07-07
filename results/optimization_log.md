@@ -7299,3 +7299,72 @@ Conclusion:
   reusing Q/dO LDS as a second K/V page after consumers latch Q/dO.  Also
   profile a single heavy q tile so causal triangular work imbalance is not
   confused with intra-CTA pipeline quality.
+
+## 2026-07-07 dQ K/V Trans Split-Wait
+
+Decision: `ACCEPT`
+
+Hypothesis:
+
+- After Q/dO latch and K/V double-page, the remaining local `wait_lgkm(0)` after
+  K/V trans-fragment reads may be too early.
+- It is legal to issue all K/V `ds_read_matrix_trans` reads first, perform
+  accumulator zeroing while those LDS reads are in flight, then consume the
+  first half after `wait_lgkm(4)` and the second half after `wait_lgkm(0)`.
+
+Rejected control:
+
+- Removing the first `__syncthreads()` after `AllDone` looked tempting because
+  xcu showed a large bar5/tail bubble.
+- PMD H1/S128 aborted at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_201811` with
+  `ABARRIER_ILL_OP_ERROR` and `barId 5 has already been invalidated`.
+- Conclusion: the post-`AllDone` sync is required before every wave invalidates
+  ABarriers; it is not a removable data wait.
+
+Change:
+
+- In `dq_consumer_full3gemm_role`, moved zeroing of `qk_acc` and `dp_acc`
+  between K/V trans `ds_read_matrix` issue and first wait.
+- Replaced the immediate full `wait_lgkm(0)` with:
+  `wait_lgkm(4)` -> D-block 0/1 score+dP MMAC ->
+  `wait_lgkm(0)` -> D-block 2/3 score+dP MMAC.
+- Did not change tensor ownership, external API, wave roles, or LDS layout.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `8/40`, `118/216`, `118/216`, `9/40`;
+  metadata `private=0`, `sgpr=54`, `vgpr=128`, no scratch/spill.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202017`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202030`.
+- Stats-only H1/S1024:
+  `simTicks=43,451,135`, `kernel_ticks=39,837,525`,
+  `MMAC active=23.8728%`, `coissue=13,170/10,066`,
+  `ldsBankConflict=0`.
+- Full perf H1/S1024:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_202545/m5out/0/0/2748931_fa3_bwd_dq_clean.perf`.
+  Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_202545_dq_kv_wait_split_h1s1024_sqc7_fullperf`.
+  Metrics: `simTicks=43,330,560`, `kernel_ticks=39,716,950`,
+  `MMOP=55,296`, `VALU=140,320`, `SCA=96,904`, `LDS=37,872`,
+  `coissue=13,023/10,125`, `MMAC active=23.8706%`,
+  `ldsBankConflict=0`.
+
+Comparison:
+
+- Full-perf baseline `dq_qdo_latched_kv_double_page`:
+  `kernel_ticks=41,823,145`, `MMAC active=22.9566%`.
+- New split-wait version:
+  `kernel_ticks=39,716,950`, `MMAC active=23.8706%`.
+- Improvement:
+  ticks down `5.04%`, active up `0.914` point.  This is a valid wait-placement
+  win, but not a solution to the 40%/60% MMAC-active target.
+
+Next:
+
+- Install or sidecar-run `xcu` for this perf and compare top bubbles against
+  the previous QDo-latched baseline.
+- Keep avoiding blind wait deletion: only waits with clear producer/consumer
+  lifetime proof should move or disappear.
