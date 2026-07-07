@@ -63,11 +63,22 @@ evidence are required before any performance claim.
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082245`,
   `simTicks=33,372,430`, `MMAC active=8.44342%`, `SCA=212,520`,
   correctness PASS, `ldsBankConflict=0`.
+- Current accepted dQ micro-baseline:
+  worker score/dP read-batch in `dq_publish_ds_chunk`, recorded in workbook
+  sheet `32_dq_worker_readbatch`.  It batches four K-block `dO/K/V`
+  `ds_read_matrix` groups before one `wait_lgkm(0)` and a longer MMAC island.
+  H1/S1024 one-dispatch correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_094409`,
+  `simTicks=30,225,650`, `MMAC active=9.25852%`, `coissue=1,864/1,455`,
+  `ldsBankConflict=0`.  Full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_094707_dq_worker_readbatch_s1024_sqc7_fullperf`.
+  XCU still shows the main blocker is ABarrier:
+  `s_abarrier_try_wait -> s_xor_b32` about `44.64%`.
 - Mq64 single-page direct/split variants are rejected: they are correct and
   resource-clean, but lose overlap/coissue and regress ticks badly.
 - Next evidence step: stay on Mq32 two-page baseline, preserve worker/consumer
-  overlap, and remove more unnecessary wait/barrier/control debt before another
-  larger-tile redesign.
+  overlap, and attack page/dS ABarrier ownership or increase useful MMAC per
+  token before another larger-tile redesign.
 
 ## Current Canonical State
 

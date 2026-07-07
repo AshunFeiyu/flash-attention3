@@ -6880,3 +6880,82 @@ Conclusion:
 - The next 40% route should not add finer-grained barriers alone.  It needs a
   larger useful MMAC island or a different output/reduction ownership that keeps
   all resident waves doing useful work while reducing the dS handoff bubble.
+
+## 2026-07-07 dQ Even/Odd Page Owner
+
+Decision: `REJECT_HANG`
+
+Design:
+
+- Workbook sheet `32_dq_worker_readbatch` records the attempt.
+- Tried to turn the current producer/worker split into two page owners:
+  waves0-3 own even pages and waves8-11 own odd pages.
+- First variant removed `PageFilled` completely.  This assumed the owner role
+  could read K/V/Kt immediately after its own MLS sequence.
+- Second variant restored an owner-local `PageFilled` so the four owner waves
+  synchronize their MLS writes before publishing dS, while still keeping
+  even/odd page production independent.
+
+Evidence:
+
+- Resource could be made clean after WDRA window correction:
+  owner-local variant built with `private=0`, `sgpr=100`, `vgpr=168`,
+  no SGPR/VGPR spill.
+- No-PageFilled H1/S128 run did not complete in the smoke window:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_093109`.
+- Owner-local PageFilled H1/S128 also did not complete:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_093644`.
+
+Conclusion:
+
+- Rejected and reverted.  The current dQ ABarrier phase ledger cannot be
+  rearranged into even/odd page ownership by a small topology edit.
+- Do not retry this in the performance kernel without a focused probe for
+  owner-local `PageFilled`/`DsFilled` phase progression and cross-wave MLS
+  visibility.
+
+## 2026-07-07 dQ Worker Score/dP Read Batch
+
+Decision: `ACCEPT_MICRO`
+
+Design:
+
+- Kept the current `Mq=32,Nk=64,D=128,12-wave` producer/worker/consumer
+  ownership and the existing barrier ledger.
+- In `dq_publish_ds_chunk`, changed the worker score/dP island from four
+  repetitions of `dO/K/V ds_read_matrix -> wait -> MMAC` into one larger read
+  group: issue all four K-block `dO/K/V` matrix reads, wait once, then run the
+  longer score/dP MMAC island.
+- This is a one-hypothesis instruction-scheduling change: larger useful
+  matrix-read/MMAC island, no math, tile, barrier, or output-ownership change.
+
+Evidence:
+
+- Static/resource PASS: producer `8/40`, consumers `49/72`, worker `115/128`,
+  tail `2/48`; metadata `private=0`, `sgpr=67`, `vgpr=168`,
+  no SGPR/VGPR spill.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_094345`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_094409`.
+- H1/S1024 one-dispatch stats:
+  `simTicks=30,225,650`, `MMOP=52,224`, `MMAC active=9.25852%`,
+  `coissue=1,864/1,455`, `ldsBankConflict=0`.
+- Accepted baseline was `simTicks=33,372,430`, `MMAC active=8.44342%`.
+  Same-shape ticks improved by about `9.43%`, and active share improved by
+  `0.815` percentage point.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_094707/m5out/0/0/2740972_fa3_bwd_dq_clean.perf`.
+- XCU:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_readbatch_worker_s1024_fullperf_20260707_094707_d0`.
+  Dispatch duration is `58,068`, average active waves `228.58`.
+  Top bubble remains `s_abarrier_try_wait -> s_xor_b32` at `44.64%`;
+  `s_abarrier_try_wait -> s_waitcnt` is `6.43%`;
+  `ds_read_matrix_trans_format -> s_waitcnt` is `4.87%`.
+
+Conclusion:
+
+- Accepted as the new dQ micro-baseline.  It is a real tick win and validates
+  larger read/MMAC islanding as useful.
+- It does not solve the 40% target.  The dominant bottleneck is still the
+  page/dS ABarrier ownership chain, so the next step should reduce barrier
+  control exposure or increase useful MMAC work per ownership epoch.

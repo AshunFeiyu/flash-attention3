@@ -395,30 +395,33 @@ __device__ __forceinline__ void dq_publish_ds_chunk(
     dq_zero_f32x4(qk_acc);
     dq_zero_f32x4(dp_acc);
 
+    ins::F16x8 dout_frag[KBlocks];
+    ins::F16x8 k_frag[KBlocks];
+    ins::F16x8 v_frag[KBlocks];
 #pragma unroll
     for (int k_block = 0; k_block < KBlocks; ++k_block) {
-        ins::F16x8 dout_frag;
-        ins::F16x8 k_frag;
-        ins::F16x8 v_frag;
         const int b_block = n_tile * KBlocks + k_block;
         constexpr int MHalfOffset = MHalf == 0 ? 0 : 1024;
         const int n_half_offset = n_half == 0 ? 0 : 1024;
         ins::ds_read_matrix_32x16_trans(
             dout_lds, k_block * MatrixBlockBytes + MHalfOffset,
-            dout_frag.f16x8);
+            dout_frag[k_block].f16x8);
         ins::ds_read_matrix_32x16_trans(
             k_lds, b_block * MatrixBlockBytes + n_half_offset,
-            k_frag.f16x8);
+            k_frag[k_block].f16x8);
         ins::ds_read_matrix_32x16_trans(
             v_lds, b_block * MatrixBlockBytes + n_half_offset,
-            v_frag.f16x8);
-        ins::wait_lgkm(0);
+            v_frag[k_block].f16x8);
+    }
+    ins::wait_lgkm(0);
 
 #pragma unroll
+    for (int k_block = 0; k_block < KBlocks; ++k_block) {
+#pragma unroll
         for (int k_half = 0; k_half < 2; ++k_half) {
-            const ins::Vec4F16 k_rhs = k_frag.f16x4[k_half];
-            const ins::Vec4F16 v_rhs = v_frag.f16x4[k_half];
-            const ins::Vec4F16 dout_lhs = dout_frag.f16x4[k_half];
+            const ins::Vec4F16 k_rhs = k_frag[k_block].f16x4[k_half];
+            const ins::Vec4F16 v_rhs = v_frag[k_block].f16x4[k_half];
+            const ins::Vec4F16 dout_lhs = dout_frag[k_block].f16x4[k_half];
             qk_acc.f32 =
                 ins::mmac_f16_lit(q_reg[k_block].f16x4[k_half],
                                   k_rhs, qk_acc.f32);

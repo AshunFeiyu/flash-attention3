@@ -22,6 +22,10 @@ Current code state:
 - `PageUsed` is consumer-only: producer waits for 4 consumer arrivals before
   overwriting a page.  Worker-side `PageUsed` arrival was removed because
   workers finish page reads before `DsFilled`.
+- Worker score/dP read scheduling is batched: each worker now issues all four
+  K-block `dO/K/V` `ds_read_matrix` groups, waits once, and then runs a longer
+  score/dP MMAC island.  This is the current accepted micro-baseline for the
+  dQ 40% target.
 - Added a standalone measurement knob:
   `--tiles-per-dispatch` / `DQ_TILES_PER_DISPATCH`.  It controls how many q
   tiles the standalone harness packs into one dispatch and does not alter the
@@ -52,6 +56,16 @@ Latest target-shape evidence:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082245`,
   correctness/resource PASS, `simTicks=33,372,430`,
   `MMAC active=8.44342%`, `SCA=212,520`, `ldsBankConflict=0`.
+- Accepted worker score/dP read-batch update:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_094409`,
+  correctness/resource PASS, `simTicks=30,225,650`,
+  `MMAC active=9.25852%`, `coissue=1,864/1,455`,
+  `ldsBankConflict=0`.  This improves same-shape ticks by about `9.43%`
+  versus PageUsed consumer-only.  Full perf/xcu:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_094707`,
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_readbatch_worker_s1024_fullperf_20260707_094707_d0`.
+  Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_094707_dq_worker_readbatch_s1024_sqc7_fullperf`.
 
 Decision:
 
@@ -62,10 +76,12 @@ Decision:
 - Direct Mq64 in the old q_subtile path remains rejected by hang; Mq64
   single-page direct and split variants are also rejected by perf because they
   lose overlap/coissue.
-- Do not retry isolated Kt preread/code motion or Mq64 single-page designs.
-  The next 40% path should stay on the legal two-page pipeline, preserve
-  worker/consumer coissue, and continue removing unnecessary barrier/control
-  debt before another larger-tile redesign.
+- Do not retry isolated Kt preread/code motion, finer dS token splitting,
+  even/odd page-owner rearrangement, or Mq64 single-page designs without a
+  focused protocol proof.
+- The next 40% path should stay on the legal two-page pipeline, preserve
+  worker/consumer coissue, and reduce page/dS ABarrier exposure or increase
+  useful MMAC per ownership epoch before another larger-tile redesign.
 
 ## 2026-07-07 dQ dS Chunk Token Rejected
 
