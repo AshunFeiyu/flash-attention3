@@ -6653,3 +6653,39 @@ Conclusion:
 - Code was removed from the active path.  Keep the resource/admission lesson:
   direct consumers need a tight window (`100`, not `160`) to keep 12-wave CTA
   admission legal.
+
+## 2026-07-07 dQ Mq64 Single-Page Split Worker/Consumer
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Design:
+
+- Workbook sheet `25_dq_mq64_singlepage_split`.
+- Tested `Mq=64,Nk=64,D=128` with the original split idea preserved:
+  waves0-3 producer, waves4-7 dQ consumers owning DTile0..3 across M64,
+  waves8-11 workers publishing all four MHalves of dS.  Single K/V/Kt/dS page
+  was required to stay under 128KB LDS.
+
+Evidence:
+
+- Static/resource PASS:
+  producer `6/40`, consumers `69/72` x4, worker `113/128`, tail `2/48`;
+  metadata `private=0`, `sgpr=100`, `vgpr=168`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_081732`;
+  H1/S1024 one-dispatch
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_081737`.
+- H1/S1024 one-dispatch stats:
+  `simTicks=62,845,965`, `MMOP=52,224`, `MMAC active=8.83209%`,
+  `SCA=94,744`, `VALU=121,008`, `LDS=54,832`, `VMEM=3,520`,
+  `coissue=0/0`, `ldsBankConflict=0`.
+
+Conclusion:
+
+- Mq64 split proves the MHalf2/3 layout, M64 dQ consumer accumulation, and
+  four-MHalf worker publication are correct and resource-clean.
+- It is still not a viable performance route because single-page buffering
+  removes the cross-page worker/consumer overlap and coissue disappears.
+- Code was removed from the active path.  The next changes should stay on the
+  Mq32 two-page baseline and reduce unnecessary barrier/control debt before
+  attempting another larger-tile design.
