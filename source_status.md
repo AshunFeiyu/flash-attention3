@@ -4171,3 +4171,22 @@ Current focus:
   Mq64 dQ hang is now more likely in the real `dq_publish_ds_chunk` or
   `dq_consume_ds_kt_full_dtile` helper path, source-layout assumptions, or the
   compiled control structure around those helpers.
+
+## 2026-07-07 dQ 40%-Active Evidence Update
+
+- Active source remains the accepted `dq_pageused_consumer_only` Mq32 two-page
+  kernel.  Local and remote code were restored after rejecting the worker wait
+  merge candidate.
+- Accepted baseline full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082827/m5out/0/0/2739404_fa3_bwd_dq_clean.perf`.
+- xcu output:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_pageused_s1024_fullperf_20260707_082827`.
+- xcu shows the dominant issue gap is still
+  `s_abarrier_try_wait -> s_xor_b32 = 46.01%`, with
+  `s_abarrier_try_wait -> s_waitcnt = 6.60%`; MMAC hot-row share is only
+  `3.17%`.  This makes the `PageFilled/DsFilled/PageUsed` handoff the next
+  design target for the 40% MMAC-active goal.
+- Rejected candidate:
+  merging worker dS store waits into one page-level wait passed correctness and
+  resource gates but regressed S1024 one-dispatch ticks
+  `33,372,430 -> 33,729,150`; code was reverted.

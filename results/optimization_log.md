@@ -6726,3 +6726,64 @@ Conclusion:
   `+0.23pt` MMAC active, and lower SCA with no resource/correctness cost.
 - This supports the current direction: stay on the two-page Mq32 pipeline and
   remove unnecessary barrier/control work before another major tiling attempt.
+
+Full perf / xcu observation:
+
+- Full perf run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082827`;
+  helper perf
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082827/m5out/0/0/2739404_fa3_bwd_dq_clean.perf`.
+- xcu output:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_pageused_s1024_fullperf_20260707_082827`.
+- Dispatch0 summary:
+  duration `65096`, waves `384`, inst issues `575544`, no-wave idle `0`.
+- Top hot rows:
+  `s_xor_b32` latency `6,485,024` cycles (`44.26%`);
+  `s_waitcnt` latency `2,724,704` cycles (`18.59%`);
+  `v_mmac_f32_16x16x16_f16` latency `464,556` cycles (`3.17%`);
+  `ds_read_matrix_trans_format` latency `458,688` cycles (`3.13%`).
+- Top issue bubbles:
+  `s_abarrier_try_wait -> s_xor_b32` is `46.01%`, count `3016`,
+  max `6939` cycles; `s_abarrier_try_wait -> s_waitcnt` is `6.60%`;
+  `ds_read_matrix_trans_format -> s_waitcnt` is `3.60%`.
+- Interpretation:
+  the current 40% MMAC-active blocker is primarily the ABarrier page handoff
+  bubble, not missing MMAC instructions.  More read/MMAC island tuning should
+  be secondary until `PageFilled/DsFilled/PageUsed` lifetime is redesigned.
+
+## 2026-07-07 dQ Worker dS Store Wait Merge
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Design:
+
+- Workbook sheet `28_dq_worker_store_wait_reject`.
+- Hypothesis: each worker published two MHalf dS chunks per page, and each
+  `dq_publish_ds_chunk` ended with `wait_lgkm(0)`.  Temporarily removed the
+  per-chunk final wait and added one `wait_lgkm(0)` before
+  `dq_arrive_ds_filled`, preserving the rule that `DsFilled` is released only
+  after dS LDS writes are visible.
+
+Evidence:
+
+- Static/resource PASS:
+  dQ gate PASS; metadata `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_083737`;
+  H1/S1024 one-dispatch
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_083758`.
+- H1/S1024 one-dispatch stats:
+  `simTicks=33,729,150`, `MMOP=52,224`, `MMAC active=8.45067%`,
+  `SCA=212,520`, `VALU=130,816`, `LDS=57,408`, `VMEM=6,784`,
+  `coissue=1,258/1,037`, `ldsBankConflict=0`.
+- Current accepted baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082245`,
+  `simTicks=33,372,430`, `MMAC active=8.44342%`, `coissue=1,223/992`.
+
+Conclusion:
+
+- Rejected and reverted.  Ticks regressed by about `1.07%`, while active share
+  moved only `+0.007pt`.
+- This negative result narrows the bottleneck: the dominant wait is not just a
+  redundant per-half LDS store wait.  The next credible route must reduce or
+  restructure the `DsFilled`/page-ownership ABarrier handoff itself.

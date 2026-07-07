@@ -585,3 +585,25 @@ Follow-up probe result:
   Mq64 hang should be narrowed next to the real dQ helper bodies
   (`dq_publish_ds_chunk` and `dq_consume_ds_kt_full_dtile`) before any further
   canonical-kernel edit.
+
+Current dQ baseline for the 40% MMAC-active goal:
+
+- Active code is the Mq32/Nk64/D128 two-page `dq_pageused_consumer_only`
+  variant: PageUsed is consumer-owned (`4` arrivals), workers no longer arrive
+  PageUsed.  This supersedes the older dispatch1-only note above where
+  PageUsed was reverted.
+- Accepted H1/S1024 one-dispatch stats:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082245`,
+  `simTicks=33,372,430`, `MMAC active=8.44342%`, `MMOP=52,224`,
+  `coissue=1,223/992`, `ldsBankConflict=0`.
+- Full perf/xcu:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082827/m5out/0/0/2739404_fa3_bwd_dq_clean.perf`;
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_pageused_s1024_fullperf_20260707_082827`.
+- Main xcu conclusion:
+  `s_abarrier_try_wait -> s_xor_b32` is still the top issue bubble (`46.01%`),
+  followed by `s_abarrier_try_wait -> s_waitcnt` (`6.60%`).  The next 40%
+  route should redesign page/dS ownership and reduce ABarrier handoff bubbles,
+  not only move local `wait_lgkm`.
+- Rejected low-level candidate:
+  merging the two worker dS store waits into one page-level wait passed
+  correctness but regressed ticks to `33,729,150`; it was reverted from source.
