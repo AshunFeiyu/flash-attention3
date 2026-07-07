@@ -199,6 +199,14 @@ __device__ __forceinline__ void wait_lgkm(int count = 0) {
 #endif
 }
 
+__device__ __forceinline__ void wait_vmem_lgkm() {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    __builtin_amdgcn_sched_barrier(0);
+    asm volatile("s_waitcnt vmcnt(0) lgkmcnt(0)\n" ::: "memory");
+    __builtin_amdgcn_sched_barrier(0);
+#endif
+}
+
 __device__ __forceinline__ Vec4F32 mmac_f16_lit(Vec4F16 lhs,
                                                 Vec4F16 rhs,
                                                 Vec4F32 acc) {

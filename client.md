@@ -9,6 +9,31 @@ optimization target is MMAC active share, with FA3 FWD as the hard benchmark.
 Correctness, no scratch/spill, `ldsBankConflict=0`, and explainable SQTT
 evidence are required before any performance claim.
 
+## Current dQ Override
+
+- Current canonical source has moved from the earlier 12-wave dS-worker route
+  to a 16-wave full-3GEMM dQ route.
+- Wave roles:
+  waves0-3 publish Q/dO group0 sidecar and K, waves4-7 compute q rows 0-63,
+  waves8-11 compute q rows 64-127, and waves12-15 publish Q/dO group1 sidecar
+  and V.
+- dS is no longer staged in LDS.  Each consumer computes its complete dQ
+  chain in VGPR: `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
+- Current evidence:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160156`
+  and H1/S1024
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160322`
+  both PASS; full perf
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160652/m5out/0/0/2746700_fa3_bwd_dq_clean.perf`
+  reports `simTicks=55,191,955`, `MMAC active=19.1324%`,
+  `ldsBankConflict=0`.
+- This is a structural correctness milestone, not a performance win over the
+  older Mq32 K-native baseline.  XCU still shows ABarrier wait exposure:
+  `s_abarrier_try_wait -> s_xor_b32` at `49.17%` and `s_waitcnt` at `19.24%`.
+- Next direction: decouple initial Q/dO readiness from recurring K/V page
+  readiness, then evaluate reusing Q/dO LDS as a second K/V page after
+  consumers latch Q/dO.
+
 ## dQ Reopen Contract
 
 - Active branch: `shaobo/dq-xcu-guided-dq-kernel`.
@@ -20,19 +45,18 @@ evidence are required before any performance claim.
 - Algorithm boundary: because dKV and dQ are separate kernels, dQ may recompute
   score/dP across kernels, but must not duplicate score/dP for the same
   `(Q tile, K tile)` inside dQ.
-- Current correctness-clean MMAC tile: `Mq=32,Nk=64,D=128,12 waves`, using
-  the same raw K LDS page for dQ RHS through normal `ds_read_matrix`.
-- Current dQ pipeline baseline is a two-page K/V/K-to-dS-pad/dS conveyor:
-  producer publishes page input, worker publishes dS, consumer computes dQ and
-  releases the page.  Q/dO are loaded once per q-subtile.  The old `K^T`
-  source-layout page and host `k_t_source` materialization are removed from the
-  canonical path.
+- Current correctness-clean MMAC tile: `Mq=128,Nk=64,D=128,16 waves`.
+- Current dQ pipeline baseline is a single K/V page with two producer groups
+  and two symmetric consumer groups.  Q/dO are loaded once per CTA q tile,
+  sidecar is staged in LDS, and K is read by normal `ds_read_matrix` for
+  `dS K`.
 - `PageUsed` is consumer-only in the current code; worker-side PageUsed arrival
   was removed after proving it was redundant for page overwrite lifetime.
-- Direct `Mq=64` by serially looping two `M32` q-subtiles hung at H1/S128.
-  Revisit only with explicit q-subtile token reset or a new lifetime proof.
-- `Nk=128` is a later upgrade only after the current same-K-LDS native RHS path
-  and ABarrier ownership protocol are re-budgeted for the larger page.
+- The previous Mq32 K-native path remains the performance reference, but the
+  active source follows the new 16-wave ownership because it matches the
+  required dQ topology.
+- `Nk=128` or double-buffered K/V is a later upgrade only after Q/dO lifetime
+  release is proven.
 - Producer rule: producer publishes Q/dO plus packed sidecar to LDS, and streams
   K/V through LDS; consumer should not direct-load sidecar global in the hot
   path.
@@ -44,11 +68,14 @@ evidence are required before any performance claim.
 - Current target: `MMAC active >= 40%` on
   `B=1,H=1,S=1024,D=128,causal=true`, `GPU_CHIP=sb`,
   `GPU_ARGS="['--SQCIPfLines=7']"`.
-- Current canonical dQ path: `Mq=32,Nk=64,D=128,12 waves`, sidecar-LDS,
-  two K/V/K-to-dS-pad/dS pages.  dQ consumes dS through trans
-  `ds_read_matrix` and K through normal `ds_read_matrix` from the same K LDS
-  page; there is no hot Kt source path.
-- Current recertified baseline:
+- Current canonical dQ source path: `Mq=128,Nk=64,D=128,16 waves`,
+  two producer groups and two symmetric full-3GEMM consumer groups.  dS stays
+  in VGPR; there is no dS LDS handoff and no separate dS worker.
+- Previous Mq32 K-native path remains the small-shape performance reference:
+  `Mq=32,Nk=64,D=128,12 waves`, sidecar-LDS, two
+  K/V/K-to-dS-pad/dS pages, same-K LDS normal read for dQ RHS, no hot Kt
+  source path.
+- Previous Mq32 recertified baseline:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063111`,
   aggregate `MMAC active=8.8385%`, `simTicks=52,082,485`, correctness PASS,
   `ldsBankConflict=0`.
@@ -63,11 +90,11 @@ evidence are required before any performance claim.
   is dominated by `DsFilled` ABarrier wait bubbles.  Kt preread under this wait
   was correct/resource-clean but regressed to `simTicks=34,237,840`,
   `MMAC active=8.1943%`, so it was removed.
-- Current accepted one-dispatch improvement:
+- Previous Mq32 accepted one-dispatch improvement:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082245`,
   `simTicks=33,372,430`, `MMAC active=8.44342%`, `SCA=212,520`,
   correctness PASS, `ldsBankConflict=0`.
-- Current accepted dQ micro-baseline:
+- Previous Mq32 accepted dQ micro-baseline:
   worker score/dP read-batch in `dq_publish_ds_chunk`, recorded in workbook
   sheet `32_dq_worker_readbatch`.  It batches four K-block `dO/K/V`
   `ds_read_matrix` groups before one `wait_lgkm(0)` and a longer MMAC island.
@@ -78,7 +105,7 @@ evidence are required before any performance claim.
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_094707_dq_worker_readbatch_s1024_sqc7_fullperf`.
   XCU still shows the main blocker is ABarrier:
   `s_abarrier_try_wait -> s_xor_b32` about `44.64%`.
-- Current best dQ micro-baseline:
+- Previous Mq32 best dQ micro-baseline:
   K-native same-LDS RHS plus all-operand worker read-batch.  It removes the
   separate `K^T` source-layout page and dead host/API `k_t_source` tail while
   keeping the K-to-dS padding that preserved the best LDS offsets.  H1/S1024
@@ -521,28 +548,31 @@ This is a micro-baseline; XCU still shows ABarrier/control as the main bubble.
 Active branch: `shaobo/dq-xcu-guided-dq-kernel`.
 
 Active dQ kernel: `src/dq_kernel.cpp`, canonical path
-`kDqPathCanonicalDq`, tile `Mq=32,Nk=64,D=128`, 12-wave CTA.
+`kDqPathCanonicalDq`, tile `Mq=128,Nk=64,D=128`, 16-wave CTA.
 
-Current accepted dQ candidate is `dq_k_native_same_k_lds`:
+Current accepted structural dQ candidate is `dq_mq128_16wave_full3gemm`:
 
-- Producer writes `scores_max/scores_sum/delta` into a small LDS sidecar tail
-  before `PageFilled`.
-- Worker computes dS from LDS sidecar and batched Q/dO/K/V matrix reads.
-- Consumer reads dS through trans `ds_read_matrix` and K through normal
-  `ds_read_matrix` from the same K LDS page.
-- The old `K^T` source-layout LDS page and host `k_t_source` materialization
-  are removed from the canonical path.
-- Static/resource PASS: `group_segment=123264`, `private=0`, `sgpr=63`,
-  `vgpr=168`, no spill/scratch.
-- Correctness PASS H1/S128 and H1/S1024.
-- H1/S1024:
-  `simTicks=28,002,520`, `MMAC active=10.032187%`,
+- Producers stage Q/dO group sidecar into LDS and stream K/V through one LDS
+  page.
+- Two symmetric consumer groups own different q-row ranges and each compute
+  the full dQ chain locally: `QK^T`, `dO V^T`, dS, `dS K`.
+- dS stays in VGPR.  There is no dS LDS transfer and no separate dS worker.
+- Static/resource PASS: `private=0`, `sgpr=76`, `vgpr=128`,
+  no spill/scratch; branch windows are `8/40`, `117/216`, `117/216`,
+  `9/40`.
+- Correctness PASS H1/S128 and H1/S1024:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160156`,
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160322`.
+- H1/S1024 full perf:
+  `simTicks=55,191,955`, `MMAC active=19.1324%`,
   `ldsBankConflict=0`.
 
-This is useful but still far from the 40% MMAC-active goal.  The next dQ
-design question is how to reduce ABarrier/Page/Ds ownership exposure or
-increase useful MMAC work per ownership epoch without restoring duplicate Kt
-source traffic.
+This is structurally correct but not the small-shape performance winner.  The
+previous Mq32 K-native route remains the performance reference at
+`simTicks=28,002,520`, but it used the old split dS-worker topology that the
+current source intentionally replaced.  The next dQ design question is how to
+reduce ABarrier PageFilled/PageUsed exposure or increase useful MMAC work per
+ownership epoch in the 16-wave full-3GEMM topology.
 
 Fast same-K-LDS probe result:
 

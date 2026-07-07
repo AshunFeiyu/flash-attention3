@@ -2,7 +2,7 @@
 
 ## 2026-07-07 dQ 40% MMAC Active Target
 
-Status: `DQ_MQ32_K_NATIVE_CLEAN_BASELINE_ACTIVE`.
+Status: `DQ_MQ128_16W_FULL3GEMM_CORRECTNESS_ACTIVE`.
 
 Current goal:
 
@@ -16,32 +16,48 @@ Current goal:
 Current code state:
 
 - Branch: `shaobo/dq-xcu-guided-dq-kernel`.
-- Canonical dQ tile: `Mq=32,Nk=64,D=128,12 waves`.
-- The canonical dQ consumer reads dS through trans `ds_read_matrix` and K
-  through normal `ds_read_matrix` from the same raw K LDS page.  There is no
-  hot `K^T` source page, no `k_t_source` kernel argument, and no host-side
-  `materialize_k_t_source` in the current path.
-- Sidecar is staged by the producer into LDS; worker does not direct-load the
-  three sidecar streams from global in the hot path.
-- `PageUsed` is consumer-only: producer waits for 4 consumer arrivals before
-  overwriting a page.  Worker-side `PageUsed` arrival was removed because
-  workers finish page reads before `DsFilled`.
-- Worker score/dP read scheduling is batched: each worker now issues all four
-  K-block `dO/K/V` `ds_read_matrix` groups, waits once, and then runs a longer
-  score/dP MMAC island.  This is the current accepted micro-baseline for the
-  dQ 40% target.
-- The latest micro-baseline also folds Q fragment reads into that same worker
-  island: Q plus all four K-block `dO/K/V` matrix reads are issued before one
-  `wait_lgkm(0)` in `dq_publish_ds_chunk`.
-- The current best micro-baseline additionally removes the dead `K^T`
-  source-layout page and host/API Kt tail while preserving the K-to-dS padding
-  that keeps the accepted LDS offsets.
+- Canonical dQ tile: `Mq=128,Nk=64,D=128,16 waves`.
+- Role ownership is now 16-wave full-3GEMM:
+  waves0-3 producer for Q/dO group0 sidecar and K, waves4-7 consumer group0
+  rows 0-63, waves8-11 consumer group1 rows 64-127, waves12-15 producer for
+  Q/dO group1 sidecar and V.
+- There is no dS-in-LDS handoff and no separate dS worker.  Each consumer
+  computes `QK^T`, `dO V^T`, softmax/dS, and `dS K` for its own q rows.
+- Sidecar is staged by producers into LDS; consumers do not direct-load sidecar
+  global in the hot path.
+- The all-zero bring-up bug was fixed by waiting first `PageFilled` before
+  consumers read Q/dO/sidecar.  Without this readiness edge consumers could
+  read zero or uninitialized Q/dO/sidecar data.
+- The older Mq32 K-native dQ route remains the performance reference in the
+  ledger, but it is no longer the canonical source shape after the user's
+  topology correction.
 - Added a standalone measurement knob:
   `--tiles-per-dispatch` / `DQ_TILES_PER_DISPATCH`.  It controls how many q
   tiles the standalone harness packs into one dispatch and does not alter the
   kernel math or tile shape.
 
 Latest target-shape evidence:
+
+- Current 16-wave full-3GEMM structural run:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160156`
+  and H1/S1024
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160322`
+  correctness PASS, `ldsBankConflict=0`.
+  Full perf `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160652/m5out/0/0/2746700_fa3_bwd_dq_clean.perf`:
+  `simTicks=55,191,955`, `kernel_ticks=51,578,345`, `MMOP=55,296`,
+  `VALU=140,320`, `coissue=10,490/4,779`, `MMAC active=19.1324%`,
+  `ldsBankConflict=0`.
+  XCU `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2746700_fa3_bwd_dq_clean_20260707_160843`
+  shows top bubbles `s_abarrier_try_wait -> s_xor_b32` at `49.17%`
+  and `s_waitcnt` at `19.24%`.
+- Builtin wait trial after this rewrite was rejected:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_161905`,
+  `simTicks=55,490,435`, `MMAC active=18.9733%`.
+  Keep the asm wait wrapper for now.
+- Previous Mq32 K-native performance reference:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_144004`,
+  `simTicks=28,002,520`, `MMAC active=10.032187%`.  It is faster on this
+  small causal S1024 measurement but uses the older split dS-worker topology.
 
 - Default two-dispatch H1/S1024:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063111`,

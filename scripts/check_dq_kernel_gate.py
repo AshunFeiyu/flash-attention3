@@ -48,18 +48,18 @@ def main() -> int:
             "missing_canonical_path_contract_use")
     require(source, r"fa3_bwd_dq_kernel", failures,
             "missing_canonical_dq_kernel")
-    require(source, r"hcu_wdra_waves_per_tg\(12\)", failures,
-            "missing_12wave_wdra_attribute")
-    require(source, r"dq_publish_ds_chunk", failures,
-            "missing_split_ds_publisher")
-    require(source, r"dq_load_sidecar_tile", failures,
+    require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
+            "missing_16wave_wdra_attribute")
+    require(source, r"dq_consumer_full3gemm_role", failures,
+            "missing_full3gemm_consumer")
+    require(source, r"dq_load_sidecar_group", failures,
             "missing_producer_sidecar_lds_staging")
-    require(source, r"dq_consume_ds_k_native_full_dtile", failures,
-            "missing_dq_mmac_consumer")
+    require(source, r"dq_update_from_ds_vec", failures,
+            "missing_vgpr_ds_to_dq_mmac")
     require(source, r"CANONICAL_DQ", failures,
             "missing_canonical_standalone_switch")
-    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<32,\s*64>",
-            failures, "missing_active_mq32_nk64_tile")
+    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<128,\s*64>",
+            failures, "missing_active_mq128_nk64_tile")
     require(contract, r"kForbidDuplicateScoreDpInsideDq\s*=\s*true",
             failures, "missing_no_duplicate_score_dp_contract")
     require(contract, r"kForbidDqAtomicAdd\s*=\s*true",
@@ -74,6 +74,9 @@ def main() -> int:
     forbid(source, r"dq_load_kt_tile|dq_store_kt_tile_scalar|kKtBase|"
                    r"materialize_k_t_source|k_t_source",
            failures, "canonical_dq_must_not_restore_kt_lds_page")
+    forbid(source + contract, r"dq_publish_ds_chunk|dq_consume_ds|DsFilled|"
+                              r"kDsBase|kDsPageBytes|KToDs",
+           failures, "canonical_dq_must_not_stage_ds_in_lds")
     forbid(source, r"61C\d+|C1\d{2}", failures,
            "clean_source_must_not_define_cxx_phase_stack")
     forbid(source + contract, r"kDkvPath|DkvTile|fa3_bwd_dkv",

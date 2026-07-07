@@ -7056,3 +7056,61 @@ Conclusion:
   evidence code rather than a performance path.
 - Current main bottleneck is still ABarrier/Page/Ds ownership exposure; Kt
   source traffic is no longer the target.
+
+## 2026-07-07 dQ 16-Wave Full-3GEMM Structural Rewrite
+
+Decision: `ACCEPT_CORRECTNESS_OBSERVE`
+
+Design:
+
+- Reworked the canonical dQ source to remove the high-cost dS-in-LDS
+  handoff.  dS now lives only in consumer VGPR.
+- The CTA is 16 waves:
+  waves0-3 publish Q/dO group0 sidecar and K, waves4-7 compute rows 0-63,
+  waves8-11 compute rows 64-127, and waves12-15 publish Q/dO group1 sidecar
+  and V.
+- Both consumer groups are symmetric.  Each wave owns one M16 row stripe and
+  runs the full dQ chain for that stripe:
+  `score = Q K^T`, `dP = dO V^T`, `dS = P * (dP - delta) * scale`,
+  `dQ += dS K`.
+- The all-zero bring-up bug was a readiness bug: consumers read Q/dO/sidecar
+  before producer MLS/global-sidecar writes were proven complete.  The fix is
+  to wait for the first `PageFilled` before consumer sidecar and Q/dO reads.
+
+Evidence:
+
+- Static/resource gate:
+  `private=0`, `sgpr=76`, `vgpr=128`, no scratch/spill.
+  WDRA branch windows are producer0 `8/40`, consumer0 `117/216`,
+  consumer1 `117/216`, producer1 `9/40`.
+- Correctness:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160156`,
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160322`.
+  Both PASS with `ldsBankConflict=0`.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160652/m5out/0/0/2746700_fa3_bwd_dq_clean.perf`.
+  Stats: `simTicks=55,191,955`, `kernel_ticks=51,578,345`,
+  `MMOP=55,296`, `VALU=140,320`, `coissue=10,490/4,779`,
+  `MMAC active=19.1324%`, `ldsBankConflict=0`.
+- XCU:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/2746700_fa3_bwd_dq_clean_20260707_160843`.
+  Dispatch duration `113,292`, average active waves `75.37`.
+  Dominant bubbles are `s_abarrier_try_wait -> s_xor_b32` at `49.17%`
+  and `s_waitcnt` at `19.24%`.
+- Negative micro-test:
+  changing dQ page waits from the asm wrapper to builtin preserved correctness
+  but regressed H1/S1024 to `simTicks=55,490,435` and
+  `MMAC active=18.9733%`; keep the asm wait wrapper.
+
+Conclusion:
+
+- This is a structural correctness milestone, not a performance promotion over
+  the prior Mq32 K-native dQ baseline.
+- The user constraint is now represented in code: no dS LDS transfer, no split
+  dS worker, and two heavy consumer groups compute complete dQ for different q
+  blocks.
+- The next optimization should attack the real barrier lifetime:
+  separate initial Q/dO readiness from K/V page readiness, then consider
+  reusing Q/dO LDS as a second K/V page after consumers latch Q/dO.  Also
+  profile a single heavy q tile so causal triangular work imbalance is not
+  confused with intra-CTA pipeline quality.

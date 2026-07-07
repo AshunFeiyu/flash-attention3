@@ -11,10 +11,11 @@ template <int BlockMq, int BlockNk>
 struct DqTileD128MqNk {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = BlockMq;
-    static constexpr int kSubMq = 32;
+    static constexpr int kRowsPerConsumerGroup = BlockMq / 2;
+    static constexpr int kRowsPerConsumerWave = 16;
     static constexpr int kBlockNk = BlockNk;
     static constexpr int kWaveSize = 64;
-    static constexpr int kWavesPerCta = 12;
+    static constexpr int kWavesPerCta = 16;
     static constexpr int kThreadsPerCta = kWaveSize * kWavesPerCta;
 
     static constexpr int kMmacM = 16;
@@ -30,22 +31,20 @@ struct DqTileD128MqNk {
 
     static constexpr int kHalfBytes = 2;
     static constexpr int kQDoBytes =
-        2 * kSubMq * kHeadDim * kHalfBytes;
+        2 * kBlockMq * kHeadDim * kHalfBytes;
     static constexpr int kKvBytes =
         2 * kBlockNk * kHeadDim * kHalfBytes;
-    static constexpr int kKToDsPadBytes =
-        kHeadDim * kBlockNk * kHalfBytes;
-    static constexpr int kDsBytes =
-        kSubMq * kBlockNk * kHalfBytes;
     static constexpr int kSidecarFloats = 3 * kBlockMq;
     static constexpr int kSidecarBytes =
         kSidecarFloats * static_cast<int>(sizeof(float));
     static constexpr int kLdsBudgetBytes = 128 * 1024;
     static constexpr int kPlannedLdsBytes =
-        kQDoBytes + kKvBytes + kKToDsPadBytes + kDsBytes + kSidecarBytes;
+        kQDoBytes + kKvBytes + kSidecarBytes;
 
-    static_assert(kBlockMq % 32 == 0,
-                  "dQ target consumes Mq in M32 consumer pairs");
+    static_assert(kBlockMq == 128,
+                  "dQ 16-wave path maps two consumer groups over M128");
+    static_assert(kRowsPerConsumerGroup == 64,
+                  "dQ consumer group owns four M16 rows");
     static_assert(kBlockNk % 32 == 0,
                   "dQ K/V stream tile must align to 32-row MLS tiles");
     static_assert(kHeadDim == 128, "first clean dQ path is D128-only");
@@ -53,16 +52,12 @@ struct DqTileD128MqNk {
                   "dQ target LDS plan must fit 128KB");
 };
 
-using ActiveDqTile = DqTileD128MqNk<32, 64>;
+using ActiveDqTile = DqTileD128MqNk<128, 64>;
 
 struct DqBarrierLedger {
-    static constexpr int kPage0Filled = 0;
-    static constexpr int kPage0DsFilled = 1;
-    static constexpr int kPage0Used = 2;
-    static constexpr int kPage1Filled = 3;
-    static constexpr int kPage1DsFilled = 4;
-    static constexpr int kPage1Used = 5;
-    static constexpr int kAllDone = 6;
+    static constexpr int kPageFilled = 0;
+    static constexpr int kPageUsed = 1;
+    static constexpr int kAllDone = 2;
 };
 
 struct OptimizationTargets {
@@ -76,7 +71,7 @@ struct OptimizationTargets {
 
 struct WdraResourceWindows {
     static constexpr int kProducerVgprs = 16;
-    static constexpr int kConsumerTargetVgprs = 220;
+    static constexpr int kConsumerTargetVgprs = 216;
     static constexpr int kConsumerCeilingVgprs = 248;
 };
 
