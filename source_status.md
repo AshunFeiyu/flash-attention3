@@ -4190,3 +4190,9 @@ Current focus:
   merging worker dS store waits into one page-level wait passed correctness and
   resource gates but regressed S1024 one-dispatch ticks
   `33,372,430 -> 33,729,150`; code was reverted.
+- Rejected candidate:
+  switching dQ PageFilled/DsFilled/PageUsed waits from inline-asm
+  `abarrier_try_wait<true>` to builtin `abarrier_try_wait<false>` also passed
+  correctness/resource gates but regressed S1024 ticks
+  `33,372,430 -> 33,754,630`; code was reverted.  Treat the xcu
+  `s_xor_b32` row as an ABarrier wait symptom, not a standalone wrapper issue.

@@ -607,3 +607,9 @@ Current dQ baseline for the 40% MMAC-active goal:
 - Rejected low-level candidate:
   merging the two worker dS store waits into one page-level wait passed
   correctness but regressed ticks to `33,729,150`; it was reverted from source.
+- Rejected low-level candidate:
+  switching PageFilled/DsFilled/PageUsed waits from inline-asm
+  `abarrier_try_wait<true>` to builtin `abarrier_try_wait<false>` passed
+  correctness/resource gates but regressed ticks to `33,754,630`; it was
+  reverted.  The `s_xor_b32` hot row should be read as true ABarrier wait debt,
+  not merely wrapper overhead.

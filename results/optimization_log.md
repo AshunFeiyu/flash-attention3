@@ -6787,3 +6787,41 @@ Conclusion:
 - This negative result narrows the bottleneck: the dominant wait is not just a
   redundant per-half LDS store wait.  The next credible route must reduce or
   restructure the `DsFilled`/page-ownership ABarrier handoff itself.
+
+## 2026-07-07 dQ Builtin Page Waits
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Design:
+
+- Workbook sheet `29_dq_builtin_page_waits_reject`.
+- Hypothesis: xcu attributes the top bubble to
+  `s_abarrier_try_wait -> s_xor_b32` in the inline-asm wrapper.  Temporarily
+  changed only the dQ PageFilled, DsFilled, and PageUsed waits from
+  `abarrier_try_wait<true>` to builtin `abarrier_try_wait<false>`.
+- Did not change tile, math, role ownership, barrier counts, or output
+  ownership.
+
+Evidence:
+
+- Static/resource PASS:
+  dQ gate PASS; metadata `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_085028`;
+  H1/S1024 one-dispatch
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_085058`.
+- H1/S1024 one-dispatch stats:
+  `simTicks=33,754,630`, `MMOP=52,224`, `MMAC active=8.45656%`,
+  `SCA=212,520`, `VALU=130,816`, `LDS=57,408`, `VMEM=6,784`,
+  `coissue=1,217/989`, `ldsBankConflict=0`.
+- Current accepted baseline:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_082245`,
+  `simTicks=33,372,430`, `MMAC active=8.44342%`, `coissue=1,223/992`.
+
+Conclusion:
+
+- Rejected and reverted.  Ticks regressed by about `1.15%`, while active share
+  moved only `+0.013pt`.
+- The `s_xor_b32` hot row is mostly a symptom of true ABarrier waiting rather
+  than a wrapper-only codegen issue.  Continue toward a topology/lifetime
+  change for `PageFilled/DsFilled/PageUsed`.
