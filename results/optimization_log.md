@@ -6608,3 +6608,48 @@ Conclusion:
 - Code was removed from the active path.  The next 40% design must keep at
   least four heavy waves or otherwise fill all four SIMDs, while reducing dS
   handoff cost with coarser/fewer tokens or a better page ownership pipeline.
+
+## 2026-07-07 dQ Mq64 Single-Page Direct MHalf
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Design:
+
+- Workbook sheet `24_dq_mq64_singlepage_direct`.
+- Extended the direct-MHalf idea to four heavy consumers so every SIMD has a
+  direct consumer: `Mq=64,Nk=64,D=128`, one K/V/Kt/dS page, waves0-3 producer,
+  waves4-7 direct MHalf0..3 consumers, waves8-11 tail.
+- LDS arithmetic: Q+dO `32KB`, one K/V/Kt/dS page about `56KB`, sidecar
+  `768B`, total about `88.75KB`.  A two-page Mq64 version would exceed 128KB.
+
+Evidence:
+
+- First compile with consumer window `160` failed PMD admission:
+  metadata `vgpr_count=240` and model panic
+  `12 WFs and 240 VGPRs per WI can not be allocated`.
+- Reducing the direct-consumer window to `100` passed static/resource:
+  producer `6/40`, consumers `95/100`, `95/100`, `95/100`, `96/100`,
+  tail `2/40`; metadata `private=0`, `sgpr=92`, `vgpr=160`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_080932`;
+  H1/S1024 one-dispatch
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_080937`.
+- H1/S1024 one-dispatch stats:
+  `simTicks=56,850,430`, `MMOP=52,224`, `MMAC active=10.0261%`,
+  `SCA=59,064`, `VALU=127,584`, `LDS=61,360`, `VMEM=3,520`,
+  `coissue=0/0`, `ldsBankConflict=0`.
+- Recertified Mq32 baseline was
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_074751`,
+  `simTicks=34,002,150`, `MMAC active=8.21561%`.
+
+Conclusion:
+
+- Mq64 direct proves the native layouts can be extended to MHalf2/3 and four
+  heavy consumers can run without spill, but it is not a performance win.
+- `MMAC active` improves only to about `10%`, far from 40%, while ticks regress
+  heavily and coissue is zero.  The missing ingredient is not just larger Mq;
+  the design needs peer wave VALU/MMAC overlap and buffering without violating
+  the 128KB LDS budget.
+- Code was removed from the active path.  Keep the resource/admission lesson:
+  direct consumers need a tight window (`100`, not `160`) to keep 12-wave CTA
+  admission legal.
