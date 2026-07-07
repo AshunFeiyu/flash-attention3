@@ -303,16 +303,21 @@ __device__ __forceinline__ void dq_update_from_ds_vec(
     const int n_tile = n_chunk / 2;
     const int n_half = n_chunk & 1;
 
+    ins::F16x8 k_norm0[Tile::kHeadDim / 32];
+    ins::F16x8 k_norm1[Tile::kHeadDim / 32];
 #pragma unroll
     for (int d_block = 0; d_block < Tile::kHeadDim / 32; ++d_block) {
-        ins::F16x8 k_norm0;
-        ins::F16x8 k_norm1;
         const int block = n_tile * (Tile::kHeadDim / 32) + d_block;
         ins::ds_read_matrix_normal_pair(
             k_lds, block * MatrixBlockBytes,
-            k_norm0.f16x8, k_norm1.f16x8);
-        ins::wait_lgkm(0);
-        const ins::F16x8& k_norm = n_half == 0 ? k_norm0 : k_norm1;
+            k_norm0[d_block].f16x8, k_norm1[d_block].f16x8);
+    }
+    ins::wait_lgkm(0);
+
+#pragma unroll
+    for (int d_block = 0; d_block < Tile::kHeadDim / 32; ++d_block) {
+        const ins::F16x8& k_norm =
+            n_half == 0 ? k_norm0[d_block] : k_norm1[d_block];
         dq_reg[d_block * 2 + 0].f32 =
             ins::mmac_f16_lit(ds_vec, k_norm.f16x4[0],
                               dq_reg[d_block * 2 + 0].f32);

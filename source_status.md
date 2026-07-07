@@ -38,6 +38,23 @@ Current code state:
 
 Latest target-shape evidence:
 
+- Accepted dQ K-normal read-batch micro-optimization:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164521`
+  and H1/S1024
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164530`
+  correctness PASS, static/resource PASS with branch windows
+  `8/40`, `118/216`, `118/216`, `9/40`, metadata `private=0`,
+  `sgpr=76`, `vgpr=128`, no spill/scratch, `ldsBankConflict=0`.
+  The change batches all four D-block K-normal reads in `dq_update_from_ds_vec`
+  before one `wait_lgkm(0)`.
+  Stats-only H1/S1024: `simTicks=51,458,680`,
+  `kernel_ticks=47,845,070`, `MMAC active=19.9714%`,
+  coissue `14,065/12,496`.
+  Full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_164850_dq_k_normal_read_batch_h1s1024_sqc7_fullperf`.
+  XCU still shows top bubbles from ABarrier ownership, especially
+  `s_abarrier_try_wait -> s_xor_b32` about `49.39%`.
+  This is the current 16-wave dQ micro-baseline.
 - Current 16-wave full-3GEMM structural run:
   H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160156`
   and H1/S1024

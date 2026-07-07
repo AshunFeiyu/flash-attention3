@@ -1,5 +1,66 @@
 # Optimization Log
 
+## 2026-07-07 dQ K-Normal Read Batch
+
+Decision: `ACCEPT_MICRO`
+
+Hypothesis:
+
+The new 16-wave full-3GEMM dQ path already batches Q/dO and score/dP operand
+reads, but the final `dQ = dS @ K` helper still issued one K-normal
+`ds_read_matrix` pair per D-block followed immediately by `wait_lgkm(0)` and
+MMAC.  This recreated the small `ds_read_matrix -> wait -> MMAC` fragments
+that were previously fixed in dKV.  Batching all four D-block K-normal reads
+before one wait should shrink wait bubbles without changing math or ownership.
+
+Implementation:
+
+- Single canonical dQ kernel only; no new phase or path.
+- In `dq_update_from_ds_vec`, issue all K-normal
+  `ds_read_matrix_normal_pair` D-block reads first, then one `wait_lgkm(0)`,
+  then the full D128 dQ MMAC island.
+- No wave role, tile, barrier ledger, sidecar, API, or output-store change.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `8/40`, `118/216`, `118/216`, `9/40`;
+  metadata `private=0`, `sgpr=76`, `vgpr=128`, no SGPR/VGPR spill.
+- Correctness PASS:
+  - H1/S128:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164521`.
+  - H1/S1024:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164530`.
+- H1/S1024 stats-only:
+  `simTicks=51,458,680`, `kernel_ticks=47,845,070`,
+  `MMOP=55,296`, `VALU=140,320`, `SCA=65,824`, `LDS=37,872`,
+  coissue `14,065/12,496`, `ldsBankConflict=0`,
+  `MMAC active=19.9714%`.
+- H1/S1024 full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164850`.
+  Helper perf archived at
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_164850_dq_k_normal_read_batch_h1s1024_sqc7_fullperf/DQ_K_NORMAL_READ_BATCH_H1S1024.perf`.
+  Full-perf stats: `simTicks=51,460,500`, `kernel_ticks=47,846,890`,
+  coissue `14,200/12,481`, `MMAC active=19.9938%`.
+- Baseline 16-wave full-3GEMM dQ:
+  `simTicks=55,191,955`, `kernel_ticks=51,578,345`,
+  `MMAC active=19.1324%`, coissue `10,490/4,779`.
+- XCU CLI:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_k_normal_read_batch_20260707_164850`.
+  Top bubbles remain `s_abarrier_try_wait -> s_xor_b32` at about `49.39%`
+  and `s_abarrier_try_wait -> s_waitcnt` at about `7.09%`;
+  `ds_read_matrix_format -> s_waitcnt` is still visible at about `4.83%`.
+
+Conclusion:
+
+Keep this as the new 16-wave dQ micro-baseline.  It improves H1/S1024 ticks by
+about `7.24%` versus the structural full-3GEMM baseline and slightly raises
+MMAC active, with no spill or bank conflict.  It does not solve the main
+ABarrier ownership bubble.  Next low-level attempt can split the K-normal
+read-batch wait (`lgkmcnt(4)` then `lgkmcnt(0)`) or attack `PageFilled/PageUsed`
+ownership; larger `BlockM` needs a separate LDS/VGPR design because direct
+`Mq=256` would exceed the 128KB LDS plan unless Q/dO are latched then released.
+
 ## 2026-07-06 K/V Latch Wait Prune
 
 Decision: `ACCEPT_MICRO_OBSERVE`

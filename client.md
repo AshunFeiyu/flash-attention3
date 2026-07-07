@@ -20,19 +20,22 @@ evidence are required before any performance claim.
 - dS is no longer staged in LDS.  Each consumer computes its complete dQ
   chain in VGPR: `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
 - Current evidence:
-  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160156`
+  after K-normal read-batch, H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164521`
   and H1/S1024
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160322`
-  both PASS; full perf
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_160652/m5out/0/0/2746700_fa3_bwd_dq_clean.perf`
-  reports `simTicks=55,191,955`, `MMAC active=19.1324%`,
-  `ldsBankConflict=0`.
-- This is a structural correctness milestone, not a performance win over the
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_164530`
+  both PASS; full perf archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_164850_dq_k_normal_read_batch_h1s1024_sqc7_fullperf`
+  reports `simTicks=51,460,500`, `kernel_ticks=47,846,890`,
+  `MMAC active=19.9938%`, `ldsBankConflict=0`.
+- This is a clean micro improvement over the structural bring-up
+  (`55,191,955 -> 51,460,500` simTicks), but not a performance win over the
   older Mq32 K-native baseline.  XCU still shows ABarrier wait exposure:
-  `s_abarrier_try_wait -> s_xor_b32` at `49.17%` and `s_waitcnt` at `19.24%`.
-- Next direction: decouple initial Q/dO readiness from recurring K/V page
-  readiness, then evaluate reusing Q/dO LDS as a second K/V page after
-  consumers latch Q/dO.
+  `s_abarrier_try_wait -> s_xor_b32` about `49.39%`; a smaller
+  `ds_read_matrix_format -> s_waitcnt` bubble remains about `4.83%`.
+- Next direction: first try dKV/C102-style split wait inside the K-normal read
+  batch; then design the larger `BlockM` route by latching Q/dO into consumer
+  VGPRs and freeing their LDS region before increasing M.
 
 ## dQ Reopen Contract
 
