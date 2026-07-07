@@ -54,10 +54,8 @@ def main() -> int:
             "missing_split_ds_publisher")
     require(source, r"dq_load_sidecar_tile", failures,
             "missing_producer_sidecar_lds_staging")
-    require(source, r"dq_consume_ds_kt_full_dtile", failures,
+    require(source, r"dq_consume_ds_k_native_full_dtile", failures,
             "missing_dq_mmac_consumer")
-    require(source, r"materialize_k_t_source", failures,
-            "missing_kt_source_layout_helper")
     require(source, r"CANONICAL_DQ", failures,
             "missing_canonical_standalone_switch")
     require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<32,\s*64>",
@@ -73,6 +71,9 @@ def main() -> int:
     require(source, r"dq_out", failures, "missing_dq_output_name")
     forbid(source, r"atomicAdd|atomic_add|global_atomic", failures,
            "dq_bringup_must_not_use_atomic")
+    forbid(source, r"dq_load_kt_tile|dq_store_kt_tile_scalar|kKtBase|"
+                   r"materialize_k_t_source|k_t_source",
+           failures, "canonical_dq_must_not_restore_kt_lds_page")
     forbid(source, r"61C\d+|C1\d{2}", failures,
            "clean_source_must_not_define_cxx_phase_stack")
     forbid(source + contract, r"kDkvPath|DkvTile|fa3_bwd_dkv",
@@ -87,6 +88,8 @@ def main() -> int:
                 "asm_missing_matrix_load_bps_lds")
         require(asm, r"ds_read_matrix_trans_format", failures,
                 "asm_missing_ds_read_matrix_trans")
+        require(asm, r"ds_read_matrix_format", failures,
+                "asm_missing_ds_read_matrix_normal")
         require(asm, r"v_mmac", failures, "asm_missing_mmac")
         require(asm, r"s_set_vgpr_size", failures,
                 "asm_missing_wdra_vgpr_resize")

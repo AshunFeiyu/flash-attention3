@@ -110,10 +110,10 @@ struct DqLdsLayout {
         kDoutBase + kSubMq * kHeadDim * kHalfBytes;
     static constexpr int kKPageBytes = kBlockNk * kHeadDim * kHalfBytes;
     static constexpr int kVPageBytes = kBlockNk * kHeadDim * kHalfBytes;
-    static constexpr int kKtPageBytes = kHeadDim * kBlockNk * kHalfBytes;
+    static constexpr int kKToDsPadBytes = kHeadDim * kBlockNk * kHalfBytes;
     static constexpr int kDsPageBytes = kSubMq * kBlockNk * kHalfBytes;
     static constexpr int kPageBytes =
-        kKPageBytes + kVPageBytes + kKtPageBytes + kDsPageBytes;
+        kKPageBytes + kVPageBytes + kKToDsPadBytes + kDsPageBytes;
     static constexpr int kPages = 2;
     static constexpr int kSidecarBase = kPageBase + kPages * kPageBytes;
     static constexpr int kSidecarRows = kSubMq;
@@ -124,11 +124,8 @@ struct DqLdsLayout {
     static constexpr int kVBase(int page) {
         return kKBase(page) + kKPageBytes;
     }
-    static constexpr int kKtBase(int page) {
-        return kVBase(page) + kVPageBytes;
-    }
     static constexpr int kDsBase(int page) {
-        return kKtBase(page) + kKtPageBytes;
+        return kVBase(page) + kVPageBytes + kKToDsPadBytes;
     }
     static constexpr int kBytes = kSidecarBase + kSidecarBytes;
     static_assert(kBytes <= Tile::kLdsBudgetBytes,
@@ -277,68 +274,6 @@ __device__ __forceinline__ void dq_load_kv_tile_page(
         (4 + producer_wave) * MatrixBlockBytes, true);
 }
 
-template <typename Tile>
-__device__ __forceinline__ void dq_load_kt_tile(
-    const __half* __restrict__ k_t_source,
-    __half* __restrict__ lds,
-    int d_tile,
-    int k_tile,
-    int page,
-    int seqlen,
-    int bh) {
-    constexpr int Nk = Tile::kBlockNk;
-    constexpr int Dim = Tile::kHeadDim;
-    constexpr int DTile = 32;
-    constexpr int MatrixBlockBytes = DqLdsLayout<Tile>::kMatrixBlockBytes;
-    const int k_tiles = (seqlen + Nk - 1) / Nk;
-    const size_t tile_base =
-        (static_cast<size_t>(bh) * static_cast<size_t>(k_tiles) +
-         static_cast<size_t>(k_tile)) *
-        static_cast<size_t>(Dim) * static_cast<size_t>(Nk);
-    const int d_base = d_tile * DTile;
-    const int k_lds_base = d_tile * DTile * Nk * sizeof(__half);
-    __half* kt_lds = lds + DqLdsLayout<Tile>::kKtBase(page) / sizeof(__half);
-
-    ins::Vec4U32 src0 =
-        ins::prepare_matrix_src(k_t_source + tile_base + d_base * Nk, Nk);
-    ins::matrix_load_32x32_b16_bps_lds(
-        kt_lds, src0, k_lds_base, true);
-    ins::Vec4U32 src1 =
-        ins::prepare_matrix_src(k_t_source + tile_base + d_base * Nk + 32, Nk);
-    ins::matrix_load_32x32_b16_bps_lds(
-        kt_lds, src1, k_lds_base + MatrixBlockBytes, true);
-}
-
-template <typename Tile>
-__device__ __forceinline__ void dq_store_kt_tile_scalar(
-    const __half* __restrict__ k_t_source,
-    __half* __restrict__ lds,
-    int d_tile,
-    int k_tile,
-    int page,
-    int seqlen,
-    int bh,
-    int lane) {
-    constexpr int Nk = Tile::kBlockNk;
-    constexpr int Dim = Tile::kHeadDim;
-    constexpr int DTile = 32;
-    const int k_tiles = (seqlen + Nk - 1) / Nk;
-    const size_t tile_base =
-        (static_cast<size_t>(bh) * static_cast<size_t>(k_tiles) +
-         static_cast<size_t>(k_tile)) *
-        static_cast<size_t>(Dim) * static_cast<size_t>(Nk);
-    const int d_base = d_tile * DTile;
-    __half* kt_lds =
-        lds + DqLdsLayout<Tile>::kKtBase(page) / sizeof(__half) +
-        d_tile * DTile * Nk;
-    for (int idx = lane; idx < DTile * Nk; idx += 64) {
-        const int d = idx / Nk;
-        const int nk = idx - d * Nk;
-        kt_lds[dq_k_lds_dst(nk, d)] =
-            k_t_source[tile_base + static_cast<size_t>(d_base + d) * Nk + nk];
-    }
-}
-
 template <typename Tile, int MHalf, int NChunk>
 __device__ __forceinline__ void dq_publish_ds_chunk(
     const __half* __restrict__ lds,
@@ -448,7 +383,7 @@ __device__ __forceinline__ void dq_publish_ds_chunk(
 }
 
 template <typename Tile, int DTileId>
-__device__ __forceinline__ void dq_consume_ds_kt_full_dtile(
+__device__ __forceinline__ void dq_consume_ds_k_native_full_dtile(
     const __half* __restrict__ lds,
     int page,
     ins::F32x4 (&dq_reg)[4]) {
@@ -457,21 +392,21 @@ __device__ __forceinline__ void dq_consume_ds_kt_full_dtile(
     constexpr int MatrixBlockBytes = DqLdsLayout<Tile>::kMatrixBlockBytes;
     const __half* ds_lds =
         lds + DqLdsLayout<Tile>::kDsBase(page) / sizeof(__half);
-    const __half* kt_lds =
-        lds + DqLdsLayout<Tile>::kKtBase(page) / sizeof(__half);
-    const int kt_lds_base = DTileId * DTile * Nk * sizeof(__half);
+    const __half* k_lds =
+        lds + DqLdsLayout<Tile>::kKBase(page) / sizeof(__half);
+    const int k_lds_base0 = DTileId * MatrixBlockBytes;
+    const int k_lds_base1 = (4 + DTileId) * MatrixBlockBytes;
 
     ins::F16x8 ds_reg[4];
-    ins::F16x8 kt_reg[4];
+    ins::F16x8 k_reg[4];
     ins::ds_read_matrix_trans_pair(
         ds_lds, 0, ds_reg[0].f16x8, ds_reg[2].f16x8);
     ins::ds_read_matrix_trans_pair(
         ds_lds, MatrixBlockBytes, ds_reg[1].f16x8, ds_reg[3].f16x8);
-    ins::ds_read_matrix_trans_pair(
-        kt_lds, kt_lds_base, kt_reg[0].f16x8, kt_reg[2].f16x8);
-    ins::ds_read_matrix_trans_pair(
-        kt_lds, kt_lds_base + MatrixBlockBytes,
-        kt_reg[1].f16x8, kt_reg[3].f16x8);
+    ins::ds_read_matrix_normal_pair(
+        k_lds, k_lds_base0, k_reg[0].f16x8, k_reg[2].f16x8);
+    ins::ds_read_matrix_normal_pair(
+        k_lds, k_lds_base1, k_reg[1].f16x8, k_reg[3].f16x8);
     ins::wait_lgkm(0);
 
 #pragma unroll
@@ -481,12 +416,14 @@ __device__ __forceinline__ void dq_consume_ds_kt_full_dtile(
 #pragma unroll
             for (int nk_idx = 0; nk_idx < Nk / 16; ++nk_idx) {
                 const int acc_idx = mq_idx * (DTile / 16) + d_idx;
+                const int n_group = nk_idx / 2;
+                const int n_half = nk_idx & 1;
+                const int k_frag_idx = n_group + n_half * (Nk / 32);
                 dq_reg[acc_idx].f32 =
                     ins::mmac_f16_lit(
                         ds_reg[mq_idx * (Nk / 32) + nk_idx / 2]
                             .f16x4[nk_idx % 2],
-                        kt_reg[d_idx * (Nk / 32) + nk_idx / 2]
-                            .f16x4[nk_idx % 2],
+                        k_reg[k_frag_idx].f16x4[d_idx],
                         dq_reg[acc_idx].f32);
             }
         }
@@ -664,7 +601,7 @@ __device__ __forceinline__ void dq_consumer_role(
         for (int kt = 0; kt < active_k_tiles; ++kt) {
             const int page = kt & 1;
             dq_wait_ds_filled<Bar>(page, ds0_phase, ds1_phase);
-            dq_consume_ds_kt_full_dtile<Tile, ConsumerSlot>(
+            dq_consume_ds_k_native_full_dtile<Tile, ConsumerSlot>(
                 lds, page, dq_reg);
             dq_arrive_page_used<Bar>(page);
         }
@@ -684,7 +621,6 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
                   const float* __restrict__ scores_max,
                   const float* __restrict__ scores_sum,
                   const float* __restrict__ delta,
-                  const __half* __restrict__ k_t_source,
                   float* __restrict__ dq_out,
                   int batch,
                   int heads,
@@ -748,8 +684,6 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
                 dq_seq_page_filled<Bar>(page);
                 dq_load_kv_tile_page<Tile>(
                     k, v, lds, producer_wave, k_base_tile, page, qkv_base);
-                dq_load_kt_tile<Tile>(
-                    k_t_source, lds, producer_wave, kt, page, seqlen, bh);
                 dq_arrive_page_filled<Bar>(page);
             }
         }
@@ -828,7 +762,6 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
     (void)scores_max;
     (void)scores_sum;
     (void)delta;
-    (void)k_t_source;
     (void)dq_out;
     (void)batch;
     (void)heads;
@@ -1283,42 +1216,6 @@ void cpu_softmax_aux_delta(const std::vector<__half>& q,
     }
 }
 
-void materialize_k_t_source(const std::vector<__half>& k,
-                            std::vector<__half>& k_t_source,
-                            int batch,
-                            int heads,
-                            int seqlen,
-                            int dim) {
-    using Tile = dq::ActiveDqTile;
-    const int k_tiles = ceil_div(seqlen, Tile::kBlockNk);
-    std::fill(k_t_source.begin(), k_t_source.end(), __float2half(0.0f));
-    for (int b = 0; b < batch; ++b) {
-        for (int h = 0; h < heads; ++h) {
-            const int bh = b * heads + h;
-            for (int kt = 0; kt < k_tiles; ++kt) {
-                const size_t tile_base =
-                    (static_cast<size_t>(bh) * static_cast<size_t>(k_tiles) +
-                     static_cast<size_t>(kt)) *
-                    static_cast<size_t>(dim) *
-                    static_cast<size_t>(Tile::kBlockNk);
-                for (int d = 0; d < dim; ++d) {
-                    for (int nk = 0; nk < Tile::kBlockNk; ++nk) {
-                        const int krow = kt * Tile::kBlockNk + nk;
-                        if (krow < seqlen) {
-                            k_t_source[tile_base +
-                                       static_cast<size_t>(d) *
-                                           Tile::kBlockNk +
-                                       nk] =
-                                k[tensor_offset(
-                                    b, h, krow, d, heads, seqlen, dim)];
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 DqCompareMetrics compare_vectors(const std::vector<float>& actual,
                                  const std::vector<float>& expected,
                                  int dim) {
@@ -1440,8 +1337,7 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
         if (dout == nullptr || q == nullptr || k == nullptr ||
             v == nullptr || softmax_aux0 == nullptr ||
             softmax_aux1 == nullptr || dq_out == nullptr ||
-            params->reserved_ptr[0] == nullptr ||
-            params->reserved_ptr[1] == nullptr) {
+            params->reserved_ptr[0] == nullptr) {
             return SHAOBO_FA3_STATUS_INVALID_VALUE;
         }
         using Tile = dq::ActiveDqTile;
@@ -1464,7 +1360,6 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
                 static_cast<const float*>(softmax_aux0),
                 static_cast<const float*>(softmax_aux1),
                 static_cast<const float*>(params->reserved_ptr[0]),
-                static_cast<const __half*>(params->reserved_ptr[1]),
                 static_cast<float*>(dq_out), params->batch,
                 params->num_heads_q, params->seqlen_q, params->softmax_scale,
                 params->softmax_scale * kLog2E, params->reserved_i32[0],
@@ -1600,7 +1495,6 @@ int main(int argc, char** argv) {
     float* scores_max_dev = nullptr;
     float* scores_sum_dev = nullptr;
     float* delta_dev = nullptr;
-    __half* k_t_source_dev = nullptr;
 
     hipError_t err = hipMalloc(reinterpret_cast<void**>(&q_dev), tensor_bytes);
     if (err == hipSuccess) {
@@ -1623,13 +1517,6 @@ int main(int argc, char** argv) {
         static_cast<size_t>(batch) * static_cast<size_t>(heads) *
         static_cast<size_t>(seqlen);
     const size_t sidecar_bytes = sidecar_rows * sizeof(float);
-    const int k_tiles = ceil_div(seqlen, dq::ActiveDqTile::kBlockNk);
-    const size_t k_t_source_elems =
-        static_cast<size_t>(batch) * static_cast<size_t>(heads) *
-        static_cast<size_t>(k_tiles) *
-        static_cast<size_t>(dq::ActiveDqTile::kHeadDim) *
-        static_cast<size_t>(dq::ActiveDqTile::kBlockNk);
-    const size_t k_t_source_bytes = k_t_source_elems * sizeof(__half);
     if (canonical != 0 && err == hipSuccess) {
         err = hipMalloc(reinterpret_cast<void**>(&scores_max_dev),
                         sidecar_bytes);
@@ -1640,10 +1527,6 @@ int main(int argc, char** argv) {
     }
     if (canonical != 0 && err == hipSuccess) {
         err = hipMalloc(reinterpret_cast<void**>(&delta_dev), sidecar_bytes);
-    }
-    if (canonical != 0 && err == hipSuccess) {
-        err = hipMalloc(reinterpret_cast<void**>(&k_t_source_dev),
-                        k_t_source_bytes);
     }
     if (err != hipSuccess) {
         std::fprintf(stderr, "hipMalloc failed: %s\n", hipGetErrorString(err));
@@ -1672,13 +1555,10 @@ int main(int argc, char** argv) {
         std::vector<float> scores_max_host(sidecar_rows);
         std::vector<float> scores_sum_host(sidecar_rows);
         std::vector<float> delta_host(sidecar_rows);
-        std::vector<__half> k_t_source_host(k_t_source_elems);
         cpu_softmax_aux_delta(
             q_host, k_host, v_host, dout_host, scores_max_host,
             scores_sum_host, delta_host, batch, heads, seqlen, dim,
             params.causal, params.softmax_scale);
-        materialize_k_t_source(
-            k_host, k_t_source_host, batch, heads, seqlen, dim);
         ignore_hip_status(
             hipMemcpy(scores_max_dev, scores_max_host.data(), sidecar_bytes,
                       hipMemcpyHostToDevice));
@@ -1688,11 +1568,7 @@ int main(int argc, char** argv) {
         ignore_hip_status(
             hipMemcpy(delta_dev, delta_host.data(), sidecar_bytes,
                       hipMemcpyHostToDevice));
-        ignore_hip_status(
-            hipMemcpy(k_t_source_dev, k_t_source_host.data(),
-                      k_t_source_bytes, hipMemcpyHostToDevice));
         params.reserved_ptr[0] = delta_dev;
-        params.reserved_ptr[1] = k_t_source_dev;
     }
 
     const int status = shaobo_fa3_bwd(
@@ -1744,7 +1620,6 @@ int main(int argc, char** argv) {
                       dq_metrics.bad_count == 0 &&
                       (canonical_path ? canonical_pass : reference_pass);
 
-    ignore_hip_status(hipFree(k_t_source_dev));
     ignore_hip_status(hipFree(delta_dev));
     ignore_hip_status(hipFree(scores_sum_dev));
     ignore_hip_status(hipFree(scores_max_dev));

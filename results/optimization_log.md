@@ -7005,3 +7005,54 @@ Conclusion:
 - The 40% MMAC-active target is not solved.  Next work must target the
   ABarrier/Page/Ds ownership chain or increase useful MMAC work per ownership
   epoch; more fine-grained tokens are unlikely to help.
+
+## 2026-07-07 dQ K-Native Same-LDS Read And Code Convergence
+
+Decision: `ACCEPT_CLEANUP`
+
+Design:
+
+- A focused probe showed the existing raw K LDS page can feed the dQ RHS via
+  normal `ds_read_matrix_format` with a uniform `f16x4` fragment remap.
+- The canonical dQ consumer now computes `dQ = dS @ K` from the same K LDS page
+  instead of loading and reading a separate `K^T` source-layout page.
+- The old Kt source hot-path helpers were deleted.  A follow-up source audit
+  also removed the dead host/API tail: `k_t_source` kernel argument,
+  `materialize_k_t_source`, `reserved_ptr[1]` validation, and the standalone
+  Kt allocation/copy/free.
+- The dQ static gate now forbids restoring `dq_load_kt_tile`,
+  `dq_store_kt_tile_scalar`, `kKtBase`, `materialize_k_t_source`, or
+  `k_t_source` in the canonical dQ source.
+
+Evidence:
+
+- Focused probe:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_k_same_lds_native_probe_20260707_134821`.
+  It found no exact Vec8 fragment match, but did find a stable f16x4 block
+  mapping for the current K load/reader pair:
+  `k_frag_idx = nk_idx / 2 + (nk_idx & 1) * (Nk / 32)`.
+- First K-native run before host cleanup:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_141507`,
+  `simTicks=28,160,860`, `MMAC active=9.9082%`, correctness PASS,
+  `ldsBankConflict=0`.
+- Deleting the old K-to-dS padding was rejected:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_141209`,
+  `simTicks=28,690,480`, so the current code keeps the padding while removing
+  dead Kt source traffic and helpers.
+- Final code-converged run:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_144004`,
+  `path=canonical`, `simTicks=28,002,520`, `MMAC active=10.032187%`,
+  `MMOP=52,224`, `VALU=130,816`, `SCA=191,696`, `LDS=57,408`,
+  `VMEM=4,608`, `coissue=1,964/1,441`, `ldsBankConflict=0`.
+- Static/resource gate:
+  `group_segment=123264`, `private=0`, `sgpr=63`, `vgpr=168`,
+  no SGPR/VGPR spill.
+
+Conclusion:
+
+- The active dQ route is not phase-stacked: one canonical dQ performance
+  kernel plus reference correctness kernels remains.
+- The only new kernel is the isolated focused probe under `probes/`, which is
+  evidence code rather than a performance path.
+- Current main bottleneck is still ABarrier/Page/Ds ownership exposure; Kt
+  source traffic is no longer the target.

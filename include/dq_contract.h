@@ -33,7 +33,7 @@ struct DqTileD128MqNk {
         2 * kSubMq * kHeadDim * kHalfBytes;
     static constexpr int kKvBytes =
         2 * kBlockNk * kHeadDim * kHalfBytes;
-    static constexpr int kKtBytes =
+    static constexpr int kKToDsPadBytes =
         kHeadDim * kBlockNk * kHalfBytes;
     static constexpr int kDsBytes =
         kSubMq * kBlockNk * kHalfBytes;
@@ -42,7 +42,7 @@ struct DqTileD128MqNk {
         kSidecarFloats * static_cast<int>(sizeof(float));
     static constexpr int kLdsBudgetBytes = 128 * 1024;
     static constexpr int kPlannedLdsBytes =
-        kQDoBytes + kKvBytes + kKtBytes + kDsBytes + kSidecarBytes;
+        kQDoBytes + kKvBytes + kKToDsPadBytes + kDsBytes + kSidecarBytes;
 
     static_assert(kBlockMq % 32 == 0,
                   "dQ target consumes Mq in M32 consumer pairs");

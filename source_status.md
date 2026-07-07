@@ -2,7 +2,7 @@
 
 ## 2026-07-07 dQ 40% MMAC Active Target
 
-Status: `DQ_MQ32_SIDECAR_LDS_BASELINE_ACTIVE`.
+Status: `DQ_MQ32_K_NATIVE_CLEAN_BASELINE_ACTIVE`.
 
 Current goal:
 
@@ -15,8 +15,12 @@ Current goal:
 
 Current code state:
 
-- Branch: `shaobo/7gemm-dq-bringup`.
+- Branch: `shaobo/dq-xcu-guided-dq-kernel`.
 - Canonical dQ tile: `Mq=32,Nk=64,D=128,12 waves`.
+- The canonical dQ consumer reads dS through trans `ds_read_matrix` and K
+  through normal `ds_read_matrix` from the same raw K LDS page.  There is no
+  hot `K^T` source page, no `k_t_source` kernel argument, and no host-side
+  `materialize_k_t_source` in the current path.
 - Sidecar is staged by the producer into LDS; worker does not direct-load the
   three sidecar streams from global in the hot path.
 - `PageUsed` is consumer-only: producer waits for 4 consumer arrivals before
@@ -29,6 +33,9 @@ Current code state:
 - The latest micro-baseline also folds Q fragment reads into that same worker
   island: Q plus all four K-block `dO/K/V` matrix reads are issued before one
   `wait_lgkm(0)` in `dq_publish_ds_chunk`.
+- The current best micro-baseline additionally removes the dead `K^T`
+  source-layout page and host/API Kt tail while preserving the K-to-dS padding
+  that keeps the accepted LDS offsets.
 - Added a standalone measurement knob:
   `--tiles-per-dispatch` / `DQ_TILES_PER_DISPATCH`.  It controls how many q
   tiles the standalone harness packs into one dispatch and does not alter the
@@ -80,6 +87,14 @@ Latest target-shape evidence:
   XCU shows `s_abarrier_try_wait -> s_xor_b32` remains about `44.13%`, so the
   next 40% route must reduce ABarrier/Page/Ds ownership exposure or increase
   useful MMAC per ownership epoch.
+- Accepted K-native same-LDS and code-convergence update:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_144004`,
+  canonical correctness/resource PASS, `simTicks=28,002,520`,
+  `MMAC active=10.032187%`, `MMOP=52,224`, `VALU=130,816`,
+  `SCA=191,696`, `LDS=57,408`, `VMEM=4,608`, `coissue=1,964/1,441`,
+  `ldsBankConflict=0`.
+  Static metadata: `group_segment=123264`, `private=0`, `sgpr=63`,
+  `vgpr=168`, no spill/scratch.  This is the current clean dQ baseline.
 
 Decision:
 
@@ -90,7 +105,8 @@ Decision:
 - Direct Mq64 in the old q_subtile path remains rejected by hang; Mq64
   single-page direct and split variants are also rejected by perf because they
   lose overlap/coissue.
-- Do not retry isolated Kt preread/code motion, finer dS token splitting,
+- Do not retry isolated Kt preread/code motion, Kt source-layout host/API
+  restoration, finer dS token splitting,
   even/odd page-owner rearrangement, or Mq64 single-page designs without a
   focused protocol proof.
 - The next 40% path should stay on the legal two-page pipeline, preserve

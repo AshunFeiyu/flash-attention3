@@ -167,6 +167,28 @@ __device__ __forceinline__ void ds_read_matrix_trans_pair(
 #endif
 }
 
+__device__ __forceinline__ void ds_read_matrix_normal_pair(
+    const __half* lds,
+    int lds_offset,
+    Vec8F16& frag0,
+    Vec8F16& frag1) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const int lds_addr =
+        static_cast<int>(reinterpret_cast<size_t>(lds)) + lds_offset;
+    asm volatile(
+        "ds_read_matrix_format %0, %2 offset:0 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_format %1, %2 offset:1024 element:0x2 row:0x2 col:0x1 alt:0x0\n"
+        : "=v"(frag0), "=v"(frag1)
+        : "s"(lds_addr)
+        : "memory");
+#else
+    (void)lds;
+    (void)lds_offset;
+    frag0 = {};
+    frag1 = {};
+#endif
+}
+
 __device__ __forceinline__ void wait_lgkm(int count = 0) {
 #if defined(__gfx946__) || defined(__gfx92a__)
     __builtin_amdgcn_sched_barrier(0);

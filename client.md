@@ -11,7 +11,7 @@ evidence are required before any performance claim.
 
 ## dQ Reopen Contract
 
-- Active branch: `shaobo/7gemm-dq-bringup`.
+- Active branch: `shaobo/dq-xcu-guided-dq-kernel`.
 - Design workbook:
   `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`.
 - Scope: implement a standalone dQ kernel after the dKV focused line.
@@ -21,16 +21,18 @@ evidence are required before any performance claim.
   score/dP across kernels, but must not duplicate score/dP for the same
   `(Q tile, K tile)` inside dQ.
 - Current correctness-clean MMAC tile: `Mq=32,Nk=64,D=128,12 waves`, using
-  source-layout `K^T` ABI.
-- Current dQ pipeline baseline is a two-page K/V/Kt/dS conveyor:
+  the same raw K LDS page for dQ RHS through normal `ds_read_matrix`.
+- Current dQ pipeline baseline is a two-page K/V/K-to-dS-pad/dS conveyor:
   producer publishes page input, worker publishes dS, consumer computes dQ and
-  releases the page.  Q/dO are loaded once per q-subtile.
+  releases the page.  Q/dO are loaded once per q-subtile.  The old `K^T`
+  source-layout page and host `k_t_source` materialization are removed from the
+  canonical path.
 - `PageUsed` is consumer-only in the current code; worker-side PageUsed arrival
   was removed after proving it was redundant for page overwrite lifetime.
 - Direct `Mq=64` by serially looping two `M32` q-subtiles hung at H1/S128.
   Revisit only with explicit q-subtile token reset or a new lifetime proof.
-- `Nk=128` is a later upgrade only after the same K LDS page can feed both
-  normal and transpose dQ views without duplicating Kt/dS LDS.
+- `Nk=128` is a later upgrade only after the current same-K-LDS native RHS path
+  and ABarrier ownership protocol are re-budgeted for the larger page.
 - Producer rule: producer publishes Q/dO plus packed sidecar to LDS, and streams
   K/V through LDS; consumer should not direct-load sidecar global in the hot
   path.
@@ -43,7 +45,9 @@ evidence are required before any performance claim.
   `B=1,H=1,S=1024,D=128,causal=true`, `GPU_CHIP=sb`,
   `GPU_ARGS="['--SQCIPfLines=7']"`.
 - Current canonical dQ path: `Mq=32,Nk=64,D=128,12 waves`, sidecar-LDS,
-  two K/V/Kt/dS pages.
+  two K/V/K-to-dS-pad/dS pages.  dQ consumes dS through trans
+  `ds_read_matrix` and K through normal `ds_read_matrix` from the same K LDS
+  page; there is no hot Kt source path.
 - Current recertified baseline:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_063111`,
   aggregate `MMAC active=8.8385%`, `simTicks=52,082,485`, correctness PASS,
@@ -75,16 +79,17 @@ evidence are required before any performance claim.
   XCU still shows the main blocker is ABarrier:
   `s_abarrier_try_wait -> s_xor_b32` about `44.64%`.
 - Current best dQ micro-baseline:
-  all-operand worker read-batch in `dq_publish_ds_chunk`, recorded in workbook
-  sheet `33_dq_all_operand_readbatch`.  It removes the separate wait after Q
-  matrix reads, then issues Q plus all four K-block `dO/K/V` matrix reads
-  before one `wait_lgkm(0)` and the score/dP MMAC island.  H1/S1024 full perf:
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_100403`,
-  `simTicks=28,998,970`, `MMAC active=9.54706%`, `coissue=1,943/1,453`,
-  `ldsBankConflict=0`.  Shared perf archive:
-  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_100403_dq_all_operand_readbatch_s1024_sqc7_fullperf`.
-  XCU still shows the main blocker is ABarrier:
-  `s_abarrier_try_wait -> s_xor_b32` about `44.13%`.
+  K-native same-LDS RHS plus all-operand worker read-batch.  It removes the
+  separate `K^T` source-layout page and dead host/API `k_t_source` tail while
+  keeping the K-to-dS padding that preserved the best LDS offsets.  H1/S1024
+  canonical stats:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_144004`,
+  `simTicks=28,002,520`, `MMAC active=10.032187%`,
+  `coissue=1,964/1,441`, `SCA=191,696`, `VMEM=4,608`,
+  `ldsBankConflict=0`.  Latest full perf before host cleanup remains:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_141848_dq_current_best_h1s1024_sqc7`.
+  XCU still shows the main blocker is ABarrier/Page/Ds ownership:
+  `s_abarrier_try_wait -> s_xor_b32` about `45.61%`.
 - Mq64 single-page direct/split variants are rejected: they are correct and
   resource-clean, but lose overlap/coissue and regress ticks badly.
 - Next evidence step: stay on Mq32 two-page baseline, preserve worker/consumer
@@ -513,38 +518,40 @@ This is a micro-baseline; XCU still shows ABarrier/control as the main bubble.
 
 ## dQ Current State
 
-Active branch: `shaobo/7gemm-dq-bringup`.
+Active branch: `shaobo/dq-xcu-guided-dq-kernel`.
 
 Active dQ kernel: `src/dq_kernel.cpp`, canonical path
 `kDqPathCanonicalDq`, tile `Mq=32,Nk=64,D=128`, 12-wave CTA.
 
-Current accepted dQ candidate is `dq_sidecar_lds_staging`:
+Current accepted dQ candidate is `dq_k_native_same_k_lds`:
 
 - Producer writes `scores_max/scores_sum/delta` into a small LDS sidecar tail
   before `PageFilled`.
-- Worker computes dS from LDS sidecar instead of direct global sidecar loads.
-- No new ABarrier token was added.
-- Static/resource PASS: `private=0`, `sgpr=67`, `vgpr=168`, no spill/scratch.
+- Worker computes dS from LDS sidecar and batched Q/dO/K/V matrix reads.
+- Consumer reads dS through trans `ds_read_matrix` and K through normal
+  `ds_read_matrix` from the same K LDS page.
+- The old `K^T` source-layout LDS page and host `k_t_source` materialization
+  are removed from the canonical path.
+- Static/resource PASS: `group_segment=123264`, `private=0`, `sgpr=63`,
+  `vgpr=168`, no spill/scratch.
 - Correctness PASS H1/S128 and H1/S1024.
-- H1/S1024 dispatch1:
-  `kernel_ticks=28,114,905`, `MMAC active=9.707%`,
+- H1/S1024:
+  `simTicks=28,002,520`, `MMAC active=10.032187%`,
   `ldsBankConflict=0`.
-- Previous double-page dispatch1:
-  `kernel_ticks=35,671,545`, `MMAC active=7.8501%`.
 
 This is useful but still far from the 40% MMAC-active goal.  The next dQ
-design question is whether K and K^T can share the same LDS resident source
-layout, removing the 16KB K^T page copy and freeing LDS for deeper buffering or
-a larger MMAC island.
+design question is how to reduce ABarrier/Page/Ds ownership exposure or
+increase useful MMAC work per ownership epoch without restoring duplicate Kt
+source traffic.
 
 Fast same-K-LDS probe result:
 
-- Four guessed combinations of K `matrix_load_32x32`/`matrix_load_32x16` plus
+- Earlier guessed combinations of K `matrix_load_32x32`/`matrix_load_32x16` plus
   dQ `ds_read_matrix_32x16_normal/trans` were static-clean but numerically
   wrong on H1/S128 (`dq_rel_l2` between `0.535917` and `1.46283`).
-- The source was restored to `dq_sidecar_lds_staging`.
-- Next same-K work must be a focused fragment-layout probe that records actual
-  K/K^T fragments; do not delete the K^T page by guessing offsets.
+- A later focused fragment-layout probe found the accepted f16x4 K fragment
+  remap used by the current canonical path.  Do not restore the Kt page by
+  guessing offsets; use focused probes and gates.
 
 Latest dQ evidence:
 
