@@ -55,9 +55,12 @@ struct DqTileD128MqNk {
 using ActiveDqTile = DqTileD128MqNk<128, 64>;
 
 struct DqBarrierLedger {
-    static constexpr int kPageFilled = 0;
-    static constexpr int kPageUsed = 1;
-    static constexpr int kAllDone = 2;
+    static constexpr int kPage0Filled = 0;
+    static constexpr int kPage0Used = 1;
+    static constexpr int kPage1Filled = 2;
+    static constexpr int kPage1Used = 3;
+    static constexpr int kQDoLatched = 4;
+    static constexpr int kAllDone = 5;
 };
 
 struct OptimizationTargets {

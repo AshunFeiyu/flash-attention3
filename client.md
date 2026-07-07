@@ -20,24 +20,24 @@ evidence are required before any performance claim.
 - dS is no longer staged in LDS.  Each consumer computes its complete dQ
   chain in VGPR: `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
 - Current evidence:
-  after K-normal split-wait, H1/S128
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_173804`
+  after Q/dO latch plus K/V double-page reuse, H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_194910`
   and H1/S1024
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_173814`
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_194922`
   both PASS; full perf archive
-  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_174046_dq_k_normal_split_wait_h1s1024_sqc7_fullperf`
-  reports `simTicks=50,760,255`, `kernel_ticks=47,146,645`,
-  `MMAC active=20.1315%`, `ldsBankConflict=0`.
-- This is a clean micro improvement over the structural bring-up
-  (`55,191,955 -> 50,760,255` simTicks), but not a performance win over the
-  older Mq32 K-native baseline.  XCU still shows ABarrier wait exposure:
-  `s_abarrier_try_wait -> s_xor_b32` about `49.71%`.  The targeted
-  `ds_read_matrix_format -> s_waitcnt` bubble improved from about `4.83%` to
-  `2.72%`, while `v_mmac -> s_waitcnt` grew to about `2.95%`.
-- Next direction: stop local wait micro-tuning unless xcu points to a new
-  concrete bubble; design the larger `BlockM` route by latching Q/dO into
-  consumer VGPRs and freeing their LDS region before increasing M, or reduce
-  PageFilled/PageUsed ownership exposure directly.
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_195218_dq_qdo_latched_kv_double_page_h1s1024_sqc7_fullperf`
+  reports `simTicks=45,436,755`, `kernel_ticks=41,823,145`,
+  `MMAC active=22.9566%`, `ldsBankConflict=0`.
+- This promotes a real pipeline change over the K-normal split-wait baseline:
+  Q/dO are latched into consumer VGPR, producers wait `QDoLatched`, then reuse
+  the released Q LDS region as page1 for K/V.  Full-perf kernel ticks improve
+  about `11.3%` versus split-wait and XCU shows
+  `s_abarrier_try_wait -> s_xor_b32` falling from about `49.71%` to
+  `38.54%`.
+- Next direction: optimize the new `s_abarrier_try_wait -> s_waitcnt` tail
+  exposure around bar5/page cadence without losing the two-page correctness
+  proof.  Do not go back to local wait-only tuning unless xcu identifies a
+  concrete non-barrier read gap.
 
 ## dQ Reopen Contract
 

@@ -38,6 +38,26 @@ Current code state:
 
 Latest target-shape evidence:
 
+- Accepted dQ Q/dO latched K/V double-page optimization:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_194910`
+  and H1/S1024
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_194922`
+  correctness PASS, static/resource PASS with branch windows
+  `8/40`, `118/216`, `118/216`, `9/40`, metadata `private=0`,
+  `sgpr=54`, `vgpr=128`, no spill/scratch, `ldsBankConflict=0`.
+  The change makes the existing Q/dO long-lived VGPR state useful: consumers
+  read Q/dO and sidecar once, arrive `QDoLatched`, and producers reuse the
+  released Q LDS region as a second K/V page.  Stats-only H1/S1024:
+  `simTicks=45,520,475`, `kernel_ticks=41,906,865`,
+  `MMAC active=22.9396%`, coissue `13,590/10,358`.
+  Full perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_195218_dq_qdo_latched_kv_double_page_h1s1024_sqc7_fullperf`.
+  Full-perf stats: `simTicks=45,436,755`,
+  `kernel_ticks=41,823,145`, `MMAC active=22.9566%`.
+  XCU shows dispatch duration `91,852`, average active waves `76.13`, and
+  `s_abarrier_try_wait -> s_xor_b32` reduced to about `38.54%`; the new
+  visible issue is `s_abarrier_try_wait -> s_waitcnt` at about `10.79%`.
+  This is the current 16-wave dQ baseline.
 - Accepted dQ K-normal split-wait micro-optimization:
   H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_173804`
   and H1/S1024

@@ -1,5 +1,71 @@
 # Optimization Log
 
+## 2026-07-07 dQ Q/dO Latched K/V Double Page
+
+Decision: `ACCEPT`
+
+Hypothesis:
+
+The 16-wave dQ path already reads each consumer group's Q/dO fragments into
+VGPR before the `kt` loop, but the LDS lifetime was not exploiting this: K/V
+still used one page, so producers waited for `PageUsed` before loading the
+next K/V tile.  If consumers explicitly publish `QDoLatched` after reading
+Q/dO/sidecar, producers can reuse the released Q LDS region as a second K/V
+page and overlap `kt+1` MLS with `kt` consumer compute.
+
+Implementation:
+
+- Single canonical dQ kernel only; no new phase or alternate path.
+- Barrier ledger changed from one `PageFilled/PageUsed` pair to page-local
+  `Page0Filled/Page0Used`, `Page1Filled/Page1Used`, plus one one-time
+  `QDoLatched`.
+- Page0 uses the original K/V LDS region; page1 reuses the Q LDS region after
+  all eight consumer waves have latched Q/dO and sidecar into registers.
+- `dq_update_from_ds_vec` and score/dP reads now select K/V LDS by page.
+  The math, tile shape, output ownership, sidecar staging, and store path are
+  unchanged.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `8/40`, `118/216`, `118/216`, `9/40`;
+  metadata `private=0`, `sgpr=54`, `vgpr=128`, no SGPR/VGPR spill.
+- Correctness PASS:
+  - H1/S128:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_194910`.
+  - H1/S1024:
+    `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_194922`.
+- H1/S1024 stats-only:
+  `simTicks=45,520,475`, `kernel_ticks=41,906,865`,
+  `MMOP=55,296`, `VALU=140,320`, `SCA=96,904`, `LDS=37,872`,
+  coissue `13,590/10,358`, `ldsBankConflict=0`,
+  `MMAC active=22.9396%`.
+- H1/S1024 full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_195218`.
+  Helper perf archived at
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_195218_dq_qdo_latched_kv_double_page_h1s1024_sqc7_fullperf/DQ_QDO_LATCHED_KV_DOUBLE_PAGE_H1S1024.perf`.
+  Full-perf stats: `simTicks=45,436,755`,
+  `kernel_ticks=41,823,145`, coissue `13,633/10,286`,
+  `MMAC active=22.9566%`, `ldsBankConflict=0`.
+- XCU CLI:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_qdo_latched_kv_double_page_20260707_195218`.
+  Dispatch duration falls to `91,852` and average active waves are `76.13`.
+  The dominant `s_abarrier_try_wait -> s_xor_b32` bubble drops from the
+  split-wait baseline's about `49.71%` to about `38.54%`.  The new visible
+  tradeoff is `s_abarrier_try_wait -> s_waitcnt` at about `10.79%`, with top
+  bubble instances around bar5/tail wait.  XCU CSV artifacts are archived under
+  the shared perf folder's `sqtt_csv/`.
+
+Conclusion:
+
+Promote as the current 16-wave dQ baseline.  This is the first dQ change in
+this route that directly uses Q/dO long-lived VGPR state to improve the
+producer/consumer pipeline: full-perf kernel ticks improve about `11.3%` over
+the K-normal split-wait baseline (`47.15M -> 41.82M`) and MMAC active improves
+about `2.8` points (`20.13% -> 22.96%`).  The remaining bottleneck is no
+longer just single-page K/V ownership; the next target is the new bar5/tail
+wait and page0/page1 cadence, while keeping the two-page correctness proof.
+
 ## 2026-07-07 dQ K-Normal Split Wait
 
 Decision: `ACCEPT_MICRO`
