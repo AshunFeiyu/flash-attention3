@@ -74,6 +74,17 @@ evidence are required before any performance claim.
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_094707_dq_worker_readbatch_s1024_sqc7_fullperf`.
   XCU still shows the main blocker is ABarrier:
   `s_abarrier_try_wait -> s_xor_b32` about `44.64%`.
+- Current best dQ micro-baseline:
+  all-operand worker read-batch in `dq_publish_ds_chunk`, recorded in workbook
+  sheet `33_dq_all_operand_readbatch`.  It removes the separate wait after Q
+  matrix reads, then issues Q plus all four K-block `dO/K/V` matrix reads
+  before one `wait_lgkm(0)` and the score/dP MMAC island.  H1/S1024 full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_100403`,
+  `simTicks=28,998,970`, `MMAC active=9.54706%`, `coissue=1,943/1,453`,
+  `ldsBankConflict=0`.  Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_100403_dq_all_operand_readbatch_s1024_sqc7_fullperf`.
+  XCU still shows the main blocker is ABarrier:
+  `s_abarrier_try_wait -> s_xor_b32` about `44.13%`.
 - Mq64 single-page direct/split variants are rejected: they are correct and
   resource-clean, but lose overlap/coissue and regress ticks badly.
 - Next evidence step: stay on Mq32 two-page baseline, preserve worker/consumer

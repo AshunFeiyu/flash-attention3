@@ -388,7 +388,6 @@ __device__ __forceinline__ void dq_publish_ds_chunk(
             q_lds, k_block * MatrixBlockBytes + MHalfOffset,
             q_reg[k_block].f16x8);
     }
-    ins::wait_lgkm(0);
 
     ins::F32x4 qk_acc;
     ins::F32x4 dp_acc;

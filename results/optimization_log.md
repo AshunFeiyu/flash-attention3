@@ -6959,3 +6959,49 @@ Conclusion:
 - It does not solve the 40% target.  The dominant bottleneck is still the
   page/dS ABarrier ownership chain, so the next step should reduce barrier
   control exposure or increase useful MMAC work per ownership epoch.
+
+## 2026-07-07 dQ All-Operand Worker Read Batch
+
+Decision: `ACCEPT_MICRO`
+
+Design:
+
+- Kept the same `Mq=32,Nk=64,D=128,12-wave` canonical dQ path.
+- Extended the accepted worker score/dP read-batch by also folding the Q
+  fragment reads into the same LDS matrix-read island.
+- In `dq_publish_ds_chunk`, the worker now issues Q plus all four D-block
+  `dO/K/V` `ds_read_matrix` groups before the single `wait_lgkm(0)` and the
+  score/dP MMAC island.
+- No math, tile, ABarrier ownership, or output ownership changed.
+
+Evidence:
+
+- Static/resource stayed clean: `private=0`, `sgpr=67`, `vgpr=168`,
+  no SGPR/VGPR spill or scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_095835`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_095900`;
+  full-perf H1/S1024
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_100403`.
+- Full-perf stats:
+  `simTicks=28,998,970`, `MMAC active=9.54706%`,
+  `coissue=1,943/1,453`, `ldsBankConflict=0`.
+- Compared with worker score/dP read-batch, ticks improved
+  `30,225,650 -> 28,998,970` and active moved
+  `9.25852% -> 9.54706%`.
+- XCU:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_all_operand_readbatch_s1024_fullperf_20260707_100403_d0`.
+  Top bubbles are still dominated by ABarrier:
+  `s_abarrier_try_wait -> s_xor_b32` at `44.13%`;
+  `s_abarrier_try_wait -> s_waitcnt` at `6.32%`;
+  `ds_read_matrix_trans_format -> s_waitcnt` at `3.81%`.
+- Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_100403_dq_all_operand_readbatch_s1024_sqc7_fullperf`.
+
+Conclusion:
+
+- Accepted as the current dQ micro-baseline.  The read island is larger and
+  the matrix-read wait bubble is lower, so this is a constructive change.
+- The 40% MMAC-active target is not solved.  Next work must target the
+  ABarrier/Page/Ds ownership chain or increase useful MMAC work per ownership
+  epoch; more fine-grained tokens are unlikely to help.

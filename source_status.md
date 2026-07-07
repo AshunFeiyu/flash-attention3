@@ -26,6 +26,9 @@ Current code state:
   K-block `dO/K/V` `ds_read_matrix` groups, waits once, and then runs a longer
   score/dP MMAC island.  This is the current accepted micro-baseline for the
   dQ 40% target.
+- The latest micro-baseline also folds Q fragment reads into that same worker
+  island: Q plus all four K-block `dO/K/V` matrix reads are issued before one
+  `wait_lgkm(0)` in `dq_publish_ds_chunk`.
 - Added a standalone measurement knob:
   `--tiles-per-dispatch` / `DQ_TILES_PER_DISPATCH`.  It controls how many q
   tiles the standalone harness packs into one dispatch and does not alter the
@@ -66,6 +69,17 @@ Latest target-shape evidence:
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_readbatch_worker_s1024_fullperf_20260707_094707_d0`.
   Shared archive:
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_094707_dq_worker_readbatch_s1024_sqc7_fullperf`.
+- Accepted all-operand worker read-batch update:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_100403`,
+  correctness/resource PASS, `simTicks=28,998,970`,
+  `MMAC active=9.54706%`, `coissue=1,943/1,453`,
+  `ldsBankConflict=0`.  Full perf/xcu:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_all_operand_readbatch_s1024_fullperf_20260707_100403_d0`.
+  Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_100403_dq_all_operand_readbatch_s1024_sqc7_fullperf`.
+  XCU shows `s_abarrier_try_wait -> s_xor_b32` remains about `44.13%`, so the
+  next 40% route must reduce ABarrier/Page/Ds ownership exposure or increase
+  useful MMAC per ownership epoch.
 
 Decision:
 
