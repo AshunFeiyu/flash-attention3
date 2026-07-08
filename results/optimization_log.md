@@ -8094,3 +8094,54 @@ Conclusion:
   more tightly than its byte size suggests.  Any future sidecar decoupling
   needs a focused barrier/visibility probe or a dedicated correctness-proofed
   token, not just a second sidecar page.
+
+## 2026-07-09 dKV Causal Invalid Q-Tile Skip
+
+Decision: `REJECT_PERF_REGRESSION_SOURCE_REVERTED`
+
+Goal:
+
+- For causal H1/S1024, skip q-tiles that are fully invalid for the current
+  K/V tile (`q_tile_base + Mq <= k_base`) so the kernel avoids wasted Q/dO
+  loads, sidecar publication, score/dP MMAC, softmax/dS, and dV/dK MMAC on
+  upper-triangular invalid work.
+
+Change Tested:
+
+- Added a branch-local skip in both producers and the dKV consumer q-loop.
+- First version carried runtime `causal` and failed metadata with
+  `sgpr_spill_count=20`.
+- The tested version relied on canonical dKV's existing `causal==1` shape
+  gate and removed runtime `causal` from the skip predicate.
+
+Evidence:
+
+- Static/resource PASS after removing runtime `causal`:
+  branch windows `6/16`, `193/240`, `193/240`, `1/16`; metadata
+  `private=0`, `sgpr=100`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_023301`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_023304`.
+- Full perf H1/S1024 regressed versus accepted `dkv_splitwait_highsrc`:
+  `simTicks 47,484,710 -> 49,150,010`, `kernel_ticks 43,871,100 -> 45,536,400`,
+  `MMOP 131,072 -> 88,064`, `MMAC active 32.9468% -> 28.7232%`,
+  `coissue 35,640/24,684 -> 26,504/18,655`, `ldsBankConflict=0`.
+- xcu detail for the candidate:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/xcu_outputs/dkv_causal_skip_20260709_023422`.
+  Top bubbles remained ownership/control dominated:
+  `s_abarrier_try_wait -> s_xor_b32 38.92%` and
+  `s_abarrier_try_wait -> s_waitcnt 12.04%`; `v_mmac` hot latency fell to
+  `9.20%`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_023422_dkv_causal_skip_reject_h1s1024_sqc7`.
+
+Conclusion:
+
+- Reject and remove from active source.  Skipping invalid causal work reduces
+  MMOP but does not reduce the dominant ABarrier ownership bubble, and it
+  makes wave progress/load balance worse enough to lose elapsed ticks and MMAC
+  active share.
+- Do not pursue triangular work skipping as an isolated micro-optimization in
+  this 16-wave dKV route.  The next dKV direction should increase useful MMAC
+  per ownership epoch or reduce Q/Dout page lifetime without making producer
+  and consumer progress more irregular.

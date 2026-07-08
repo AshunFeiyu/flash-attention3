@@ -846,3 +846,22 @@ Next dKV structural candidate:
 - Boundary:
   do not add finer-grained PageUsed barriers or hold more operand fragments
   across softmax; both have already shown poor tradeoffs.
+
+Rejected dKV causal invalid q-tile skip candidate:
+
+- Candidate:
+  skip q-loop iterations that are wholly invalid under causal masking for the
+  current K/V tile.
+- Evidence:
+  runtime-causal skip failed metadata with SGPR spill.  Canonical causal-only
+  skip passed static/resource and H1/S128 plus H1/S1024 correctness, but full
+  perf regressed: `simTicks 47,484,710 -> 49,150,010`, `MMAC active
+  32.9468% -> 28.7232%`, while `MMOP 131,072 -> 88,064`.
+- Decision:
+  `REJECT_PERF_REGRESSION_SOURCE_REVERTED`; local and remote sources are
+  restored to accepted `dkv_splitwait_highsrc`.
+- Lesson:
+  in the current WASP schedule, eliminating invalid triangular work can reduce
+  useful MMAC density and worsen wave progress if it does not also reduce the
+  dominant Q/Dout ABarrier ownership bubble.  Do not retry isolated causal
+  skip logic as the next dKV step.

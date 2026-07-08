@@ -4643,3 +4643,25 @@ Current focus:
   rejected and removed from active source.  Remote and local sources are
   restored to accepted `dkv_splitwait_highsrc`; default dKV gate PASS with
   `sgpr=99`, consumer windows `189/240`.
+
+## 2026-07-09 dKV Causal Invalid Q-Tile Skip Rejected
+
+- Tested change:
+  skip producer and consumer q-loop iterations that are wholly invalid under
+  causal masking for the current K/V tile.
+- Resource/correctness:
+  the runtime-causal version failed metadata with SGPR spill; the canonical
+  causal-only version passed static/resource gates and H1/S128 plus H1/S1024
+  correctness.
+- Perf result:
+  despite reducing `MMOP 131,072 -> 88,064`, H1/S1024 full perf regressed
+  `simTicks 47,484,710 -> 49,150,010` and MMAC active fell
+  `32.9468% -> 28.7232%`.
+- xcu result:
+  the top bubbles were still `s_abarrier_try_wait -> s_xor_b32 38.92%` and
+  `s_abarrier_try_wait -> s_waitcnt 12.04%`, so the skipped work did not
+  remove the ownership cliff and instead made useful MMAC density worse.
+- Status:
+  rejected and removed from active source.  Remote and local sources are again
+  restored to accepted `dkv_splitwait_highsrc`; default dKV gate PASS with
+  `sgpr=99`, consumer windows `189/240`.
