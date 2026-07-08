@@ -4588,3 +4588,23 @@ Current focus:
   keep as a micro wait-late improvement, but do not count it as progress
   toward the 60% MMAC-active structural target.  The main open bottleneck is
   still ABarrier Q/Dout ownership exposure.
+
+## 2026-07-09 dKV Release-Half Q Read Ahead Rejected
+
+- Tested change:
+  in the release-half branch, Q normal source reads were issued before
+  softmax/dS so that Q readiness could run under the VALU island.  `DoutUsed`
+  was protected by `wait_lgkm(8)` and `QUsed` by the later `wait_lgkm(0)`.
+- Result:
+  correctness PASS and no spill/scratch, but consumer branch windows increased
+  to `222/240`.  Full perf H1/S1024 regressed versus accepted split-wait:
+  `simTicks 47,484,710 -> 47,591,635`; MMAC active only moved
+  `32.9468% -> 33.0627%`.
+- Status:
+  rejected and removed from local active source.  The active local source is
+  again the accepted `dkv_splitwait_highsrc` state.
+- Follow-up:
+  remote container sync was interrupted by unstable SSH/transfer behavior.
+  Before any next remote build/run, verify and restore
+  `/home/zhangyushun/shaobo/fa3_bwd_wasp_clean/src/dkv_kernel.cpp` to match
+  local clean source.

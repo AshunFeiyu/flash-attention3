@@ -790,3 +790,22 @@ Current SQTT diagnosis for the dQ 40%+ MMAC-active route:
   the diagnostic is H1/S1024 for dQ versus H4/S1024/H4/S2048 for FWD.  Before
   claiming FWD-style acceptance, capture same-shape dQ H4/S1024 SQTT under
   `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.
+
+Rejected dKV release-half Q-read-ahead candidate:
+
+- Candidate:
+  moved release-half Q normal reads before softmax/dS, then used
+  `wait_lgkm(8)` before `DoutUsed` and `wait_lgkm(0)` before `QUsed`.
+- Evidence:
+  correctness and static gates passed, but consumer branch windows rose from
+  `189/240` to `222/240`.  Full perf H1/S1024 regressed from
+  `47,484,710` to `47,591,635` simTicks while MMAC active only nudged from
+  `32.9468%` to `33.0627%`.
+- Decision:
+  `OBSERVE_ACTIVE_REJECT_TICKS`; local source is restored to the accepted
+  `dkv_splitwait_highsrc` commit.  Do not reintroduce this live-range extension
+  unless a later design also reduces Q/Dout ownership waits.
+- Operational note:
+  remote transfer to `10.59.41.48` became unstable while archiving/syncing.
+  Before the next PMD run, confirm the container source matches local clean
+  `d5878ae` plus no diff.

@@ -7959,3 +7959,57 @@ Conclusion:
 - The next high-ceiling step is still to reduce Q/Dout half-page ownership
   cliffs or increase useful MMAC per ownership epoch.  Local wait scheduling is
   useful but cannot by itself move dKV from about 33% to 60% MMAC active.
+
+## 2026-07-09 dKV Release-Half Q Read Ahead
+
+Decision: `OBSERVE_ACTIVE_REJECT_TICKS`
+
+Goal:
+
+- Test whether the release-half path can hide Q normal `ds_read_matrix`
+  readiness under the softmax/dS VALU island.
+- Keep the accepted `dkv_splitwait_highsrc` baseline intact: no new kernel,
+  phase, tile, role, ABarrier token, API, or output ownership change.
+
+Change Tested:
+
+- In the release-half branch of
+  `consume_mq_mpair_owner16_causal_exact_tile`, moved Q normal source reads
+  before softmax/dS:
+  `score/dP -> dO reads + Q reads -> wait_lgkm(8) -> DoutUsed ->
+  softmax/dS -> wait_lgkm(0) -> QUsed -> dV/dK MMAC`.
+- Safety proof was local and correct: `DoutUsed` still arrived only after dO
+  fragments were ready, and `QUsed` still arrived only after Q fragments were
+  ready.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows became `14/16`, `222/240`, `222/240`, `8/16`;
+  metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+  The important warning is the consumer jump from `189/240` to `222/240`.
+- Correctness PASS:
+  H1/S128 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_005612`;
+  H1/S1024 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_005615`.
+- Full perf H1/S1024:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_010216/m5out/0/0/4698_fa3_bwd_wasp_clean.perf`.
+  Compared with accepted `dkv_splitwait_highsrc` full perf:
+  `simTicks 47,484,710 -> 47,591,635` (`+0.23%` slower),
+  `MMAC active 32.9468% -> 33.0627%`,
+  coissue `35,640/24,684 -> 35,172/24,302`,
+  `ldsBankConflict=0`.
+- xcu first pass:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/xcu_outputs/dkv_release_qread_20260709_010216`.
+
+Conclusion:
+
+- Reject from the active source and restore `dkv_splitwait_highsrc`.
+- The tiny MMAC-active rise is not a valid promotion because elapsed ticks
+  regressed and the long-lived Q fragments push consumer branch usage close to
+  the WDRA window limit.
+- Lesson: hiding a matrix read under softmax is not free in BWD if it extends
+  both Q and dO normal source live ranges across the VALU island.  Future
+  release-half work should reduce ownership/token exposure or increase useful
+  MMAC per token rather than simply hoisting more operand fragments.
