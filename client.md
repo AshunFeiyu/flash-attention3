@@ -58,6 +58,12 @@ evidence are required before any performance claim.
   `s_abarrier_try_wait -> s_waitcnt 9.99%`.  Normal matrix-read wait is now
   only `1.49%`, so the next direction is PageFilled/PageUsed/QDoLatched cadence
   with a written data-lifetime proof, not more per-`n_chunk` local scheduling.
+- Rejected next-step candidate:
+  splitting startup with a new one-shot `QDoFilled` token was static-clean but
+  correctness-bad: H1/S1024 failed rows `688..703` without seq, and H1/S128
+  failed rows `48..63` with one-shot seq.  Active code is restored to
+  `1dcf266`; do not reintroduce this token without a focused barrier+matrix
+  visibility probe.
 
 ## dQ Reopen Contract
 
