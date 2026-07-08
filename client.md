@@ -741,3 +741,27 @@ Current dQ baseline for the 40% MMAC-active goal:
   pairs were still ready together; two-worker sequential pair streaming
   regressed to `33,989,410` ticks because waves10-11 became thin.  The active
   source is restored to the accepted PageUsed consumer-owned baseline.
+
+Current SQTT diagnosis for the dQ 40%+ MMAC-active route:
+
+- See `results/dq_sqtt_bottleneck_20260708.md`.
+- The current `dq_sidecar_soa_vec4` H1/S1024 full-perf artifact is
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_113438_dq_sidecar_soa_vec4_h1s1024_sqc7_fullperf`.
+- dQ PMD: `kernel_ticks=35,382,165`, `MMAC active=25.35%`,
+  `MMOP runtime share=41.86%`, `MMOP=55,296`, `VALU=138,208`,
+  `SCA=87,176`, `coissue=17,446/16,910`, `ldsBankConflict=0`.
+- dQ SQTT: top gaps are `s_abarrier_try_wait -> s_xor_b32 37.26%` and
+  `s_abarrier_try_wait -> s_waitcnt 10.23%`; matrix read to wait/MMAC is not
+  the first-order limiter in this capture.
+- FWD H4/S1024 reference has `mmop_fp16 45.96%` SQTT hot-instruction share and
+  only `salu_32 7.30%`, while dQ has `v_mmac 8.85%`, `s_xor_b32 35.36%`,
+  and `s_waitcnt 16.44%`.
+- Working diagnosis:
+  dQ's three GEMM islands are being diluted by the PageFilled/PageUsed/
+  QDoLatched ownership ledger.  The next useful optimization must increase
+  useful MMAC per ownership epoch or reduce PageUsed critical-path exposure;
+  wait/vmov cleanup is secondary until the ABarrier cliff moves.
+- Evidence gap:
+  the diagnostic is H1/S1024 for dQ versus H4/S1024/H4/S2048 for FWD.  Before
+  claiming FWD-style acceptance, capture same-shape dQ H4/S1024 SQTT under
+  `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.

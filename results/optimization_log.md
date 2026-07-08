@@ -7796,3 +7796,43 @@ Conclusion:
   focused WDRA/global-load sidecar probe.
 - Nk128 remains attractive for MMAC active only if sidecar can be carried
   without direct consumer global loads and without exceeding LDS.
+
+## 2026-07-08 dQ SQTT Bottleneck Diagnosis
+
+Decision: `OBSERVE`
+
+Question:
+
+- dQ has `Mq=128,Nk=64,D=128` and three GEMM islands per K/V tile, so why is
+  MMAC active still far below FWD?
+
+Evidence:
+
+- Detailed note:
+  `results/dq_sqtt_bottleneck_20260708.md`.
+- Current dQ H1/S1024 full perf:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_113438_dq_sidecar_soa_vec4_h1s1024_sqc7_fullperf`.
+- Current dQ PMD aggregate:
+  `kernel_ticks=35,382,165`, `MMOP=55,296`, `VALU=138,208`,
+  `SCA=87,176`, `LDS=28,656`, `coissue=17,446/16,910`,
+  `MMAC active=25.35%`, `MMOP runtime share=41.86%`,
+  `ldsBankConflict=0`.
+- Current dQ SQTT top rows:
+  `s_xor_b32 35.36%`, `s_waitcnt 16.44%`, `v_mmac 8.85%`;
+  top gaps are `s_abarrier_try_wait -> s_xor_b32 37.26%` and
+  `s_abarrier_try_wait -> s_waitcnt 10.23%`.
+- FWD H4/S1024 SQTT reference:
+  `mmop_fp16 45.96%`, `salu_32 7.30%`,
+  `lds_matrix -> mmop_fp16 1.18%`.
+
+Conclusion:
+
+- Current dQ is not primarily blocked by missing MMAC or LDS bank conflict.
+  The first-order bottleneck is ABarrier ownership/wait debt around the
+  PageFilled/PageUsed/QDoLatched ledger.
+- Matrix-read latency and `v_mov`/mask debt are real but secondary in this
+  capture.
+- Next performance work should target more useful MMAC per ownership epoch or
+  a less serial PageUsed/QDo lifetime before local wait/vmov polishing.
+- Formal FWD-style acceptance still needs same-shape dQ H4/S1024 SQTT under
+  `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.
