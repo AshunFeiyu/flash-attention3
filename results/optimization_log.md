@@ -7691,3 +7691,60 @@ Conclusion:
   The next useful direction must reduce per-epoch barrier/control cost or
   increase useful MMAC work per ownership token without increasing page
   cadence debt.
+
+## 2026-07-08 dQ Half-Page Release Rejected
+
+Decision: `REJECT_PERF_STATS_ONLY`
+
+Hypothesis:
+
+- `dq_sidecar_soa_vec4` xcu showed producer waits on `Page1Used`.
+- A K/V page contains two `n_tile` halves.  The accepted route releases the
+  whole page only after both halves finish.
+- Splitting page ownership by half might let producers prefetch the next
+  `kt` half0 while consumers compute half1, without shrinking `Nk`.
+
+Design:
+
+- Keep the canonical `Mq=128,Nk=64,D=128,16 waves` dQ path.
+- Replace whole-page `Page0/1 Filled/Used` with
+  `Page0/1 Half0/1 Filled/Used`.
+- Split producer K/V MLS helpers into `dq_load_k_tile_half` and
+  `dq_load_v_tile_half`.
+- Consumer waits each half before reading, and arrives half-used immediately
+  after `dq_update_from_ds_pair` for that `n_tile`.
+
+Evidence:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `44_dq_half_page_release`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_124824_dq_half_page_release_h1s1024_sqc7_stats_reject`.
+- Static/resource PASS:
+  branch windows `8/40`, `158/216`, `158/216`, `9/40`; metadata
+  `private=0`, `sgpr=56`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_124748`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_124824`.
+- H1/S1024 stats-only:
+  `simTicks=39,826,605`, `firstWaveStartTick=3,613,610`,
+  `lastWaveEndTick=39,826,605`, `kernel_ticks=36,212,995`,
+  `MMOP=55,296`, `VALU=140,128`, `SCA=101,660`,
+  `LDS=28,656`, `VMEM=1,408`, coissue `13,482/15,991`,
+  `ldsBankConflict=0`, `MMAC active=25.4434%`.
+- Same-shape sidecar SoA Vec4 stats-only recert was
+  `simTicks=39,096,785`, `kernel_ticks=35,483,175`; full-perf accepted
+  baseline was `kernel_ticks=35,382,165`, `SCA=87,176`,
+  `MMAC active=25.3548%`.
+
+Conclusion:
+
+- Half-page release is legal and resource-clean, but it is not profitable on
+  H1/S1024.  The extra half-token `Filled/Used` cadence adds scalar/control
+  work faster than it exposes useful producer MLS prefetch overlap.
+- The code was reverted to `dq_sidecar_soa_vec4` (`b56b2dc`) after archiving
+  the candidate source and stats.
+- Do not continue finer PageUsed splitting as an isolated optimization.
+  The next direction should increase useful MMAC per ownership epoch or reduce
+  existing ABarrier/control work without multiplying tokens.

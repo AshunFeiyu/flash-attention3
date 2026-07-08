@@ -1,5 +1,30 @@
 # Source Status
 
+## 2026-07-08 dQ Half-Page Release Rejected
+
+Status: `REJECT_PERF_STATS_ONLY_SOURCE_REVERTED`.
+
+- Motivation:
+  current xcu showed the top wait around `Page1Used`.  The experiment split
+  each `Nk64` K/V page into half0/half1 `n_tile` ownership tokens so producers
+  could release/prefetch half a page earlier.
+- Gates:
+  H1/S128 and H1/S1024 correctness PASS; metadata `private=0`, `sgpr=56`,
+  `vgpr=128`, no spill/scratch; branch windows `8/40`, `158/216`,
+  `158/216`, `9/40`; `ldsBankConflict=0`.
+- Stats-only H1/S1024 result:
+  `kernel_ticks=36,212,995`, `simTicks=39,826,605`,
+  `MMAC active=25.4434%`, `SCA=101,660`, coissue `13,482/15,991`.
+- Comparison:
+  sidecar SoA Vec4 stats-only recert was `kernel_ticks=35,483,175`,
+  and accepted full perf was `kernel_ticks=35,382,165`.
+- Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_124824_dq_half_page_release_h1s1024_sqc7_stats_reject`.
+- Decision:
+  code reverted; active source remains the `b56b2dc` sidecar SoA Vec4
+  baseline.  Finer PageUsed splitting increased scalar/control cadence and
+  should not be retried as an isolated optimization.
+
 ## 2026-07-08 dQ Nk32 Triple Page Rejected
 
 Status: `REJECT_PERF_SOURCE_REVERTED`.

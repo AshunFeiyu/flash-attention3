@@ -81,6 +81,13 @@ evidence are required before any performance claim.
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_121749_dq_nk32_triple_page_h1s1024_sqc7_fullperf`
   and removed from active code.  Current active source is restored to
   `b56b2dc` / `dq_sidecar_soa_vec4`.
+- Rejected next-step candidate:
+  half-page/n_tile `PageUsed` release kept `Mq128/Nk64` and passed
+  H1/S128/H1/S1024 correctness plus static resources, but stats-only H1/S1024
+  regressed `kernel_ticks=35,483,175 -> 36,212,995`; SCA grew
+  `87,176 -> 101,660`.  The result is archived at
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_124824_dq_half_page_release_h1s1024_sqc7_stats_reject`.
+  Do not pursue finer page tokens as an isolated optimization.
 
 ## dQ Reopen Contract
 
