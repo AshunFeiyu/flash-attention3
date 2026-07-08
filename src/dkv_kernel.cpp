@@ -1346,11 +1346,13 @@ __device__ __forceinline__ void dv_dk_mmac_owner16_read4x2(
         ins::zero_f16x8(zero_f16);
     }
 
-    ins::wait_lgkm(0);
     DvDkSourceRegs4 high_src;
     dv_dk_read_owner16_sources4<Tile, 2, MBlockBase>(lds, page, high_src);
 
     ins::raise_priority_2();
+    // Low sources were issued before softmax; keep the newly issued high
+    // sources in flight while the low dV/dK MMAC island runs.
+    ins::wait_lgkm(8);
     dv_dk_mmac_four_out<FirstQTile, 0>(
         p_frag, ds_frag, low_src, dv_acc, dk_acc, zero_f16);
     ins::wait_lgkm(0);

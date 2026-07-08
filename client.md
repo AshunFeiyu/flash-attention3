@@ -742,6 +742,31 @@ Current dQ baseline for the 40% MMAC-active goal:
   regressed to `33,989,410` ticks because waves10-11 became thin.  The active
   source is restored to the accepted PageUsed consumer-owned baseline.
 
+Current dKV fixed-env status for the 60% MMAC-active route:
+
+- Active dKV code is the 16-wave Mq128/Nk128/D128 canonical dKV path:
+  waves0-3 publish K + Q + sidecar, waves12-15 publish V + dO, and
+  waves4-7 / waves8-11 are symmetric consumer groups over different K rows.
+- The 2026-07-09 high-source split-wait patch is accepted only as a micro
+  wait-late improvement.  It changes `dv_dk_mmac_owner16_read4x2` so high
+  dV/dK source reads are issued before the first wait, then uses
+  `wait_lgkm(8)` to run the low MMAC island while high reads remain in flight.
+- Evidence:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_003152_dkv_splitwait_h1s1024_sqc7_fullperf`.
+  H1/S1024 full perf improves `simTicks 48,274,135 -> 47,484,710`
+  (`-1.64%`) versus the fixed-env current full-perf baseline, with correctness
+  PASS, no spill/scratch, and `ldsBankConflict=0`.
+- Boundary:
+  full-perf MMAC active is essentially neutral/slightly down
+  `32.9839% -> 32.9468%`; xcu wait rows improve slightly
+  (`s_waitcnt 19.74% -> 19.55%`, normal matrix-read wait
+  `3.50% -> 3.26%`).  This is not a structural 60% path.
+- Current first-order dKV bottleneck remains ABarrier ownership:
+  `s_abarrier_try_wait -> s_xor_b32` is still about `41.38%`, and
+  `s_abarrier_try_wait -> s_waitcnt` remains about `8.59%`.
+  Next serious work should reduce Q/Dout half-page ownership cliffs or
+  increase useful MMAC per ownership epoch, not only polish local waits.
+
 Current SQTT diagnosis for the dQ 40%+ MMAC-active route:
 
 - See `results/dq_sqtt_bottleneck_20260708.md`.

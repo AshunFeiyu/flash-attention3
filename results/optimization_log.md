@@ -7885,3 +7885,77 @@ Conclusion:
   reference and faster than the ntile-pair reference.
 - This was a stats-only backtest, not a new optimization. Use it as the fixed
   environment baseline before the next full `.perf`/xcu capture.
+
+## 2026-07-09 dKV High-Source Split Wait
+
+Decision: `ACCEPT_MICRO_TICKS_WAIT_LATENCY`
+
+Goal:
+
+- Start the 12h fixed-env loop from the current dKV baseline and target the
+  XCU `s_waitcnt` / `ds_read_matrix -> s_waitcnt` exposure without changing
+  tile shape, wave roles, ABarrier ownership, output ownership, or API.
+- The candidate follows the dQ split-wait lesson: issue a later LDS matrix
+  operand family before the first wait, wait only until the earlier family is
+  safe to consume, then run the first MMAC island while the later reads remain
+  in flight.
+
+Change:
+
+- In `dv_dk_mmac_owner16_read4x2`, moved the high-source
+  `dv_dk_read_owner16_sources4<...,2,...>` before the first readiness wait.
+- Replaced the first `wait_lgkm(0)` with `wait_lgkm(8)`.
+- The low sources were already issued before softmax/dS.  With low+high
+  source reads outstanding, `lgkmcnt(8)` waits for the older low reads while
+  leaving the eight high reads in flight.  The existing later `wait_lgkm(0)`
+  still protects high-source use.
+- The release path is unchanged.  Q/Dout `Used` arrivals still happen only
+  after the required full `wait_lgkm(0)`, so producer overwrite safety is not
+  weakened.
+
+Evidence:
+
+- 12h workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_12h_goal_plan_20260709.xlsx`.
+- Shared perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_003152_dkv_splitwait_h1s1024_sqc7_fullperf`.
+- Static/resource PASS:
+  branch windows `14/16`, `189/240`, `189/240`, `8/16`;
+  metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_002502`;
+  H1/S1024 at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_002617`.
+- Full perf H1/S1024:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_003152/m5out/0/0/4224_fa3_bwd_wasp_clean.perf`.
+  Compared with fixed-env current full perf
+  `20260709_000533_current_bwd_fixedenv_h1s1024_sqc7_fullperf`:
+  `simTicks 48,274,135 -> 47,484,710` (`-1.64%`),
+  coissue `35,245/24,569 -> 35,640/24,684`,
+  `ldsBankConflict=0` both ways.
+- XCU detail moved in the expected direction:
+  `s_waitcnt` hot latency `19.74% -> 19.55%`,
+  `ds_read_matrix_format -> s_waitcnt` `3.50% -> 3.26%`,
+  `ds_read_matrix_trans_format -> s_waitcnt` `2.76% -> 2.72%`,
+  `v_mmac -> s_waitcnt` `1.73% -> 1.71%`.
+
+Boundary:
+
+- This is a narrow wait-late improvement, not a structural solution for the
+  60% MMAC-active goal.
+- Full-perf MMAC active is neutral to slightly down
+  `32.9839% -> 32.9468%` even though ticks improve.  Stats-only had shown a
+  small active-share increase, so this result must be reported with both
+  numbers rather than over-claimed.
+- The top XCU issue remains ABarrier ownership:
+  `s_abarrier_try_wait -> s_xor_b32` is still about `41.38%`, and
+  `s_abarrier_try_wait -> s_waitcnt` remains `8.59%`.
+
+Conclusion:
+
+- Keep the patch as a micro-ticks win if the next commit does not conflict
+  with structural ABarrier work.
+- The next high-ceiling step is still to reduce Q/Dout half-page ownership
+  cliffs or increase useful MMAC per ownership epoch.  Local wait scheduling is
+  useful but cannot by itself move dKV from about 33% to 60% MMAC active.

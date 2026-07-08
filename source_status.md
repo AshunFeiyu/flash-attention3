@@ -4571,3 +4571,20 @@ Current focus:
   restored to `1dcf266` pair-island baseline.  Do not reintroduce QDoFilled
   split-token in the main kernel without a focused barrier+matrix visibility
   probe.
+## 2026-07-09 dKV Split-Wait Micro Update
+
+- Source has one accepted dKV micro-scheduling change:
+  `dv_dk_mmac_owner16_read4x2` now issues high-source reads before the first
+  dV/dK wait and uses `wait_lgkm(8)` before the low MMAC island.
+- Validation:
+  static gates PASS; metadata `private=0`, `sgpr=99`, `vgpr=128`, no
+  spill/scratch; H1/S128 and H1/S1024 correctness PASS.
+- Full-perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_003152_dkv_splitwait_h1s1024_sqc7_fullperf`.
+- Result:
+  H1/S1024 full-perf `simTicks 48,274,135 -> 47,484,710`, `ldsBankConflict=0`;
+  MMAC active is neutral/slightly down `32.9839% -> 32.9468%`.
+- Status:
+  keep as a micro wait-late improvement, but do not count it as progress
+  toward the 60% MMAC-active structural target.  The main open bottleneck is
+  still ABarrier Q/Dout ownership exposure.
