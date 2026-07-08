@@ -88,6 +88,14 @@ evidence are required before any performance claim.
   `87,176 -> 101,660`.  The result is archived at
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_124824_dq_half_page_release_h1s1024_sqc7_stats_reject`.
   Do not pursue finer page tokens as an isolated optimization.
+- Rejected next-step candidate:
+  `Mq128/Nk128` with direct consumer sidecar global reads passed static
+  resources (`private=0`, no spill/scratch, consumer `163/216`) but failed
+  H1/S128 correctness with all dQ values NaN.  Adding an explicit VMEM/LDS
+  wait did not fix it, and an `Nk64` direct-sidecar diagnostic failed the same
+  way.  Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_130949_dq_direct_sidecar_correctness_reject`.
+  Sidecar LDS staging remains required in the current main path.
 
 ## dQ Reopen Contract
 

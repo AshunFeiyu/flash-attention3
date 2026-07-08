@@ -1,5 +1,32 @@
 # Source Status
 
+## 2026-07-08 dQ Nk128 Direct Sidecar Rejected
+
+Status: `REJECT_CORRECTNESS_SOURCE_REVERTED`.
+
+- Motivation:
+  after deeper/finer buffering failed, tested a higher-ceiling `Mq128/Nk128`
+  route to double useful MMAC per page token.  Because Q+dO `64KB` plus K/V
+  `64KB` fills LDS exactly, the candidate removed sidecar LDS staging and had
+  consumers direct-load row sidecar from global.
+- Static/resource:
+  Nk128 compiled and passed metadata with `private=0`, `sgpr=63`,
+  `vgpr=128`, no spill/scratch; branch windows `1/40`, `163/216`,
+  `163/216`, `2/40`.
+- Correctness:
+  H1/S128 failed with all dQ values NaN:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_130721`.
+  Adding explicit `wait_vmem_lgkm()` did not fix it:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_130949`.
+  An Nk64 direct-sidecar diagnostic also failed all-NaN:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_131553`.
+- Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_130949_dq_direct_sidecar_correctness_reject`.
+- Decision:
+  code reverted; active source remains the `b56b2dc` sidecar SoA Vec4
+  baseline.  Direct consumer sidecar global loads are not allowed in the main
+  dQ path without a focused WDRA/global-load sidecar probe.
+
 ## 2026-07-08 dQ Half-Page Release Rejected
 
 Status: `REJECT_PERF_STATS_ONLY_SOURCE_REVERTED`.

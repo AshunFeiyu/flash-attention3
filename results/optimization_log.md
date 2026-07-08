@@ -7748,3 +7748,51 @@ Conclusion:
 - Do not continue finer PageUsed splitting as an isolated optimization.
   The next direction should increase useful MMAC per ownership epoch or reduce
   existing ABarrier/control work without multiplying tokens.
+
+## 2026-07-08 dQ Nk128 Direct Sidecar Rejected
+
+Decision: `REJECT_CORRECTNESS`
+
+Hypothesis:
+
+- After `Nk32` triple-page and half-page release both regressed, the next
+  high-ceiling route should increase useful MMAC per ownership epoch instead
+  of multiplying ABarrier tokens.
+- `Mq128/Nk128/D128` doubles useful MMAC under one page token versus `Nk64`,
+  but Q+dO `64KB` plus K/V `64KB` exactly fills 128KB LDS.
+- To fit, test removing sidecar LDS staging and letting consumers direct-load
+  row max/sum/delta from global into VGPR once before the mainloop.
+
+Evidence:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `45_dq_nk128_direct_sidecar`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_130949_dq_direct_sidecar_correctness_reject`.
+- Nk128 static/resource PASS:
+  branch windows `1/40`, `163/216`, `163/216`, `2/40`; metadata
+  `private=0`, `sgpr=63`, `vgpr=128`, no spill/scratch.
+- Nk128 H1/S128 correctness failed:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_130721`,
+  all dQ values were NaN (`actual_nonfinite=16384`, `bad_rows=128`,
+  `pass=0`).
+- Adding explicit `wait_vmem_lgkm()` before `QDoLatched` did not fix the
+  all-NaN failure:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_130949`.
+- Diagnostic Nk64 direct-sidecar/no-sidecar-LDS variant also failed all-NaN:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_131553`.
+
+Conclusion:
+
+- The old Nk128 static-spill failure is not reproduced in the current
+  16-wave full3GEMM route, which is useful evidence.
+- However, direct consumer sidecar global reads are not correctness-safe in
+  this WDRA dQ route as implemented.  Because the same failure appears at
+  Nk64, the immediate blocker is not only 128KB LDS boundary or `n_tile=2/3`
+  layout.
+- Code was reverted to `dq_sidecar_soa_vec4` (`b56b2dc`).  Do not move dQ
+  sidecar back to direct consumer global reads in the main path without a
+  focused WDRA/global-load sidecar probe.
+- Nk128 remains attractive for MMAC active only if sidecar can be carried
+  without direct consumer global loads and without exceeding LDS.
