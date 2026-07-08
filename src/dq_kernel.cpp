@@ -386,7 +386,6 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
     constexpr int Nk = Tile::kBlockNk;
     constexpr int KBlocks = Dim / 32;
     constexpr int MatrixBlockBytes = DqLdsLayout<Tile>::kMatrixBlockBytes;
-    constexpr int SidecarRows = DqLdsLayout<Tile>::kSidecarRows;
     const int lane = static_cast<int>(threadIdx.x % 64);
     const int lane_mq = lane % 16;
     const int lane_n = lane / 16;
@@ -408,9 +407,21 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
     int filled_phase1 = 0;
     dq_wait_page_filled<Bar>(0, filled_phase0, filled_phase1);
 
-    const float row_max = sidecar[local_row];
-    const float row_sum = sidecar[SidecarRows + local_row];
-    const float row_delta = sidecar[2 * SidecarRows + local_row];
+    constexpr int SidecarRows = DqLdsLayout<Tile>::kSidecarRows;
+    const int sidecar_vec_base = local_row & ~3;
+    const int sidecar_vec_idx = local_row & 3;
+    const ins::Vec4F32 row_max_vec =
+        *reinterpret_cast<const ins::Vec4F32*>(
+            sidecar + sidecar_vec_base);
+    const ins::Vec4F32 row_sum_vec =
+        *reinterpret_cast<const ins::Vec4F32*>(
+            sidecar + SidecarRows + sidecar_vec_base);
+    const ins::Vec4F32 row_delta_vec =
+        *reinterpret_cast<const ins::Vec4F32*>(
+            sidecar + 2 * SidecarRows + sidecar_vec_base);
+    const float row_max = row_max_vec[sidecar_vec_idx];
+    const float row_sum = row_sum_vec[sidecar_vec_idx];
+    const float row_delta = row_delta_vec[sidecar_vec_idx];
 
     ins::F16x8 q_reg[KBlocks];
     ins::F16x8 dout_reg[KBlocks];

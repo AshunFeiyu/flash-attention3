@@ -1,5 +1,30 @@
 # Source Status
 
+## 2026-07-08 dQ Sidecar SoA Vec4 Micro-Win
+
+Status: `ACCEPT_MICRO_TICKS_NOT_PIPELINE_SUCCESS`.
+
+- Canonical dQ source now keeps the pair-island Mq128/Nk64/16-wave full3GEMM
+  route and changes only consumer sidecar LDS reads.
+- AoS4 sidecar was rejected: it removed scalar sidecar `ds_read_b32` but caused
+  `ldsBankConflict=12`.
+- Accepted SoA Vec4 variant keeps the original sidecar layout and reads
+  four-row sidecar groups.  ASM has `ds_read_b128=4` and residual
+  `ds_read_b32=2`; no main matrix-path DS fallback was introduced.
+- Gates:
+  H1/S128, H1/S1024, and full-perf correctness PASS; metadata
+  `private=0`, `sgpr=53`, `vgpr=128`, no spill/scratch; `ldsBankConflict=0`.
+- Full-perf comparison versus `dq_ntile_pair_island`:
+  `kernel_ticks=36,972,845 -> 35,382,165`, but
+  `MMAC active=25.5487% -> 25.3548%` and `VALU=131,168 -> 138,208`.
+- XCU:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_sidecar_soa_vec4_s1024_fullperf_20260708_113438`.
+  Top bubbles remain ABarrier/control, not sidecar or matrix-read waits.
+- Decision:
+  keep the patch as a small ticks win, but do not count it as progress toward
+  the 40% MMAC-active goal.  Next work should return to ABarrier/page cadence
+  and useful overlap, not sidecar-only reshuffling.
+
 ## 2026-07-07 dQ 40% MMAC Active Target
 
 Status: `DQ_MQ128_16W_FULL3GEMM_CORRECTNESS_ACTIVE`.

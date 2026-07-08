@@ -7566,3 +7566,64 @@ Conclusion:
 - Next useful direction should target steady-state PageFilled/PageUsed cadence
   or useful work placement inside existing legal tokens, not a new QDoFilled
   token in the main kernel.
+
+## 2026-07-08 dQ Sidecar SoA Vec4 LDS Read
+
+Decision: `ACCEPT_MICRO_TICKS_NOT_PIPELINE_SUCCESS`
+
+Hypothesis:
+
+- The accepted pair-island dQ kernel still had three scalar sidecar LDS reads
+  in each consumer branch: row max, row sum, and delta.
+- dKV had a validated sidecar Vec4 LDS read micro-win, so dQ might reduce
+  scattered sidecar LDS waits by grouping sidecar rows.
+
+Tested:
+
+- First tried AoS4 sidecar layout `[max,sum,delta,pad]` per row.  It generated
+  `ds_read_b128=2` and removed `ds_read_b32`, but introduced
+  `ldsBankConflict=12`; rejected by hard gate.
+- Kept original SoA sidecar layout and changed consumer reads to load four-row
+  Vec4 groups for max/sum/delta, then select the lane's row.  This generated
+  `ds_read_b128=4` and left `ds_read_b32=2` because delta was still scalarized
+  by codegen.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `8/40`, `164/216`, `164/216`, `9/40`; metadata
+  `private=0`, `sgpr=53`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_113043`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_113055`;
+  full-perf correctness `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_113438`.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_113438/m5out/0/0/2750781_fa3_bwd_dq_clean.perf`.
+  Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_113438_dq_sidecar_soa_vec4_h1s1024_sqc7_fullperf`.
+- Metrics versus pair-island baseline:
+  `kernel_ticks=36,972,845 -> 35,382,165` (`+4.30%`),
+  `simTicks=40,586,455 -> 38,995,775`,
+  `MMAC active=25.5487% -> 25.3548%`,
+  `VALU=131,168 -> 138,208`,
+  `SCA=87,112 -> 87,176`,
+  `LDS=28,656 -> 28,656`,
+  coissue `14,177/14,117 -> 17,446/16,910`,
+  `ldsBankConflict=0`.
+- XCU output:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_sidecar_soa_vec4_s1024_fullperf_20260708_113438`.
+  Top bubbles remain ABarrier/control:
+  `s_abarrier_try_wait -> s_xor_b32 37.26%`,
+  `s_abarrier_try_wait -> s_waitcnt 10.23%`.
+  `ds_read_matrix_format -> s_waitcnt` is about `1.51%`.
+
+Conclusion:
+
+- Keep as a narrow elapsed-ticks micro-win because correctness/resource gates
+  pass and same-shape full-perf ticks drop.
+- Do not treat it as progress toward the 40% MMAC-active target: active share
+  and VALU debt both worsen slightly, and xcu still points to ABarrier/page
+  cadence as the real limiter.
+- Future sidecar work should only continue if it also reduces VALU/register
+  debt or ABarrier exposure; chasing complete `ds_read_b128` conversion alone
+  is not the next highest-value path.

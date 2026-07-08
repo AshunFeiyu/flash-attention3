@@ -42,6 +42,14 @@ evidence are required before any performance claim.
   ASM `v_mov` total drops `419 -> 359`, `v_mov_b64` drops `96 -> 36`, and
   same-shape full-perf ticks improve about `0.62%` versus the K/V split-wait
   baseline.
+- Latest sidecar micro-win:
+  consumer sidecar reads now use the original SoA layout with four-row Vec4
+  LDS reads.  Full perf
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_113438_dq_sidecar_soa_vec4_h1s1024_sqc7_fullperf`
+  improves `kernel_ticks=36,972,845 -> 35,382,165`, correctness PASS,
+  no spill/scratch, and `ldsBankConflict=0`.  This is not a pipeline-quality
+  win: global MMAC active slips `25.5487% -> 25.3548%`, VALU rises, and xcu
+  still shows ABarrier/control as the top bubble.
 - Latest structural win:
   the consumer now processes the two `n_chunk` halves of one `n_tile` together.
   This forms larger score/dP and dQ MMAC islands and removes duplicate K normal
