@@ -9,6 +9,24 @@ optimization target is MMAC active share, with FA3 FWD as the hard benchmark.
 Correctness, no scratch/spill, `ldsBankConflict=0`, and explainable SQTT
 evidence are required before any performance claim.
 
+## Current dKV State
+
+- Current accepted dKV source is `dkv_splitwait_highsrc`:
+  `Mq=128,Nk=128,D=128,16 waves`, with Q/dO half-page ownership and sidecar
+  staged in LDS by the producer.
+- Fixed-env H1/S1024 full perf:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_003152_dkv_splitwait_h1s1024_sqc7_fullperf`,
+  `simTicks=47,484,710`, `MMAC active=32.9468%`, `ldsBankConflict=0`,
+  static metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Rejected dKV probes after this baseline:
+  release-half Q read-ahead improved active slightly but regressed ticks and
+  pushed consumer windows to `222/240`; direct global sidecar failed metadata
+  with `sgpr_spill_count=12` before correctness.  Do not keep either in active
+  source.
+- Next dKV work should target ABarrier/page lifetime or useful MMAC per
+  ownership epoch while keeping sidecar LDS-local and the hot matrix path on
+  `matrix_load` + `ds_read_matrix` + MMAC.
+
 ## Current dQ Override
 
 - Current canonical source has moved from the earlier 12-wave dS-worker route

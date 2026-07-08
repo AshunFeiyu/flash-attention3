@@ -8013,3 +8013,41 @@ Conclusion:
   both Q and dO normal source live ranges across the VALU island.  Future
   release-half work should reduce ownership/token exposure or increase useful
   MMAC per token rather than simply hoisting more operand fragments.
+
+## 2026-07-09 dKV Direct Global Sidecar Probe
+
+Decision: `REJECT_RESOURCE_GATE`
+
+Goal:
+
+- Test whether removing sidecar LDS staging from the dKV Q producer can reduce
+  Q half-page ownership pressure and ABarrier bubbles.
+- This was only a compile-time focused probe.  It was not allowed to enter
+  correctness or PMD perf unless metadata stayed spill-free.
+
+Change Tested:
+
+- Disabled producer `publish_sidecar_*_to_lds` calls under a temporary macro.
+- Added a consumer path that reads `scores_max/scores_sum/delta` directly from
+  global sidecar using a head-local pre-offset pointer.
+
+Evidence:
+
+- Default macro-off rebuild after the temporary edit matched the accepted
+  baseline: branch windows `14/16`, `189/240`, `189/240`, `8/16`;
+  metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Probe macro-on build failed the resource gate before correctness:
+  branch windows `9/16`, `181/240`, `181/240`, `9/16`;
+  metadata `private=0`, `sgpr=100`, `sgpr_spill_count=12`,
+  `vgpr=128`, `vgpr_spill=0`.
+- The compiler also emitted repeated `found vgpr before wave branch 0`
+  warnings on the probe build.
+
+Conclusion:
+
+- Reject and remove the probe from active source.  Consumer-side global
+  sidecar reads are not a valid dKV ABarrier workaround in this WDRA kernel
+  because they introduce SGPR spill and pre-branch VGPR risk.
+- Keep sidecar LDS staging in the current dKV route.  The next structural work
+  should reduce page lifetime or increase useful MMAC per existing ownership
+  epoch, not move sidecar global loads into consumers.

@@ -4604,7 +4604,22 @@ Current focus:
   rejected and removed from local active source.  The active local source is
   again the accepted `dkv_splitwait_highsrc` state.
 - Follow-up:
-  remote container sync was interrupted by unstable SSH/transfer behavior.
-  Before any next remote build/run, verify and restore
-  `/home/zhangyushun/shaobo/fa3_bwd_wasp_clean/src/dkv_kernel.cpp` to match
-  local clean source.
+  remote container source has since been restored to match the local accepted
+  `dkv_splitwait_highsrc` source, and the default dKV gate passes again with
+  branch windows `14/16`, `189/240`, `189/240`, `8/16`.
+
+## 2026-07-09 dKV Direct Global Sidecar Probe Rejected
+
+- Tested change:
+  remove dKV sidecar LDS publication and let consumers read
+  `scores_max/scores_sum/delta` directly from global sidecar.
+- Motivation:
+  determine whether sidecar could be removed from the Q half-page ownership
+  packet to reduce ABarrier exposure before a larger page-lifetime redesign.
+- Gate result:
+  default macro-off build remained clean, but macro-on probe failed metadata
+  before correctness with `sgpr_spill_count=12`, `sgpr=100`, `vgpr=128`, and
+  repeated `found vgpr before wave branch 0` warnings.
+- Status:
+  rejected and removed from active source.  Consumer-side global sidecar is not
+  a valid dKV workaround under the current WDRA route.  Sidecar stays LDS-local.
