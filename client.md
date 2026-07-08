@@ -865,3 +865,22 @@ Rejected dKV causal invalid q-tile skip candidate:
   useful MMAC density and worsen wave progress if it does not also reduce the
   dominant Q/Dout ABarrier ownership bubble.  Do not retry isolated causal
   skip logic as the next dKV step.
+
+Rejected dKV dO wait-under-softmax candidate:
+
+- Candidate:
+  move the ReleasePage dO-normal wait after softmax/dS so the independent VALU
+  work can cover `ds_read_matrix` latency.
+- Evidence:
+  static/resource and H1/S128 plus H1/S1024 correctness passed, but H1/S1024
+  full perf regressed: `simTicks 47,484,710 -> 48,067,565`.  xcu showed local
+  wait improved (`s_waitcnt 19.55% -> 18.63%`) while the dominant ownership
+  bubble worsened (`s_abarrier_try_wait -> s_xor_b32 41.38% -> 41.73%`).
+- Decision:
+  `REJECT_PERF_REGRESSION_SOURCE_REVERTED`; local and remote sources are
+  restored to accepted `dkv_splitwait_highsrc`.
+- Lesson:
+  wait hiding is not automatically good when the wait also delays a page
+  ownership release.  For this route, `QUsed`/`DoutUsed` arrival timing is on
+  the critical path; future candidates must reduce exposed wait without making
+  producer ownership waits worse.

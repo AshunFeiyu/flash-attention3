@@ -4665,3 +4665,29 @@ Current focus:
   rejected and removed from active source.  Remote and local sources are again
   restored to accepted `dkv_splitwait_highsrc`; default dKV gate PASS with
   `sgpr=99`, consumer windows `189/240`.
+
+## 2026-07-09 dKV Dout Wait Under Softmax Rejected
+
+- Tested change:
+  move the ReleasePage dO-normal `wait_lgkm(0)` after independent
+  softmax/dS work, preserving `DoutUsed` release only after the dO-normal
+  fragments are ready.
+- Resource/correctness:
+  static/resource PASS unchanged from the accepted baseline: branch windows
+  `14/16`, `189/240`, `189/240`, `8/16`; metadata `private=0`, `sgpr=99`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness PASS.
+- Perf result:
+  H1/S1024 full perf regressed versus `dkv_splitwait_highsrc`:
+  `simTicks 47,484,710 -> 48,067,565`, `kernel_ticks 43,871,100 -> 44,453,955`.
+  `MMAC active` only nudged `32.9468% -> 33.0577%`, while coissue fell
+  `35,640/24,684 -> 34,502/23,895`.
+- xcu result:
+  the intended local wait reduction was visible (`s_waitcnt 19.55% -> 18.63%`,
+  `ds_read_matrix_format -> s_waitcnt 3.26% -> 2.56%`), but the dominant
+  ownership bubble grew (`s_abarrier_try_wait -> s_xor_b32 41.38% -> 41.73%`)
+  and dispatch duration grew `96,420 -> 97,704`.
+- Status:
+  rejected and removed from active source.  Remote and local sources are
+  restored to accepted `dkv_splitwait_highsrc`; do not delay `QUsed` or
+  `DoutUsed` arrivals for local wait hiding unless the same change also
+  reduces producer ownership wait enough to lower same-shape ticks.

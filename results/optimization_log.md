@@ -8145,3 +8145,51 @@ Conclusion:
   this 16-wave dKV route.  The next dKV direction should increase useful MMAC
   per ownership epoch or reduce Q/Dout page lifetime without making producer
   and consumer progress more irregular.
+
+## 2026-07-09 dKV Dout Wait Under Softmax
+
+Decision: `REJECT_PERF_REGRESSION_SOURCE_REVERTED`
+
+Goal:
+
+- Hide the ReleasePage dO-normal `ds_read_matrix` wait under the independent
+  softmax/dS VALU work, without adding buffers, tokens, flags, or alternate
+  kernel paths.
+
+Change Tested:
+
+- In `consume_mq_mpair_owner16_causal_exact_tile` ReleasePage path, changed:
+  `read dO normal -> wait_lgkm(0) -> arrive DoutUsed -> softmax/dS`
+  into:
+  `read dO normal -> softmax/dS -> wait_lgkm(0) -> arrive DoutUsed`.
+- The correctness boundary was preserved: producer overwrite is still allowed
+  only after `wait_lgkm(0)` and `DoutUsed`.
+
+Evidence:
+
+- Static/resource PASS unchanged from baseline:
+  branch windows `14/16`, `189/240`, `189/240`, `8/16`; metadata
+  `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_025104`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_025107`.
+- Full perf H1/S1024 regressed versus accepted `dkv_splitwait_highsrc`:
+  `simTicks 47,484,710 -> 48,067,565`, `kernel_ticks 43,871,100 -> 44,453,955`,
+  `MMAC active 32.9468% -> 33.0577%`, `coissue 35,640/24,684 -> 34,502/23,895`,
+  `ldsBankConflict=0`.
+- xcu detail:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/xcu_outputs/dkv_dout_wait_softmax_20260709_025150`.
+  The intended wait reduction happened (`s_waitcnt 19.55% -> 18.63%`,
+  `ds_read_matrix_format -> s_waitcnt 3.26% -> 2.56%`), but the ownership
+  bubble grew (`s_abarrier_try_wait -> s_xor_b32 41.38% -> 41.73%`) and
+  dispatch duration grew `96,420 -> 97,704`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_025150_dkv_dout_wait_softmax_reject_h1s1024_sqc7`.
+
+Conclusion:
+
+- Reject and remove from active source.  Moving the wait after softmax reduces
+  local wait exposure, but delays `DoutUsed` enough to worsen the dominant
+  ABarrier ownership path.
+- Future wait-hiding must not delay `QUsed` or `DoutUsed` arrivals unless it
+  also reduces the corresponding producer wait by a larger amount.
