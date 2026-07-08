@@ -21,8 +21,9 @@ evidence are required before any performance claim.
 - Rejected dKV probes after this baseline:
   release-half Q read-ahead improved active slightly but regressed ticks and
   pushed consumer windows to `222/240`; direct global sidecar failed metadata
-  with `sgpr_spill_count=12` before correctness.  Do not keep either in active
-  source.
+  with `sgpr_spill_count=12` before correctness; sidecar ring2 prefetch was
+  static-clean but failed H1/S1024 correctness even after adding an LDS
+  visibility wait.  Do not keep any of these in active source.
 - Next dKV work should target ABarrier/page lifetime or useful MMAC per
   ownership epoch while keeping sidecar LDS-local and the hot matrix path on
   `matrix_load` + `ds_read_matrix` + MMAC.

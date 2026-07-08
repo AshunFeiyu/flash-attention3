@@ -8051,3 +8051,46 @@ Conclusion:
 - Keep sidecar LDS staging in the current dKV route.  The next structural work
   should reduce page lifetime or increase useful MMAC per existing ownership
   epoch, not move sidecar global loads into consumers.
+
+## 2026-07-09 dKV Sidecar Ring2 Prefetch
+
+Decision: `REJECT_CORRECTNESS_SOURCE_REVERTED`
+
+Goal:
+
+- Reduce the dominant producer-side `Q0Used` wait without adding raw Q/dO
+  buffers or moving sidecar global reads into consumers.
+- Use a second tiny sidecar LDS page so the Q producer can publish the next
+  tile's sidecar before waiting to overwrite the raw Q half page.
+
+Change Tested:
+
+- Increased sidecar LDS from one page to two pages.
+- Producer wrote sidecar page `q_tile & 1` before `wait_q_half_used`.
+- Consumer selected sidecar page by `q_tile & 1`.
+- A second variant added `wait_lgkm(0)` after sidecar prewrite and before
+  `QFilled` to test whether the failure was only LDS-store visibility.
+
+Evidence:
+
+- Static/resource PASS for both variants:
+  branch windows `14/16`, `180/240`, `180/240`, `8/16`;
+  metadata `private=0`, `sgpr=100`, `vgpr=128`, no spill/scratch.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_020933`.
+- H1/S1024 failed correctness without the extra wait:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_021009`,
+  `dk_rel_l2=7.19868`, `dv_rel_l2=5.38142`, `pass=0`.
+- H1/S1024 still failed after adding the sidecar visibility wait:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean_12h/dkv_mmac_correctness_20260709_021355`,
+  `dk_rel_l2=0.187677`, `dv_rel_l2=0.100855`, `pass=0`.
+
+Conclusion:
+
+- Reject and remove from active source.  Sidecar ring2 is not safe as a local
+  rewrite while Q sidecar readiness continues to be represented only by the
+  existing Q half-filled token.
+- The useful lesson is that sidecar's lifetime is coupled to Q half ownership
+  more tightly than its byte size suggests.  Any future sidecar decoupling
+  needs a focused barrier/visibility probe or a dedicated correctness-proofed
+  token, not just a second sidecar page.

@@ -4623,3 +4623,23 @@ Current focus:
 - Status:
   rejected and removed from active source.  Consumer-side global sidecar is not
   a valid dKV workaround under the current WDRA route.  Sidecar stays LDS-local.
+
+## 2026-07-09 dKV Sidecar Ring2 Prefetch Rejected
+
+- Tested change:
+  two-page sidecar LDS ring, with producer prewriting sidecar before
+  `wait_q_half_used`, and consumer choosing sidecar page by `q_tile & 1`.
+- Motivation:
+  xcu top2000 showed the dominant ABarrier bubble is producer-side
+  `Q0Used` (`barId=3`).  Sidecar ring2 attempted to turn part of that wait
+  into useful producer work without adding raw Q/dO buffers.
+- Gate result:
+  static/resource PASS, metadata `private=0`, `sgpr=100`, `vgpr=128`, no
+  spill/scratch; consumer windows reduced to `180/240`.
+- Correctness result:
+  H1/S128 PASS, but H1/S1024 failed.  Adding an explicit sidecar
+  `wait_lgkm(0)` reduced the error but still failed H1/S1024.
+- Status:
+  rejected and removed from active source.  Remote and local sources are
+  restored to accepted `dkv_splitwait_highsrc`; default dKV gate PASS with
+  `sgpr=99`, consumer windows `189/240`.
