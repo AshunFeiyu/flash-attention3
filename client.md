@@ -11,13 +11,27 @@ evidence are required before any performance claim.
 
 ## Current dKV State
 
-- Current accepted dKV source is `dkv_splitwait_highsrc`:
+- Current accepted dKV source is `dkv_q_used_release_before_softmax`:
   `Mq=128,Nk=128,D=128,16 waves`, with Q/dO half-page ownership and sidecar
   staged in LDS by the producer.
 - Fixed-env H1/S1024 full perf:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_033115_dkv_qused_before_softmax_h1s1024_sqc7_fullperf`,
+  `simTicks=46,716,670`, `kernel_ticks=43,103,060`,
+  `MMAC active=33.2391%`, `coissue=36,556/25,587`,
+  `ldsBankConflict=0`, static metadata `private=0`, `sgpr=99`,
+  `vgpr=128`, no spill/scratch.
+- Previous fixed-env dKV baseline `dkv_splitwait_highsrc`:
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_003152_dkv_splitwait_h1s1024_sqc7_fullperf`,
   `simTicks=47,484,710`, `MMAC active=32.9468%`, `ldsBankConflict=0`,
   static metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- The accepted QUsed-before-softmax micro-win moves ReleasePage Q-normal reads
+  and `QUsed` arrival before softmax/dS, then runs dV/dK MMAC with already
+  ready Q source registers.  xcu shows dispatch duration `96,420 -> 94,728`
+  and the dominant `s_abarrier_try_wait -> s_xor_b32` bubble
+  `41.38% -> 40.55%`.  It also grows consumer branch windows
+  `189/240 -> 222/240` and worsens some `ds_read_matrix -> s_waitcnt` share,
+  so treat it as a small ownership/ticks win, not the structural route to
+  `60%` MMAC active.
 - Rejected dKV probes after this baseline:
   release-half Q read-ahead improved active slightly but regressed ticks and
   pushed consumer windows to `222/240`; direct global sidecar failed metadata

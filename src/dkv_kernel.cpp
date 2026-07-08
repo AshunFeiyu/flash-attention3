@@ -1389,31 +1389,18 @@ __device__ __forceinline__ void dv_dk_mmac_owner16_read4x2_early_release(
     ins::lower_priority();
 }
 
-template <typename Tile,
-          typename Wdra,
-          int MBlockBase,
-          bool FirstQTile,
-          int ReleaseHalf>
-__device__ __forceinline__ void dv_dk_mmac_owner16_split_qdout_release(
-    __half* lds,
+template <bool FirstQTile>
+__device__ __forceinline__ void dv_dk_mmac_owner16_qready(
     const ins::Vec4F16 (&p_frag)[2],
     const ins::Vec4F16 (&ds_frag)[2],
-    DvDkSourceRegs4& low_src,
-    DvDkSourceRegs4& high_src,
+    const DvDkSourceRegs4& low_src,
+    const DvDkSourceRegs4& high_src,
     ins::F32x4 (&dv_acc)[8],
-    ins::F32x4 (&dk_acc)[8],
-    int page) {
+    ins::F32x4 (&dk_acc)[8]) {
     ins::F16x8 zero_f16;
     if constexpr (FirstQTile) {
         ins::zero_f16x8(zero_f16);
     }
-
-    dv_dk_read_owner16_q_sources4<Tile, 0, MBlockBase>(
-        lds, page, low_src);
-    dv_dk_read_owner16_q_sources4<Tile, 2, MBlockBase>(
-        lds, page, high_src);
-    ins::wait_lgkm(0);
-    arrive_q_half_used<Wdra, ReleaseHalf>();
 
     ins::raise_priority_2();
     dv_dk_mmac_four_out<FirstQTile, 0>(
@@ -1618,6 +1605,13 @@ __device__ __forceinline__ void consume_mq_mpair_owner16_causal_exact_tile(
         ins::wait_lgkm(0);
         arrive_dout_half_used<Wdra, ReleaseHalf>();
 
+        dv_dk_read_owner16_q_sources4<Tile, 0, MBlockBase>(
+            lds, page, dvdk_low);
+        dv_dk_read_owner16_q_sources4<Tile, 2, MBlockBase>(
+            lds, page, dvdk_high);
+        ins::wait_lgkm(0);
+        arrive_q_half_used<Wdra, ReleaseHalf>();
+
         ins::Vec4F16 p_frag[2];
         ins::Vec4F16 ds_frag[2];
         const float* sidecar_page = sidecar_page_ptr<Tile>(lds, page);
@@ -1625,12 +1619,8 @@ __device__ __forceinline__ void consume_mq_mpair_owner16_causal_exact_tile(
             score, dp, sidecar_page, q_pair_base, owner_krow, lane_col_group,
             softmax_scale, softmax_scale_log2, p_frag, ds_frag);
 
-        dv_dk_mmac_owner16_split_qdout_release<Tile,
-                                                Wdra,
-                                                MBlockBase,
-                                                FirstAccum,
-                                                ReleaseHalf>(
-            lds, p_frag, ds_frag, dvdk_low, dvdk_high, dv_acc, dk_acc, page);
+        dv_dk_mmac_owner16_qready<FirstAccum>(
+            p_frag, ds_frag, dvdk_low, dvdk_high, dv_acc, dk_acc);
     } else {
         DvDkSourceRegs4 dvdk_low;
         dv_dk_read_owner16_sources4<Tile, 0, MBlockBase>(

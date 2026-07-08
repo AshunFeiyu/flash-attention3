@@ -1,5 +1,52 @@
 # Source Status
 
+## 2026-07-09 dKV QUsed Before Softmax Accepted
+
+Status: `ACCEPT_MICRO_TICKS_OWNERSHIP`.
+
+- Motivation:
+  the fixed-env dKV baseline was dominated by Q/dO ownership barriers:
+  `s_abarrier_try_wait -> s_xor_b32` was `41.38%` in xcu.  Prior attempts to
+  delay dO wait under softmax reduced local `s_waitcnt` but worsened ownership
+  latency.  This experiment instead moved ReleasePage Q-normal source reads
+  and `QUsed` arrival before softmax/dS, so producers can see Q half-page
+  release earlier while consumers hold Q source regs through the following
+  softmax and dV/dK MMAC.
+- Code:
+  the active `src/dkv_kernel.cpp` keeps one canonical dKV path.  The old helper
+  that both read Q sources and arrived `QUsed` was narrowed to
+  `dv_dk_mmac_owner16_qready`, which only consumes already-ready Q/dO source
+  fragments for the dV/dK MMAC island.
+- Gates:
+  static/resource PASS; branch windows `14/16`, `222/240`, `222/240`,
+  `8/16`; metadata `private=0`, `sgpr=99`, `vgpr=128`,
+  `sgpr_spill=0`, `vgpr_spill=0`, scratch `0`; `ldsBankConflict=0`.
+  The larger consumer window is a real headroom warning.
+- Correctness:
+  H1/S128 PASS
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_032250`;
+  H1/S1024 PASS
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_032317`.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_033115`;
+  shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_033115_dkv_qused_before_softmax_h1s1024_sqc7_fullperf`.
+  Versus `dkv_splitwait_highsrc`, `simTicks` improves
+  `47,484,710 -> 46,716,670`, `kernel_ticks`
+  `43,871,100 -> 43,103,060`, and `MMAC active`
+  `32.9468% -> 33.2391%`.
+- xcu:
+  dispatch duration improves `96,420 -> 94,728`; average active waves
+  `121.28 -> 122.18`; `s_abarrier_try_wait -> s_xor_b32`
+  `41.38% -> 40.55%`; `v_mmac -> v_mmac` `8.44% -> 8.19%`.
+  The tradeoff is visible: `ds_read_matrix_format -> s_waitcnt`
+  `3.26% -> 3.90%`, and trans read wait `2.72% -> 2.89%`.
+- Decision:
+  keep as a micro-win because correctness/resource/perf/xcu agree on a small
+  elapsed improvement and ownership bubble reduction.  Do not extend this
+  pattern blindly: branch windows are now `222/240`, and the path remains far
+  from the FWD-style `60%` MMAC-active goal.
+
 ## 2026-07-08 dQ Nk128 Direct Sidecar Rejected
 
 Status: `REJECT_CORRECTNESS_SOURCE_REVERTED`.

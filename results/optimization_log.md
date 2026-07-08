@@ -8236,3 +8236,71 @@ Operational note:
   2026-07-09.  The 54 route closed the connection; the 59 route timed out
   during banner exchange.  xcu `pipeline/simd` CSV export for the current
   baseline is deferred until SSH returns.
+
+## 2026-07-09 dKV QUsed Before Softmax
+
+Decision: `ACCEPT_MICRO_TICKS_OWNERSHIP`
+
+Workbook:
+
+- `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_12h_goal_plan_20260709.xlsx`,
+  sheet `17_QUsedBeforeSoftmax_Result`.
+
+Hypothesis:
+
+- Prior wait-hiding attempts reduced local `s_waitcnt` but delayed ownership
+  release and regressed elapsed ticks.  This candidate moves ReleasePage
+  Q-normal source reads and `QUsed` arrival before softmax/dS, then holds Q
+  source regs through softmax and consumes them in dV/dK MMAC.  If producer
+  ownership wait is the dominant path, releasing Q earlier should improve
+  elapsed ticks even if matrix-read wait shifts slightly.
+
+Implementation:
+
+- Single canonical dKV path only; no extra phase or fallback.
+- In `consume_mq_mpair_owner16_causal_exact_tile` ReleasePage path:
+  `dO read -> wait -> DoutUsed -> Q read -> wait -> QUsed -> softmax/dS ->
+  dV/dK MMAC`.
+- The helper formerly named around split Q/dO release is narrowed to
+  `dv_dk_mmac_owner16_qready`, which does not perform LDS reads or barrier
+  arrivals and only consumes already-ready source fragments.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `14/16`, `222/240`, `222/240`, `8/16`;
+  metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+  The consumer window grew from `189/240` to `222/240`, so this has little
+  remaining register headroom.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_032250`;
+  H1/S1024
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_032317`.
+- Full perf H1/S1024:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_033115`.
+  Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_033115_dkv_qused_before_softmax_h1s1024_sqc7_fullperf`.
+  Versus accepted `dkv_splitwait_highsrc`:
+  `simTicks 47,484,710 -> 46,716,670`,
+  `kernel_ticks 43,871,100 -> 43,103,060`,
+  `MMAC active 32.9468% -> 33.2391%`,
+  coissue `35,640/24,684 -> 36,556/25,587`,
+  `ldsBankConflict=0`.
+- xcu detail:
+  dispatch duration `96,420 -> 94,728`,
+  average active waves `121.28 -> 122.18`,
+  `s_abarrier_try_wait -> s_xor_b32 41.38% -> 40.55%`,
+  `v_mmac -> v_mmac 8.44% -> 8.19%`.
+  Tradeoff: `ds_read_matrix_format -> s_waitcnt 3.26% -> 3.90%`,
+  `ds_read_matrix_trans_format -> s_waitcnt 2.72% -> 2.89%`.
+
+Conclusion:
+
+- Accept as a narrow ownership/ticks micro-win.  This is useful because the
+  elapsed improvement and xcu ownership-bubble reduction point in the same
+  direction.
+- Do not treat it as the 60% MMAC-active solution.  It consumes much more
+  consumer branch window and shifts pressure to matrix-read waits.  The next
+  structural design still needs either less ownership/control per epoch or
+  more useful MMAC per ownership epoch.
