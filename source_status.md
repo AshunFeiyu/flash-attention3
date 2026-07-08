@@ -4388,3 +4388,49 @@ Current focus:
 - Next v_mov work should be evidence-scoped to store-helper copy clusters or
   softmax/default-zero moves.  Do not broaden this into a pipeline rewrite
   without a separate design row.
+
+## 2026-07-08 dQ NTile Pair Island Accepted
+
+- Active source is now the canonical 16-wave dQ full-3GEMM kernel with
+  `n_tile` pair scheduling inside the consumer.
+- Code change:
+  two `n_chunk` halves sharing one `n_tile` are processed together.
+  K/V trans reads use `ds_read_matrix_trans_pair`, score/dP computes both
+  halves before softmax, then `dq_update_from_ds_pair` reads K normal pair once
+  and applies both `ds_vec0` and `ds_vec1` to `dq_reg`.
+- Why this matters:
+  the previous `dq_update_from_ds_vec` reread the same K normal pair for
+  consecutive `n_chunk` halves.  The new version forms larger MMAC islands and
+  cuts redundant LDS normal reads.
+- Static/resource PASS:
+  branch windows `8/40`, `164/216`, `164/216`, `9/40`; metadata
+  `private=0`, `sgpr=53`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_093036`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_093048`.
+  H1/S1024 `bad=0`, no nonfinite; `rel_l2` rose to about `0.128`, so monitor
+  this on larger shapes.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_093242/m5out/0/0/2749638_fa3_bwd_dq_clean.perf`.
+  Shared copy:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_093242_dq_ntile_pair_island_h1s1024_sqc7_fullperf/dq_ntile_pair_island.perf`.
+- H1/S1024 full-perf metrics:
+  `kernel_ticks=36,972,845`, `MMOP=55,296`, `VALU=131,168`,
+  `SCA=87,112`, `LDS=28,656`, `coissue=14,177/14,117`,
+  `MMAC active=25.5487%`, `ldsBankConflict=0`.
+- Baseline comparison:
+  versus `dq_mmac_zero_seed`, ticks improve
+  `39,471,705 -> 36,972,845` (`+6.33%`), LDS instruction count drops
+  `37,872 -> 28,656`, and MMAC active improves
+  `24.0973% -> 25.5487%`.
+- XCU:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_ntile_pair_island_20260708_093242`.
+  Top bubbles remain ABarrier/control:
+  `s_abarrier_try_wait -> s_xor_b32 38.23%`,
+  `s_abarrier_try_wait -> s_waitcnt 9.99%`.
+  Normal matrix-read wait is no longer a top limiter:
+  `ds_read_matrix_format -> s_waitcnt 1.49%`.
+- Next direction:
+  use this as the current dQ baseline.  Further progress should target
+  ABarrier/page cadence and producer/consumer timing; do not return to
+  per-`n_chunk` scheduling.

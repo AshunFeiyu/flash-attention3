@@ -305,17 +305,16 @@ __device__ __forceinline__ void dq_store_m16_full_d_to_global(
 }
 
 template <typename Tile>
-__device__ __forceinline__ void dq_update_from_ds_vec(
+__device__ __forceinline__ void dq_update_from_ds_pair(
     const __half* __restrict__ lds,
     int page,
-    int n_chunk,
-    const ins::Vec4F16& ds_vec,
+    int n_tile,
+    const ins::Vec4F16& ds_vec0,
+    const ins::Vec4F16& ds_vec1,
     ins::F32x4 (&dq_reg)[8]) {
     constexpr int MatrixBlockBytes = DqLdsLayout<Tile>::kMatrixBlockBytes;
     const __half* k_lds =
         lds + DqLdsLayout<Tile>::kPageKBase(page) / sizeof(__half);
-    const int n_tile = n_chunk / 2;
-    const int n_half = n_chunk & 1;
 
     ins::F16x8 k_norm0[Tile::kHeadDim / 32];
     ins::F16x8 k_norm1[Tile::kHeadDim / 32];
@@ -330,13 +329,17 @@ __device__ __forceinline__ void dq_update_from_ds_vec(
 
 #pragma unroll
     for (int d_block = 0; d_block < Tile::kHeadDim / 64; ++d_block) {
-        const ins::F16x8& k_norm =
-            n_half == 0 ? k_norm0[d_block] : k_norm1[d_block];
         dq_reg[d_block * 2 + 0].f32 =
-            ins::mmac_f16_lit(ds_vec, k_norm.f16x4[0],
+            ins::mmac_f16_lit(ds_vec0, k_norm0[d_block].f16x4[0],
                               dq_reg[d_block * 2 + 0].f32);
         dq_reg[d_block * 2 + 1].f32 =
-            ins::mmac_f16_lit(ds_vec, k_norm.f16x4[1],
+            ins::mmac_f16_lit(ds_vec0, k_norm0[d_block].f16x4[1],
+                              dq_reg[d_block * 2 + 1].f32);
+        dq_reg[d_block * 2 + 0].f32 =
+            ins::mmac_f16_lit(ds_vec1, k_norm1[d_block].f16x4[0],
+                              dq_reg[d_block * 2 + 0].f32);
+        dq_reg[d_block * 2 + 1].f32 =
+            ins::mmac_f16_lit(ds_vec1, k_norm1[d_block].f16x4[1],
                               dq_reg[d_block * 2 + 1].f32);
     }
     ins::wait_lgkm(0);
@@ -344,13 +347,17 @@ __device__ __forceinline__ void dq_update_from_ds_vec(
 #pragma unroll
     for (int d_block = Tile::kHeadDim / 64;
          d_block < Tile::kHeadDim / 32; ++d_block) {
-        const ins::F16x8& k_norm =
-            n_half == 0 ? k_norm0[d_block] : k_norm1[d_block];
         dq_reg[d_block * 2 + 0].f32 =
-            ins::mmac_f16_lit(ds_vec, k_norm.f16x4[0],
+            ins::mmac_f16_lit(ds_vec0, k_norm0[d_block].f16x4[0],
                               dq_reg[d_block * 2 + 0].f32);
         dq_reg[d_block * 2 + 1].f32 =
-            ins::mmac_f16_lit(ds_vec, k_norm.f16x4[1],
+            ins::mmac_f16_lit(ds_vec0, k_norm0[d_block].f16x4[1],
+                              dq_reg[d_block * 2 + 1].f32);
+        dq_reg[d_block * 2 + 0].f32 =
+            ins::mmac_f16_lit(ds_vec1, k_norm1[d_block].f16x4[0],
+                              dq_reg[d_block * 2 + 0].f32);
+        dq_reg[d_block * 2 + 1].f32 =
+            ins::mmac_f16_lit(ds_vec1, k_norm1[d_block].f16x4[1],
                               dq_reg[d_block * 2 + 1].f32);
     }
 }
@@ -439,49 +446,66 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
         const __half* v_lds =
             lds + DqLdsLayout<Tile>::kPageVBase(page) / sizeof(__half);
 #pragma unroll
-        for (int n_chunk = 0; n_chunk < Nk / 16; ++n_chunk) {
-            const int n_tile = n_chunk / 2;
-            const int n_half = n_chunk & 1;
-            const int n_half_offset = n_half == 0 ? 0 : 1024;
-            ins::F16x8 k_frag[KBlocks];
-            ins::F16x8 v_frag[KBlocks];
+        for (int n_tile = 0; n_tile < Nk / 32; ++n_tile) {
+            ins::F16x8 k_frag0[KBlocks];
+            ins::F16x8 k_frag1[KBlocks];
+            ins::F16x8 v_frag0[KBlocks];
+            ins::F16x8 v_frag1[KBlocks];
 #pragma unroll
             for (int d_block = 0; d_block < KBlocks; ++d_block) {
                 const int block = n_tile * KBlocks + d_block;
-                ins::ds_read_matrix_32x16_trans(
-                    k_lds, block * MatrixBlockBytes + n_half_offset,
-                    k_frag[d_block].f16x8);
-                ins::ds_read_matrix_32x16_trans(
-                    v_lds, block * MatrixBlockBytes + n_half_offset,
-                    v_frag[d_block].f16x8);
+                ins::ds_read_matrix_trans_pair(
+                    k_lds, block * MatrixBlockBytes,
+                    k_frag0[d_block].f16x8, k_frag1[d_block].f16x8);
+                ins::ds_read_matrix_trans_pair(
+                    v_lds, block * MatrixBlockBytes,
+                    v_frag0[d_block].f16x8, v_frag1[d_block].f16x8);
             }
 
-            ins::F32x4 qk_acc;
-            ins::F32x4 dp_acc;
-            ins::wait_lgkm(4);
-            qk_acc.f32 = ins::mmac_f16_lit(
-                q_reg[0].f16x4[0], k_frag[0].f16x4[0], mmac_zero.f32);
-            dp_acc.f32 = ins::mmac_f16_lit(
-                dout_reg[0].f16x4[0], v_frag[0].f16x4[0], mmac_zero.f32);
+            ins::F32x4 qk_acc0;
+            ins::F32x4 qk_acc1;
+            ins::F32x4 dp_acc0;
+            ins::F32x4 dp_acc1;
+            ins::wait_lgkm(8);
+            qk_acc0.f32 = ins::mmac_f16_lit(
+                q_reg[0].f16x4[0], k_frag0[0].f16x4[0], mmac_zero.f32);
+            qk_acc1.f32 = ins::mmac_f16_lit(
+                q_reg[0].f16x4[0], k_frag1[0].f16x4[0], mmac_zero.f32);
+            dp_acc0.f32 = ins::mmac_f16_lit(
+                dout_reg[0].f16x4[0], v_frag0[0].f16x4[0], mmac_zero.f32);
+            dp_acc1.f32 = ins::mmac_f16_lit(
+                dout_reg[0].f16x4[0], v_frag1[0].f16x4[0], mmac_zero.f32);
 #pragma unroll
             for (int k_half = 1; k_half < 2; ++k_half) {
-                qk_acc.f32 = ins::mmac_f16_lit(
-                    q_reg[0].f16x4[k_half], k_frag[0].f16x4[k_half],
-                    qk_acc.f32);
-                dp_acc.f32 = ins::mmac_f16_lit(
-                    dout_reg[0].f16x4[k_half], v_frag[0].f16x4[k_half],
-                    dp_acc.f32);
+                qk_acc0.f32 = ins::mmac_f16_lit(
+                    q_reg[0].f16x4[k_half], k_frag0[0].f16x4[k_half],
+                    qk_acc0.f32);
+                qk_acc1.f32 = ins::mmac_f16_lit(
+                    q_reg[0].f16x4[k_half], k_frag1[0].f16x4[k_half],
+                    qk_acc1.f32);
+                dp_acc0.f32 = ins::mmac_f16_lit(
+                    dout_reg[0].f16x4[k_half], v_frag0[0].f16x4[k_half],
+                    dp_acc0.f32);
+                dp_acc1.f32 = ins::mmac_f16_lit(
+                    dout_reg[0].f16x4[k_half], v_frag1[0].f16x4[k_half],
+                    dp_acc1.f32);
             }
 #pragma unroll
             for (int d_block = 1; d_block < KBlocks / 2; ++d_block) {
 #pragma unroll
                 for (int k_half = 0; k_half < 2; ++k_half) {
-                    qk_acc.f32 = ins::mmac_f16_lit(
+                    qk_acc0.f32 = ins::mmac_f16_lit(
                         q_reg[d_block].f16x4[k_half],
-                        k_frag[d_block].f16x4[k_half], qk_acc.f32);
-                    dp_acc.f32 = ins::mmac_f16_lit(
+                        k_frag0[d_block].f16x4[k_half], qk_acc0.f32);
+                    qk_acc1.f32 = ins::mmac_f16_lit(
+                        q_reg[d_block].f16x4[k_half],
+                        k_frag1[d_block].f16x4[k_half], qk_acc1.f32);
+                    dp_acc0.f32 = ins::mmac_f16_lit(
                         dout_reg[d_block].f16x4[k_half],
-                        v_frag[d_block].f16x4[k_half], dp_acc.f32);
+                        v_frag0[d_block].f16x4[k_half], dp_acc0.f32);
+                    dp_acc1.f32 = ins::mmac_f16_lit(
+                        dout_reg[d_block].f16x4[k_half],
+                        v_frag1[d_block].f16x4[k_half], dp_acc1.f32);
                 }
             }
             ins::wait_lgkm(0);
@@ -489,33 +513,55 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
             for (int d_block = KBlocks / 2; d_block < KBlocks; ++d_block) {
 #pragma unroll
                 for (int k_half = 0; k_half < 2; ++k_half) {
-                    qk_acc.f32 = ins::mmac_f16_lit(
+                    qk_acc0.f32 = ins::mmac_f16_lit(
                         q_reg[d_block].f16x4[k_half],
-                        k_frag[d_block].f16x4[k_half], qk_acc.f32);
-                    dp_acc.f32 = ins::mmac_f16_lit(
+                        k_frag0[d_block].f16x4[k_half], qk_acc0.f32);
+                    qk_acc1.f32 = ins::mmac_f16_lit(
+                        q_reg[d_block].f16x4[k_half],
+                        k_frag1[d_block].f16x4[k_half], qk_acc1.f32);
+                    dp_acc0.f32 = ins::mmac_f16_lit(
                         dout_reg[d_block].f16x4[k_half],
-                        v_frag[d_block].f16x4[k_half], dp_acc.f32);
+                        v_frag0[d_block].f16x4[k_half], dp_acc0.f32);
+                    dp_acc1.f32 = ins::mmac_f16_lit(
+                        dout_reg[d_block].f16x4[k_half],
+                        v_frag1[d_block].f16x4[k_half], dp_acc1.f32);
                 }
             }
 
-            ins::Vec4F16 ds_vec;
+            ins::Vec4F16 ds_vec0;
+            ins::Vec4F16 ds_vec1;
 #pragma unroll
             for (int vec_id = 0; vec_id < 4; ++vec_id) {
-                const int nk = n_chunk * 16 + lane_n * 4 + vec_id;
-                const int krow = k_base_tile + nk;
-                float ds_value = 0.0f;
-                if (krow < seqlen && qrow < seqlen && krow <= qrow) {
-                    const float p =
-                        exp2f((qk_acc.scalar[vec_id] - row_max) *
+                const int nk0 = n_tile * 32 + lane_n * 4 + vec_id;
+                const int krow0 = k_base_tile + nk0;
+                float ds_value0 = 0.0f;
+                if (krow0 < seqlen && qrow < seqlen && krow0 <= qrow) {
+                    const float p0 =
+                        exp2f((qk_acc0.scalar[vec_id] - row_max) *
                               softmax_scale_log2) /
                         row_sum;
-                    ds_value =
-                        p * (dp_acc.scalar[vec_id] - row_delta) *
+                    ds_value0 =
+                        p0 * (dp_acc0.scalar[vec_id] - row_delta) *
                         softmax_scale;
                 }
-                ds_vec[vec_id] = static_cast<_Float16>(ds_value);
+                ds_vec0[vec_id] = static_cast<_Float16>(ds_value0);
+
+                const int nk1 = n_tile * 32 + 16 + lane_n * 4 + vec_id;
+                const int krow1 = k_base_tile + nk1;
+                float ds_value1 = 0.0f;
+                if (krow1 < seqlen && qrow < seqlen && krow1 <= qrow) {
+                    const float p1 =
+                        exp2f((qk_acc1.scalar[vec_id] - row_max) *
+                              softmax_scale_log2) /
+                        row_sum;
+                    ds_value1 =
+                        p1 * (dp_acc1.scalar[vec_id] - row_delta) *
+                        softmax_scale;
+                }
+                ds_vec1[vec_id] = static_cast<_Float16>(ds_value1);
             }
-            dq_update_from_ds_vec<Tile>(lds, page, n_chunk, ds_vec, dq_reg);
+            dq_update_from_ds_pair<Tile>(
+                lds, page, n_tile, ds_vec0, ds_vec1, dq_reg);
         }
         dq_arrive_page_used<Bar>(page);
     }

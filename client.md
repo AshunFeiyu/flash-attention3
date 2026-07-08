@@ -20,15 +20,16 @@ evidence are required before any performance claim.
 - dS is no longer staged in LDS.  Each consumer computes its complete dQ
   chain in VGPR: `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
 - Current evidence:
-  after Q/dO latch, K/V double-page reuse, K/V trans split-wait, and qk/dP
-  MMAC-zero seeding, H1/S128
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_211841`
+  after Q/dO latch, K/V double-page reuse, K/V trans split-wait, qk/dP
+  MMAC-zero seeding, and `n_tile` pair-island scheduling, H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_093036`
   and H1/S1024
-  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260707_211851`
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_093048`
   both PASS; full perf archive
-  `/Volumes/172.20.68.76/共享/shaobo/perf/20260707_212125_dq_mmac_zero_seed_h1s1024_sqc7_fullperf`
-  reports `simTicks=43,085,315`, `kernel_ticks=39,471,705`,
-  `VALU=131,232`, `MMAC active=24.0973%`, `ldsBankConflict=0`.
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_093242_dq_ntile_pair_island_h1s1024_sqc7_fullperf`
+  reports `simTicks=40,586,455`, `kernel_ticks=36,972,845`,
+  `VALU=131,168`, `SCA=87,112`, `LDS=28,656`,
+  `MMAC active=25.5487%`, `ldsBankConflict=0`.
 - This promotes a real pipeline change over the K-normal split-wait baseline:
   Q/dO are latched into consumer VGPR, producers wait `QDoLatched`, then reuse
   the released Q LDS region as page1 for K/V; then K/V trans fragment reads use
@@ -41,13 +42,22 @@ evidence are required before any performance claim.
   ASM `v_mov` total drops `419 -> 359`, `v_mov_b64` drops `96 -> 36`, and
   same-shape full-perf ticks improve about `0.62%` versus the K/V split-wait
   baseline.
+- Latest structural win:
+  the consumer now processes the two `n_chunk` halves of one `n_tile` together.
+  This forms larger score/dP and dQ MMAC islands and removes duplicate K normal
+  pair reads in the dQ update.  Versus `dq_mmac_zero_seed`, full-perf ticks
+  improve about `6.33%`, LDS instructions drop `37,872 -> 28,656`, and MMAC
+  active improves `24.0973% -> 25.5487%`.
 - Rejected guardrail:
   removing the first `__syncthreads()` after `AllDone` caused
   `ABARRIER_ILL_OP_ERROR` (`barId 5` already invalidated), so it is required
   for barrier invalidation lifetime.
-- Next direction: run xcu on the current perf once CLI is available, then attack
-  remaining ABarrier/page cadence bubbles.  Do not blindly remove waits unless
-  producer/consumer data lifetime proves it safe.
+- Current xcu diagnosis:
+  top bubbles remain ABarrier/control:
+  `s_abarrier_try_wait -> s_xor_b32 38.23%` and
+  `s_abarrier_try_wait -> s_waitcnt 9.99%`.  Normal matrix-read wait is now
+  only `1.49%`, so the next direction is PageFilled/PageUsed/QDoLatched cadence
+  with a written data-lifetime proof, not more per-`n_chunk` local scheduling.
 
 ## dQ Reopen Contract
 

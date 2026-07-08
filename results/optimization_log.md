@@ -7435,3 +7435,79 @@ Follow-up static reject:
   total `359 -> 367`, copy category `173 -> 181`.
 - Decision: `REJECT_STATIC_ASM`; do not pursue this as a v_mov cleanup without a
   different store-helper design.
+
+## 2026-07-08 dQ NTile Pair Island
+
+Decision: `ACCEPT`
+
+User observation:
+
+- Latest Wavefronts still showed poor coissue, severe instruction gaps, and
+  small fragmented MMAC/VALU islands.
+
+Hypothesis:
+
+- The active dQ loop processed one `n_chunk` at a time:
+  `K/V trans read -> score/dP MMAC -> softmax/dS VALU -> K normal read ->
+  dQ MMAC`.
+- `dq_update_from_ds_vec` used `ds_read_matrix_normal_pair` for each
+  `n_chunk`; because the pair read already loads both halves of one `n_tile`,
+  consecutive `n_chunk` iterations reread the same K normal pair.
+- Processing the two halves of one `n_tile` together should form larger
+  score/dP and dQ islands and cut redundant LDS normal reads.
+
+Change:
+
+- Replaced `dq_update_from_ds_vec` with `dq_update_from_ds_pair`.
+- Main consumer loop now iterates `n_tile` instead of `n_chunk`.
+- For each `n_tile`, issue trans-pair reads for K/V, compute both half0 and
+  half1 score/dP accumulators, generate `ds_vec0/ds_vec1`, then read K normal
+  pair once and apply both dS vectors to the long-lived `dq_reg`.
+- No external API, wave role, output ownership, dS-LDS handoff, or atomic path
+  change.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `8/40`, `164/216`, `164/216`, `9/40`;
+  metadata `private=0`, `sgpr=53`, `vgpr=128`, no scratch/spill.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_093036`;
+  H1/S1024 `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_093048`.
+  H1/S1024 has `dq_max_abs ~= 1.07e-05`, no nonfinite, `bad=0`, but
+  `rel_l2 ~= 0.128`, so monitor numerical drift on larger shapes.
+- Full perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_093242/m5out/0/0/2749638_fa3_bwd_dq_clean.perf`.
+  Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_093242_dq_ntile_pair_island_h1s1024_sqc7_fullperf`.
+  Metrics: `simTicks=40,586,455`, `kernel_ticks=36,972,845`,
+  `MMOP=55,296`, `VALU=131,168`, `SCA=87,112`, `LDS=28,656`,
+  `coissue=14,177/14,117`, `MMAC active=25.5487%`,
+  `ldsBankConflict=0`.
+- XCU:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_ntile_pair_island_20260708_093242`.
+  `duration=81,192`, `avg active waves=75.52`.
+  Top bubbles remain `s_abarrier_try_wait -> s_xor_b32 38.23%`,
+  `s_abarrier_try_wait -> s_waitcnt 9.99%`; normal-read gap
+  `ds_read_matrix_format -> s_waitcnt` is down to `1.49%`.
+
+Comparison:
+
+- Previous accepted `dq_mmac_zero_seed` full perf:
+  `kernel_ticks=39,471,705`, `LDS=37,872`, `MMAC active=24.0973%`.
+- New pair-island version:
+  `kernel_ticks=36,972,845`, `LDS=28,656`, `MMAC active=25.5487%`.
+- Improvement:
+  ticks down about `6.33%`, LDS instructions down about `24.3%`, active up
+  `1.45` points.
+
+Next:
+
+- This confirms the user's island-fragmentation diagnosis and proves
+  n_tile-level coarsening is useful.
+- Remaining limiter is ABarrier/page cadence and wait/control exposure, not
+  missing MMAC or missing native matrix path.
+- Next candidate should look at PageFilled/PageUsed/QDoLatched timing or
+  producer/consumer cadence, with a strict lifetime proof.  Do not add more
+  buffering unless it reduces the ABarrier bubble after accounting for VGPR and
+  control cost.

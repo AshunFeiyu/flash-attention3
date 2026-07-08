@@ -54,7 +54,7 @@ def main() -> int:
             "missing_full3gemm_consumer")
     require(source, r"dq_load_sidecar_group", failures,
             "missing_producer_sidecar_lds_staging")
-    require(source, r"dq_update_from_ds_vec", failures,
+    require(source, r"dq_update_from_ds_(?:vec|pair)", failures,
             "missing_vgpr_ds_to_dq_mmac")
     require(source, r"CANONICAL_DQ", failures,
             "missing_canonical_standalone_switch")
