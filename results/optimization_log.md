@@ -7836,3 +7836,52 @@ Conclusion:
   a less serial PageUsed/QDo lifetime before local wait/vmov polishing.
 - Formal FWD-style acceptance still needs same-shape dQ H4/S1024 SQTT under
   `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.
+
+## 2026-07-08 New-Machine Fixed-Env Backtest
+
+Decision: `OBSERVE_ENV_BACKTEST`
+
+Question:
+
+- After fixing the new machine by aligning `shaobo_dev_8426` to liuchang's
+  `a6a6eb6616ab...` compiler and removing the temporary
+  `__builtin_hcu_wdra_init` path, do correctness and MMAC active match the
+  historical clean-repo numbers?
+
+Evidence:
+
+- Run root:
+  `/tmp/sb_perf_backtest_20260708_233749`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_233749_backtest_liuchang_a6_h1s1024_sqc7_stats`.
+- Environment:
+  `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`, compiler
+  `a6a6eb6616abdd98b6dd72074afad281b47c8c6a`.
+- Static evidence:
+  `s_trap count=0`; role-local `s_set_vgpr_size` remains present; dKV/dQ
+  gates pass with no spill/scratch.
+- dKV H1/S1024 correctness PASS:
+  `simTicks=48,263,670`, `MMAC active=32.9848%`,
+  `coissue=35,050/24,317`, `ldsBankConflict=0`.
+- dKV historical reference:
+  `20260705_063337_clean_read8_score_dp_h1s1024_sqc7_fullperf` had
+  `simTicks=50,926,785`, `MMAC active=32.0455%`.
+- dQ H1/S1024 correctness PASS:
+  `simTicks=39,410,735`, `MMAC active=25.4821%`,
+  `coissue=16,471/16,335`, `ldsBankConflict=0`.
+- dQ historical references:
+  `dq_sidecar_soa_vec4` had `simTicks=38,995,775`,
+  `MMAC active=25.3548%`; `dq_ntile_pair_island` had
+  `simTicks=40,586,455`, `MMAC active=25.5487%`.
+
+Conclusion:
+
+- The environment fix is valid. The new machine no longer hits `s_trap`, both
+  dKV and dQ pass correctness, and MMAC active is on the expected historical
+  band.
+- dKV is slightly better than the recorded clean_read8 reference on this
+  stats-only run. dQ active matches the 25.3-25.5% historical band, while
+  elapsed ticks are about 1.1% slower than the best sidecar SoA full-perf
+  reference and faster than the ntile-pair reference.
+- This was a stats-only backtest, not a new optimization. Use it as the fixed
+  environment baseline before the next full `.perf`/xcu capture.
