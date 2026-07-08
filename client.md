@@ -809,3 +809,21 @@ Rejected dKV release-half Q-read-ahead candidate:
   remote transfer to `10.59.41.48` became unstable while archiving/syncing.
   Before the next PMD run, confirm the container source matches local clean
   `d5878ae` plus no diff.
+
+Next dKV structural candidate:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_12h_goal_plan_20260709.xlsx`,
+  sheet `08_Raw2_Sidecar_Plan`.
+- Thesis:
+  the current `Mq128/RawBuffers=1` route is blocked by Q/Dout half-page
+  `Used` waits.  `RawBuffers=2` would let producers prefetch `q_tile+1`, but
+  raw Q+dO double buffering consumes the full 128KB LDS budget, so sidecar
+  must leave LDS or be otherwise compressed/overlaid.
+- First step:
+  do a focused `Raw1 + global sidecar` probe before touching the performance
+  route.  If direct/global sidecar is incorrect or clearly slower, reject
+  `Raw2 + global sidecar` early.
+- Boundary:
+  do not add finer-grained PageUsed barriers or hold more operand fragments
+  across softmax; both have already shown poor tradeoffs.
