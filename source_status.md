@@ -4691,3 +4691,25 @@ Current focus:
   restored to accepted `dkv_splitwait_highsrc`; do not delay `QUsed` or
   `DoutUsed` arrivals for local wait hiding unless the same change also
   reduces producer ownership wait enough to lower same-shape ticks.
+
+## 2026-07-09 FWD/BWD Gap And Next dKV Candidate
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_12h_goal_plan_20260709.xlsx`,
+  sheet `16_FWD_BWD_Gap_Next`.
+- Current source:
+  clean dKV source remains restored to accepted `dkv_splitwait_highsrc`.
+  No new performance code is active.
+- Evidence:
+  FWD H4/S2048/SQC7 has `mmop_runtime_share=58.1159%`, stat-derived
+  `MMAC active=45.0205%`, zero LDS bank conflict, and good cache reuse.
+  Current dKV H1/S1024 still has dominant ABarrier ownership exposure:
+  `s_abarrier_try_wait -> s_xor_b32 41.38%`.
+- Next candidate:
+  `dkv_q_used_release_before_softmax`, only after remote PMD access returns.
+  The candidate should read Q-normal sources, wait and arrive `QUsed` before
+  softmax/dS, then consume held Q regs in dV/dK.  It is a focused ownership
+  probe, not a new phase stack.
+- Remote status:
+  attempts to reach `10.59.41.48` via the 54 and 59 jump routes failed on
+  2026-07-09, so new PMD/xcu validation is deferred.

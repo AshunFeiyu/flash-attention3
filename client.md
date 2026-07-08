@@ -884,3 +884,23 @@ Rejected dKV dO wait-under-softmax candidate:
   ownership release.  For this route, `QUsed`/`DoutUsed` arrival timing is on
   the critical path; future candidates must reduce exposed wait without making
   producer ownership waits worse.
+
+Current next dKV plan:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_12h_goal_plan_20260709.xlsx`,
+  sheet `16_FWD_BWD_Gap_Next`.
+- FWD target:
+  H4/S2048/SQC7 has `mmop_runtime_share=58.1159%`, stat-derived
+  `MMAC active=45.0205%`, zero LDS bank conflict, and healthy TCC hit/reuse.
+- Current dKV blocker:
+  accepted H1/S1024 dKV has `MMAC active=32.9468%`, but xcu is dominated by
+  `s_abarrier_try_wait -> s_xor_b32 41.38%`; local wait/MMOP reductions have
+  not reduced this ownership bubble.
+- Next code candidate when SSH returns:
+  `dkv_q_used_release_before_softmax`, a narrow probe that releases `QUsed`
+  before softmax/dS after reading Q-normal sources.  It must be rejected unless
+  same-shape ticks fall and xcu shows a real ownership-bubble reduction.
+- Remote status:
+  `10.59.41.48` is currently unreachable through both 54 and 59 jump routes,
+  so new PMD/xcu runs are paused rather than guessed.

@@ -8193,3 +8193,46 @@ Conclusion:
   ABarrier ownership path.
 - Future wait-hiding must not delay `QUsed` or `DoutUsed` arrivals unless it
   also reduces the corresponding producer wait by a larger amount.
+
+## 2026-07-09 FWD/BWD Gap Recheck And Next dKV Candidate
+
+Workbook:
+
+- `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_12h_goal_plan_20260709.xlsx`,
+  sheet `16_FWD_BWD_Gap_Next`.
+
+Evidence:
+
+- FWD H4/S2048/SQC7 reference remains the hard style target:
+  `mmop_runtime_share=58.1159%`, stat-derived `MMAC active=45.0205%`,
+  `coissue=272,136/372,022`, `ldsBankConflict=0`,
+  `TCCHitRate=0.932907`, `TccSectorReuseRate=0.731662`.
+- FWD/BWD H4/S1024 SQTT compare showed FWD `MMAC latency share=45.96%`,
+  `SALU32=7.30%`, and read-to-MMAC bubble about `1.18%`; BWD had much larger
+  scalar/control and barrier-chain exposure.
+- Current accepted dKV H1/S1024 has `MMAC active=32.9468%`, but xcu is still
+  dominated by `s_abarrier_try_wait -> s_xor_b32 41.38%` and
+  `s_waitcnt 19.55%`.  The last two candidates proved that reducing local
+  wait or MMOP without reducing the ownership bubble does not improve elapsed
+  cost.
+
+Decision:
+
+- Do not continue generic wait-moving, causal-skip, or sidecar-decoupling
+  patches.  The next code candidate must target Q/Dout ownership directly and
+  must not preserve another live phase/path.
+- The next small candidate, once the remote SSH path is available, is
+  `dkv_q_used_release_before_softmax`: read Q-normal sources after dO release,
+  wait and arrive `QUsed` before softmax/dS, then hold Q regs through softmax
+  and dV/dK.  This is intentionally a risky, narrow probe of whether moving
+  `QUsed` earlier beats the exposed local wait; reject unless same-shape ticks
+  fall and xcu shows the ownership bubble decreases.
+- If that fails, stop micro wait/lifetime tweaks and return to a resource-level
+  design that increases useful MMAC per ownership epoch.
+
+Operational note:
+
+- Attempted `10.59.41.48` via the configured 54 and 59 jump routes on
+  2026-07-09.  The 54 route closed the connection; the 59 route timed out
+  during banner exchange.  xcu `pipeline/simd` CSV export for the current
+  baseline is deferred until SSH returns.
