@@ -7511,3 +7511,58 @@ Next:
   producer/consumer cadence, with a strict lifetime proof.  Do not add more
   buffering unless it reduces the ABarrier bubble after accounting for VGPR and
   control cost.
+
+## 2026-07-08 dQ QDoFilled Overlap Probe
+
+Decision: `REJECT_CORRECTNESS`
+
+User observation:
+
+- Wavefronts still shows poor coissue, severe instruction gaps, and fragmented
+  MMAC/VALU islands even after `n_tile` pair scheduling.
+
+Hypothesis:
+
+- The accepted dQ kernel waits `Page0Filled` before consumers read sidecar and
+  latch Q/dO into VGPR.
+- Since `Page0Filled` is arrived only after producers publish Q/dO, sidecar,
+  and K/V page0, Q/dO latch cannot overlap K/V page0 matrix load.
+- Splitting a one-shot `QDoFilled` token might allow producers to publish
+  Q/dO+sidecar first, continue loading K/V page0, and let consumers latch
+  Q/dO concurrently.
+
+Tested patch:
+
+- Added `QDoFilled` ABarrier and moved consumer startup from
+  `wait Page0Filled -> latch Q/dO` to
+  `wait QDoFilled -> latch Q/dO -> arrive QDoLatched -> wait Page0Filled`.
+- Producers arrived `QDoFilled` after Q/dO+sidecar and before the K/V page loop.
+- A follow-up tried a one-shot `s_abarrier_seq(QDoFilled)` after init.
+- No tile, math, output ownership, or MMAC path change.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `8/40`, `164/216`, `164/216`, `9/40`;
+  metadata `private=0`, `sgpr=53`, `vgpr=128`, no scratch/spill.
+- Without explicit `QDoFilled` seq, H1/S1024 failed correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_095421`,
+  rows `688..703` were NaN.
+- With explicit one-shot `QDoFilled` seq, H1/S128 failed correctness:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_095649`,
+  rows `48..63` were NaN.
+- The temporary code was removed and the active source was restored to
+  accepted commit `1dcf266`.
+- Workbook evidence:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `41_dq_qdo_filled_overlap`.
+
+Conclusion:
+
+- A separate one-shot QDo visibility token is not a safe local fix for the
+  startup serialization under the current sidecar/QDo/MLS protocol.
+- Do not reintroduce this split without a focused barrier+matrix visibility
+  probe.
+- Next useful direction should target steady-state PageFilled/PageUsed cadence
+  or useful work placement inside existing legal tokens, not a new QDoFilled
+  token in the main kernel.

@@ -4434,3 +4434,32 @@ Current focus:
   use this as the current dQ baseline.  Further progress should target
   ABarrier/page cadence and producer/consumer timing; do not return to
   per-`n_chunk` scheduling.
+
+## 2026-07-08 dQ QDoFilled Overlap Rejected
+
+- Motivation:
+  accepted commit `1dcf266` still has poor coissue and fragmented
+  MMAC/VALU islands.  The source-level suspect was the startup chain where
+  consumers wait `Page0Filled` before reading sidecar and latching Q/dO.
+- Attempt:
+  added one-shot `QDoFilled` so producers could publish Q/dO+sidecar before
+  K/V page0, while consumers latched Q/dO before waiting `Page0Filled`.
+- Static/resource result:
+  build and gates passed; branch windows stayed `8/40`, `164/216`,
+  `164/216`, `9/40`; metadata stayed `private=0`, `sgpr=53`,
+  `vgpr=128`, no spill/scratch.
+- Correctness result:
+  rejected.  Without an explicit `QDoFilled` seq, H1/S1024 failed with NaN
+  rows `688..703`.
+  With a one-shot `s_abarrier_seq(QDoFilled)`, H1/S128 failed with NaN rows
+  `48..63`.
+- Remote evidence:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_095421` and
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_095649`.
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `41_dq_qdo_filled_overlap`.
+- Active source:
+  restored to `1dcf266` pair-island baseline.  Do not reintroduce QDoFilled
+  split-token in the main kernel without a focused barrier+matrix visibility
+  probe.
