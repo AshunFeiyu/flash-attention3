@@ -1,5 +1,36 @@
 # Source Status
 
+## 2026-07-08 dQ Nk32 Triple Page Rejected
+
+Status: `REJECT_PERF_SOURCE_REVERTED`.
+
+- Motivation:
+  XCU on the current sidecar SoA Vec4 baseline attributed the top steady-state
+  bubble to producer-side `Page1Used` wait.  The experiment tested whether
+  shrinking `Nk=64 -> Nk=32` and keeping three true K/V pages could remove the
+  Q/dO-overlay pressure without exceeding LDS.
+- Resource design:
+  Q+dO `64KB`, three K/V pages `48KB`, sidecar about `1.5KB`; total about
+  `113.5KB`, below the `128KB` LDS budget.
+- Gates:
+  H1/S128 and H1/S1024 correctness PASS; metadata `private=0`, `sgpr=53`,
+  `vgpr=128`, no spill/scratch; `ldsBankConflict=0`.
+- Full-perf result versus current sidecar baseline:
+  `kernel_ticks=35,382,165 -> 35,575,995`,
+  `simTicks=38,995,775 -> 39,189,605`,
+  `MMAC active=25.3548% -> 25.4985%`,
+  coissue `17,446/16,910 -> 15,465/15,407`.
+- XCU result:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_nk32_triple_page_s1024_fullperf_20260708_121749`;
+  top bubble remains `s_abarrier_try_wait -> s_xor_b32 37.86%`, with
+  representative rows still waiting on `barId=3 Page1Used`.
+- Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_121749_dq_nk32_triple_page_h1s1024_sqc7_fullperf`.
+- Decision:
+  code reverted; active source remains the `b56b2dc` sidecar SoA Vec4
+  baseline.  Do not continue deeper buffering by shrinking `Nk`; it increases
+  page epochs and does not reduce the measured PageUsed bottleneck.
+
 ## 2026-07-08 dQ Sidecar SoA Vec4 Micro-Win
 
 Status: `ACCEPT_MICRO_TICKS_NOT_PIPELINE_SUCCESS`.

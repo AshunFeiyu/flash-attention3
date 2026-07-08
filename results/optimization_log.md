@@ -7627,3 +7627,67 @@ Conclusion:
 - Future sidecar work should only continue if it also reduces VALU/register
   debt or ABarrier exposure; chasing complete `ds_read_b128` conversion alone
   is not the next highest-value path.
+
+## 2026-07-08 dQ Nk32 Triple Page Rejected
+
+Decision: `REJECT_PERF`
+
+Hypothesis:
+
+- XCU on `dq_sidecar_soa_vec4` showed the dominant issue bubble at producer
+  `Page1Used` (`s_abarrier_try_wait -> s_xor_b32 37.26%`).
+- The accepted Mq128/Nk64 path overlays page1 K/V onto released Q/dO LDS after
+  `QDoLatched`.  A true three-page K/V stream might remove that overlay
+  pressure if the tile shrinks to `Nk=32`.
+
+Design:
+
+- Keep the 16-wave full-3GEMM dQ route and `Mq=128,D=128`.
+- Change only `Nk=64 -> Nk=32` and use three K/V pages.
+- LDS budget:
+  Q+dO `64KB`, three K/V pages `48KB`, sidecar about `1.5KB`; total about
+  `113.5KB`, below the 128KB budget.
+- Remove the hot-path `QDoLatched` overlay dependency; producers wait
+  `PageUsed` only after a page can be reused.
+
+Evidence:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `43_dq_nk32_triple_page`.
+- H1/S128 correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_121450`.
+- H1/S1024 stats-only correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_121529`.
+- Full perf correctness PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_121749`,
+  helper perf
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260708_121749/m5out/0/0/2752032_fa3_bwd_dq_clean.perf`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_121749_dq_nk32_triple_page_h1s1024_sqc7_fullperf`.
+- Static/resource PASS:
+  metadata `private=0`, `sgpr=53`, `vgpr=128`, no spill/scratch,
+  `ldsBankConflict=0`.
+- Full-perf metrics versus accepted sidecar baseline:
+  `kernel_ticks=35,382,165 -> 35,575,995`,
+  `simTicks=38,995,775 -> 39,189,605`,
+  `MMAC active=25.3548% -> 25.4985%`,
+  coissue `17,446/16,910 -> 15,465/15,407`.
+- XCU:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dq_nk32_triple_page_s1024_fullperf_20260708_121749`.
+  Top issue remains ABarrier/control:
+  `s_abarrier_try_wait -> s_xor_b32 37.86%`,
+  `s_abarrier_try_wait -> s_waitcnt 10.36%`.
+  Representative top rows still wait on `barId=3 Page1Used`.
+
+Conclusion:
+
+- The LDS budget idea is valid, but it does not solve the measured bottleneck.
+  Shrinking `Nk` doubles page epochs and keeps the producer blocked on
+  `PageUsed`; full-perf ticks regress while MMAC active only moves slightly.
+- The temporary code was removed.  Active source is restored to the
+  `dq_sidecar_soa_vec4` baseline (`b56b2dc`).
+- Do not pursue deeper buffering by shrinking `Nk` as the next main route.
+  The next useful direction must reduce per-epoch barrier/control cost or
+  increase useful MMAC work per ownership token without increasing page
+  cadence debt.

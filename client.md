@@ -62,16 +62,25 @@ evidence are required before any performance claim.
   for barrier invalidation lifetime.
 - Current xcu diagnosis:
   top bubbles remain ABarrier/control:
-  `s_abarrier_try_wait -> s_xor_b32 38.23%` and
-  `s_abarrier_try_wait -> s_waitcnt 9.99%`.  Normal matrix-read wait is now
-  only `1.49%`, so the next direction is PageFilled/PageUsed/QDoLatched cadence
-  with a written data-lifetime proof, not more per-`n_chunk` local scheduling.
+  `s_abarrier_try_wait -> s_xor_b32 37.26%` and
+  `s_abarrier_try_wait -> s_waitcnt 10.23%` on the current sidecar SoA Vec4
+  baseline.  Normal matrix-read wait is no longer the top limiter, so the next
+  direction is PageFilled/PageUsed/QDoLatched cadence with a written
+  data-lifetime proof, not more per-`n_chunk` local scheduling.
 - Rejected next-step candidate:
   splitting startup with a new one-shot `QDoFilled` token was static-clean but
   correctness-bad: H1/S1024 failed rows `688..703` without seq, and H1/S128
-  failed rows `48..63` with one-shot seq.  Active code is restored to
-  `1dcf266`; do not reintroduce this token without a focused barrier+matrix
-  visibility probe.
+  failed rows `48..63` with one-shot seq.  Do not reintroduce this token
+  without a focused barrier+matrix visibility probe.
+- Rejected next-step candidate:
+  `Nk=32` true three-page K/V streaming was correctness/resource clean, but
+  full perf regressed versus sidecar SoA Vec4:
+  `kernel_ticks=35,382,165 -> 35,575,995`.  XCU still showed
+  `Page1Used`-class ABarrier wait (`s_abarrier_try_wait -> s_xor_b32 37.86%`).
+  The experiment is archived at
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260708_121749_dq_nk32_triple_page_h1s1024_sqc7_fullperf`
+  and removed from active code.  Current active source is restored to
+  `b56b2dc` / `dq_sidecar_soa_vec4`.
 
 ## dQ Reopen Contract
 
