@@ -8,6 +8,25 @@ SRC="${SRC:-src/dkv_kernel.cpp}"
 BUILD_DIR="${BUILD_DIR:-build}"
 BIN="${BIN:-${BUILD_DIR}/fa3_bwd_wasp_clean}"
 ASM="${ASM:-${BUILD_DIR}/fa3_bwd_wasp_clean.asm}"
+ROCM_PATH="${ROCM_PATH:-/opt/rocm}"
+DEFAULT_OVERLAY_BIN="/home/zhangyushun/toolchains/zwj_liuchang_llvm_7940/bin"
+
+if [[ -z "${CLANGXX:-}" ]]; then
+  if [[ -x "${DEFAULT_OVERLAY_BIN}/clang++" ]]; then
+    export HIP_CLANG_PATH="${HIP_CLANG_PATH:-${DEFAULT_OVERLAY_BIN}}"
+    export PATH="${HIP_CLANG_PATH}:${PATH}"
+    export LD_LIBRARY_PATH="${ROCM_PATH}/lib:${LD_LIBRARY_PATH:-}"
+    CLANGXX="${HIP_CLANG_PATH}/clang++"
+    TOOLCHAIN_NOTE="zwj_liuchang_llvm_7940 overlay"
+  else
+    CLANGXX="${ROCM_PATH}/llvm/bin/clang++"
+    TOOLCHAIN_NOTE="${ROCM_PATH}/llvm default"
+  fi
+else
+  TOOLCHAIN_NOTE="CLANGXX override"
+fi
+
+HIPCC="${HIPCC:-hipcc}"
 
 mkdir -p "${BUILD_DIR}"
 
@@ -35,12 +54,18 @@ SHAOBO_FLAGS=(
 )
 
 echo "target gfx${TARGET_GFX}"
+echo "toolchain ${TOOLCHAIN_NOTE}"
+echo "clangxx ${CLANGXX}"
+echo "hipcc ${HIPCC}"
+if [[ -n "${HIP_CLANG_PATH:-}" ]]; then
+  echo "HIP_CLANG_PATH ${HIP_CLANG_PATH}"
+fi
 echo "building ${BIN}"
-hipcc "${COMMON_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" "${SRC}" -o "${BIN}"
+"${HIPCC}" "${COMMON_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" "${SRC}" -o "${BIN}"
 
 if [[ "${BUILD_ASM:-1}" == "1" ]]; then
   echo "building ${ASM}"
-  /opt/rocm/llvm/bin/clang++ "${COMMON_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" \
+  "${CLANGXX}" "${COMMON_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" \
     --cuda-device-only -x hip -S "${SRC}" -o "${ASM}"
 fi
 

@@ -1,5 +1,37 @@
 # Source Status
 
+## 2026-07-09 Formal Toolchain Switch To Zwj/Liuchang Overlay
+
+Status: `ACCEPT_ENV_SWITCH`.
+
+- Change:
+  `build.sh` now defaults to
+  `/home/zhangyushun/toolchains/zwj_liuchang_llvm_7940/bin/clang++` when that
+  overlay exists, and exports `HIP_CLANG_PATH`, `PATH`, and `LD_LIBRARY_PATH`
+  so `hipcc` and asm generation use the same compiler route.  `CLANGXX`,
+  `HIPCC`, and `HIP_CLANG_PATH` remain explicit overrides for controlled
+  experiments.
+- Motivation:
+  the default `zwj_8426` compiler path can emit WDRA `s_trap` prologues that
+  current PMD cannot execute.  Zhang Wenjian's FP8 FWD runs because it uses a
+  `liuchang_llvm` overlay or an already-built no-`s_trap` artifact, not because
+  the container default compiler path is universally valid.
+- Gates:
+  formal `build.sh` dQ and dKV builds both report
+  `toolchain zwj_liuchang_llvm_7940 overlay`; dQ asm has `s_trap=0`,
+  `s_set_vgpr_size=4`; dKV asm has `s_trap=0`, `s_set_vgpr_size=4`.
+  dQ gate PASS.  dKV gate and metadata gate PASS with `private=0`,
+  `sgpr=99`, `vgpr=128`, no SGPR/VGPR spill.
+- Correctness:
+  dQ H1/S128 PASS:
+  `/zys/shaobo_runs/formal_zwj7940_overlay/dq_correctness_20260709_122743`;
+  dKV H1/S128 PASS:
+  `/zys/shaobo_runs/formal_zwj7940_overlay/dkv_mmac_correctness_20260709_122745`.
+- Decision:
+  use this overlay as the default clean-repo compiler on `shaobo_dev_8426`.
+  Do not replace `/opt/rocm` in place unless a separate rollback/backup plan is
+  explicitly requested.
+
 ## 2026-07-09 dKV QUsed Before Softmax Accepted
 
 Status: `ACCEPT_MICRO_TICKS_OWNERSHIP`.

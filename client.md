@@ -9,6 +9,22 @@ optimization target is MMAC active share, with FA3 FWD as the hard benchmark.
 Correctness, no scratch/spill, `ldsBankConflict=0`, and explainable SQTT
 evidence are required before any performance claim.
 
+## Current Environment
+
+- New-machine container: `shaobo_dev_8426` on `10.59.41.48`, reached through
+  `ssh -F work/ssh/shaobo_new_perf_config shaobo-new-perf-via-hedr`.
+- `build.sh` now defaults to the zwj/liuchang overlay compiler when present:
+  `/home/zhangyushun/toolchains/zwj_liuchang_llvm_7940/bin/clang++`,
+  llvm commit `7940bbec4a9c...`.  It still accepts `CLANGXX`, `HIPCC`, and
+  `HIP_CLANG_PATH` overrides for controlled experiments.
+- Formal switch evidence:
+  standard dQ and dKV builds print `toolchain zwj_liuchang_llvm_7940 overlay`,
+  both produce `s_trap=0` with role-local `s_set_vgpr_size`, and PMD H1/S128
+  correctness passes for dQ
+  `/zys/shaobo_runs/formal_zwj7940_overlay/dq_correctness_20260709_122743`
+  and dKV
+  `/zys/shaobo_runs/formal_zwj7940_overlay/dkv_mmac_correctness_20260709_122745`.
+
 ## Current dKV State
 
 - Current accepted dKV source is `dkv_q_used_release_before_softmax`:
