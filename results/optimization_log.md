@@ -9986,3 +9986,52 @@ Conclusion:
 - Active source is restored to the 16-wave canonical dQ path.
 - Next work should keep 16-wave residency and either give producer1 recurring
   useful work or reduce `PageUsed` lifetime without removing an active role.
+
+## 2026-07-12 dQ K-Normal Prefetch Before dS Probe
+
+Decision: `REJECT_FULLPERF_TICKS_REGRESSION`
+
+Hypothesis:
+
+- Current dQ reads K-normal for `dQ += dS @ K` after softmax/dS and then waits
+  before the dQ MMAC.  Split the K-normal read from `dq_update` and issue it
+  immediately after qk/dP MMAC, before softmax/dS, so the softmax/dS VALU
+  covers part of the LDS read latency.
+
+Design record:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `53_DQ_KNormal_Prefetch`.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `8/40,159/216,159/216,9/40`; metadata `private=0`,
+  `sgpr=67`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq_k_normal_prefetch_20260711_235959/dq_correctness_20260712_000739`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_k_normal_prefetch_20260711_235959/dq_correctness_20260712_000748`.
+- Stats-only versus restore validation:
+  `simTicks 36,052,835 -> 35,933,625`,
+  `waitLgkm 13,936.75 -> 11,144.75`,
+  `MMAC active 27.2806% -> 27.4332%`.
+- Fullperf versus mainline fullperf:
+  `simTicks 35,881,300 -> 36,035,545`,
+  `MMAC active 27.4198% -> 27.3801%`,
+  `waitLgkm 13,611.25 -> 11,234.75`.
+- XCU:
+  `/zys/shaobo_runs/dq_k_normal_prefetch_fullperf_20260712_000111/xcu_outputs/dq_k_normal_prefetch_20260712_000850`.
+  The top PageUsed ownership bubble remains essentially unchanged:
+  `s_abarrier_try_wait -> s_xor_b32 26.47% -> 26.53%`.
+
+Conclusion:
+
+- The read scheduling idea is locally true: it lowers wait counters.  It is not
+  a mainline improvement because elapsed time is dominated by PageUsed/role
+  ownership, not by this K-normal read wait.
+- Active source is restored to the 16-wave canonical helper shape.
+- Next dQ work must change the ownership/useful-work structure or dS handoff
+  topology, not only move matrix reads around the same PageUsed barrier.

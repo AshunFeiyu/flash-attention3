@@ -5496,3 +5496,18 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   to 16-wave canonical dQ.  Future work must keep the fourth role resident and
   give it useful recurring work or reduce PageUsed lifetime without removing
   the role.
+
+## 2026-07-12 dQ K-normal prefetch rejected
+
+- Hypothesis:
+  issue K-normal `ds_read_matrix` for the dQ GEMM before softmax/dS, so
+  softmax/dS VALU can cover the LDS read wait.
+- Result:
+  correctness/resource PASS and stats-only wait improved, but fullperf did not:
+  `simTicks=36,035,545` vs mainline fullperf `35,881,300`, and MMAC active
+  fell `27.4198% -> 27.3801%`.  XCU still reports the dominant PageUsed
+  ownership bubble at `26.53%`, essentially unchanged from mainline `26.47%`.
+- Decision:
+  `REJECT_FULLPERF_TICKS_REGRESSION`.  K-normal read scheduling alone is a
+  local wait-counter improvement, not an elapsed-time improvement.  Active
+  source is restored; next work must attack ownership/useful-work structure.

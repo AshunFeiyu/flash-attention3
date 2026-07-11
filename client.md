@@ -1156,6 +1156,13 @@ dQ role topology note, 2026-07-11:
   recurring producer work or shorter ownership lifetime, not by deleting the
   fourth 4-wave role.
 
+dQ read scheduling note, 2026-07-12:
+
+- Moving K-normal `ds_read_matrix` before softmax/dS reduced stats-only
+  `waitLgkm`, but fullperf regressed and XCU still showed PageUsed ABarrier as
+  the top bubble.  Do not promote read-placement-only changes unless they also
+  reduce elapsed ticks and the ownership bubble in xcu.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
