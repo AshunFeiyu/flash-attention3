@@ -5068,3 +5068,13 @@ Current focus:
   half-region accumulators for `f16x4[0]` and `f16x4[1]`.  The canonical dQ
   ring should preserve that accumulator structure rather than using the old
   two-half `mmac_pair_lit` helper for this handoff.
+- Compact source-slot map follow-up:
+  the same probe now prints a compact `dst(group,q,word) -> src_lane:src_word`
+  table.  PMD run
+  `/zys/shaobo_runs/dq_slotmap_reverse_compact_probe_20260711_172345`
+  reports `mapped=504/512` and `unique_src=504/512`; the only unmapped
+  destination slots are `(group=2,q=15,word=4..7)` and
+  `(group=3,q=15,word=4..7)`.  The split proof still passes in this run.
+  Therefore the C_dS publisher must use the compact slot table and handle the
+  eight boundary holes explicitly; do not assume a dense 512-slot affine
+  producer-source map.

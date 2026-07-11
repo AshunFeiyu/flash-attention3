@@ -1114,3 +1114,10 @@ Slot-map reverse result, 2026-07-11:
   half-regions as separate accumulator/update paths; do not use the old
   pair-accumulate helper for a dS handoff unless the math truly wants a K-step
   reduction.
+- Compact source-slot map:
+  `/zys/shaobo_runs/dq_slotmap_reverse_compact_probe_20260711_172345`.
+  The identity write/read map has `mapped=504/512` and `unique_src=504/512`;
+  the only unmapped destination slots are `(group=2,q=15,word=4..7)` and
+  `(group=3,q=15,word=4..7)`.  This means the next C_dS publisher must use the
+  compact dst->src slot table, not an assumed full 512-slot affine formula.
+  The split-accumulator proof still passes in the same run.

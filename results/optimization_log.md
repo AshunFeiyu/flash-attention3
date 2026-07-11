@@ -9084,3 +9084,23 @@ Follow-up split-accumulator proof:
   prematurely accumulating the two half-regions into one tag output; it was not
   a rejection of the native `ds_write_matrix -> ds_read_matrix_trans -> MMAC`
   handoff.
+
+Compact source-slot map follow-up:
+
+- Added compact table output to
+  `probes/dq_dswrite_slotmap_reverse_probe.cpp`, so each row reports
+  `dst(group,q,word) -> src_lane:src_word`.
+- PMD result:
+  `/zys/shaobo_runs/dq_slotmap_reverse_compact_probe_20260711_172345`.
+- Result:
+  the identity write/read map has `mapped=504/512` and `unique_src=504/512`.
+  The only unmapped destination slots are
+  `(group=2,q=15,word=4..7)` and `(group=3,q=15,word=4..7)`.
+  The same run still reports `pair_pass=0`, `low_pass=1`, `high_pass=1`,
+  `split_pass=1`, and the consume dispatch has `ldsBankConflict=0`.
+- Decision:
+  `ACCEPT_SLOTMAP_COMPACT_MAP`.
+- Implementation implication:
+  a canonical C_dS publisher cannot assume a dense 512-slot affine source map.
+  It must either use a table/formula validated against the compact map or
+  explicitly mask the eight boundary holes before handing dS to C_dQ.

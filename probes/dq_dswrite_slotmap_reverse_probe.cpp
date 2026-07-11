@@ -290,11 +290,21 @@ bool decode_k_tag_value(float value, int& krow, int& d) {
 
 void summarize_mapping(const std::vector<int>& src_for_dst) {
     int mapped = 0;
+    bool src_used[kFragElems] = {};
     for (int src : src_for_dst) {
-        mapped += src >= 0 ? 1 : 0;
+        if (src >= 0) {
+            ++mapped;
+            src_used[src] = true;
+        }
+    }
+    int unique_src = 0;
+    for (bool used : src_used) {
+        unique_src += used ? 1 : 0;
     }
     std::printf("slotmap_reverse_mapping mapped=%d expected=%d\n", mapped,
                 kFragElems);
+    std::printf("slotmap_reverse_source_use unique_src=%d expected=%d\n",
+                unique_src, kFragElems);
     for (int group = 0; group < 4; ++group) {
         for (int q = 0; q < 4; ++q) {
             const int lane = group * 16 + q;
@@ -309,9 +319,32 @@ void summarize_mapping(const std::vector<int>& src_for_dst) {
             }
         }
     }
+    for (int group = 0; group < 4; ++group) {
+        for (int q = 0; q < 16; ++q) {
+            const int lane = group * 16 + q;
+            int src_lane_words[kFragWords][2];
+            for (int word = 0; word < kFragWords; ++word) {
+                const int src = src_for_dst[lane * kFragWords + word];
+                src_lane_words[word][0] = src >= 0 ? src / kFragWords : -1;
+                src_lane_words[word][1] = src >= 0 ? src % kFragWords : -1;
+            }
+            std::printf(
+                "slotmap_reverse_compact group=%d q=%d "
+                "w0=%d:%d w1=%d:%d w2=%d:%d w3=%d:%d "
+                "w4=%d:%d w5=%d:%d w6=%d:%d w7=%d:%d\n",
+                group, q, src_lane_words[0][0], src_lane_words[0][1],
+                src_lane_words[1][0], src_lane_words[1][1],
+                src_lane_words[2][0], src_lane_words[2][1],
+                src_lane_words[3][0], src_lane_words[3][1],
+                src_lane_words[4][0], src_lane_words[4][1],
+                src_lane_words[5][0], src_lane_words[5][1],
+                src_lane_words[6][0], src_lane_words[6][1],
+                src_lane_words[7][0], src_lane_words[7][1]);
+        }
+    }
     std::printf(
-        "slotmap_reverse_formula abandoned; using inferred slot_k table "
-        "from single-dst MMAC probes; probe_k=%d\n",
+        "slotmap_reverse_formula pending; use compact dst->src table plus "
+        "single-dst MMAC slot_k table; probe_k=%d\n",
         kProbeK);
 }
 
