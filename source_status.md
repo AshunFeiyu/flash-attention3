@@ -4965,3 +4965,44 @@ Current focus:
   accepted as default instruction-level fix. Next architectural work still
   needs to reduce BWD page ownership fragmentation and improve useful
   MMAC/VALU per ownership epoch.
+
+## 2026-07-11 dQ active40 current state
+
+- Current dQ kernel is 16-wave, not 12-wave:
+  `__launch_bounds__(1024, 1)` plus `hcu_wdra_waves_per_tg(16)`.
+- Active tile is `Mq=128,Nk=128,D=128`.
+- Current role split:
+  waves0-3 publish Q/dO group0 + sidecar group0 and stream K;
+  waves4-7 compute q rows 0-63;
+  waves8-11 compute q rows 64-127;
+  waves12-15 publish Q/dO group1 + sidecar group1 and stream V.
+- Current accepted dQ baseline includes Q/dO+sidecar startup latch, K/V
+  double-page steady state, BPS `s_waitcnt_vbcnt` before Filled arrivals, and
+  removal of the terminal `AllDone` ABarrier.
+- Static/resource:
+  producer0 `8/40`, consumer0 `161/216`, consumer1 `161/216`,
+  producer1 `9/40`; `private=0`, `sgpr=67`, `vgpr=128`,
+  no spill/scratch.
+- Correctness:
+  H1/S128 PASS
+  `/zys/shaobo_runs/dq40a_tail_cleanup_20260711/dq_correctness_20260711_121340`;
+  H1/S1024 PASS
+  `/zys/shaobo_runs/dq40a_tail_cleanup_20260711/dq_correctness_20260711_121348`.
+- H1/S1024 stats:
+  `simTicks=35,750,715`, `MMOP=55,296`, `VALU=121,632`,
+  `SCA=77,516`, `LDS=28,656`, coissue `16,037/18,954`,
+  stat-derived `MMAC active=27.3105%`, `ldsBankConflict=0`.
+- Full-perf/xcu:
+  `/zys/shaobo_runs/dq40a_tail_cleanup_fullperf_20260711/dq_correctness_20260711_121754/m5out/0/0/2765534_fa3_bwd_dq_clean.perf`;
+  xcu output
+  `/zys/shaobo_runs/dq40a_tail_cleanup_fullperf_20260711/xcu_outputs/dq40a_tail_cleanup_h1s1024_20260711_121754`.
+- Current bottleneck:
+  xcu removed the old tail `AllDone` bubble and now points to
+  `Page0Used/PageUsed` ownership wait.  The main 16-wave issue is not missing
+  MMAC; it is producer waves becoming thin/running ahead and waiting for
+  consumers before reusing K/V pages.
+- Next dQ work:
+  keep the mainline 16-wave.  Try producer-thickening or role rebalance that
+  lowers `PageUsed` idle while preserving two symmetric full-3GEMM consumers.
+  A 12-wave one-producer topology is fallback/control only, not the default
+  direction.

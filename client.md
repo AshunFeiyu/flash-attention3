@@ -78,13 +78,28 @@ evidence are required before any performance claim.
 ## Current dQ Override
 
 - Current canonical source has moved from the earlier 12-wave dS-worker route
-  to a 16-wave full-3GEMM dQ route.
+  to a 16-wave full-3GEMM dQ route.  Do not describe the current dQ kernel as
+  12-wave: the active source uses `__launch_bounds__(1024, 1)` and
+  `hcu_wdra_waves_per_tg(16)`.
 - Wave roles:
   waves0-3 publish Q/dO group0 sidecar and K, waves4-7 compute q rows 0-63,
   waves8-11 compute q rows 64-127, and waves12-15 publish Q/dO group1 sidecar
   and V.
 - dS is no longer staged in LDS.  Each consumer computes its complete dQ
   chain in VGPR: `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
+- Current active40 baseline:
+  `Mq=128,Nk=128,D=128`, startup `Q+dO+sidecar` LDS latch, steady K/V
+  double-page ping-pong, BPS `s_waitcnt_vbcnt` before Filled arrivals, and
+  no terminal `AllDone` ABarrier.  H1/S1024 stats after tail cleanup:
+  `simTicks=35,750,715`, `MMAC active=27.3105%`,
+  `coissue=16,037/18,954`, `ldsBankConflict=0`.  xcu shows the current top
+  steady bottleneck is `Page0Used/PageUsed` ownership wait, i.e. producer
+  waves run ahead and wait for consumers before reusing K/V pages.
+- Next dQ work stays on the 16-wave mainline.  First try to reduce
+  producer-thin `PageUsed` idle through producer-thickening or role rebalance
+  while keeping two symmetric full-3GEMM consumer groups.  A 12-wave
+  one-producer topology is only a fallback/control experiment if 16-wave proves
+  structurally wasteful.
 - Current evidence:
   after Q/dO latch, K/V double-page reuse, K/V trans split-wait, qk/dP
   MMAC-zero seeding, and `n_tile` pair-island scheduling, H1/S128

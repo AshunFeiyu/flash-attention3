@@ -54,12 +54,24 @@ def main() -> int:
             "missing_full3gemm_consumer")
     require(source, r"dq_load_sidecar_group", failures,
             "missing_producer_sidecar_lds_staging")
+    require(source, r"dq_wait_qdo_filled", failures,
+            "missing_consumer_qdo_filled_wait")
+    require(source, r"dq_arrive_qdo_filled", failures,
+            "missing_producer_qdo_filled_arrive")
+    require(source, r"kSidecarBase\s*=\s*kPage0Base", failures,
+            "missing_sidecar_kv_page0_overlay")
     require(source, r"dq_update_from_ds_(?:vec|pair)", failures,
             "missing_vgpr_ds_to_dq_mmac")
     require(source, r"CANONICAL_DQ", failures,
             "missing_canonical_standalone_switch")
-    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<128,\s*64>",
-            failures, "missing_active_mq128_nk64_tile")
+    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<128,\s*128>",
+            failures, "missing_active_mq128_nk128_tile")
+    require(contract, r"kStartupLdsBytes", failures,
+            "missing_latched_sidecar_startup_lds_budget")
+    require(contract, r"kSteadyLdsBytes", failures,
+            "missing_kv_doublepage_steady_lds_budget")
+    require(contract, r"kQDoFilled", failures,
+            "missing_qdo_filled_startup_barrier")
     require(contract, r"kForbidDuplicateScoreDpInsideDq\s*=\s*true",
             failures, "missing_no_duplicate_score_dp_contract")
     require(contract, r"kForbidDqAtomicAdd\s*=\s*true",

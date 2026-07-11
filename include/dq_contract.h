@@ -38,8 +38,11 @@ struct DqTileD128MqNk {
     static constexpr int kSidecarBytes =
         kSidecarFloats * static_cast<int>(sizeof(float));
     static constexpr int kLdsBudgetBytes = 128 * 1024;
+    static constexpr int kStartupLdsBytes = kQDoBytes + kSidecarBytes;
+    static constexpr int kSteadyLdsBytes = 2 * kKvBytes;
     static constexpr int kPlannedLdsBytes =
-        kQDoBytes + kKvBytes + kSidecarBytes;
+        kStartupLdsBytes > kSteadyLdsBytes ? kStartupLdsBytes
+                                           : kSteadyLdsBytes;
 
     static_assert(kBlockMq == 128,
                   "dQ 16-wave path maps two consumer groups over M128");
@@ -52,15 +55,16 @@ struct DqTileD128MqNk {
                   "dQ target LDS plan must fit 128KB");
 };
 
-using ActiveDqTile = DqTileD128MqNk<128, 64>;
+using ActiveDqTile = DqTileD128MqNk<128, 128>;
 
 struct DqBarrierLedger {
     static constexpr int kPage0Filled = 0;
     static constexpr int kPage0Used = 1;
     static constexpr int kPage1Filled = 2;
     static constexpr int kPage1Used = 3;
-    static constexpr int kQDoLatched = 4;
-    static constexpr int kAllDone = 5;
+    static constexpr int kQDoFilled = 4;
+    static constexpr int kQDoLatched = 5;
+    static constexpr int kAllDone = 6;
 };
 
 struct OptimizationTargets {

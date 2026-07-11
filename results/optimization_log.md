@@ -8782,3 +8782,116 @@ Conclusion:
   ownership epochs than FWD, so we still need a redesigned pipeline that
   reduces token fragmentation and increases useful MMAC/VALU work per page
   lifetime.
+## 2026-07-11 dQ Nk128 Latched Sidecar Baseline
+
+Decision: `ACCEPT_BASELINE_FOR_DQ_ACTIVE40`
+
+Hypothesis:
+
+- Move dQ from the old `Mq=128,Nk=64,D=128` route to an FWD-like
+  `Mq=128,Nk=128,D=128` route. The goal is to double useful MMAC per K/V
+  ownership epoch while keeping sidecar off the consumer global path.
+- Startup LDS carries `Q+dO+sidecar`. Consumers latch those values into VGPR,
+  then producers reuse the released Q/dO LDS region as the second K/V page.
+  Steady state is K/V double-page ping-pong.
+
+Implementation:
+
+- Single canonical dQ kernel, no phase stack.
+- 16 waves:
+  waves0-3 publish Q/dO group0 + sidecar group0 and stream K;
+  waves4-7 compute q rows 0-63;
+  waves8-11 compute q rows 64-127;
+  waves12-15 publish Q/dO group1 + sidecar group1 and stream V.
+- Consumers execute the full three-GEMM dQ chain in VGPR:
+  `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
+- BPS readiness uses `s_waitcnt_vbcnt 0` before Filled-token arrivals.
+
+Evidence:
+
+- Static/resource gate PASS:
+  producer0 `8/40`, consumer0 `161/216`, consumer1 `161/216`,
+  producer1 `9/40`; `private_segment=0`, `sgpr_count=67`,
+  `vgpr_count=128`, `sgpr_spill_count=0`, `vgpr_spill_count=0`.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq_active40_20260711/dq_correctness_20260711_115658`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_active40_20260711/dq_correctness_20260711_115723`.
+- H1/S1024 stats:
+  `simTicks=35,974,575`, `MMOP=55,296`, `VALU=121,632`,
+  `SCA=78,244`, `LDS=28,656`, `VMEM=1,408`,
+  coissue `15,755/18,857`, `ldsBankConflict=0`,
+  stat-derived `MMAC active=27.2563%`.
+- Full-perf/xcu:
+  `/zys/shaobo_runs/dq_active40_fullperf_20260711/dq_correctness_20260711_120239/m5out/0/0/2764854_fa3_bwd_dq_clean.perf`;
+  xcu outputs
+  `/zys/shaobo_runs/dq_active40_fullperf_20260711/xcu_outputs/dq_nk128_h1s1024_20260711_120239`.
+  Top bubbles were `s_abarrier_try_wait -> s_xor_b32 26.57%`
+  and terminal `s_abarrier_try_wait -> s_waitcnt 17.88%` on the old
+  `AllDone` cleanup token.
+
+Conclusion:
+
+- Accept this as the current dQ active40 baseline because it is correct,
+  resource-clean, native matrix-path clean, and improves the algorithmic
+  MMAC-per-epoch structure versus Nk64.
+- It is still far from the 40% MMAC-active target. The first xcu diagnosis
+  showed terminal cleanup pollution, so clean up tail synchronization before
+  drawing the next pipeline conclusion.
+
+## 2026-07-11 dQ Tail Cleanup / AllDone Removal
+
+Decision: `ACCEPT_MICRO_AND_SET_NEXT_BOTTLENECK`
+
+Hypothesis:
+
+- The xcu top `s_abarrier_try_wait -> s_waitcnt` bubble was partly a tail
+  artifact from a 16-wave `AllDone` ABarrier used only before invalidation.
+  Replace it with `__syncthreads(); wave0 inv; __syncthreads()` so SQTT
+  evidence focuses on real steady-state page ownership.
+
+Implementation:
+
+- Removed `Bar::kAllDone` init, per-role arrive, and common try-wait from the
+  active dQ kernel.
+- Kept wave0-only `s_abarrier_inv` for the six live slots:
+  Page0Filled/Page0Used/Page1Filled/Page1Used/QDoFilled/QDoLatched.
+
+Evidence:
+
+- Static/resource gate PASS:
+  producer0 `8/40`, consumer0 `161/216`, consumer1 `161/216`,
+  producer1 `9/40`; metadata stays `private=0`, `sgpr=67`,
+  `vgpr=128`, no spill/scratch. Asm now has `s_abarrier_inv=6`,
+  no `s_abarrier_init 6`, and no `s_abarrier_try_wait.*6`.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq40a_tail_cleanup_20260711/dq_correctness_20260711_121340`;
+  H1/S1024
+  `/zys/shaobo_runs/dq40a_tail_cleanup_20260711/dq_correctness_20260711_121348`.
+- H1/S1024 stats versus Nk128 baseline:
+  `simTicks 35,974,575 -> 35,750,715` (`-0.62%`),
+  `MMAC active 27.2563% -> 27.3105%`,
+  `SCA 78,244 -> 77,516`,
+  coissue `15,755/18,857 -> 16,037/18,954`,
+  `ldsBankConflict=0`.
+- Full-perf/xcu:
+  `/zys/shaobo_runs/dq40a_tail_cleanup_fullperf_20260711/dq_correctness_20260711_121754/m5out/0/0/2765534_fa3_bwd_dq_clean.perf`;
+  xcu outputs
+  `/zys/shaobo_runs/dq40a_tail_cleanup_fullperf_20260711/xcu_outputs/dq40a_tail_cleanup_h1s1024_20260711_121754`.
+  The old `AllDone` bubble disappears. New top bubble is
+  `s_abarrier_try_wait -> s_xor_b32 27.14%`, with representative instances
+  on `barId=1`, i.e. `Page0Used`.
+
+Conclusion:
+
+- Accept as a small cleanup and evidence-quality fix. It is not the route to
+  40%, but it removes a misleading tail wait and exposes the real limiter:
+  producer waves run ahead and wait for consumer PageUsed before reusing K/V
+  pages.
+- Next structural experiment should stay on the 16-wave mainline and reduce
+  producer-thin PageUsed idle: either give producer groups recurring useful
+  work or rebalance role ownership while preserving two symmetric full-3GEMM
+  consumers. A 12-wave one-producer topology is only a fallback/control
+  experiment if 16-wave resource use proves structurally wasteful.
