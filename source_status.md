@@ -5059,3 +5059,12 @@ Current focus:
   single-accumulator check cannot merge both half-regions and decode them as
   one tag.  Next code design should make C_dS publish this slot layout in the
   same half-region order consumed by real dQ accumulators.
+- Split-accumulator follow-up:
+  the same probe now emits `pair_acc`, `split_low`, and `split_high`.
+  PMD run
+  `/zys/shaobo_runs/dq_slotmap_reverse_split_probe_20260711_165032`
+  reports `pair_pass=0`, `low_pass=1`, `high_pass=1`, `split_pass=1`.
+  Therefore the native dS handoff is viable when C_dQ keeps separate
+  half-region accumulators for `f16x4[0]` and `f16x4[1]`.  The canonical dQ
+  ring should preserve that accumulator structure rather than using the old
+  two-half `mmac_pair_lit` helper for this handoff.

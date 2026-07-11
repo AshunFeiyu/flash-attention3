@@ -9059,3 +9059,28 @@ Decision: `OBSERVE_SLOTMAP_PROOF_HALF_REGION`.
   target D tile, not merge them in a toy single-tag output.  Continue to reject
   scalar LDS gather, bpermute/mpermute, and ad hoc pack permutations in the
   canonical kernel.
+
+Follow-up split-accumulator proof:
+
+- Extended the same probe to store three dQ-side outputs:
+  `pair_acc = mmac(low, lowK) + mmac(high, highK)`, `split_low`, and
+  `split_high`.
+- PMD result:
+  `/zys/shaobo_runs/dq_slotmap_reverse_split_probe_20260711_165032`.
+  Static path remains clean: `matrix_load_32x16=3`,
+  `ds_write_matrix_format=2`, `ds_read_matrix=5`, `v_mmac=3`,
+  `ds_read_b32/bpermute/mpermute/s_trap=0`, `private=0`, and
+  `ldsBankConflict=0`.
+- Result:
+  `pair_pass=0`, `low_pass=1`, `high_pass=1`, `split_pass=1`.
+  `split_low` decodes `krow=7,d=0..15`; `split_high` decodes
+  `krow=7,d=16..31`; combined covers 512 output slots, 16 q rows, one K row,
+  and all `D=0..31`.
+- Decision:
+  `ACCEPT_SLOTMAP_SPLIT_ACC_PROOF`.
+- Implementation implication:
+  canonical C_dQ must keep two half-region accumulator/update paths matching
+  `f16x4[0]` and `f16x4[1]`.  The prior full-toy failure was caused by
+  prematurely accumulating the two half-regions into one tag output; it was not
+  a rejection of the native `ds_write_matrix -> ds_read_matrix_trans -> MMAC`
+  handoff.

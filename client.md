@@ -1107,3 +1107,10 @@ Slot-map reverse result, 2026-07-11:
   `/zys/shaobo_runs/dq_slotmap_reverse_probe_20260711_160921` and
   `/zys/shaobo_runs/dq_slotmap_reverse_probe_20260711_161646`;
   no spill/private segment, `ldsBankConflict=0`, and matrix path only.
+- Follow-up:
+  `/zys/shaobo_runs/dq_slotmap_reverse_split_probe_20260711_165032`
+  proves the real lesson.  `pair_acc` fails, while `split_low`,
+  `split_high`, and `split_combined` pass.  So C_dQ must keep the two
+  half-regions as separate accumulator/update paths; do not use the old
+  pair-accumulate helper for a dS handoff unless the math truly wants a K-step
+  reduction.

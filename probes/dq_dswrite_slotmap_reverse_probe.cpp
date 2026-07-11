@@ -24,6 +24,7 @@ constexpr int kCols = 64;
 constexpr int kProbeK = 7;
 constexpr int kKTagBase = 1024;
 constexpr int kMmacFloatsPerLane = 4;
+constexpr int kOutModes = 3;
 constexpr int kDsPageWords = 0;
 constexpr int kKPageBytes = 4096;
 constexpr int kLdsWords = 4096;
@@ -70,10 +71,6 @@ int decode_half_tag(uint16_t bits) {
     return tag;
 }
 
-float q_scale_for_decode(int q) {
-    return 1.0f + static_cast<float>(q) * (7.0f / 512.0f);
-}
-
 __device__ __forceinline__ ProbeF32x4 mmac_pair_lit(const ProbeF16x8& lhs,
                                                     const ProbeF16x8& rhs,
                                                     const ins::F16x8& zero) {
@@ -89,12 +86,28 @@ __device__ __forceinline__ ProbeF32x4 mmac_pair_lit(const ProbeF16x8& lhs,
     return out;
 }
 
+__device__ __forceinline__ ProbeF32x4 mmac_one_lit(ins::Vec4F16 lhs,
+                                                   ins::Vec4F16 rhs,
+                                                   const ins::F16x8& zero) {
+    ProbeF32x4 out{};
+#if defined(__gfx946__) || defined(__gfx938__)
+    out.f32 = ins::mmac_f16_lit(lhs, rhs, zero.f32);
+#else
+    (void)lhs;
+    (void)rhs;
+    (void)zero;
+#endif
+    return out;
+}
+
 __device__ __forceinline__ void store_acc(float* out,
+                                          int mode,
                                           int lane,
                                           const ProbeF32x4& acc) {
 #pragma unroll
     for (int i = 0; i < kMmacFloatsPerLane; ++i) {
-        out[lane * kMmacFloatsPerLane + i] = acc.scalar[i];
+        out[(mode * kWaveSize + lane) * kMmacFloatsPerLane + i] =
+            acc.scalar[i];
     }
 }
 
@@ -186,7 +199,11 @@ __global__ void __launch_bounds__(kThreads, 1)
 
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
-    store_acc(out, lane, mmac_pair_lit(ds_frag, k_frag, zero));
+    store_acc(out, 0, lane, mmac_pair_lit(ds_frag, k_frag, zero));
+    store_acc(out, 1, lane,
+              mmac_one_lit(ds_frag.f16x4[0], k_frag.f16x4[0], zero));
+    store_acc(out, 2, lane,
+              mmac_one_lit(ds_frag.f16x4[1], k_frag.f16x4[1], zero));
 
     __syncthreads();
     if (lane == 0) {
@@ -216,7 +233,6 @@ std::vector<uint16_t> make_ds_src_for_probe(
     const int slot_k[4][kFragWords]) {
     std::vector<uint16_t> src(kFragElems, half_bits(0.0f));
     for (int lane = 0; lane < kWaveSize; ++lane) {
-        const int q = lane & 15;
         const int group = lane >> 4;
         for (int word = 0; word < kFragWords; ++word) {
             if (slot_k[group][word] != kProbeK) {
@@ -225,7 +241,7 @@ std::vector<uint16_t> make_ds_src_for_probe(
             const int dst = lane * kFragWords + word;
             const int src_idx = src_for_dst[dst];
             if (src_idx >= 0) {
-                src[src_idx] = half_bits(q_scale_for_decode(q));
+                src[src_idx] = half_bits(1.0f);
             }
         }
     }
@@ -240,50 +256,35 @@ std::vector<uint16_t> make_ds_src_for_single_dst(
     if (dst_slot < 0 || dst_slot >= kFragElems) {
         return src;
     }
+    (void)q;
     const int src_idx = src_for_dst[dst_slot];
     if (src_idx >= 0) {
-        src[src_idx] = half_bits(q_scale_for_decode(q));
+        src[src_idx] = half_bits(1.0f);
     }
     return src;
 }
 
-bool decode_dq_value(float value, int& q, int& krow, int& d) {
+bool decode_k_tag_value(float value, int& krow, int& d) {
     if (!std::isfinite(value) || std::fabs(value) < 0.5f) {
         return false;
     }
-    float best_err = 1.0e30f;
-    int best_q = -1;
-    int best_krow = -1;
-    int best_d = -1;
-    for (int q_candidate = 0; q_candidate < 16; ++q_candidate) {
-        const float q_scale = q_scale_for_decode(q_candidate);
-        const float raw_tag =
-            value / q_scale - static_cast<float>(kKTagBase);
-        const int tag_candidate = static_cast<int>(std::lround(raw_tag));
-        if (tag_candidate < 0 || tag_candidate >= 16 * kCols) {
-            continue;
-        }
-        const int krow_candidate = tag_candidate / kCols;
-        const int d_candidate = tag_candidate % kCols;
-        if (d_candidate >= 32) {
-            continue;
-        }
-        const float expected =
-            q_scale * static_cast<float>(kKTagBase + tag_candidate);
-        const float err = std::fabs(value - expected);
-        if (err < best_err) {
-            best_err = err;
-            best_q = q_candidate;
-            best_krow = krow_candidate;
-            best_d = d_candidate;
-        }
-    }
-    if (best_err > 0.75f) {
+    const float raw_tag = value - static_cast<float>(kKTagBase);
+    const int tag_candidate = static_cast<int>(std::lround(raw_tag));
+    if (tag_candidate < 0 || tag_candidate >= 16 * kCols) {
         return false;
     }
-    q = best_q;
-    krow = best_krow;
-    d = best_d;
+    const int krow_candidate = tag_candidate / kCols;
+    const int d_candidate = tag_candidate % kCols;
+    if (d_candidate >= 32) {
+        return false;
+    }
+    const float expected =
+        static_cast<float>(kKTagBase + tag_candidate);
+    if (std::fabs(value - expected) > 0.75f) {
+        return false;
+    }
+    krow = krow_candidate;
+    d = d_candidate;
     return true;
 }
 
@@ -314,8 +315,21 @@ void summarize_mapping(const std::vector<int>& src_for_dst) {
         kProbeK);
 }
 
-bool summarize_output(const std::vector<float>& out) {
-    bool seen_output[kWaveSize * kMmacFloatsPerLane] = {};
+float output_value(const std::vector<float>& out,
+                   int mode,
+                   int lane,
+                   int vec) {
+    return out[(mode * kWaveSize + lane) * kMmacFloatsPerLane + vec];
+}
+
+bool summarize_output_modes(const std::vector<float>& out,
+                            int mode_begin,
+                            int mode_end,
+                            const char* label,
+                            int expected_unique_output,
+                            int expected_unique_d) {
+    std::vector<uint8_t> seen_output(
+        (mode_end - mode_begin) * kWaveSize * kMmacFloatsPerLane, 0);
     bool seen_q[16] = {};
     bool seen_krow[16] = {};
     bool seen_d[32] = {};
@@ -324,40 +338,46 @@ bool summarize_output(const std::vector<float>& out) {
     int nan = 0;
     int printed = 0;
     int anomaly_printed = 0;
-    for (int lane = 0; lane < kWaveSize; ++lane) {
-        for (int vec = 0; vec < kMmacFloatsPerLane; ++vec) {
-            const float value = out[lane * kMmacFloatsPerLane + vec];
-            if (!std::isfinite(value)) {
-                ++nan;
-                continue;
-            }
-            if (std::fabs(value) > 0.5f) {
-                ++raw_nonzero;
-            }
-            int q = -1;
-            int krow = -1;
-            int d = -1;
-            if (!decode_dq_value(value, q, krow, d)) {
-                continue;
-            }
-            seen_output[lane * kMmacFloatsPerLane + vec] = true;
-            seen_q[q] = true;
-            seen_krow[krow] = true;
-            seen_d[d] = true;
-            ++decoded;
-            if (krow != kProbeK && anomaly_printed < 12) {
-                std::printf(
-                    "slotmap_reverse_anomaly lane=%d vec=%d q=%d "
-                    "krow=%d d=%d value=%g\n",
-                    lane, vec, q, krow, d, value);
-                ++anomaly_printed;
-            }
-            if (printed < 12) {
-                std::printf(
-                    "slotmap_reverse_sample lane=%d vec=%d q=%d krow=%d "
-                    "d=%d value=%g\n",
-                    lane, vec, q, krow, d, value);
-                ++printed;
+    for (int mode = mode_begin; mode < mode_end; ++mode) {
+        for (int lane = 0; lane < kWaveSize; ++lane) {
+            for (int vec = 0; vec < kMmacFloatsPerLane; ++vec) {
+                const float value = output_value(out, mode, lane, vec);
+                if (!std::isfinite(value)) {
+                    ++nan;
+                    continue;
+                }
+                if (std::fabs(value) > 0.5f) {
+                    ++raw_nonzero;
+                }
+                const int q = lane & 15;
+                int krow = -1;
+                int d = -1;
+                if (!decode_k_tag_value(value, krow, d)) {
+                    continue;
+                }
+                const int output_idx =
+                    ((mode - mode_begin) * kWaveSize + lane) *
+                        kMmacFloatsPerLane +
+                    vec;
+                seen_output[output_idx] = 1;
+                seen_q[q] = true;
+                seen_krow[krow] = true;
+                seen_d[d] = true;
+                ++decoded;
+                if (krow != kProbeK && anomaly_printed < 12) {
+                    std::printf(
+                        "slotmap_reverse_anomaly label=%s mode=%d lane=%d "
+                        "vec=%d q=%d krow=%d d=%d value=%g\n",
+                        label, mode, lane, vec, q, krow, d, value);
+                    ++anomaly_printed;
+                }
+                if (printed < 12) {
+                    std::printf(
+                        "slotmap_reverse_sample label=%s mode=%d lane=%d "
+                        "vec=%d q=%d krow=%d d=%d value=%g\n",
+                        label, mode, lane, vec, q, krow, d, value);
+                    ++printed;
+                }
             }
         }
     }
@@ -366,18 +386,18 @@ bool summarize_output(const std::vector<float>& out) {
     int unique_q = 0;
     int unique_krow = 0;
     int unique_d = 0;
-    for (bool v : seen_output) unique_output += v ? 1 : 0;
+    for (uint8_t v : seen_output) unique_output += v ? 1 : 0;
     for (bool v : seen_q) unique_q += v ? 1 : 0;
     for (bool v : seen_krow) unique_krow += v ? 1 : 0;
     for (bool v : seen_d) unique_d += v ? 1 : 0;
-    std::printf("slotmap_reverse_seen_krow");
+    std::printf("slotmap_reverse_seen_krow label=%s", label);
     for (int i = 0; i < 16; ++i) {
         if (seen_krow[i]) {
             std::printf(" %d", i);
         }
     }
     std::printf("\n");
-    std::printf("slotmap_reverse_seen_d");
+    std::printf("slotmap_reverse_seen_d label=%s", label);
     for (int i = 0; i < 32; ++i) {
         if (seen_d[i]) {
             std::printf(" %d", i);
@@ -385,14 +405,15 @@ bool summarize_output(const std::vector<float>& out) {
     }
     std::printf("\n");
     const bool pass =
-        unique_output == 256 && unique_q == 16 && unique_krow == 1 &&
-        seen_krow[kProbeK] && unique_d >= 16;
+        unique_output == expected_unique_output && unique_q == 16 &&
+        unique_krow == 1 && seen_krow[kProbeK] &&
+        unique_d >= expected_unique_d;
     std::printf(
-        "slotmap_reverse_summary raw_nonzero=%d nan=%d decoded=%d "
+        "slotmap_reverse_summary label=%s raw_nonzero=%d nan=%d decoded=%d "
         "unique_output=%d unique_q=%d unique_krow=%d probe_k_seen=%d "
         "unique_d=%d pass=%d\n",
-        raw_nonzero, nan, decoded, unique_output, unique_q, unique_krow,
-        seen_krow[kProbeK] ? 1 : 0, unique_d, pass ? 1 : 0);
+        label, raw_nonzero, nan, decoded, unique_output, unique_q,
+        unique_krow, seen_krow[kProbeK] ? 1 : 0, unique_d, pass ? 1 : 0);
     return pass;
 }
 
@@ -417,14 +438,14 @@ SlotInference infer_single_slot(const std::vector<float>& out,
     SlotInference summary{};
     for (int lane = 0; lane < kWaveSize; ++lane) {
         for (int vec = 0; vec < kMmacFloatsPerLane; ++vec) {
-            const float value = out[lane * kMmacFloatsPerLane + vec];
+            const float value = output_value(out, 0, lane, vec);
             if (std::isfinite(value) && std::fabs(value) > 0.5f) {
                 ++summary.raw_nonzero;
             }
-            int q = -1;
+            const int q = lane & 15;
             int krow = -1;
             int d = -1;
-            if (!decode_dq_value(value, q, krow, d)) {
+            if (!decode_k_tag_value(value, krow, d)) {
                 continue;
             }
             seen_q[q] = true;
@@ -468,7 +489,8 @@ void run_consume(uint16_t* ds_src_dev,
     check_hip(hipMemset(read_dump_dev, 0, kFragElems * sizeof(uint16_t)),
               "hipMemset read_dump");
     check_hip(hipMemset(out_dev, 0,
-                        kWaveSize * kMmacFloatsPerLane * sizeof(float)),
+                        kOutModes * kWaveSize * kMmacFloatsPerLane *
+                            sizeof(float)),
               "hipMemset out");
     hipLaunchKernelGGL(slotmap_consume_kernel, dim3(1), dim3(kThreads), 0, 0,
                        ds_src_dev, k_dev, read_dump_dev, out_dev);
@@ -504,7 +526,8 @@ int main() {
                         kRows * kCols * sizeof(__half)),
               "hipMalloc k");
     check_hip(hipMalloc(reinterpret_cast<void**>(&out_dev),
-                        kWaveSize * kMmacFloatsPerLane * sizeof(float)),
+                        kOutModes * kWaveSize * kMmacFloatsPerLane *
+                            sizeof(float)),
               "hipMalloc out");
 
     std::vector<uint16_t> identity_dump(kFragElems);
@@ -535,7 +558,7 @@ int main() {
               "hipMemcpy k");
 
     std::vector<uint16_t> read_dump(kFragElems);
-    std::vector<float> out(kWaveSize * kMmacFloatsPerLane);
+    std::vector<float> out(kOutModes * kWaveSize * kMmacFloatsPerLane);
 
     int slot_k[4][kFragWords];
     for (int group = 0; group < 4; ++group) {
@@ -572,7 +595,20 @@ int main() {
     }
     std::printf("slotmap_reverse_ds_read_nonzero_words=%d\n",
                 nonzero_read_words);
-    const bool pass = summarize_output(out);
+    const bool pair_pass =
+        summarize_output_modes(out, 0, 1, "pair_acc", 256, 16);
+    const bool low_pass =
+        summarize_output_modes(out, 1, 2, "split_low", 256, 16);
+    const bool high_pass =
+        summarize_output_modes(out, 2, 3, "split_high", 256, 16);
+    const bool split_pass =
+        summarize_output_modes(out, 1, 3, "split_combined", 512, 32);
+    const bool pass = split_pass;
+    std::printf(
+        "slotmap_reverse_split_result pair_pass=%d low_pass=%d high_pass=%d "
+        "split_pass=%d\n",
+        pair_pass ? 1 : 0, low_pass ? 1 : 0, high_pass ? 1 : 0,
+        split_pass ? 1 : 0);
     std::printf("slotmap_reverse_final pass=%d\n", pass ? 1 : 0);
 
     (void)hipFree(identity_dump_dev);
