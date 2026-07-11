@@ -9936,3 +9936,53 @@ Conclusion:
   focused reciprocal/codegen correctness probe.  The algebra is equivalent,
   but the generated instruction path is not validated by current PMD.
 - Active source was restored to baseline `exp2(...) / row_sum`.
+
+## 2026-07-11 dQ 12-Wave Single-Producer Probe
+
+Decision: `REJECT_FULLPERF_OCCUPANCY_REGRESSION`
+
+Hypothesis:
+
+- XCU showed the restored 16-wave dQ mainline was dominated by producer
+  `PageUsed` ownership bubbles.  Remove the thin second producer role and let
+  waves0-3 publish both Q/dO groups plus both K/V operands, leaving waves4-7
+  and waves8-11 as the two full-3GEMM consumers.
+
+Design record:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `52_12W_SingleProducer`.
+
+Evidence:
+
+- Static/resource PASS after setting the consumer VGPR target to `220`:
+  branch windows `8/40,161/220,162/220`; metadata `private=0`, `sgpr=54`,
+  `vgpr=160`, no spill/scratch.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq_12w_singleprod_20260711_233558/dq_correctness_20260711_234338`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_12w_singleprod_20260711_233558/dq_correctness_20260711_234346`.
+- Fullperf H1/S1024 versus mainline fullperf:
+  `simTicks 35,881,300 -> 36,049,650`,
+  `MMAC active 27.4198% -> 27.4182%`,
+  `dispatch waves 128 -> 96`,
+  `avg active waves 79.17 -> 59.35`,
+  `duration 70,852 -> 71,236`.
+- XCU did confirm the local bubble thesis:
+  `s_abarrier_try_wait -> s_xor_b32` fell from about `26.47%` to `18.80%`,
+  but this was not enough to offset lower residency.
+- Perf:
+  `/zys/shaobo_runs/dq_12w_singleprod_fullperf_20260711_233737/dq_correctness_20260711_234517/m5out/0/0/2774542_fa3_bwd_dq_clean.perf`.
+- XCU:
+  `/zys/shaobo_runs/dq_12w_singleprod_fullperf_20260711_233737/xcu_outputs/dq_12w_singleprod_20260711_234517`.
+
+Conclusion:
+
+- Removing a thin producer is not a valid mainline improvement for this shape.
+  It lowers visible ownership wait, but underfills the scheduler and does not
+  raise MMAC active.
+- Active source is restored to the 16-wave canonical dQ path.
+- Next work should keep 16-wave residency and either give producer1 recurring
+  useful work or reduce `PageUsed` lifetime without removing an active role.

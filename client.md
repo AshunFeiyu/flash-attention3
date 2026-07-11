@@ -1144,6 +1144,18 @@ Slot-map reverse result, 2026-07-11:
   compact dst->src slot table, not an assumed full 512-slot affine formula.
   The split-accumulator proof still passes in the same run.
 
+dQ role topology note, 2026-07-11:
+
+- A 12-wave single-producer dQ experiment removed producer1 and let waves0-3
+  publish both Q/dO groups plus K/V.  It passed correctness/resource gates and
+  reduced the top ABarrier bubble locally, but fullperf regressed:
+  `simTicks 35,881,300 -> 36,049,650`, MMAC active stayed flat
+  `27.4198% -> 27.4182%`, and XCU showed dispatch waves/avg active waves fell
+  `128/79.17 -> 96/59.35`.
+- Keep canonical dQ as 16 waves.  Producer-thinness should be solved by useful
+  recurring producer work or shorter ownership lifetime, not by deleting the
+  fourth 4-wave role.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

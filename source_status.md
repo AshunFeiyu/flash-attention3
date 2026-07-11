@@ -5476,3 +5476,23 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
 - Decision:
   `REJECT_STATS_TICKS_REGRESSION`.  The wrapper micro-cleanup lowers SCA a bit
   but does not lower elapsed time.  Active source/helper were restored.
+
+## 2026-07-11 dQ 12-wave single-producer rejected
+
+- Hypothesis:
+  remove thin producer1 and let waves0-3 publish both Q/dO groups plus both
+  K/V operands, leaving waves4-7 and waves8-11 as the two full-3GEMM consumers.
+- Result:
+  correctness/resource PASS after raising consumer target VGPR to `220`, and
+  XCU showed the intended local improvement:
+  `s_abarrier_try_wait -> s_xor_b32` fell from about `26.47%` to `18.80%`.
+  But H1/S1024 fullperf regressed versus 16-wave mainline:
+  `simTicks=36,049,650` vs `35,881,300`, and MMAC active stayed flat
+  `27.4182%` vs `27.4198%`.
+- Decision:
+  `REJECT_FULLPERF_OCCUPANCY_REGRESSION`.  Dropping producer1 reduces one
+  ownership bubble but also lowers scheduler residency (`dispatch waves
+  128 -> 96`, `avg active waves 79.17 -> 59.35`).  Active source is restored
+  to 16-wave canonical dQ.  Future work must keep the fourth role resident and
+  give it useful recurring work or reduce PageUsed lifetime without removing
+  the role.
