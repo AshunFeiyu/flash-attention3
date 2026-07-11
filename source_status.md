@@ -5140,6 +5140,27 @@ Status: `ACCEPT_CODE_CONTRACT`.
   the C_dS publisher prototype should invert or directly use this formula so
   producer lanes generate the required source-slot values natively.
 
+## 2026-07-11 Native dS Source-Schedule Probe
+
+Status: `ACCEPT_FOCUSED_PROBE`.
+
+- Probe:
+  `probes/dq_native_ds_source_schedule_probe.cpp`.
+- Purpose:
+  prove that source lanes can generate their assigned logical dS values using
+  `NativeDsSlotMap` directly, then publish them through
+  `ds_write_matrix_32x16_f16 -> ds_read_matrix_trans -> MMAC`, without
+  scalar gather, `bpermute/mpermute`, or ordinary `ds_read_b32`.
+- Result:
+  `/zys/shaobo_runs/dq_source_schedule_probe_20260711_194228` reports
+  `mapped=504`, `pair_pass=0`, `low_pass=1`, `high_pass=1`,
+  `split_pass=1`, `pass=1`.  Metadata gate PASS after replacing the initial
+  three-loop reverse search with a carry-aware closed-form inverse
+  (`sgpr=42`, `vgpr=34`, no spill/scratch).  Stats show `ldsBankConflict=0`.
+- Implication:
+  the next real dQ-ring prototype should schedule C_dS by native source slot
+  rather than compute dS in natural destination order and then move values.
+
 ## 2026-07-11 dQ dS->dQ native ring blocked by layout proof
 
 - Proposed 16-wave roles are P_K, C_dS, C_dQ, P_V. Two pages exactly fit

@@ -136,14 +136,24 @@ struct NativeDsSlotMap {
         return group * 4 + (word & 3);
     }
 
+    static constexpr int dst_raw_source_lane(int group, int q, int word) {
+        return 4 + 2 * group + 16 * (q & 3) + ((word >> 1) & 1) +
+               8 * (word >> 2);
+    }
+
     static constexpr int dst_source_lane(int group, int q, int word) {
-        const int lane = 4 + 2 * group + 16 * (q & 3) +
-                         ((word >> 1) & 1) + 8 * (word >> 2);
-        return lane < kWaveSize ? lane : kInvalid;
+        return dst_source_word(q, word, dst_raw_source_lane(group, q, word)) <
+                       kWordsPerFrag
+                   ? (dst_raw_source_lane(group, q, word) & (kWaveSize - 1))
+                   : kInvalid;
     }
 
     static constexpr int dst_source_word(int q, int word) {
-        return 2 * (q >> 2) + (word & 1);
+        return dst_source_word(q, word, 0);
+    }
+
+    static constexpr int dst_source_word(int q, int word, int raw_lane) {
+        return 2 * (q >> 2) + (word & 1) + 2 * (raw_lane >> 6);
     }
 
     static constexpr bool is_mapped(int group, int q, int word) {
@@ -155,6 +165,10 @@ static_assert(NativeDsSlotMap::dst_source_lane(0, 0, 0) == 4,
               "slotmap formula must match focused probe");
 static_assert(NativeDsSlotMap::dst_source_lane(0, 1, 4) == 28,
               "slotmap formula must match focused probe");
+static_assert(NativeDsSlotMap::dst_source_lane(2, 3, 4) == 0,
+              "slotmap formula must include source-lane wrap");
+static_assert(NativeDsSlotMap::dst_source_word(3, 4, 64) == 2,
+              "slotmap formula must carry lane wrap into source word");
 static_assert(NativeDsSlotMap::dst_source_word(0, 7) == 1,
               "slotmap formula must match focused probe");
 static_assert(NativeDsSlotMap::dst_source_word(15, 7) == 7,

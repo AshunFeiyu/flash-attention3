@@ -9341,3 +9341,42 @@ Next:
 - Implement a minimal C_dS split publisher prototype that uses this source-slot
   schedule, then feeds C_dQ through `ds_write_matrix_32x16_f16` and
   `ds_read_matrix_trans`, without scalar gather or permute.
+
+## 2026-07-11 Native dS Source-Schedule Probe
+
+Decision: `ACCEPT_FOCUSED_PROBE`
+
+Hypothesis:
+
+- The compact slot map can be used without cross-lane permute if C_dS is
+  scheduled by source slot.  Each source lane computes the logical dS value
+  that its native DS matrix write slot will publish.
+
+Implementation:
+
+- Added `probes/dq_native_ds_source_schedule_probe.cpp`.
+- The first version used a three-loop reverse search and compiled with
+  `sgpr_spill_count=2`; this was rejected as probe overhead.
+- Replaced it with a carry-aware closed-form inverse:
+  source lane is the low 6 bits of raw lane, and raw-lane carry advances the
+  source word by two.  This matches the compact map and preserves the known
+  boundary holes.
+
+Evidence:
+
+- Metadata gate PASS:
+  `sgpr=42`, `vgpr=34`, `private=0`, no SGPR/VGPR spill.
+- PMD run:
+  `/zys/shaobo_runs/dq_source_schedule_probe_20260711_194228`.
+- Output:
+  `source_schedule_result mapped=504 pair_pass=0 low_pass=1 high_pass=1 split_pass=1 pass=1`.
+- Stats:
+  `ldsBankConflict=0`.  The `MMOP=3` count is expected because this is a
+  focused one-wave instruction/layout proof, not a performance kernel.
+
+Conclusion:
+
+- Native dS handoff remains viable without permute or scalar gather if the real
+  C_dS publisher computes values in source-slot order.  The next implementation
+  step is to replace the toy `krow==probeK` source value with real
+  score/dP/softmax-derived dS values in the same source-slot schedule.
