@@ -9715,3 +9715,47 @@ Conclusion:
 - Active source was restored to the single `QDoLatched` startup ledger.  Do not
   retry finer token splits unless the design also increases useful work per
   ownership epoch or removes another token.
+
+## 2026-07-11 dQ Post-Invalidate Sync Prune Probe
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Hypothesis:
+
+- After the six live ABarrier slots are invalidated by wave0, the second
+  unconditional `__syncthreads()` appears to serve only the `diag_store`
+  debug path.  Moving it under `if (diag_store != 0)` might remove a tail
+  `s_barrier -> s_cbranch` xcu hotspot without touching the steady main loop.
+
+Implementation:
+
+- Kept the pre-invalidate `__syncthreads()` unchanged.
+- Temporarily changed the post-invalidate sync to execute only when
+  `diag_store != 0`.
+
+Evidence:
+
+- Static/resource gate PASS:
+  branch windows `8/40,161/216,161/216,9/40`; metadata `private=0`,
+  `sgpr=67`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq_tail_postinv_sync_prune_20260711_223456/dq_correctness_20260711_224236`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_tail_postinv_sync_prune_20260711_223456/dq_correctness_20260711_224243`.
+- Same-shape H1/S1024 versus restored mainline:
+  `simTicks 35,704,760 -> 36,083,775`,
+  `kernel_ticks 32,091,150 -> 32,470,165`,
+  `MMAC active 27.3852% -> 27.4013%`,
+  `MMOP/VALU/SCA/LDS/VMEM unchanged`,
+  `coissue 16,119/19,093 -> 15,787/18,642`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Removing the post-invalidate sync slightly improves some stall counters and
+  MMAC active, but elapsed ticks regress.  Do not promote.  Active source was
+  restored to the previous cleanup form.
+- Tail cleanup is no longer the priority; the next dQ work should target useful
+  work per page ownership epoch or source-layout/control overhead in the main
+  loop.

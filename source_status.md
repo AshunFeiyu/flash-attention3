@@ -5401,3 +5401,18 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `REJECT_STATS_TICKS_REGRESSION`.  More precise sidecar/QDo ownership is not
   useful by itself; the added token outweighs earlier page0 publication.  Active
   source was restored to the single `QDoLatched` startup ledger.
+
+## 2026-07-11 dQ post-invalidate sync prune rejected
+
+- Hypothesis:
+  the second `__syncthreads()` after wave0 ABarrier invalidation only protects
+  the `diag_store` path and might be removed from the default performance path.
+- Result:
+  correctness/resource PASS, but H1/S1024 regressed:
+  `simTicks=36,083,775`, `kernel_ticks=32,470,165`,
+  `MMAC active=27.4013%`, `coissue=15,787/18,642`,
+  `ldsBankConflict=0`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Even with slightly better local stall
+  counters/MMAC active, elapsed ticks moved the wrong way.  Active source was
+  restored to the previous cleanup form with the post-invalidate sync.
