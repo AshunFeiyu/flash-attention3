@@ -1,5 +1,37 @@
 # Source Status
 
+## 2026-07-12 dQ Accumulator Zero-Seed Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  C74 still had many `v_mov` instructions, including zeroing eight persistent
+  dQ accumulators before the K loop.  This candidate tested whether the first
+  `dS @ K` update could seed each dQ accumulator from the existing
+  `mmac_zero`, removing explicit accumulator zeroing.
+- Code:
+  temporary only.  `dq_update_from_ds_pair` became a `SeedZero` template and
+  the call site used the zero-seed path only for `kt==0 && n_tile==0`.
+  Tile shape, 16-wave roles, ABarrier tokens, Q/dO/K/V layout, sidecar path,
+  BPS waits, and output ownership were unchanged.
+- Gates:
+  static/resource PASS with branch windows `8/40,160/216,160/216,9/40`.
+  Metadata stayed clean: `private=0`, `sgpr=65`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.  PMD printed a non-fatal
+  `read vgpr124 before writing` warning.
+- Metrics:
+  H1/S1024 regressed `32,597,110 -> 34,696,480` ticks.  MMAC active fell
+  `31.6674% -> 29.8264%`.  Static `v_mov_b64` fell `39 -> 7`, but the
+  generated path grew elsewhere: `v_mov_b32 170 -> 220`,
+  `v_mmac 384 -> 416`, `ds_read_matrix 214 -> 230`, and
+  `s_cbranch_vccnz 38 -> 40`.  Runtime instruction counters also rose:
+  `VALU 89,216 -> 97,184`, `SCA 40,732 -> 41,820`.
+- Decision:
+  reject and restore C74 source.  Zero-seed remains useful for fixed first
+  MMAC islands such as score/dP, but dQ's long-lived accumulator state makes
+  a runtime first-update path too expensive.
+
 ## 2026-07-12 dQ Sidecar Prefetch Under QDo MLS Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

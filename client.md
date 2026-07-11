@@ -146,6 +146,14 @@ evidence are required before any performance claim.
   elapsed ticks.  Source is restored to C74.  Lesson: stop sidecar-schedule-only
   tweaks; the next route must change useful compute per ownership epoch or the
   native dS dependency graph.
+- Latest zero-init rejection:
+  sheet `80_DQ_DqRegZeroSeed` tried to zero-seed the long-lived dQ
+  accumulators on the first `dS @ K` update.  Correctness/resources were clean,
+  but H1/S1024 regressed `32,597,110 -> 34,696,480` ticks and MMAC active fell
+  `31.6674% -> 29.8264%`.  Static `v_mov_b64` improved `39 -> 7`, but the
+  first-update path added code size/control and raised VALU/SCA.  Source is
+  restored to C74.  Lesson: zero-seed is safe for fixed first-MMAC islands,
+  not for persistent accumulators that need runtime first-update state.
 - Latest rejected producer-ownership variants:
   K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
   scalar/control and barrier debt.  Alternate-page full-KV producers lowered

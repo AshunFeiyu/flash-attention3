@@ -10811,3 +10811,25 @@ Conclusion:
   `REJECT_STATS_TICKS_REGRESSION`.  Source restored to C74.  Stop
   sidecar-schedule-only tweaks; the next improvement needs to change useful
   compute per ownership epoch or solve the native dS dependency graph.
+
+## 2026-07-12 dQ accumulator zero-seed rejected
+
+- Hypothesis:
+  remove explicit zeroing of the eight persistent dQ accumulators by making the
+  first `dS @ K` MMAC seed from the existing `mmac_zero`.  This targets the
+  visible `v_mov` initialization debt without changing math, LDS layout,
+  ABarrier tokens, or output ownership.
+- Result:
+  build/static/source gates passed with branch windows
+  `8/40,160/216,160/216,9/40`, metadata `private=0`, `sgpr=65`,
+  `vgpr=128`, and no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 regressed `simTicks=32,597,110 -> 34,696,480`, and MMAC active
+  dropped `31.6674% -> 29.8264%`.  Static `v_mov_b64` fell `39 -> 7`, but
+  `v_mov_b32` rose `170 -> 220`, static `v_mmac` rose `384 -> 416`,
+  and runtime VALU/SCA rose `89,216/40,732 -> 97,184/41,820`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Source restored to C74.  Do not apply
+  zero-seed to long-lived dQ accumulators through a first-update branch; keep
+  zero-seed for fixed first-MMAC islands only.
