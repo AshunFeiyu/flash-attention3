@@ -10319,3 +10319,30 @@ Conclusion:
   future stagger work must move genuinely different useful work across
   consumers or producers.  Pure iteration-order skew is not enough for this
   dQ topology.
+
+## 2026-07-12 dQ native dS ring structural probe accepted
+
+- Hypothesis:
+  prove the structural role handoff for a future dQ split pipeline before
+  touching canonical dQ: producer publishes K, C_dS publisher writes two
+  deterministic dS source slots with `ds_write_matrix`, and C_dQ consumer reads
+  them with `ds_read_matrix_trans` plus K normal fragments for split MMAC.
+- Result:
+  after removing pre-role `lane/threadIdx` VGPR setup and the ordinary LDS
+  clear loop, PMD PASS:
+  `/zys/shaobo_runs/dq_native_ds_ring_structural_fix_20260712_024559`.
+  `slot0_low/high` and `slot1_low/high` all passed; producer_done=1,
+  publisher_done=2, consumer_done=2.  Metadata PASS:
+  `private=0`, `sgpr=22`, `vgpr=120`, no spill/scratch.  Stats:
+  `simTicks=6,359,535`, `MMOP=4`, `VALU=176`, `SCA=453`, `LDS=30`,
+  `ldsBankConflict=0`.
+- Decision:
+  `ACCEPT_PROBE_STRUCTURAL`.  This proves the native role-to-role dS ring
+  skeleton without gather/permute/bpermute and without ordinary `ds_read_b*`
+  on the matrix path.  It is not a performance candidate and canonical dQ is
+  unchanged.
+- Lesson:
+  for WDRA probes, keep all lane/threadIdx-dependent VGPR setup inside the
+  branch after `s_set_vgpr_size`; otherwise PMD can see uninitialized VGPR
+  state in branch-local LDS paths.  Next step is to replace deterministic dS
+  with canonical C_dS arithmetic in the standalone probe.

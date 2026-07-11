@@ -1,5 +1,32 @@
 # Source Status
 
+## 2026-07-12 dQ Native dS Ring Structural Probe Accepted
+
+Status: `ACCEPT_PROBE_STRUCTURAL_CANONICAL_UNCHANGED`.
+
+- Motivation:
+  before changing canonical dQ, prove the proposed split-role path can pass a
+  native LDS handoff: producer publishes K, C_dS publisher writes dS source
+  slots, and C_dQ consumer reads them as trans fragments for dQ MMAC.
+- Code:
+  only standalone `probes/dq_native_ds_ring_structural_probe.cpp` changed.
+  Canonical `src/dq_kernel.cpp` remains unchanged.
+- Gates:
+  static/resource PASS with branch windows `2/40,13/64,12/64,14/80,14/80,1/32`;
+  metadata `private=0`, `sgpr=22`, `vgpr=120`, no spill/scratch.  ASM contains
+  `ds_write_matrix_format`, `ds_read_matrix_trans_format`, normal
+  `ds_read_matrix_format`, and `v_mmac`; no ordinary `ds_read_b*` matrix path
+  or gather/permute workaround is used.
+- PMD:
+  `/zys/shaobo_runs/dq_native_ds_ring_structural_fix_20260712_024559`.
+  All `slot0/slot1 low/high` checks passed; producer_done=1, publisher_done=2,
+  consumer_done=2.  Stats: `simTicks=6,359,535`, `MMOP=4`, `VALU=176`,
+  `SCA=453`, `LDS=30`, `ldsBankConflict=0`.
+- Decision:
+  accept as structural proof only.  Next work is a focused probe that replaces
+  deterministic dS with canonical C_dS arithmetic in source-slot order; only
+  after that should the canonical dQ kernel be modified.
+
 ## 2026-07-12 dQ Tail No-Invalidate Fast Exit Rejected
 
 Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.

@@ -1234,6 +1234,30 @@ dQ group1 reverse n_tile note, 2026-07-12:
   restored.  Pure chunk-order skew is not enough; future stagger must move
   different useful work, not just different addresses.
 
+dQ native dS ring structural probe, 2026-07-12:
+
+- Standalone probe:
+  `probes/dq_native_ds_ring_structural_probe.cpp`.
+- Evidence:
+  `/zys/shaobo_runs/dq_native_ds_ring_structural_fix_20260712_024559`;
+  workbook sheet
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `63_DQ_NativeRing_StructuralPrototype`.
+- Result:
+  `ACCEPT_PROBE_STRUCTURAL`.  Producer wave publishes K; publisher waves write
+  deterministic dS slots with `ds_write_matrix_32x16_f16`; consumer waves read
+  dS with `ds_read_matrix_trans` and K with normal `ds_read_matrix`, then run
+  split MMAC.  All four slot low/high checks pass, no spill/scratch,
+  `ldsBankConflict=0`, and no gather/permute/bpermute matrix workaround.
+- Boundary:
+  this proves the role-to-role native LDS handoff only.  It does not yet prove
+  the full canonical softmax/dS arithmetic can be generated in source-slot
+  order.  Canonical dQ remains unchanged.
+- WDRA hygiene lesson:
+  keep lane/threadIdx-derived VGPR setup inside each role branch after
+  `s_set_vgpr_size`; a first version with pre-role `lane` and an ordinary LDS
+  clear loop triggered PMD uninitialized-VGPR/LDS-index failure.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
