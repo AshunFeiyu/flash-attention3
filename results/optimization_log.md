@@ -8960,3 +8960,30 @@ Follow-up after rereading Shaobo ISA/HCU docs:
   reconstruct/reuse the accepted operand-pair proof, then redesign C_dS to
   produce that layout natively; only ask the compiler/PMD owner if the required
   producer layout still cannot be generated with exposed builtins.
+
+## 2026-07-11 q-owned score -> dS write -> dQ chain probe
+
+Decision: `REJECT_DIRECT_QOWNED_PACK`.
+
+- Added isolated probe `dq_dswrite_qowned_chain_probe.cpp`; canonical dQ/dKV
+  source is unchanged.
+- Probe chain:
+  `Q_trans x K32` q-owned MMAC score generation, four simple fp16 pack orders,
+  `ds_write_matrix_format(no t)`, `ds_read_matrix_trans_format 32x16`, then
+  `dQ = dS @ K_normal`.
+- Static/resource:
+  asm has `matrix_load_32x*=7`, `ds_write_matrix_format=4`,
+  `ds_read_matrix*=14`, `v_mmac=12`, `ds_read_b32=0`,
+  `bpermute/mpermute=0`.  Metadata is clean:
+  `group_segment=32768`, `private=0`, `sgpr=24`, `vgpr=23`, no spill.
+- PMD result:
+  `/zys/shaobo_runs/dq_qowned_chain_probe_20260711_153457`.
+  `simTicks=8,165,885`, `MMOP=12`, `ldsBankConflict=0`.
+  All four pack variants fail; best variants have only `raw_nonzero=16`,
+  `decoded=0`, and final `any_pass=0`.
+- Interpretation:
+  q-owned score orientation is still useful, but its natural two-accumulator
+  fp16 pack is not the 7/5 accepted `ds_write_matrix` producer source layout.
+  The next useful proof is to recover the accepted slot-map formula and make
+  C_dS compute/publish that layout directly, not to add more ad hoc pack
+  candidates or a scalar/permute workaround.

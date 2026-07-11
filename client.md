@@ -1080,3 +1080,8 @@ dQ dS->dQ ring2, 2026-07-11:
   32x16 -> MMAC` with normal `32x16` K readers.  So the next task is not to
   abandon the native handoff; it is to make C_dS produce that accepted
   dQ-friendly layout directly.
+- The follow-up q-owned chain probe rejects the easiest direct pack:
+  `Q_trans x K32` q-owned score -> four simple fp16 pack orders ->
+  `ds_write_matrix(no t)` -> dQ MMAC all fail (`any_pass=0`) while keeping
+  `ldsBankConflict=0` and no scalar/permute workaround.  Next work must use the
+  7/5 slot-map formula to generate the accepted source layout deliberately.

@@ -5035,3 +5035,9 @@ Current focus:
   `ds_write_matrix(no t)`, then have the dQ role consume it with
   `ds_read_matrix_trans 32x16` and normal K readers.  This tests the actual
   bridge from C_dS computation layout to the prior accepted dQ handoff layout.
+- Result:
+  `dq_dswrite_qowned_chain_probe.cpp` compiles and runs in PMD with clean
+  resource metadata, no bank conflict, and no scalar/permute workaround, but
+  all four simple q-owned score pack variants fail (`any_pass=0`).  This
+  rejects direct q-owned two-accumulator packing, not the prior accepted
+  ds_write handoff.  Next step is slot-map-driven C_dS layout generation.
