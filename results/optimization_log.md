@@ -9900,3 +9900,39 @@ Conclusion:
   structural route should either reduce PageUsed ownership without losing K/V
   prefetch, or solve the native dS/source-slot handoff so dQ can change role
   topology rather than only tile size.
+
+## 2026-07-11 dQ Row Inv-Sum Hoist Probe
+
+Decision: `REJECT_CORRECTNESS`
+
+Hypothesis:
+
+- `scores_sum` is a row-level invariant.  Replacing hot-loop
+  `exp2(...) / row_sum` with `exp2(...) * row_inv_sum` should reduce repeated
+  VALU division work without changing ABarrier ownership or matrix paths.
+
+Variants:
+
+- Producer-side: store `1 / scores_sum[row]` into LDS sidecar field 1.
+- Consumer-side: keep producer sidecar as `scores_sum`, but compute
+  `row_inv_sum = 1 / row_sum` once after sidecar latch and multiply in the
+  hot loop.
+
+Evidence:
+
+- Both variants passed static/resource gates.  Consumer branch window dropped
+  from `161/216` to `155/216`, no spill/scratch.
+- Both variants failed H1/S128 correctness in the same way:
+  `dq_rel_l2=14969.4`, `actual_l2=71.2549`,
+  `expected_l2=0.00475997`, `actual_nonfinite=0`.
+- PMD printed `VOP3P__V_MAD_MIXLO_F16 not test` in both failed runs.
+- Run dirs:
+  producer-side `/zys/shaobo_runs/dq_invsum_20260711_232704/dq_correctness_20260711_233444`;
+  consumer-side `/zys/shaobo_runs/dq_consumer_invsum_20260711_232857/dq_correctness_20260711_233638`.
+
+Conclusion:
+
+- Do not use reciprocal-hoist in canonical dQ on this toolchain/PMD without a
+  focused reciprocal/codegen correctness probe.  The algebra is equivalent,
+  but the generated instruction path is not validated by current PMD.
+- Active source was restored to baseline `exp2(...) / row_sum`.
