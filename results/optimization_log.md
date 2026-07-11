@@ -9547,3 +9547,46 @@ Conclusion:
 - Continue pursuing native source-slot C_dS generation or a true native
   MMAC/operand orientation; do not promote gather/permute packing into the
   canonical dQ performance kernel.
+
+## 2026-07-11 Natural dS No-Permute Lower Bound
+
+Decision: `OBSERVE_PERF_LOWER_BOUND_WRONG_LAYOUT`
+
+Question:
+
+- If correctness is ignored and dS is written in natural C-layout without
+  source-slot permutation/gather, how much of the focused-loop cost disappears?
+
+Implementation:
+
+- Extended `probes/dq_ds_source_pack_cost_probe.cpp` with `--path
+  natural_wrong`.
+- This path sets `producer = natural` and then runs the same
+  `ds_write_matrix_32x16_f16 -> ds_read_matrix_trans -> MMAC` loop.  It does
+  not validate source-slot correctness and is not a candidate for the real dQ
+  kernel.
+
+Evidence:
+
+- Static metadata PASS:
+  `natural_wrong private=0`, `sgpr=20`, `vgpr=22`.
+- PMD:
+  `/zys/shaobo_runs/dq_ds_source_pack_cost_natural_wrong_20260711_210309_iters1024`.
+- Same-run stats:
+  - `natural_wrong`: `simTicks=107,657,095`, `LDS=2112`,
+    `ldsBankConflict=0`, `VALU=11,508`, `SCA=2,196`, `MMOP=2048`.
+  - `native_slot`: `simTicks=1,176,224,595`, `LDS=2112`,
+    `ldsBankConflict=0`, `VALU=240,980`, `SCA=207,003`, `MMOP=2048`.
+  - Lower-bound speedup versus current source-slot probe implementation:
+    `90.85%` ticks reduction.
+
+Conclusion:
+
+- The native matrix handoff path is cheap when data already sits in the
+  producer fragment.  The expensive part in the current `native_slot` probe is
+  runtime source-slot reverse mapping/control, not `ds_write_matrix` /
+  `ds_read_matrix_trans` / MMAC.
+- Do not use `natural_wrong` for correctness.  Use it as evidence that the
+  next real C_dS source-slot implementation must hard-code/derive direct
+  source-lane formulas or compile-time tables, instead of doing runtime
+  reverse lookup or gather/permute.

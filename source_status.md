@@ -5340,3 +5340,17 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   C_dS direction remains: schedule C_dS by source slot or find a native
   MMAC/operand orientation that produces the verified source-slot layout
   directly.
+- Follow-up lower-bound run:
+  added `natural_wrong`, which deliberately writes the natural dS fragment
+  directly to `ds_write_matrix` and ignores source-slot correctness.  PMD run
+  `/zys/shaobo_runs/dq_ds_source_pack_cost_natural_wrong_20260711_210309_iters1024`
+  shows `natural_wrong simTicks=107,657,095`, `LDS=2112`,
+  `ldsBankConflict=0`, `MMOP=2048`, versus same-run `native_slot
+  simTicks=1,176,224,595`.  This is about `90.85%` faster than the current
+  native-slot probe implementation.
+- Interpretation:
+  the matrix handoff itself is not expensive.  The current `native_slot` probe
+  is slow because it computes the source-slot mapping with runtime reverse
+  search/control, not because source-slot publication is inherently slow.
+  Next native C_dS work must replace runtime reverse lookup with static
+  source-lane/word formulas or compile-time tables.

@@ -22,12 +22,13 @@ constexpr int kLdsHalfs = 4096;
 constexpr int kDsPageBytes = 0;
 constexpr int kNaturalPageWords = 2048;
 constexpr int kDefaultIters = 256;
-constexpr int kPathCount = 3;
+constexpr int kPathCount = 4;
 
 enum PackPath {
     kNativeSlot = 0,
     kBpermutePack = 1,
     kLdsGatherPack = 2,
+    kNaturalWrong = 3,
 };
 
 union FragF16x8 {
@@ -276,14 +277,19 @@ __device__ __forceinline__ void run_pack_path(float* __restrict__ sums,
             producer = expected;
         } else if constexpr (Path == kBpermutePack) {
             producer = make_bpermute_source_frag_noarray(lane, natural);
-        } else {
+        } else if constexpr (Path == kLdsGatherPack) {
             producer = make_lds_gather_source_frag_noarray(lds);
+        } else {
+            producer = natural;
         }
 
-        if (iter == 0) {
+        if constexpr (Path != kNaturalWrong) {
+            if (iter == 0) {
 #pragma unroll
-            for (int word = 0; word < kFragWords; ++word) {
-                local_errors += producer.u16[word] == expected.u16[word] ? 0 : 1;
+                for (int word = 0; word < kFragWords; ++word) {
+                    local_errors +=
+                        producer.u16[word] == expected.u16[word] ? 0 : 1;
+                }
             }
         }
 
@@ -336,6 +342,13 @@ __global__ void __launch_bounds__(kThreads, 1)
     run_pack_path<kLdsGatherPack>(sums, errors, iters);
 }
 
+__global__ void __launch_bounds__(kThreads, 1)
+    natural_wrong_pack_cost_kernel(float* __restrict__ sums,
+                                   int* __restrict__ errors,
+                                   int iters) {
+    run_pack_path<kNaturalWrong>(sums, errors, iters);
+}
+
 int parse_iters(int argc, char** argv) {
     for (int i = 1; i + 1 < argc; ++i) {
         if (std::strcmp(argv[i], "--iters") == 0) {
@@ -359,6 +372,9 @@ int parse_path(int argc, char** argv) {
         if (std::strcmp(argv[i + 1], "lds_gather_pack") == 0) {
             return kLdsGatherPack;
         }
+        if (std::strcmp(argv[i + 1], "natural_wrong") == 0) {
+            return kNaturalWrong;
+        }
         if (std::strcmp(argv[i + 1], "all") == 0) {
             return -1;
         }
@@ -376,6 +392,8 @@ const char* path_name(int path) {
             return "bpermute_pack";
         case kLdsGatherPack:
             return "lds_gather_pack";
+        case kNaturalWrong:
+            return "natural_wrong";
         default:
             return "unknown";
     }
@@ -414,6 +432,11 @@ int main(int argc, char** argv) {
                            dim3(kThreads), 0, 0, d_sums, d_errors, iters);
         check_hip(hipGetLastError(), "launch lds_gather_pack_cost_kernel");
     }
+    if (selected_path < 0 || selected_path == kNaturalWrong) {
+        hipLaunchKernelGGL(natural_wrong_pack_cost_kernel, dim3(1),
+                           dim3(kThreads), 0, 0, d_sums, d_errors, iters);
+        check_hip(hipGetLastError(), "launch natural_wrong_pack_cost_kernel");
+    }
     check_hip(hipDeviceSynchronize(), "hipDeviceSynchronize");
 
     std::vector<float> sums(kPathCount * kWaveSize);
@@ -440,7 +463,10 @@ int main(int argc, char** argv) {
             "ds_source_pack_cost path=%s dispatch=%d iters=%d errors=%d "
             "checksum=%.9g\n",
             path_name(path), path, iters, errors[path], checksum);
-        pass = pass && errors[path] == 0 && std::isfinite(checksum);
+        const bool ignores_correctness = path == kNaturalWrong;
+        pass = pass &&
+               (ignores_correctness || errors[path] == 0) &&
+               std::isfinite(checksum);
     }
     std::printf("ds_source_pack_cost_pass=%d\n", pass ? 1 : 0);
     return pass ? 0 : 1;
