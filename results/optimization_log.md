@@ -41,6 +41,55 @@ true dS values into source-slot order, publish with `ds_write_matrix`, read with
 `ds_read_matrix_trans`, and feed `dS @ K` split-low/high without
 `bpermute`/gather.
 
+## 2026-07-12 dQ Real C_dS Source-Slot Handoff Probe
+
+Decision: `ACCEPT_PROBE_NATIVE_HANDOFF`
+
+Hypothesis:
+
+After replacing runtime reverse search with the fast source-slot formula, test
+whether a C_dS publisher can write dS values directly in
+`NativeDsSlotMap` source-slot order, then let a dQ consumer read them with
+`ds_read_matrix_trans` and feed split-low/high `dS @ K` MMAC without
+`bpermute`, LDS gather, or ordinary matrix-path `ds_read_b*`.
+
+Evidence:
+
+- Workbook: `62_DQ_RealCDS_SourceSlot_Probe`.
+- Source: `probes/dq_native_ds_source_schedule_probe.cpp`; canonical
+  `src/dq_kernel.cpp` unchanged.
+- First float-formula attempt failed:
+  `/zys/shaobo_runs/dq_real_ds_source_slot_probe_20260712_021632`.
+  It reported `read_errors=64`, bad half values such as `9472`, and PMD
+  warnings around untested half arithmetic.  Treat that as a probe-generation
+  issue, not a source-slot layout reject.
+- Accepted bit-pattern run:
+  `/zys/shaobo_runs/dq_real_ds_source_slot_bits_20260712_022239`.
+- Static/resource PASS:
+  `source_schedule_kernel private=0 sgpr=22 vgpr=39`,
+  no SGPR/VGPR spill.
+- Correctness:
+  `read_errors=0`, `mapped=504`,
+  `frag_low_pass=1`, `frag_high_pass=1`,
+  `split_low pass=1`, `split_high pass=1`.
+- PMD stats:
+  `simTicks=10,236,135`, `MMOP=3`, `VALU=419`, `SCA=495`, `LDS=67`,
+  `ldsBankConflict=0`.
+- ASM evidence:
+  `ds_write_matrix_format`, `ds_read_matrix_trans_format`,
+  `ds_read_matrix_format`, and `v_mmac_f32_16x16x16_f16 ... lit` are present.
+
+Conclusion:
+
+The native source-slot handoff is viable: C_dS can publish values directly in
+the dQ consumer's source layout and the consumer can read/trans-consume them
+with split MMAC, without gather/permute.  Boundary: the accepted probe uses
+deterministic half bit-pattern dS values to isolate layout; it does not prove
+that full softmax/dS arithmetic can be generated in source-slot order without
+extra codegen debt.  The next design step is a structural dQ prototype that
+uses the canonical arithmetic path to produce dS, then packs the resulting
+values with this source-slot mapping.
+
 ## 2026-07-12 dQ Tail No-Invalidate Fast Exit
 
 Decision: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`

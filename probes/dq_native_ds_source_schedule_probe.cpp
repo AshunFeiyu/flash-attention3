@@ -4,6 +4,7 @@
 #include "dq_contract.h"
 #include "shaobo_instr.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -21,13 +22,13 @@ constexpr int kWaveSize = 64;
 constexpr int kFragWords = 8;
 constexpr int kRows = 32;
 constexpr int kCols = 64;
-constexpr int kProbeK = 7;
-constexpr int kKTagBase = 1024;
 constexpr int kMmacFloatsPerLane = 4;
-constexpr int kOutModes = 3;
+constexpr int kOutModes = 5;
+constexpr int kStatsWords = 2;
 constexpr int kDsPageWords = 0;
 constexpr int kKPageBytes = 4096;
 constexpr int kLdsWords = 4096;
+constexpr float kCompareTolerance = 0.15f;
 
 union ProbeF16x8 {
     ins::Vec8F16 f16x8;
@@ -54,43 +55,47 @@ __device__ __forceinline__ bool source_slot_to_dst(int src_lane,
                                                    int& dst_q,
                                                    int& dst_word) {
     const int low = src_word & 1;
-#pragma unroll
-    for (int carry = 0; carry < 2; ++carry) {
-        const int q_hi_word = src_word - 2 * carry;
-        if (q_hi_word < 0) {
-            continue;
-        }
-        const int q_hi = q_hi_word >> 1;
-        if (q_hi > 3) {
-            continue;
-        }
-        const int raw_lane = src_lane + carry * dq::NativeDsSlotMap::kWaveSize;
-        const int base = raw_lane - 4;
-        if (base < 0 || base >= dq::NativeDsSlotMap::kWaveSize) {
-            continue;
-        }
-        const int q_lo = base >> 4;
-        const int rem = base & 15;
-        const int word_hi = rem >> 3;
-        const int rem2 = rem & 7;
-        const int group = rem2 >> 1;
-        const int word_mid = rem2 & 1;
-        const int word = 4 * word_hi + 2 * word_mid + low;
-        const int q = 4 * q_hi + q_lo;
-        if (group < 4 && q < 16 && word < dq::NativeDsSlotMap::kWordsPerFrag &&
-            dq::NativeDsSlotMap::dst_source_lane(group, q, word) ==
-                src_lane &&
-            dq::NativeDsSlotMap::dst_source_word(
-                q, word,
-                dq::NativeDsSlotMap::dst_raw_source_lane(group, q, word)) ==
-                src_word) {
-            dst_group = group;
-            dst_q = q;
-            dst_word = word;
-            return true;
-        }
+    const int carry = src_lane < 4 ? 1 : 0;
+    const int q_hi_word = src_word - (carry << 1);
+    if (q_hi_word < 0) {
+        return false;
     }
-    return false;
+    const int base = src_lane + carry * dq::NativeDsSlotMap::kWaveSize - 4;
+    const int q_lo = base >> 4;
+    const int rem = base & 15;
+    const int rem2 = rem & 7;
+    dst_group = rem2 >> 1;
+    dst_q = 4 * (q_hi_word >> 1) + q_lo;
+    dst_word = 4 * (rem >> 3) + 2 * (rem2 & 1) + low;
+    return dst_group < 4 && dst_q < 16 &&
+           dst_word < dq::NativeDsSlotMap::kWordsPerFrag;
+}
+
+__host__ __device__ __forceinline__ uint16_t real_ds_bits(int q, int krow) {
+    // Keep this layout probe independent from PMD's currently noisy half
+    // arithmetic path.  Canonical dQ already validates the arithmetic; this
+    // probe validates source-slot publication and native matrix consumption.
+    return static_cast<uint16_t>(0x3000 + ((q & 15) << 4) + (krow & 15));
+}
+
+__device__ __forceinline__ _Float16 half_from_bits(uint16_t bits) {
+    union {
+        uint16_t u;
+        _Float16 h;
+    } v{bits};
+    return v.h;
+}
+
+__device__ __forceinline__ uint16_t half_to_bits(_Float16 value) {
+    union {
+        _Float16 h;
+        uint16_t u;
+    } v{value};
+    return v.u;
+}
+
+__device__ __forceinline__ _Float16 real_ds_half(int q, int krow) {
+    return half_from_bits(real_ds_bits(q, krow));
 }
 
 __device__ __forceinline__ ProbeF32x4 mmac_pair_lit(const ProbeF16x8& lhs,
@@ -130,6 +135,18 @@ __device__ __forceinline__ void store_acc(float* out,
     for (int i = 0; i < kMmacFloatsPerLane; ++i) {
         out[(mode * kWaveSize + lane) * kMmacFloatsPerLane + i] =
             acc.scalar[i];
+    }
+}
+
+__device__ __forceinline__ void store_frag_half(float* out,
+                                                int mode,
+                                                int lane,
+                                                const ProbeF16x8& frag,
+                                                int word_base) {
+#pragma unroll
+    for (int i = 0; i < kMmacFloatsPerLane; ++i) {
+        out[(mode * kWaveSize + lane) * kMmacFloatsPerLane + i] =
+            static_cast<float>(frag.scalar[word_base + i]);
     }
 }
 
@@ -174,10 +191,7 @@ __global__ void __launch_bounds__(kThreads, 1)
                                                               dst_word)
                              : -1;
         producer.scalar[word] =
-            static_cast<_Float16>(krow == kProbeK ? 1.0f : 0.0f);
-        if (mapped && lane == 0) {
-            (void)dst_q;
-        }
+            mapped ? real_ds_half(dst_q, krow) : static_cast<_Float16>(0.0f);
     }
 
     ins::ds_write_matrix_32x16_f16(
@@ -193,6 +207,20 @@ __global__ void __launch_bounds__(kThreads, 1)
                                     kKPageBytes, k_frag.f16x8);
     ins::wait_lgkm(0);
 
+    int local_read_errors = 0;
+    const int dst_group = lane >> 4;
+    const int dst_q = lane & 15;
+#pragma unroll
+    for (int word = 0; word < kFragWords; ++word) {
+        const bool mapped =
+            dq::NativeDsSlotMap::is_mapped(dst_group, dst_q, word);
+        const int krow = dq::NativeDsSlotMap::slot_krow(dst_group, word);
+        const uint16_t expected_bits =
+            mapped ? real_ds_bits(dst_q, krow) : static_cast<uint16_t>(0);
+        const uint16_t actual_bits = half_to_bits(ds_frag.scalar[word]);
+        local_read_errors += actual_bits == expected_bits ? 0 : 1;
+    }
+
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
     store_acc(out, 0, lane, mmac_pair_lit(ds_frag, k_frag, zero));
@@ -200,6 +228,8 @@ __global__ void __launch_bounds__(kThreads, 1)
               mmac_one_lit(ds_frag.f16x4[0], k_frag.f16x4[0], zero));
     store_acc(out, 2, lane,
               mmac_one_lit(ds_frag.f16x4[1], k_frag.f16x4[1], zero));
+    store_frag_half(out, 3, lane, ds_frag, 0);
+    store_frag_half(out, 4, lane, ds_frag, 4);
 
     int local_mapped = 0;
 #pragma unroll
@@ -209,8 +239,11 @@ __global__ void __launch_bounds__(kThreads, 1)
         int w = -1;
         local_mapped += source_slot_to_dst(lane, word, g, q, w) ? 1 : 0;
     }
+    if (local_read_errors != 0) {
+        atomicAdd(stats + 0, local_read_errors);
+    }
     if (local_mapped != 0) {
-        atomicAdd(stats, local_mapped);
+        atomicAdd(stats + 1, local_mapped);
     }
 
     __syncthreads();
@@ -224,29 +257,6 @@ __global__ void __launch_bounds__(kThreads, 1)
 #endif
 }
 
-bool decode_k_tag_value(float value, int& krow, int& d) {
-    if (!std::isfinite(value) || std::fabs(value) < 0.5f) {
-        return false;
-    }
-    const float raw_tag = value - static_cast<float>(kKTagBase);
-    const int tag_candidate = static_cast<int>(std::lround(raw_tag));
-    if (tag_candidate < 0 || tag_candidate >= 16 * kCols) {
-        return false;
-    }
-    const int krow_candidate = tag_candidate / kCols;
-    const int d_candidate = tag_candidate % kCols;
-    if (d_candidate >= 32) {
-        return false;
-    }
-    const float expected = static_cast<float>(kKTagBase + tag_candidate);
-    if (std::fabs(value - expected) > 0.75f) {
-        return false;
-    }
-    krow = krow_candidate;
-    d = d_candidate;
-    return true;
-}
-
 float output_value(const std::vector<float>& out,
                    int mode,
                    int lane,
@@ -254,63 +264,102 @@ float output_value(const std::vector<float>& out,
     return out[(mode * kWaveSize + lane) * kMmacFloatsPerLane + vec];
 }
 
-bool summarize_output_modes(const std::vector<float>& out,
-                            int mode_begin,
-                            int mode_end,
-                            const char* label,
-                            int expected_unique_output,
-                            int expected_unique_d) {
-    std::vector<uint8_t> seen_output(
-        (mode_end - mode_begin) * kWaveSize * kMmacFloatsPerLane, 0);
-    bool seen_q[16] = {};
-    bool seen_krow[16] = {};
-    bool seen_d[32] = {};
-    int decoded = 0;
-    int raw_nonzero = 0;
-    for (int mode = mode_begin; mode < mode_end; ++mode) {
-        for (int lane = 0; lane < kWaveSize; ++lane) {
-            for (int vec = 0; vec < kMmacFloatsPerLane; ++vec) {
-                const float value = output_value(out, mode, lane, vec);
-                if (std::isfinite(value) && std::fabs(value) > 0.5f) {
-                    ++raw_nonzero;
-                }
-                int krow = -1;
-                int d = -1;
-                if (!decode_k_tag_value(value, krow, d)) {
-                    continue;
-                }
-                const int q = lane & 15;
-                const int output_idx =
-                    ((mode - mode_begin) * kWaveSize + lane) *
-                        kMmacFloatsPerLane +
-                    vec;
-                seen_output[output_idx] = 1;
-                seen_q[q] = true;
-                seen_krow[krow] = true;
-                seen_d[d] = true;
-                ++decoded;
+float half_bits_to_float(uint16_t bits) {
+    const int sign = (bits >> 15) & 1;
+    const int exp = (bits >> 10) & 0x1f;
+    const int mant = bits & 0x3ff;
+    float value = 0.0f;
+    if (exp == 0) {
+        value = std::ldexp(static_cast<float>(mant), -24);
+    } else if (exp == 31) {
+        value = mant == 0 ? INFINITY : NAN;
+    } else {
+        value = std::ldexp(static_cast<float>(1024 + mant), exp - 25);
+    }
+    return sign ? -value : value;
+}
+
+float expected_split_sum(int q, bool high_half) {
+    float sum = 0.0f;
+    const int word_begin = high_half ? 4 : 0;
+    const int word_end = high_half ? 8 : 4;
+    for (int group = 0; group < 4; ++group) {
+        for (int word = word_begin; word < word_end; ++word) {
+            if (!dq::NativeDsSlotMap::is_mapped(group, q, word)) {
+                continue;
             }
+            sum += half_bits_to_float(
+                real_ds_bits(q, dq::NativeDsSlotMap::slot_krow(group, word)));
         }
     }
-    int unique_output = 0;
-    int unique_q = 0;
-    int unique_krow = 0;
-    int unique_d = 0;
-    for (uint8_t v : seen_output) unique_output += v ? 1 : 0;
-    for (bool v : seen_q) unique_q += v ? 1 : 0;
-    for (bool v : seen_krow) unique_krow += v ? 1 : 0;
-    for (bool v : seen_d) unique_d += v ? 1 : 0;
-    const bool pass =
-        unique_output == expected_unique_output && unique_q == 16 &&
-        unique_krow == 1 && seen_krow[kProbeK] &&
-        unique_d >= expected_unique_d;
+    return sum;
+}
+
+bool summarize_split_output(const std::vector<float>& out,
+                            int mode,
+                            const char* label,
+                            bool high_half) {
+    int errors = 0;
+    float max_abs = 0.0f;
+    float mean_abs = 0.0f;
+    float max_actual = -INFINITY;
+    float min_actual = INFINITY;
+    int samples = 0;
+    for (int lane = 0; lane < kWaveSize; ++lane) {
+        const int q = lane & 15;
+        const float expected = expected_split_sum(q, high_half);
+        for (int vec = 0; vec < kMmacFloatsPerLane; ++vec) {
+            const float actual = output_value(out, mode, lane, vec);
+            const float diff = std::fabs(actual - expected);
+            max_actual = std::max(max_actual, actual);
+            min_actual = std::min(min_actual, actual);
+            max_abs = std::max(max_abs, diff);
+            mean_abs += diff;
+            ++samples;
+            errors += diff > kCompareTolerance ? 1 : 0;
+        }
+    }
+    mean_abs = samples != 0 ? mean_abs / static_cast<float>(samples) : 0.0f;
     std::printf(
-        "source_schedule_summary label=%s raw_nonzero=%d decoded=%d "
-        "unique_output=%d unique_q=%d unique_krow=%d probe_k_seen=%d "
-        "unique_d=%d pass=%d\n",
-        label, raw_nonzero, decoded, unique_output, unique_q, unique_krow,
-        seen_krow[kProbeK] ? 1 : 0, unique_d, pass ? 1 : 0);
-    return pass;
+        "real_ds_source_schedule_summary label=%s errors=%d max_abs=%g "
+        "mean_abs=%g min_actual=%g max_actual=%g pass=%d\n",
+        label, errors, max_abs, mean_abs, min_actual, max_actual,
+        errors == 0 ? 1 : 0);
+    return errors == 0;
+}
+
+bool summarize_frag_output(const std::vector<float>& out,
+                           int mode,
+                           const char* label,
+                           bool high_half) {
+    int errors = 0;
+    float max_abs = 0.0f;
+    float max_actual = -INFINITY;
+    float min_actual = INFINITY;
+    const int word_base = high_half ? 4 : 0;
+    for (int lane = 0; lane < kWaveSize; ++lane) {
+        const int group = lane >> 4;
+        const int q = lane & 15;
+        for (int vec = 0; vec < kMmacFloatsPerLane; ++vec) {
+            const int word = word_base + vec;
+            const bool mapped = dq::NativeDsSlotMap::is_mapped(group, q, word);
+            const int krow = dq::NativeDsSlotMap::slot_krow(group, word);
+            const float expected =
+                mapped ? half_bits_to_float(real_ds_bits(q, krow)) : 0.0f;
+            const float actual = output_value(out, mode, lane, vec);
+            const float diff = std::fabs(actual - expected);
+            max_actual = std::max(max_actual, actual);
+            min_actual = std::min(min_actual, actual);
+            max_abs = std::max(max_abs, diff);
+            errors += diff > kCompareTolerance ? 1 : 0;
+        }
+    }
+    std::printf(
+        "real_ds_frag_summary label=%s errors=%d max_abs=%g min_actual=%g "
+        "max_actual=%g pass=%d\n",
+        label, errors, max_abs, min_actual, max_actual,
+        errors == 0 ? 1 : 0);
+    return errors == 0;
 }
 
 }  // namespace
@@ -326,14 +375,14 @@ int main() {
                         kOutModes * kWaveSize * kMmacFloatsPerLane *
                             sizeof(float)),
               "hipMalloc out");
-    check_hip(hipMalloc(reinterpret_cast<void**>(&stats_dev), sizeof(int)),
+    check_hip(hipMalloc(reinterpret_cast<void**>(&stats_dev),
+                        kStatsWords * sizeof(int)),
               "hipMalloc stats");
 
     std::vector<__half> k(kRows * kCols, __float2half(0.0f));
     for (int row = 0; row < 16; ++row) {
         for (int d = 0; d < 32; ++d) {
-            k[row * kCols + d] = __float2half(
-                static_cast<float>(kKTagBase + row * kCols + d));
+            k[row * kCols + d] = __float2half(1.0f);
         }
     }
     check_hip(hipMemcpy(k_dev, k.data(), k.size() * sizeof(__half),
@@ -343,36 +392,37 @@ int main() {
                         kOutModes * kWaveSize * kMmacFloatsPerLane *
                             sizeof(float)),
               "hipMemset out");
-    check_hip(hipMemset(stats_dev, 0, sizeof(int)), "hipMemset stats");
+    check_hip(hipMemset(stats_dev, 0, kStatsWords * sizeof(int)),
+              "hipMemset stats");
 
     hipLaunchKernelGGL(source_schedule_kernel, dim3(1), dim3(kThreads), 0, 0,
                        k_dev, out_dev, stats_dev);
     check_hip(hipDeviceSynchronize(), "source_schedule_kernel");
 
     std::vector<float> out(kOutModes * kWaveSize * kMmacFloatsPerLane);
-    int mapped = 0;
+    int stats[kStatsWords] = {};
     check_hip(hipMemcpy(out.data(), out_dev,
                         out.size() * sizeof(float), hipMemcpyDeviceToHost),
               "hipMemcpy out");
-    check_hip(hipMemcpy(&mapped, stats_dev, sizeof(int),
+    check_hip(hipMemcpy(stats, stats_dev, sizeof(stats),
                         hipMemcpyDeviceToHost),
               "hipMemcpy stats");
 
-    const bool pair_pass =
-        summarize_output_modes(out, 0, 1, "pair_acc", 256, 16);
-    const bool low_pass =
-        summarize_output_modes(out, 1, 2, "split_low", 256, 16);
-    const bool high_pass =
-        summarize_output_modes(out, 2, 3, "split_high", 256, 16);
-    const bool split_pass =
-        summarize_output_modes(out, 1, 3, "split_combined", 512, 32);
-    const bool pass = mapped == 504 && !pair_pass && low_pass && high_pass &&
-                      split_pass;
+    const bool frag_low_pass =
+        summarize_frag_output(out, 3, "frag_low", false);
+    const bool frag_high_pass =
+        summarize_frag_output(out, 4, "frag_high", true);
+    const bool low_pass = summarize_split_output(out, 1, "split_low", false);
+    const bool high_pass = summarize_split_output(out, 2, "split_high", true);
+    const bool pass = stats[0] == 0 && stats[1] == 504 && frag_low_pass &&
+                      frag_high_pass && low_pass && high_pass;
     std::printf(
-        "source_schedule_result mapped=%d pair_pass=%d low_pass=%d "
-        "high_pass=%d split_pass=%d pass=%d\n",
-        mapped, pair_pass ? 1 : 0, low_pass ? 1 : 0, high_pass ? 1 : 0,
-        split_pass ? 1 : 0, pass ? 1 : 0);
+        "real_ds_source_schedule_result read_errors=%d mapped=%d "
+        "frag_low_pass=%d frag_high_pass=%d low_pass=%d high_pass=%d "
+        "pass=%d\n",
+        stats[0], stats[1], frag_low_pass ? 1 : 0,
+        frag_high_pass ? 1 : 0, low_pass ? 1 : 0, high_pass ? 1 : 0,
+        pass ? 1 : 0);
 
     (void)hipFree(stats_dev);
     (void)hipFree(out_dev);

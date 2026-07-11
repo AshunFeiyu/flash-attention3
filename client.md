@@ -156,6 +156,21 @@ evidence are required before any performance claim.
   next probe should compute real dS directly into source-slot order and feed
   `dS @ K` through `ds_write_matrix -> ds_read_matrix_trans -> MMAC` without
   gather/permute.
+- Latest accepted native C_dS handoff probe:
+  sheet `62_DQ_RealCDS_SourceSlot_Probe` modifies only
+  `probes/dq_native_ds_source_schedule_probe.cpp`.  Accepted run
+  `/zys/shaobo_runs/dq_real_ds_source_slot_bits_20260712_022239` reports
+  `read_errors=0`, `mapped=504`, `frag_low/high PASS`,
+  `split_low/high PASS`, `simTicks=10,236,135`, `MMOP=3`, `VALU=419`,
+  `SCA=495`, `LDS=67`, `ldsBankConflict=0`, and resource gate
+  `private=0 sgpr=22 vgpr=39 no spill`.  ASM includes
+  `ds_write_matrix_format`, `ds_read_matrix_trans_format`,
+  `ds_read_matrix_format`, and `v_mmac ... lit`; no gather/permute route is
+  needed for the handoff itself.  Boundary: the accepted probe uses
+  deterministic half bit-pattern dS values; the previous float-formula variant
+  failed due PMD/codegen half-arithmetic noise.  Canonical integration still
+  needs a C_dS publisher that computes dS with the existing arithmetic path and
+  packs those values into the verified source-slot layout.
 - Active accepted dQ source remains the 16-wave tail-cleanup route until a new
   prototype passes correctness/resource/perf gates.  The native dS ring is
   allowed to start as 12-wave because its role decomposition is fundamentally

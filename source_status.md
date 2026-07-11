@@ -5543,6 +5543,47 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `ds_read_matrix_trans`, and run `dS @ K` split-low/high without
   `bpermute`, LDS gather, or ordinary matrix-path `ds_read_b*`.
 
+## 2026-07-12 Native C_dS Source-Slot Handoff Probe Accepted
+
+- Decision: `ACCEPT_PROBE_NATIVE_HANDOFF`.
+- Workbook: `62_DQ_RealCDS_SourceSlot_Probe`.
+- Source: focused probe `probes/dq_native_ds_source_schedule_probe.cpp`;
+  canonical `src/dq_kernel.cpp` unchanged.
+- Design:
+  C_dS publisher uses the fast `source_slot_to_dst` formula to write dS values
+  directly into the source slots expected by dQ.  Consumer reads with
+  `ds_read_matrix_trans_format`, validates the fragment, then runs split-low
+  and split-high `dS @ K` MMAC.  There is no `bpermute`, no LDS gather, and no
+  ordinary `ds_read_b*` in the matrix handoff.
+- Important boundary:
+  the first float-formula variant failed with corrupted half values and PMD
+  warnings around untested half arithmetic:
+  `/zys/shaobo_runs/dq_real_ds_source_slot_probe_20260712_021632`,
+  `read_errors=64`, split output failed.  The accepted probe therefore uses
+  deterministic half bit-pattern values to isolate layout/native handoff from
+  dS arithmetic codegen.
+- Accepted PMD:
+  `/zys/shaobo_runs/dq_real_ds_source_slot_bits_20260712_022239`.
+- Static/resource:
+  `source_schedule_kernel private=0 sgpr=22 vgpr=39`, no spill/scratch.
+- Correctness:
+  `read_errors=0`, `mapped=504`, `frag_low_pass=1`,
+  `frag_high_pass=1`, `split_low pass=1`, `split_high pass=1`.
+- Stats:
+  `simTicks=10,236,135`, `MMOP=3`, `VALU=419`, `SCA=495`, `LDS=67`,
+  `ldsBankConflict=0`.
+- Interpretation:
+  the native source-slot handoff is real.  The remaining hard problem is not
+  `ds_write_matrix -> ds_read_matrix_trans -> MMAC`; it is integrating the
+  canonical softmax/dS arithmetic so that the computed dS values are packed
+  into these source slots without gather/permute and without rebuilding the
+  old ABarrier debt.
+- Next:
+  design a structural dQ prototype where one C_dS role computes dS with the
+  existing arithmetic pattern and publishes source-slot fragments, while a
+  C_dQ role consumes them with split MMAC.  Do not modify canonical dQ until
+  that prototype has correctness and resource gates.
+
 ## 2026-07-11 dQ sidecar/QDo latch split rejected
 
 - Hypothesis:
