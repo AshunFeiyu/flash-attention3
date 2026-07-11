@@ -5047,3 +5047,15 @@ Current focus:
   direct non-`lit` MMAC, no scalar/permute workaround, and PMD remains
   `ldsBankConflict=0`, but all direct variants still fail (`any_pass=0`).
   Therefore qK direct MMAC alone is not the missing dS producer layout.
+- Slot-map reverse follow-up:
+  `dq_dswrite_slotmap_reverse_probe.cpp` is a focused instruction/layout
+  probe only.  It proves the slot labels for the native handoff path
+  `ds_write_matrix(no t) -> ds_read_matrix_trans 32x16 -> K_normal MMAC`
+  without scalar gather or permute:
+  `slot_k[group][word] = group * 4 + (word & 3)`.
+  Static/PMD evidence is clean (`ds_read_b32=0`, `bpermute/mpermute=0`,
+  `s_trap=0`, `private=0`, `ldsBankConflict=0`).  Words `0..3` and `4..7`
+  are two source/reduction half-regions with the same K-row labels; a toy
+  single-accumulator check cannot merge both half-regions and decode them as
+  one tag.  Next code design should make C_dS publish this slot layout in the
+  same half-region order consumed by real dQ accumulators.

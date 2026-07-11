@@ -1090,3 +1090,20 @@ dQ dS->dQ ring2, 2026-07-11:
   instead of lit/4interleave.  The asm contains direct non-`lit` MMAC, but PMD
   still reports `any_pass=0`.  So this is not solved by changing qK MMAC form
   alone.
+
+Slot-map reverse result, 2026-07-11:
+
+- Focused probe:
+  `probes/dq_dswrite_slotmap_reverse_probe.cpp`.
+- Key inferred table for
+  `ds_write_matrix(no t) -> ds_read_matrix_trans 32x16 -> K_normal MMAC`:
+  `slot_k[group][word] = group * 4 + (word & 3)`.
+- Meaning:
+  C_dS must deliberately publish the dS source fragment in this slot layout.
+  `word0..3` and `word4..7` are two half-regions with the same K-row labels,
+  not arbitrary duplicate pack slots.  Do not "fix" this with scalar LDS
+  gather, bpermute/mpermute, or another pack permutation hunt.
+- Evidence:
+  `/zys/shaobo_runs/dq_slotmap_reverse_probe_20260711_160921` and
+  `/zys/shaobo_runs/dq_slotmap_reverse_probe_20260711_161646`;
+  no spill/private segment, `ldsBankConflict=0`, and matrix path only.

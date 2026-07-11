@@ -9012,3 +9012,50 @@ Follow-up direct-MMAC qK test:
 - Decision:
   `REJECT_DIRECT_MMAC_SCORE_LAYOUT`.  qK direct MMAC alone does not create the
   accepted dS producer layout.  Continue with slot-map-driven C_dS generation.
+
+## 2026-07-11 ds_write slot-map reverse probe
+
+Decision: `OBSERVE_SLOTMAP_PROOF_HALF_REGION`.
+
+- Added isolated probe `dq_dswrite_slotmap_reverse_probe.cpp`; canonical dQ
+  and dKV sources are unchanged.
+- Probe purpose:
+  stop guessing pack orders.  First write an identity VGPR fragment through
+  `ds_write_matrix_format(no t)` and read it back with
+  `ds_read_matrix_trans_format 32x16` to build `dst_slot -> src_slot`.
+  Then light one destination slot at a time and decode the following
+  `dQ = dS @ K_normal` MMAC output to infer which K row each
+  `group/word` slot feeds.
+- Static/resource:
+  asm has `matrix_load_32x16=3`, `ds_write_matrix_format=2`,
+  `ds_read_matrix=5`, `v_mmac=2`, and `ds_read_b32/bpermute/mpermute/s_trap=0`.
+  Both probe kernels have `group_segment=8192`, `private=0`, no spill, with
+  very small VGPR/SGPR footprints.
+- PMD slot-map evidence:
+  `/zys/shaobo_runs/dq_slotmap_reverse_probe_20260711_160921` and follow-up
+  `/zys/shaobo_runs/dq_slotmap_reverse_probe_20260711_161646`.
+  `ldsBankConflict=0`, `MMOP=2` for consume dispatches.
+  Inferred table:
+  `group0=[0,1,2,3,0,1,2,3]`,
+  `group1=[4,5,6,7,4,5,6,7]`,
+  `group2=[8,9,10,11,8,9,10,11]`,
+  `group3=[12,13,14,15,12,13,14,15]`.
+- Interpretation:
+  the accepted path is not a mystery pack permutation.  For
+  `ds_write_matrix(no t) -> ds_read_matrix_trans 32x16 -> K_normal MMAC`,
+  the K row is `group * 4 + (word & 3)`.  Words `0..3` and `4..7` are two
+  source/reduction half-regions with the same K-row labels, not a safe
+  duplicate to blindly merge.
+- Full toy check:
+  using only the low half-region decodes 16 q rows for target `krow=7` but
+  covers only one D/reduction half; using only the high half-region covers the
+  other half.  Writing both half-regions into the same simplified accumulator
+  makes the two halves sum and the toy decoder cannot treat that as a single
+  K-tag output.  Therefore this probe proves the slot map and matrixized
+  instruction path, but it is not a standalone full-D dQ correctness proof.
+- Next:
+  redesign C_dS generation around this slot table.  Real dQ code must consume
+  the two half-regions in the same accumulator structure/order used by the
+  target D tile, not merge them in a toy single-tag output.  Continue to reject
+  scalar LDS gather, bpermute/mpermute, and ad hoc pack permutations in the
+  canonical kernel.
