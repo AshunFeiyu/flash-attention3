@@ -144,6 +144,18 @@ evidence are required before any performance claim.
   Source is restored.  Treat the terminal sync/invalidate as required by the
   current WDRA/PMD role-exit path unless a focused WDRA-exit probe proves
   otherwise.
+- Latest accepted source-slot probe:
+  sheet `61_DQ_SourceSlot_FastFormula` replaces the focused probe's runtime
+  reverse-search source-slot mapping with a closed-form formula.  It preserves
+  the verified mapping (`mismatches=0`, `mapped=504/512`) and PMD passes:
+  `/zys/shaobo_runs/dq_source_slot_fast_formula_20260712_020039`,
+  `ds_source_pack_cost_pass=1`, `simTicks=102,442,795`, `MMOP=2048`,
+  `VALU=10,593`, `LDS=2,112`, `ldsBankConflict=0`, resource gate
+  `private=0 sgpr=20 vgpr=29 no spill`.  This is probe-only; canonical
+  `src/dq_kernel.cpp` remains unchanged.  It reopens the native C_dS route:
+  next probe should compute real dS directly into source-slot order and feed
+  `dS @ K` through `ds_write_matrix -> ds_read_matrix_trans -> MMAC` without
+  gather/permute.
 - Active accepted dQ source remains the 16-wave tail-cleanup route until a new
   prototype passes correctness/resource/perf gates.  The native dS ring is
   allowed to start as 12-wave because its role decomposition is fundamentally

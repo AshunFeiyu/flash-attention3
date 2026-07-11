@@ -1,5 +1,46 @@
 # Optimization Log
 
+## 2026-07-12 dQ Source-Slot Fast Formula Probe
+
+Decision: `ACCEPT_PROBE`
+
+Hypothesis:
+
+The rejected native dS source-slot pack probe was slow because
+`source_slot_to_dst` used a runtime reverse-search/control loop, not because
+`ds_write_matrix -> ds_read_matrix_trans -> MMAC` handoff is inherently
+expensive.  Replace the reverse search with a closed-form mapping from
+`src_lane/src_word` to the destination source-slot `(group, q, word)`.
+
+Evidence:
+
+- Workbook: `61_DQ_SourceSlot_FastFormula`.
+- Source: `probes/dq_ds_source_pack_cost_probe.cpp`; canonical
+  `src/dq_kernel.cpp` unchanged.
+- Closed-form equivalence check against the old loop:
+  `mismatches=0`, `mapped=504/512`.
+- Static/resource PASS:
+  `native_slot_pack_cost_kernel private=0 sgpr=20 vgpr=29`,
+  no SGPR/VGPR spill.
+- PMD run:
+  `/zys/shaobo_runs/dq_source_slot_fast_formula_20260712_020039`.
+- Correctness:
+  `ds_source_pack_cost_pass=1`, `errors=0`, `checksum=1052224`.
+- PMD stats:
+  `simTicks=102,442,795`, `MMOP=2048`, `VALU=10,593`,
+  `SCA=2,206`, `LDS=2,112`, `ldsBankConflict=0`.
+
+Conclusion:
+
+This is a focused-probe win, not a canonical dQ performance claim.  The old
+native-slot probe cost (`simTicks=1,176,224,595`) was reverse-search overhead.
+The fast formula lands close to the wrong-layout lower bound
+(`natural_wrong simTicks=107,657,095`) while preserving source-slot correctness
+in the probe.  Next step is a real C_dS source-slot publisher probe: compute
+true dS values into source-slot order, publish with `ds_write_matrix`, read with
+`ds_read_matrix_trans`, and feed `dS @ K` split-low/high without
+`bpermute`/gather.
+
 ## 2026-07-12 dQ Tail No-Invalidate Fast Exit
 
 Decision: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`

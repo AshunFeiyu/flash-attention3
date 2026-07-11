@@ -57,43 +57,20 @@ __device__ __forceinline__ bool source_slot_to_dst(int src_lane,
                                                    int& dst_q,
                                                    int& dst_word) {
     const int low = src_word & 1;
-#pragma unroll
-    for (int carry = 0; carry < 2; ++carry) {
-        const int q_hi_word = src_word - 2 * carry;
-        if (q_hi_word < 0) {
-            continue;
-        }
-        const int q_hi = q_hi_word >> 1;
-        if (q_hi > 3) {
-            continue;
-        }
-        const int raw_lane = src_lane + carry * dq::NativeDsSlotMap::kWaveSize;
-        const int base = raw_lane - 4;
-        if (base < 0 || base >= dq::NativeDsSlotMap::kWaveSize) {
-            continue;
-        }
-        const int q_lo = base >> 4;
-        const int rem = base & 15;
-        const int word_hi = rem >> 3;
-        const int rem2 = rem & 7;
-        const int group = rem2 >> 1;
-        const int word_mid = rem2 & 1;
-        const int word = 4 * word_hi + 2 * word_mid + low;
-        const int q = 4 * q_hi + q_lo;
-        if (group < 4 && q < 16 && word < dq::NativeDsSlotMap::kWordsPerFrag &&
-            dq::NativeDsSlotMap::dst_source_lane(group, q, word) ==
-                src_lane &&
-            dq::NativeDsSlotMap::dst_source_word(
-                q, word,
-                dq::NativeDsSlotMap::dst_raw_source_lane(group, q, word)) ==
-                src_word) {
-            dst_group = group;
-            dst_q = q;
-            dst_word = word;
-            return true;
-        }
+    const int carry = src_lane < 4 ? 1 : 0;
+    const int q_hi_word = src_word - (carry << 1);
+    if (q_hi_word < 0) {
+        return false;
     }
-    return false;
+    const int base = src_lane + carry * dq::NativeDsSlotMap::kWaveSize - 4;
+    const int q_lo = base >> 4;
+    const int rem = base & 15;
+    const int rem2 = rem & 7;
+    dst_group = rem2 >> 1;
+    dst_q = 4 * (q_hi_word >> 1) + q_lo;
+    dst_word = 4 * (rem >> 3) + 2 * (rem2 & 1) + low;
+    return dst_group < 4 && dst_q < 16 &&
+           dst_word < dq::NativeDsSlotMap::kWordsPerFrag;
 }
 
 __device__ __forceinline__ uint16_t half_bits(_Float16 value) {
@@ -306,8 +283,10 @@ __device__ __forceinline__ void run_pack_path(float* __restrict__ sums,
         acc.f32 = ins::mmac_f16_lit(ds_frag.f16x4[0], rhs.f16x4[0], acc.f32);
         acc.f32 = ins::mmac_f16_lit(ds_frag.f16x4[1], rhs.f16x4[1], acc.f32);
         ins::keep_accumulator_live(acc);
-        checksum += acc.scalar[0] + acc.scalar[1] + acc.scalar[2] +
-                    acc.scalar[3];
+#pragma unroll
+        for (int word = 0; word < kFragWords; ++word) {
+            checksum += static_cast<float>(producer.scalar[word]);
+        }
     }
 
     sums[Path * kWaveSize + lane] = checksum;

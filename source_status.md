@@ -5507,6 +5507,42 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `coissue=16,119/19,093`, and `ldsBankConflict=0`.  Active dQ is again the
   correct canonical path only.
 
+## 2026-07-12 dS Source-Slot Fast Formula Probe Accepted
+
+- Decision: `ACCEPT_PROBE`.
+- Workbook: `61_DQ_SourceSlot_FastFormula`.
+- Source: focused probe `probes/dq_ds_source_pack_cost_probe.cpp`; canonical
+  `src/dq_kernel.cpp` unchanged.
+- Change:
+  replaced the old runtime reverse-search implementation of
+  `source_slot_to_dst(src_lane, src_word)` with a closed-form mapping:
+  `carry=(src_lane<4)`, `q_hi_word=src_word-2*carry`,
+  `base=src_lane+64*carry-4`, then derive `group/q/word` from `base` and
+  `src_word`.
+- Equivalence:
+  exhaustive local check versus the old loop reports `mismatches=0`,
+  `mapped=504/512`.
+- Static/resource:
+  `native_slot_pack_cost_kernel private=0 sgpr=20 vgpr=29`,
+  no SGPR/VGPR spill.
+- PMD:
+  `/zys/shaobo_runs/dq_source_slot_fast_formula_20260712_020039`,
+  `ds_source_pack_cost_pass=1`, `errors=0`, `checksum=1052224`.
+- Stats:
+  `simTicks=102,442,795`, `MMOP=2048`, `VALU=10,593`, `SCA=2,206`,
+  `LDS=2,112`, `ldsBankConflict=0`.
+- Interpretation:
+  source-slot publication is not inherently too slow.  The old
+  `native_slot` cost (`simTicks=1,176,224,595`) was dominated by runtime
+  reverse-search/control.  The fast formula is even slightly faster than the
+  wrong-layout lower-bound probe (`natural_wrong simTicks=107,657,095`) while
+  keeping the correct source-slot mapping in the focused test.
+- Next:
+  build the real C_dS source-slot publisher probe.  It must compute real dS
+  values in source-slot order, publish through `ds_write_matrix`, consume with
+  `ds_read_matrix_trans`, and run `dS @ K` split-low/high without
+  `bpermute`, LDS gather, or ordinary matrix-path `ds_read_b*`.
+
 ## 2026-07-11 dQ sidecar/QDo latch split rejected
 
 - Hypothesis:
