@@ -1,5 +1,72 @@
 # Optimization Log
 
+## 2026-07-10 dKV Precise SQTT Localization
+
+Decision: `OBSERVE_BOTTLENECK_LOCALIZED`
+
+Evidence:
+
+- Accepted dKV perf:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_033115/m5out/0/0/2753586_fa3_bwd_wasp_clean.perf`.
+- XCU output:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dkv_qused_precise_20260710`.
+- `detail` top classes:
+  `s_xor_b32` `38.65%`, `s_waitcnt` `19.78%`,
+  `v_mmac_f32_16x16x16_f16` `10.79%`,
+  `ds_read_matrix_trans_format` `3.23%`,
+  `ds_read_matrix_format` `1.69%`.
+- Steady-state sample:
+  `Q0Used=3` shows
+  `s_abarrier_try_wait s4, 3, s19 -> s_xor_b32`
+  from `18544:24352`, duration `5807` cycles.
+  The selected pipeline CSV reports `Bubble %=98.67`, with
+  `5807 / 6221` bubble cycles from this pair.
+- Tail sample:
+  `AllDone=10` shows
+  `s_abarrier_try_wait s0, 10 -> s_waitcnt`
+  from `80444:92992`, duration `12547` cycles.  This is producer drain, not
+  the main q-loop ownership dependency.
+
+Conclusion:
+
+The dKV steady-state limiter is producer-side Q/dO page ownership polling, not
+missing MMAC, LDS bank conflict, or a first-order matrix-read issue.
+`ds_read_matrix -> s_waitcnt` remains real, but secondary.  The next code
+change must either make Q/dO pages releasable earlier without stretching
+consumer VGPR further, or give producer waves useful independent work while
+they wait.  Do not treat the long `AllDone=10` tail as proof that q-loop
+matrix reads are the primary bottleneck.
+
+## 2026-07-10 dKV Bottleneck Reanalysis
+
+Decision: OBSERVE_REDESIGN_PRIORITIES
+
+Document:
+
+- results/dkv_bottleneck_reanalysis_20260710.md
+
+New evidence:
+
+- MMOP runtime share=59.47% already matches/exceeds FWD 58.12%, while MMAC
+  active is only 33.24% versus FWD 45.02%. The target is dead-time removal,
+  not a higher MMAC/VALU ratio.
+- VALU/MMOP matches FWD, but SCA/MMOP is 2.293x and LDS/MMOP is 2.372x.
+- Per-role XCU shows each BWD consumer has the same 2048 MMAC as the FWD
+  consumer sample, but 1040 matrix reads versus FWD 520.
+- 65.6% of consumer s_waitcnt issues source-map to sidecar use in softmax/dS.
+  Current issue order makes sidecar waits drain older dV/dK matrix reads.
+- Removing AllDone was revalidated as a static reject: private=244,
+  sgpr_spill=2, vgpr_spill=60. Accepted source was restored remotely and
+  re-passed metadata with no spill.
+
+Next:
+
+1. Issue sidecar before dV/dK reads and use staged lgkmcnt waits.
+2. Focused-probe combined Q+dO Filled per half with independent Used release.
+3. Batch DS addresses into FWD-style pair/multi-offset bricks.
+
+Do not reopen deeper buffering, causal skip, or tail cleanup first.
+
 ## 2026-07-07 dQ Q/dO Latched K/V Double Page
 
 Decision: `ACCEPT`
@@ -8304,3 +8371,414 @@ Conclusion:
   consumer branch window and shifts pressure to matrix-read waits.  The next
   structural design still needs either less ownership/control per epoch or
   more useful MMAC per ownership epoch.
+
+## 2026-07-09 dKV Score Zero Hoist Probe
+
+Decision: `REJECT_PERF_REGRESSION_SOURCE_REVERTED`
+
+Hypothesis:
+
+- Reuse one branch-local F16 zero seed for score/dP MMAC initialization instead
+  of constructing it inside each `score_dp_mmac_owner16` call, reducing visible
+  `v_mov` pressure.
+
+Evidence:
+
+- Static/resource PASS after the change, but consumer branch windows increased
+  from `222/240` to `226/240`; metadata stayed `private=0`, `sgpr=99`,
+  `vgpr=128`, no spill/scratch.
+- ASM moved in the expected local direction: `v_mov_b64 139 -> 111`, while
+  `v_mov_b32` stayed `539` and `v_mmac` stayed `1028`.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/dkv_zero_hoist_correctness_20260709_132829`;
+  H1/S1024 full perf run
+  `/zys/shaobo_runs/dkv_zero_hoist_perf_20260709_133723`.
+- XCU detail on
+  `/zys/shaobo_runs/dkv_zero_hoist_perf_20260709_133723/dkv_mmac_correctness_20260709_133723/m5out/0/0/2755967_fa3_bwd_wasp_clean.perf`
+  regressed versus accepted `dkv_q_used_release_before_softmax`:
+  dispatch duration `94,728 -> 94,988`, average active waves
+  `122.18 -> 121.52`, PMD all-waves tick `46,716,670 -> 46,833,150`.
+  `v_mov_b64_e32` latency improved, but the dominant ownership and MMAC gaps
+  stayed: `s_abarrier_try_wait -> s_xor_b32` about `40.35%` and
+  `v_mmac -> v_mmac` about `8.31%`.
+
+Conclusion:
+
+- Reject and restore source to accepted baseline.  This confirms that local
+  zero-hoisting can reduce one move class but lengthens live ranges and does
+  not address the current first-order bottleneck.  Do not retry this style
+  unless a later structural design also frees consumer VGPR headroom and lowers
+  the ABarrier ownership bubble.
+
+## 2026-07-09 dKV Consumer Half-Order Stagger Probe
+
+Decision: `REJECT_STATS_REGRESSION_SOURCE_REVERTED`
+
+Hypothesis:
+
+- Current SQTT/focused windows show the two consumer groups are too lockstep.
+  Try a minimal real-work stagger without adding tokens: keep consumer0 on
+  half0 -> half1, but make consumer1 process half1 -> half0.  If peer useful
+  work can cover Q/Dout ownership waits, MMAC active should rise without
+  changing math or LDS layout.
+
+Implementation tested:
+
+- Single canonical dKV path only; no phase flag, no new kernel.
+- Added a local half helper and changed only the Mq128 consumer order for
+  `ConsumerGroup == 1`.
+- Q/dO token ids, producer order, MMAC count, source-layout normal/trans reads,
+  sidecar LDS path, and output ownership were unchanged.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `14/16`, `222/240`, `221/240`, `8/16`;
+  metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_160105`;
+  H1/S1024
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_160225`.
+- H1/S1024 stats regressed versus accepted
+  `dkv_q_used_release_before_softmax`:
+  `simTicks 46,716,670 -> 47,896,485`,
+  `kernel_ticks 43,103,060 -> 44,282,875`,
+  `MMAC active 33.2391% -> 31.1416%`.
+  `MMOP` stayed `131,072`, `ldsBankConflict=0`, coissue rose to
+  `41,983/28,546`, and aggregate barrier counter was about `189,551`.
+
+Conclusion:
+
+- Reject without full perf/xcu because same-shape stats already moved the wrong
+  way.  The result confirms the design-risk in the workbook: reversing one
+  consumer delays Q0/Dout0 `Used`, so the producer cannot overwrite half0 for
+  the next q tile while the other half is still being consumed.  That breaks the
+  existing half-page conveyor even though it creates some apparent stagger.
+- Source restored locally and remotely to accepted
+  `dkv_q_used_release_before_softmax`.
+- Future stagger work must preserve early half0 release, or it must redesign
+  producer publication order and ownership epochs together.  Do not retry
+  naive half1-first consumer order.
+
+## 2026-07-09 dKV Global Half1-First Conveyor Rejected
+
+Decision: `REJECT_FULLPERF_REGRESSION_SOURCE_REVERTED`
+
+Hypothesis:
+
+- The previous one-sided consumer half-order stagger failed because it delayed
+  Q0/Dout0 `Used` while producers still published half0 first.  Try the
+  consistent version: producers publish half1 before half0 and both consumers
+  consume half1 before half0.  If the issue was only producer/consumer order
+  mismatch, this should preserve the conveyor while giving a different steady
+  timing.
+
+Implementation tested:
+
+- Single canonical dKV path only; no new phase, no new kernel, no new tokens.
+- Changed Mq128 producer Q, producer dO, and both consumer half orders from
+  half0 -> half1 to half1 -> half0.
+- Matrix path, sidecar LDS path, QUsed/DoutUsed release positions, and MMAC
+  count were unchanged.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `14/16`, `221/240`, `221/240`, `8/16`;
+  metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_163937`;
+  H1/S1024 stats run
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_164008`;
+  H1/S1024 full perf run
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_164425`.
+- Stats-only looked like a tiny win versus accepted
+  `dkv_q_used_release_before_softmax`:
+  `kernel_ticks 43,103,060 -> 43,004,325`,
+  `MMAC active 33.2391% -> 33.3829%`.
+- Full perf rejected it:
+  `simTicks 46,716,670 -> 46,947,355`,
+  `kernel_ticks 43,103,060 -> 43,333,745`,
+  `MMAC active 33.2391% -> 33.2641%`,
+  coissue `36,556/25,587 -> 38,022/26,639`,
+  `ldsBankConflict=0`.
+  Helper perf is archived at
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_164425_dkv_global_half1_first_reject_h1s1024_sqc7_fullperf`.
+- XCU CLI was installed sidecar on liuchang and used for this perf:
+  `XCU_ROOT=/zys/tools/xcompute_light_4.6.3/opt/XCompute-Light-4.6.3/XCompute`.
+  Outputs are under
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dkv_global_half1_first_20260709_164425`
+  and copied into the shared perf archive.  `detail` reports duration `95,240`,
+  average active waves `121.04`, and top bubbles
+  `s_abarrier_try_wait -> s_xor_b32 40.87%`,
+  `s_abarrier_try_wait -> s_waitcnt 8.45%`,
+  `v_mmac -> v_mmac 8.17%`.
+  The largest individual exported pipeline window is a tail
+  `s_abarrier_try_wait -> s_waitcnt -> s_barrier` sequence around `barId 10`,
+  so future analysis should separate tail/AllDone waits from q-loop ownership
+  bubbles.
+
+Conclusion:
+
+- Reject and restore source to accepted baseline.  Making the half order
+  globally consistent avoids the previous one-sided release bug, but it still
+  does not lower traced elapsed cost.  Half-page order alone is not the next
+  useful lever.
+- Future work should not keep flipping half order.  The next candidate needs a
+  real lifetime or workload change: reduce ownership/control exposure, increase
+  useful MMAC per ownership epoch, or move producer work that does not delay
+  QUsed/DoutUsed.
+
+## 2026-07-09 dKV Q-Side Sidecar Prefetch Rejected
+
+Decision: `REJECT_STATS_TICKS_REGRESSION_SOURCE_REVERTED`
+
+Hypothesis:
+
+- XCU on the accepted `dkv_q_used_release_before_softmax` route still points at
+  producer-side Q/Dout ownership waits.  Move immutable Q-side sidecar global
+  loads before the Q half `Used` wait, then store the sidecar triple into LDS
+  after the wait and matrix_load.  This should give producer waves useful work
+  before the ownership wait without overwriting LDS early.
+
+Implementation tested:
+
+- Single canonical dKV path only; no new phase, no new token, no new kernel.
+- Replaced the Q-side half sidecar publisher with split load/store helpers:
+  load the sidecar triple before `wait_q_half_used`, then write the triple to
+  the same sidecar LDS page before `arrive_q_half_filled`.
+- dO producer, matrix paths, half ordering, QUsed/DoutUsed release positions,
+  MMAC count, and output ownership were unchanged.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `15/16`, `222/240`, `222/240`, `8/16`;
+  metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+  The producer branch grew from `14/16` to `15/16`.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_171154`;
+  H1/S1024 stats run
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260709_171224`.
+- Same-shape H1/S1024 stats versus accepted
+  `dkv_q_used_release_before_softmax`:
+  `simTicks 46,716,670 -> 46,773,090`,
+  `kernel_ticks 43,103,060 -> 43,159,480`,
+  `MMAC active 33.2391% -> 33.3770%`,
+  barrier counter `157,259.173 -> 154,090.84`,
+  `VALU 168,514 -> 170,338`,
+  `SCA 114,520 -> 115,032`,
+  failed coissue `25,587 -> 25,870`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Reject without full perf/xcu because elapsed ticks moved the wrong way.  The
+  test is still useful: it shows producer-side useful work can reduce the
+  aggregate barrier counter, but this isolated sidecar prefetch adds enough
+  live range, VALU/SCA, and failed coissue to erase the benefit.
+- Source restored locally and remotely to accepted
+  `dkv_q_used_release_before_softmax`.
+- Do not retry sidecar-prefetch-alone.  Future attempts must either increase
+  useful MMAC per ownership epoch or redesign the ownership lifetime so the
+  extra producer work is amortized by a larger conveyor change.
+
+## 2026-07-09 dKV Merged Used Token Probe
+
+Decision: `REJECT_STATS_TICKS_REGRESSION_SOURCE_REVERTED`
+
+Hypothesis:
+
+- The accepted path still pays separate `QUsed` and `DoutUsed` ownership
+  handshakes for each half page.  Merge those two used-side tokens into one
+  `RawHalfUsed` token per half, while keeping `QFilled` and `DoutFilled`
+  separate, to reduce scalar/control instructions without changing math, LDS
+  layout, or producer publish order.
+
+Implementation tested:
+
+- Single canonical dKV path only; no new phase, no new kernel.
+- Replaced per-half `QUsed` and `DoutUsed` waits/arrivals with one shared
+  `RawHalfUsed` wait/arrival.
+- Matrix path, sidecar LDS path, Q/dO fill tokens, half ordering, MMAC count,
+  and output ownership were unchanged.
+
+Evidence:
+
+- Static/resource PASS:
+  branch windows `14/16`, `222/240`, `222/240`, `8/16`;
+  metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128
+  `/tmp/dkv_merge_s128/dkv_mmac_correctness_20260709_205505`;
+  H1/S1024 stats run
+  `/tmp/dkv_merge_s1024/dkv_mmac_correctness_20260709_205534`.
+- Same-shape H1/S1024 stats versus accepted
+  `dkv_q_used_release_before_softmax`:
+  `simTicks 46,716,670 -> 47,066,110`,
+  `kernel_ticks 43,103,060 -> 43,452,500`,
+  `MMAC active 33.2391% -> 33.1006%`,
+  `SCA 114,520 -> 113,224`,
+  barrier counter `157,259.173 -> 160,714.59`,
+  `VALU` unchanged at `168,514`,
+  coissue `36,556/25,587 -> 36,948/26,108`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Reject without full perf/xcu because same-shape stats already regressed.
+  This proves the local token-count reduction is not the right abstraction:
+  merging `QUsed` and `DoutUsed` delays one producer/page lifetime enough that
+  the ownership barrier cost increases more than the SCA count falls.
+- Source restored locally and remotely to accepted
+  `dkv_q_used_release_before_softmax`, and the restored dKV source rebuilt with
+  evidence gate and metadata gate PASS.
+- Do not mechanically merge used tokens.  The next ownership design must
+  preserve independent producer release or increase useful MMAC per ownership
+  epoch enough to amortize the extra wait.
+
+## 2026-07-09 dKV dP-Before-Q First-Pair Probe
+
+Decision: `REJECT_STATS_TICKS_REGRESSION_SOURCE_REVERTED`
+
+Hypothesis:
+
+- Accepted dKV releases `dO` earlier than `Q`, so the next q-tile may have
+  `dO` ready before `Q`.  Split the first 32-row pair of each half from fused
+  `score/dP` into `dP=dO@V^T` first, then wait `QFilled`, then compute
+  `score=Q@K^T`.  The intended benefit was to cover Q producer/filled wait
+  with useful dP MMAC without changing GEMM count or ownership tokens.
+
+Implementation tested:
+
+- Single canonical dKV path only; no new phase, no new kernel, no tile change.
+- Added dP-only and score-only helpers derived from the accepted fused
+  score/dP helper.
+- Only the first MBlock pair of each half used dP-first.  The second pair kept
+  the accepted path to limit VGPR lifetime risk.
+
+Evidence:
+
+- Static/resource PASS:
+  metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128
+  `/tmp/dkv_dp_before_q_s128/dkv_mmac_correctness_20260709_215407`;
+  H1/S1024
+  `/tmp/dkv_dp_before_q_s1024/dkv_mmac_correctness_20260709_215443`.
+- Same-shape H1/S1024 stats versus accepted
+  `dkv_q_used_release_before_softmax`:
+  `simTicks 46,716,670 -> 48,090,770`,
+  `kernel_ticks 43,103,060 -> 44,477,160`,
+  `MMAC active 33.2391% -> 32.5023%`,
+  `VALU 168,514 -> 170,064`,
+  `SCA` unchanged at `114,520`,
+  barrier counter `157,259.173 -> 162,455.84`,
+  `waitLgkm 52,834 -> 54,433`,
+  coissue `36,556/25,587 -> 34,774/23,658`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Reject without full perf/xcu because stats decisively regressed.  The
+  assumption that dP MMAC would cover a real Q-filled wait did not hold in the
+  current conveyor.  Splitting the accepted fused score/dP island increased
+  local waits and barrier exposure, lowered coissue, and reduced MMAC active.
+- Source restored locally and remotely to accepted
+  `dkv_q_used_release_before_softmax`; restored dKV rebuild, evidence gate,
+  and metadata gate PASS.
+- Keep score/dP fused in the main path unless xcu shows a concrete
+  `dO-ready/Q-not-ready` window large enough to amortize the split.
+
+## 2026-07-11 dKV BPS vbcnt Before Filled Arrive Probe
+
+Decision: `OBSERVE_MICRO_WIN_NEEDS_XCU`
+
+Hypothesis:
+
+- Shaobo wiki says BPS bypass-L1 data needs `s_waitcnt_vbcnt 0` before direct
+  consumption. Current dKV and FWD both use `matrix_load ... bps lds` inside
+  `s_abarrier_seq -> arrive` without explicit `vbcnt`. Test whether adding
+  `vbcnt` before producer Filled-token arrival improves PMD readiness without
+  breaking overlap.
+
+Implementation tested:
+
+- Added opt-in macro `SHAOBO_BPS_VBCNT_BEFORE_ARRIVE`, default `0`.
+- When enabled, producers call `maybe_wait_bps_vbcnt_before_arrive()` before
+  Filled arrivals for resident K/V and Q/dO half pages.
+- No new kernel, no phase fork, no default behavior change.
+
+Evidence:
+
+- Build PASS for default and vbcnt binaries.
+- Static gates PASS for both variants.
+- Resource metadata unchanged: branch windows `14/16`, `222/240`, `222/240`,
+  `8/16`; `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Asm count: default `s_waitcnt_vbcnt=0`, vbcnt variant `s_waitcnt_vbcnt=6`.
+- Correctness PASS for H1/S128 and H1/S1024 on both variants.
+- H1/S1024 same-env stats:
+  `simTicks 47,136,635 -> 46,609,290`,
+  `kernel_ticks 43,523,025 -> 42,995,680`,
+  `MMOP 131,072 -> 131,072`,
+  `VALU 168,514 -> 168,514`,
+  `SCA 114,520 -> 114,520`,
+  `LDS 79,360 -> 79,360`,
+  coissue `36,078/25,327 -> 36,749/26,029`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Keep this as an opt-in probe, not a default change yet. The stats-only
+  micro-win is real in this run (`kernel_ticks` about `-1.21%`), and it does
+  not change resource or instruction-class counts, but it still needs xcu/SQTT
+  evidence to prove the dominant ownership/matrix-read bubble shrinks rather
+  than merely shifting PMD scheduling noise.
+- Next validation should capture H1/S1024 or H4/S1024 full perf for default
+  and vbcnt in the same PMD env, then compare xcu `detail`, `wavefronts`,
+  `bubbles`, and `pipeline/simd`.
+
+## 2026-07-11 dKV Promote BPS vbcnt To Default
+
+Decision: `ACCEPT_DEFAULT_STATS_WIN_PENDING_XCU`
+
+Change:
+
+- Changed `SHAOBO_BPS_VBCNT_BEFORE_ARRIVE` default from `0` to `1`.
+- Kept rollback switch:
+  `EXTRA_CXXFLAGS="-DSHAOBO_BPS_VBCNT_BEFORE_ARRIVE=0"`.
+
+Verification:
+
+- Default build now emits `6` `s_waitcnt_vbcnt` instructions.
+- dKV evidence gate PASS.
+- Symbol metadata gate PASS:
+  branch windows `14/16`, `222/240`, `222/240`, `8/16`;
+  `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dkv_vbcnt_default_20260711/dkv_mmac_correctness_20260711_112211`;
+  H1/S1024
+  `/zys/shaobo_runs/dkv_vbcnt_default_20260711/dkv_mmac_correctness_20260711_112221`.
+
+H1/S1024 default-enabled stats:
+
+- `simTicks=46,554,690`
+- `kernel_ticks=42,941,080`
+- `MMOP=131,072`, `VALU=168,514`, `SCA=114,520`, `LDS=79,360`
+- coissue `37,689/26,615`
+- `ldsBankConflict=0`
+
+Conclusion:
+
+- Enable by default because the same-env probe and the default-enabled rerun
+  both improve ticks without changing resource pressure or matrix-path
+  instruction classes.
+- Still treat this as an instruction-level fix, not the architectural solution.
+  The top-level BWD issue remains: dKV has more dependency edges and smaller
+  ownership epochs than FWD, so we still need a redesigned pipeline that
+  reduces token fragmentation and increases useful MMAC/VALU work per page
+  lifetime.

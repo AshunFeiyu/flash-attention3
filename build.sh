@@ -45,6 +45,12 @@ COMMON_FLAGS=(
   -DSHAOBO_FA3_BWD_WASP_CLEAN=1
 )
 
+EXTRA_FLAGS=()
+if [[ -n "${EXTRA_CXXFLAGS:-}" ]]; then
+  # shellcheck disable=SC2206
+  EXTRA_FLAGS=(${EXTRA_CXXFLAGS})
+fi
+
 SHAOBO_FLAGS=(
   -mllvm -support-768-vgprs=true
   -mllvm -vgpr-greedy-alloc-mode=local-wave
@@ -61,11 +67,11 @@ if [[ -n "${HIP_CLANG_PATH:-}" ]]; then
   echo "HIP_CLANG_PATH ${HIP_CLANG_PATH}"
 fi
 echo "building ${BIN}"
-"${HIPCC}" "${COMMON_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" "${SRC}" -o "${BIN}"
+"${HIPCC}" "${COMMON_FLAGS[@]}" "${EXTRA_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" "${SRC}" -o "${BIN}"
 
 if [[ "${BUILD_ASM:-1}" == "1" ]]; then
   echo "building ${ASM}"
-  "${CLANGXX}" "${COMMON_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" \
+  "${CLANGXX}" "${COMMON_FLAGS[@]}" "${EXTRA_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" \
     --cuda-device-only -x hip -S "${SRC}" -o "${ASM}"
 fi
 

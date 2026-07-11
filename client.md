@@ -13,6 +13,13 @@ evidence are required before any performance claim.
 
 - New-machine container: `shaobo_dev_8426` on `10.59.41.48`, reached through
   `ssh -F work/ssh/shaobo_new_perf_config shaobo-new-perf-via-hedr`.
+- For a new Codex conversation, use the Mac-side SSH config at
+  `/Users/zhangyushun/Documents/Codex/2026-06-08/shaobo-hip-shaobo-demo/work/ssh/shaobo_new_perf_config`,
+  then run `docker exec -it shaobo_dev_8426 bash` and work from
+  `/zys/shaobo/fa3_bwd_wasp_clean`.
+- Keep experiment output outside the clean repo under
+  `/zys/shaobo_runs/<short_case_name>`; do not drop `m5out` folders or `.perf`
+  files into the source tree.
 - `build.sh` now defaults to the zwj/liuchang overlay compiler when present:
   `/home/zhangyushun/toolchains/zwj_liuchang_llvm_7940/bin/clang++`,
   llvm commit `7940bbec4a9c...`.  It still accepts `CLANGXX`, `HIPCC`, and
@@ -53,7 +60,17 @@ evidence are required before any performance claim.
   pushed consumer windows to `222/240`; direct global sidecar failed metadata
   with `sgpr_spill_count=12` before correctness; sidecar ring2 prefetch was
   static-clean but failed H1/S1024 correctness even after adding an LDS
-  visibility wait.  Do not keep any of these in active source.
+  visibility wait; score-zero-hoist reduced one `v_mov` class but regressed
+  ticks; naive consumer half-order stagger passed correctness/resources but
+  regressed H1/S1024 `simTicks 46,716,670 -> 47,896,485` and MMAC active
+  `33.2391% -> 31.1416%`; Q-side sidecar prefetch reduced barrier counter but
+  regressed ticks; merging QUsed/DoutUsed into one RawHalfUsed lowered SCA but
+  regressed ticks and MMAC active because it delayed independent page release;
+  dP-before-Q first-pair split passed correctness/resources but regressed
+  `simTicks 46,716,670 -> 48,090,770` and MMAC active
+  `33.2391% -> 32.5023%`, so keep score/dP fused unless xcu proves a real
+  dO-ready/Q-not-ready gap.
+  Do not keep any of these in active source.
 - Next dKV work should target ABarrier/page lifetime or useful MMAC per
   ownership epoch while keeping sidecar LDS-local and the hot matrix path on
   `matrix_load` + `ds_read_matrix` + MMAC.
@@ -934,3 +951,89 @@ Current next dKV plan:
 - Remote status:
   `10.59.41.48` is currently unreachable through both 54 and 59 jump routes,
   so new PMD/xcu runs are paused rather than guessed.
+
+Liuchang fallback status:
+
+- On 2026-07-09 we returned to liuchang/zys1 while the new PMD/compiler route
+  is paused.  Active remote source is `/zys/shaobo/fa3_bwd_wasp_clean`.
+- dKV baseline rebuilt cleanly on liuchang: branch windows `14/16`,
+  `222/240`, `222/240`, `8/16`; `s_trap=0`, `s_set_vgpr_size=4`,
+  `v_mov_b32=539`, `v_mov_b64=139`, no spill/scratch.
+- The score-zero-hoist probe reduced `v_mov_b64` to `111` but increased
+  consumer windows to `226/240` and regressed xcu dispatch duration
+  `94,728 -> 94,988`; it is recorded as
+  `REJECT_PERF_REGRESSION_SOURCE_REVERTED` and removed from active source.
+- The consumer half-order stagger probe made consumer1 process half1 -> half0
+  while consumer0 kept half0 -> half1.  It passed static/resource and
+  correctness gates but regressed H1/S1024 stats.  Treat this as proof that
+  useful stagger must preserve early Q0/Dout0 release; otherwise it breaks the
+  existing half-page conveyor.
+- The global half1-first conveyor probe changed producers and both consumers
+  to half1 -> half0.  It passed static/resource and correctness gates and
+  stats-only looked like a tiny win, but full perf regressed:
+  `simTicks 46,716,670 -> 46,947,355`, `kernel_ticks 43,103,060 -> 43,333,745`.
+  It is removed from active source and recorded as
+  `REJECT_FULLPERF_REGRESSION_SOURCE_REVERTED`.
+- The Q-side sidecar prefetch-before-Used probe loaded sidecar triples before
+  `wait_q_half_used` and stored them to LDS afterward.  It passed static and
+  correctness gates and lowered the aggregate barrier counter, but H1/S1024
+  stats regressed versus accepted `dkv_q_used_release_before_softmax`:
+  `simTicks 46,716,670 -> 46,773,090`, `kernel_ticks 43,103,060 -> 43,159,480`.
+  It is removed from active source and recorded as
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_REVERTED`.
+- The merged-used-token probe replaced separate `QUsed`/`DoutUsed` arrivals
+  with one `RawHalfUsed` arrival per half.  It passed static/resource and
+  correctness gates, but H1/S1024 regressed:
+  `simTicks 46,716,670 -> 47,066,110`,
+  `kernel_ticks 43,103,060 -> 43,452,500`,
+  `MMAC active 33.2391% -> 33.1006%`.  It is removed from active source and
+  recorded as `REJECT_STATS_TICKS_REGRESSION_SOURCE_REVERTED`.
+- The dP-before-Q first-pair probe split the first 32-row pair of each half
+  into `dP MMAC` before `QFilled` and `score MMAC` after `QFilled`.  It passed
+  static/resource and correctness gates, but H1/S1024 regressed:
+  `simTicks 46,716,670 -> 48,090,770`,
+  `kernel_ticks 43,103,060 -> 44,477,160`,
+  `MMAC active 33.2391% -> 32.5023%`.  It is removed from active source and
+  recorded as `REJECT_STATS_TICKS_REGRESSION_SOURCE_REVERTED`.
+- `xcu` CLI is now available on liuchang via sidecar path:
+  `XCU_ROOT=/zys/tools/xcompute_light_4.6.3/opt/XCompute-Light-4.6.3/XCompute`.
+  Use `PATH=$XCU_ROOT/bin:$PATH` and
+  `LD_LIBRARY_PATH=$XCU_ROOT/lib:$XCU_ROOT/lib/lib:$LD_LIBRARY_PATH` before
+  `xcu status -P <perf> ...`.  The half1-first rejected perf has xcu outputs
+  under `/zys/shaobo_runs/fa3_bwd_wasp_clean/xcu_outputs/dkv_global_half1_first_20260709_164425`.
+- dKV perf path is valid on liuchang.  dQ stats-only correctness passes, but
+  dQ with Perf/helper currently produces NaNs, so dQ perf evidence must be
+  treated invalid until isolated.
+
+BPS/vbcnt focused probe, 2026-07-11:
+
+- Added opt-in macro `SHAOBO_BPS_VBCNT_BEFORE_ARRIVE`, default off.
+- Purpose:
+  test whether explicit `s_waitcnt_vbcnt 0` before BPS-published Filled-token
+  arrivals helps PMD readiness. This is not a new performance route and does
+  not change canonical behavior unless built with
+  `EXTRA_CXXFLAGS="-DSHAOBO_BPS_VBCNT_BEFORE_ARRIVE=1"`.
+- Current evidence:
+  default and vbcnt variants both pass build/static gates and H1/S128 +
+  H1/S1024 correctness. On H1/S1024, stats-only changed
+  `kernel_ticks 43,523,025 -> 42,995,680` and
+  `simTicks 47,136,635 -> 46,609,290`, with no spill/scratch and
+  `ldsBankConflict=0`.
+- Status:
+  `OBSERVE_MICRO_WIN_NEEDS_XCU`. Before promotion, run same-env full perf and
+  xcu detail/wavefronts/bubbles/pipeline for default versus vbcnt.
+
+BPS/vbcnt promoted to default, 2026-07-11:
+
+- `SHAOBO_BPS_VBCNT_BEFORE_ARRIVE` now defaults to `1`.
+- Disable only for A/B with:
+  `EXTRA_CXXFLAGS="-DSHAOBO_BPS_VBCNT_BEFORE_ARRIVE=0"`.
+- Default-enabled H1/S1024 correctness PASS under:
+  `/zys/shaobo_runs/dkv_vbcnt_default_20260711/dkv_mmac_correctness_20260711_112221`.
+- Stats:
+  `simTicks=46,554,690`, `kernel_ticks=42,941,080`,
+  `MMOP=131,072`, `VALU=168,514`, `SCA=114,520`, `LDS=79,360`,
+  coissue `37,689/26,615`, `ldsBankConflict=0`.
+- Treat this as a useful local BPS readiness fix, not as the top-level BWD
+  solution. The next design must still target dKV fragmentation/ownership
+  epochs, using Tri Dao FA3 BWD and Shaobo FWD as the structural references.

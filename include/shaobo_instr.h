@@ -7,6 +7,10 @@
 
 namespace shaobo::fa3::bwd::dkv::instr {
 
+#ifndef SHAOBO_BPS_VBCNT_BEFORE_ARRIVE
+#define SHAOBO_BPS_VBCNT_BEFORE_ARRIVE 1
+#endif
+
 using Vec4U32 = __attribute__((__vector_size__(4 * sizeof(uint32_t)))) uint32_t;
 using Vec2F16 = __attribute__((__vector_size__(2 * sizeof(_Float16)))) _Float16;
 using Vec4F16 = __attribute__((__vector_size__(4 * sizeof(_Float16)))) _Float16;
@@ -196,6 +200,20 @@ __device__ __forceinline__ void wait_lgkm(int count = 0) {
     __builtin_amdgcn_sched_barrier(0);
 #else
     (void)count;
+#endif
+}
+
+__device__ __forceinline__ void wait_vbcnt0() {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    __builtin_amdgcn_sched_barrier(0);
+    asm volatile("s_waitcnt_vbcnt 0\n" ::: "memory");
+    __builtin_amdgcn_sched_barrier(0);
+#endif
+}
+
+__device__ __forceinline__ void maybe_wait_bps_vbcnt_before_arrive() {
+#if SHAOBO_BPS_VBCNT_BEFORE_ARRIVE
+    wait_vbcnt0();
 #endif
 }
 

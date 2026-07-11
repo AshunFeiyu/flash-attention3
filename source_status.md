@@ -4792,3 +4792,176 @@ Current focus:
 - Remote status:
   attempts to reach `10.59.41.48` via the 54 and 59 jump routes failed on
   2026-07-09, so new PMD/xcu validation is deferred.
+
+## 2026-07-09 dKV Consumer Half-Order Stagger Rejected
+
+- Tested change:
+  consumer0 kept the accepted half0 -> half1 order, while consumer1 processed
+  half1 -> half0 to try to create real-work stagger between consumer groups.
+- Resource/correctness:
+  static/resource PASS with branch windows `14/16`, `222/240`, `221/240`,
+  `8/16`; metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+  H1/S128 and H1/S1024 correctness PASS.
+- Stats result:
+  H1/S1024 regressed versus accepted `dkv_q_used_release_before_softmax`:
+  `simTicks 46,716,670 -> 47,896,485`, `kernel_ticks 43,103,060 -> 44,282,875`,
+  and `MMAC active 33.2391% -> 31.1416%`.  `ldsBankConflict=0`.
+- Decision:
+  rejected and removed from active source.  Local and remote sources are
+  restored to accepted `dkv_q_used_release_before_softmax`.
+- Lesson:
+  naive consumer half-order reversal breaks the current half-page conveyor by
+  delaying Q0/Dout0 `Used`, so the producer cannot overwrite half0 for the next
+  q tile early.  Future stagger must preserve early half release or redesign
+  producer order plus ownership epoch together.
+
+## 2026-07-09 dKV Global Half1-First Conveyor Rejected
+
+- Tested change:
+  make the whole Mq128 half-page conveyor consistent in the opposite order:
+  producers publish half1 before half0 and both consumers consume half1 before
+  half0.
+- Resource/correctness:
+  static/resource PASS with branch windows `14/16`, `221/240`, `221/240`,
+  `8/16`; metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+  H1/S128 and H1/S1024 correctness PASS.
+- Stats/full-perf result:
+  stats-only slightly improved versus accepted
+  `dkv_q_used_release_before_softmax`
+  (`kernel_ticks 43,103,060 -> 43,004,325`,
+  `MMAC active 33.2391% -> 33.3829%`), but full perf regressed:
+  `simTicks 46,716,670 -> 46,947,355`,
+  `kernel_ticks 43,103,060 -> 43,333,745`,
+  `MMAC active 33.2391% -> 33.2641%`.
+- XCU result:
+  liuchang sidecar `xcu` was validated at
+  `/zys/tools/xcompute_light_4.6.3/opt/XCompute-Light-4.6.3/XCompute`.
+  For this perf, `detail` reports duration `95,240`, average active waves
+  `121.04`, and top bubbles `s_abarrier_try_wait -> s_xor_b32 40.87%`,
+  `s_abarrier_try_wait -> s_waitcnt 8.45%`, `v_mmac -> v_mmac 8.17%`.
+  Outputs are archived both remotely and under the shared perf folder.
+- Decision:
+  rejected and removed from active source.  Local and remote sources are
+  restored to accepted `dkv_q_used_release_before_softmax`; remote rebuild gate
+  PASS with branch windows `14/16`, `222/240`, `222/240`, `8/16`.
+- Lesson:
+  globally flipping half order is not enough.  The next useful dKV lever must
+  change ownership lifetime or useful work per epoch, not only q-half order.
+
+## 2026-07-09 dKV Q-Side Sidecar Prefetch Rejected
+
+- Tested change:
+  producer-K/Q loaded each Q-half sidecar triple from global before
+  `wait_q_half_used`, then stored that triple into the existing sidecar LDS page
+  after the wait and before `arrive_q_half_filled`.
+- Resource/correctness:
+  static/resource PASS with branch windows `15/16`, `222/240`, `222/240`,
+  `8/16`; metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+  H1/S128 and H1/S1024 correctness PASS.
+- Stats result:
+  same-shape H1/S1024 regressed versus accepted
+  `dkv_q_used_release_before_softmax`:
+  `simTicks 46,716,670 -> 46,773,090`,
+  `kernel_ticks 43,103,060 -> 43,159,480`.
+  `MMAC active` rose slightly `33.2391% -> 33.3770%`, and barrier counter fell
+  about `2.0%`, but `VALU`, `SCA`, and failed coissue increased.
+- Decision:
+  rejected and removed from active source.  Local source is restored to accepted
+  `dkv_q_used_release_before_softmax`; remote dKV evidence gate and metadata
+  gate were rebuilt and PASS with `private=0`, `sgpr=99`, `vgpr=128`, no
+  spill/scratch.
+- Lesson:
+  moving small producer work before an ownership wait is not enough by itself.
+  It can lower barrier counter, but the extra live range/control cost must be
+  amortized by a larger ownership-epoch or MMAC-island redesign to improve
+  elapsed ticks.
+
+## 2026-07-09 dKV Merged Used Token Rejected
+
+- Tested change:
+  replace separate per-half `QUsed` and `DoutUsed` tokens with one shared
+  `RawHalfUsed` token, while keeping `QFilled` and `DoutFilled` separate.
+- Resource/correctness:
+  static/resource PASS with branch windows `14/16`, `222/240`, `222/240`,
+  `8/16`; metadata `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+  H1/S128 and H1/S1024 correctness PASS.
+- Stats result:
+  same-shape H1/S1024 regressed versus accepted
+  `dkv_q_used_release_before_softmax`:
+  `simTicks 46,716,670 -> 47,066,110`,
+  `kernel_ticks 43,103,060 -> 43,452,500`,
+  `MMAC active 33.2391% -> 33.1006%`.
+  `SCA` dropped `114,520 -> 113,224`, but barrier counter rose
+  `157,259.173 -> 160,714.59`, and `ldsBankConflict=0`.
+- Decision:
+  rejected and removed from active source.  Local and remote dKV files are
+  restored to accepted `dkv_q_used_release_before_softmax`; remote rebuild,
+  dKV evidence gate, and metadata gate PASS.
+- Lesson:
+  lowering token instruction count is not enough if it removes independent
+  `Q`/`dO` page release.  Future ownership work must preserve producer-local
+  release timing or increase useful MMAC per ownership epoch.
+
+## 2026-07-09 dKV dP-Before-Q First-Pair Rejected
+
+- Tested change:
+  split the first 32-row pair of each 64-row half from fused `score/dP` into
+  `wait dO -> dP MMAC -> wait Q -> score MMAC`, while the second pair kept the
+  accepted fused path.
+- Resource/correctness:
+  static/resource PASS with metadata `private=0`, `sgpr=99`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 correctness PASS.
+- Stats result:
+  same-shape H1/S1024 regressed versus accepted
+  `dkv_q_used_release_before_softmax`:
+  `simTicks 46,716,670 -> 48,090,770`,
+  `kernel_ticks 43,103,060 -> 44,477,160`,
+  `MMAC active 33.2391% -> 32.5023%`.
+  `VALU` rose `168,514 -> 170,064`, barrier counter rose
+  `157,259.173 -> 162,455.84`, and `ldsBankConflict=0`.
+- Decision:
+  rejected and removed from active source.  Local and remote dKV files are
+  restored to accepted `dkv_q_used_release_before_softmax`; remote rebuild,
+  dKV evidence gate, and metadata gate PASS.
+- Lesson:
+  the accepted fused score/dP island is still valuable.  Do not split it just
+  because dO is released earlier; first prove with xcu that there is a real
+  dO-ready/Q-not-ready window large enough to hide with dP MMAC.
+
+## 2026-07-11 dKV BPS vbcnt Opt-In Probe
+
+- Tested change:
+  added `SHAOBO_BPS_VBCNT_BEFORE_ARRIVE`, default off. When enabled, producer
+  inserts `s_waitcnt_vbcnt 0` before Filled-token arrivals for BPS-published
+  resident K/V and Q/dO packets.
+- Resource/correctness:
+  default and vbcnt variants both build and pass static gates. Branch windows
+  stay `14/16`, `222/240`, `222/240`, `8/16`; metadata stays `private=0`,
+  `sgpr=99`, `vgpr=128`, no spill/scratch. H1/S128 and H1/S1024 correctness
+  PASS for both.
+- Stats result:
+  H1/S1024 same-env stats on liuchang/zys1 improved slightly:
+  `simTicks 47,136,635 -> 46,609,290`,
+  `kernel_ticks 43,523,025 -> 42,995,680`.
+  `MMOP`, `VALU`, `SCA`, and `LDS` counts stayed unchanged; `ldsBankConflict=0`.
+- Decision:
+  record as `OBSERVE_MICRO_WIN_NEEDS_XCU`. The macro remains opt-in and is not
+  promoted to default until xcu/SQTT proves the improvement comes from lower
+  ownership/readiness bubble rather than stats noise.
+
+## 2026-07-11 dKV BPS vbcnt Default Enabled
+
+- Change:
+  `SHAOBO_BPS_VBCNT_BEFORE_ARRIVE` default changed to `1`. Use
+  `EXTRA_CXXFLAGS="-DSHAOBO_BPS_VBCNT_BEFORE_ARRIVE=0"` to disable for A/B.
+- Verification:
+  default build emits `6` `s_waitcnt_vbcnt`; dKV evidence gate and metadata
+  gate PASS; H1/S128 and H1/S1024 correctness PASS.
+- H1/S1024 default-enabled stats:
+  `simTicks=46,554,690`, `kernel_ticks=42,941,080`,
+  `MMOP=131,072`, `VALU=168,514`, `SCA=114,520`, `LDS=79,360`,
+  coissue `37,689/26,615`, `ldsBankConflict=0`.
+- Status:
+  accepted as default instruction-level fix. Next architectural work still
+  needs to reduce BWD page ownership fragmentation and improve useful
+  MMAC/VALU per ownership epoch.

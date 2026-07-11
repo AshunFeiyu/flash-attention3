@@ -548,6 +548,7 @@ __device__ __forceinline__ void producer_kq_loop(
     ins::abarrier_seq<false>(Wdra::kResidentFilled);
     publish_nk128_tile<Tile>(
         lds, Layout::kKBase, k_base_ptr, row_stride, k_base, wave_local);
+    ins::maybe_wait_bps_vbcnt_before_arrive();
     ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
     if constexpr (Tile::kOverlayRawOnResidentKv) {
         wait_resident_used<Wdra>(resident_used_phase);
@@ -568,6 +569,7 @@ __device__ __forceinline__ void producer_kq_loop(
             publish_sidecar_half_tile_to_lds<Tile, 0>(
                 lds, packed_sidecar, row_base, packet_q_base, seqlen, page,
                 wave_local, lane);
+            ins::maybe_wait_bps_vbcnt_before_arrive();
             arrive_q_half_filled<Wdra, 0>();
 
             if (q_tile >= Tile::kRawBuffers) {
@@ -580,6 +582,7 @@ __device__ __forceinline__ void producer_kq_loop(
             publish_sidecar_half_tile_to_lds<Tile, 1>(
                 lds, packed_sidecar, row_base, packet_q_base, seqlen, page,
                 wave_local, lane);
+            ins::maybe_wait_bps_vbcnt_before_arrive();
             arrive_q_half_filled<Wdra, 1>();
         } else {
             if (q_tile >= Tile::kRawBuffers) {
@@ -592,6 +595,7 @@ __device__ __forceinline__ void producer_kq_loop(
             publish_sidecar_tile_to_lds<Tile>(
                 lds, packed_sidecar, row_base, packet_q_base, seqlen, page,
                 wave_local, lane);
+            ins::maybe_wait_bps_vbcnt_before_arrive();
             arrive_q_filled<Wdra>();
         }
     }
@@ -617,6 +621,7 @@ __device__ __forceinline__ void producer_vdout_loop(
     ins::abarrier_seq<false>(Wdra::kResidentFilled);
     publish_nk128_tile<Tile>(
         lds, Layout::kVBase, v_base_ptr, row_stride, k_base, wave_local);
+    ins::maybe_wait_bps_vbcnt_before_arrive();
     ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
     if constexpr (Tile::kOverlayRawOnResidentKv) {
         wait_resident_used<Wdra>(resident_used_phase);
@@ -634,6 +639,7 @@ __device__ __forceinline__ void producer_vdout_loop(
             publish_mq_half_tile<Tile, 0>(
                 lds, Layout::kDoutBase, dout_base_ptr, row_stride,
                 packet_q_base, page, wave_local);
+            ins::maybe_wait_bps_vbcnt_before_arrive();
             arrive_dout_half_filled<Wdra, 0>();
 
             if (q_tile >= Tile::kRawBuffers) {
@@ -643,6 +649,7 @@ __device__ __forceinline__ void producer_vdout_loop(
             publish_mq_half_tile<Tile, 1>(
                 lds, Layout::kDoutBase, dout_base_ptr, row_stride,
                 packet_q_base, page, wave_local);
+            ins::maybe_wait_bps_vbcnt_before_arrive();
             arrive_dout_half_filled<Wdra, 1>();
         } else {
             if (q_tile >= Tile::kRawBuffers) {
@@ -653,6 +660,7 @@ __device__ __forceinline__ void producer_vdout_loop(
                 lds, Layout::kDoutBase, dout_base_ptr, row_stride,
                 packet_q_base, page, wave_local);
 
+            ins::maybe_wait_bps_vbcnt_before_arrive();
             arrive_dout_filled<Wdra>();
         }
     }
