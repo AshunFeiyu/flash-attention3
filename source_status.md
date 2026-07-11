@@ -5041,3 +5041,9 @@ Current focus:
   all four simple q-owned score pack variants fail (`any_pass=0`).  This
   rejects direct q-owned two-accumulator packing, not the prior accepted
   ds_write handoff.  Next step is slot-map-driven C_dS layout generation.
+- Direct-MMAC qK follow-up:
+  expanded the same probe so variants 4-7 compute qK with direct
+  `__builtin_hcu_mmac_f32_16x16x16_f16` instead of lit/4interleave.  Asm has
+  direct non-`lit` MMAC, no scalar/permute workaround, and PMD remains
+  `ldsBankConflict=0`, but all direct variants still fail (`any_pass=0`).
+  Therefore qK direct MMAC alone is not the missing dS producer layout.

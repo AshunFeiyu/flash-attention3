@@ -1085,3 +1085,8 @@ dQ dS->dQ ring2, 2026-07-11:
   `ds_write_matrix(no t)` -> dQ MMAC all fail (`any_pass=0`) while keeping
   `ldsBankConflict=0` and no scalar/permute workaround.  Next work must use the
   7/5 slot-map formula to generate the accepted source layout deliberately.
+- Direct qK MMAC was tested in the same probe:
+  variants 4-7 use direct `__builtin_hcu_mmac_f32_16x16x16_f16` for qK score
+  instead of lit/4interleave.  The asm contains direct non-`lit` MMAC, but PMD
+  still reports `any_pass=0`.  So this is not solved by changing qK MMAC form
+  alone.

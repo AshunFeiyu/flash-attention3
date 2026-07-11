@@ -8987,3 +8987,28 @@ Decision: `REJECT_DIRECT_QOWNED_PACK`.
   The next useful proof is to recover the accepted slot-map formula and make
   C_dS compute/publish that layout directly, not to add more ad hoc pack
   candidates or a scalar/permute workaround.
+
+Follow-up direct-MMAC qK test:
+
+- User hypothesis:
+  the qK GEMM may be using the wrong MMAC result layout because it uses the
+  current lit/4interleave-style helper.  Try qK score generation with direct
+  `__builtin_hcu_mmac_f32_16x16x16_f16` while keeping the dQ consumer MMAC
+  unchanged.
+- Implementation:
+  extended `dq_dswrite_qowned_chain_probe.cpp` from 4 to 8 candidates.
+  Variants 0-3 use lit qK score; variants 4-7 use direct qK score.
+- Static evidence:
+  asm now has `v_mmac=24`, including 4 direct non-`lit` qK instructions;
+  `matrix_load_32x=7`, `ds_write_matrix_format=8`,
+  `ds_read_matrix*=18`, `ds_read_b32=0`, `bpermute/mpermute=0`.
+  Metadata is still clean: `group_segment=32768`, `private=0`, `sgpr=24`,
+  `vgpr=30`, no spill.
+- PMD result:
+  `/zys/shaobo_runs/dq_qowned_chain_direct_mmac_probe_20260711_154619`.
+  `simTicks=8,449,805`, `MMOP=24`, `ldsBankConflict=0`.
+  All variants 0-7 fail; direct-MMAC variants 4 and 6 have `raw_nonzero=16`
+  but `decoded=0`, and variants 5/7 are zero.  Final `any_pass=0`.
+- Decision:
+  `REJECT_DIRECT_MMAC_SCORE_LAYOUT`.  qK direct MMAC alone does not create the
+  accepted dS producer layout.  Continue with slot-map-driven C_dS generation.

@@ -21,7 +21,7 @@ constexpr int kRows = 32;
 constexpr int kCols = 64;
 constexpr int kProbeK = 7;
 constexpr int kKTagBase = 1024;
-constexpr int kPackVariants = 4;
+constexpr int kPackVariants = 8;
 
 constexpr int kQPageBytes = 0;
 constexpr int kScoreKPageBytes = 2048;
@@ -52,13 +52,30 @@ float q_scale_for_decode(int q) {
     return 1.0f + static_cast<float>(q) * 0.0625f;
 }
 
-__device__ __forceinline__ ProbeF32x4 mmac_pair(const ProbeF16x8& lhs,
-                                                const ProbeF16x8& rhs,
-                                                const ins::F16x8& zero) {
+__device__ __forceinline__ ProbeF32x4 mmac_pair_lit(const ProbeF16x8& lhs,
+                                                    const ProbeF16x8& rhs,
+                                                    const ins::F16x8& zero) {
     ProbeF32x4 out{};
 #if defined(__gfx946__) || defined(__gfx938__)
     out.f32 = ins::mmac_f16_lit(lhs.f16x4[0], rhs.f16x4[0], zero.f32);
     out.f32 = ins::mmac_f16_lit(lhs.f16x4[1], rhs.f16x4[1], out.f32);
+#else
+    (void)lhs;
+    (void)rhs;
+    (void)zero;
+#endif
+    return out;
+}
+
+__device__ __forceinline__ ProbeF32x4 mmac_pair_direct(const ProbeF16x8& lhs,
+                                                       const ProbeF16x8& rhs,
+                                                       const ins::F16x8& zero) {
+    ProbeF32x4 out{};
+#if defined(__gfx946__) || defined(__gfx938__)
+    out.f32 = __builtin_hcu_mmac_f32_16x16x16_f16(
+        lhs.f16x4[0], rhs.f16x4[0], zero.f32);
+    out.f32 = __builtin_hcu_mmac_f32_16x16x16_f16(
+        lhs.f16x4[1], rhs.f16x4[1], out.f32);
 #else
     (void)lhs;
     (void)rhs;
@@ -157,13 +174,20 @@ __global__ void dq_dswrite_qowned_chain_probe_kernel(
 
         ins::F16x8 zero;
         ins::zero_f16x8(zero);
-        const ProbeF32x4 score0 = mmac_pair(q_trans, score_k0, zero);
-        const ProbeF32x4 score1 = mmac_pair(q_trans, score_k1, zero);
+        const ProbeF32x4 score_lit0 = mmac_pair_lit(q_trans, score_k0, zero);
+        const ProbeF32x4 score_lit1 = mmac_pair_lit(q_trans, score_k1, zero);
+        const ProbeF32x4 score_direct0 =
+            mmac_pair_direct(q_trans, score_k0, zero);
+        const ProbeF32x4 score_direct1 =
+            mmac_pair_direct(q_trans, score_k1, zero);
 
 #pragma unroll
         for (int variant = 0; variant < kPackVariants; ++variant) {
             ProbeF16x8 packed{};
-            pack_qowned_scores(score0, score1, variant, packed);
+            const bool use_direct_score = variant >= 4;
+            pack_qowned_scores(use_direct_score ? score_direct0 : score_lit0,
+                               use_direct_score ? score_direct1 : score_lit1,
+                               variant & 3, packed);
             __builtin_hcu_ds_write_matrix_format_f16(
                 packed.f16x8,
                 lds + (kDsPageBytes / 2) + variant * kReaderPageElems,
@@ -190,7 +214,7 @@ __global__ void dq_dswrite_qowned_chain_probe_kernel(
             ProbeF16x8 ds_frag{};
             ds_frag.f16x8 = ds_vec;
             ins::wait_lgkm(0);
-            store_acc(out, variant, lane, mmac_pair(ds_frag, dq_k, zero));
+            store_acc(out, variant, lane, mmac_pair_lit(ds_frag, dq_k, zero));
         }
     }
 
