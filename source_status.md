@@ -1,5 +1,34 @@
 # Source Status
 
+## 2026-07-12 dQ Exact Active K-Tiles Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  canonical dQ only supports causal exact tiles with `Mq=Nk=128`,
+  `S % Mq == 0`, and `S % Nk == 0`.  Therefore each q tile's active K tiles
+  can be expressed as `q_tile + 1` instead of computing
+  `q_tile_end=min(q_base+Mq,seqlen)` and a ceil-div.  This tested whether
+  removing scalar min/ceil control helped the C74 mainline.
+- Code:
+  temporary only.  Replaced `active_k_tiles` in the kernel entry with
+  `q_tile + 1` and in the consumer with `q_base_tile / Nk + 1`.  No role,
+  ABarrier, LDS page, BPS wait, MMAC, or output ownership changed.
+- Gates:
+  static/resource PASS with branch windows `8/40,159/216,159/216,9/40`.
+  Temporary metadata improved to `private=0`, `sgpr=58`, `vgpr=128`,
+  no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats regressed
+  `32,597,110 -> 32,615,310` ticks.  MMAC active moved
+  `31.6674% -> 31.6334%`; SCA rose `40,732 -> 42,344`, while
+  MMOP/VALU/LDS/VMEM stayed `55,296/89,216/28,656/1,408`.
+- Decision:
+  reject and restore C74 source.  Static SGPR reduction did not translate to
+  lower elapsed ticks; do not retry this scalar-algebra shortcut unless
+  compiler/codegen evidence changes.
+
 ## 2026-07-12 dQ Tail Raw SBarrier Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

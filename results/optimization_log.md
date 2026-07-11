@@ -1,5 +1,39 @@
 # Optimization Log
 
+## 2026-07-12 dQ Exact Active K-Tiles
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Hypothesis:
+
+The canonical dQ path has a stronger shape contract than the generic formula:
+`causal=true`, `Mq=Nk=128`, `S % 128 == 0`, and `seqlen_q == seqlen_k`.
+Therefore `active_k_tiles = q_tile + 1`.  Test whether replacing the runtime
+`min(q_base+Mq,seqlen)` plus ceil-div in the kernel and consumer reduces
+scalar/control debt without changing the algorithm.
+
+Evidence:
+
+- Workbook: `78_DQ_ExactKTile`.
+- Temporary source change only; restored after rejection.
+- Static/resource PASS:
+  branch windows stayed `8/40,159/216,159/216,9/40`; metadata improved
+  `sgpr=65 -> 58` with `vgpr=128`, `private=0`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS; `ldsBankConflict=0`.
+- H1/S1024 stats:
+  `simTicks=32,597,110 -> 32,615,310`,
+  `MMAC active=31.6674% -> 31.6334%`,
+  `SCA=40,732 -> 42,344`, while `MMOP/VALU/LDS/VMEM` stayed
+  `55,296/89,216/28,656/1,408`.
+
+Conclusion:
+
+Reject.  The algebra is correct for the current canonical shape, but the
+generated schedule is not better: lower static SGPR count came with higher SCA
+and a small tick regression.  Keep C74's original `q_tile_end`/ceil-div form
+unless a future compiler/codegen change gives new evidence.
+
 ## 2026-07-12 dQ 12-Wave Single Producer
 
 Decision: `REJECT_STATS_TICKS_REGRESSION`

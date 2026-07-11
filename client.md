@@ -126,6 +126,16 @@ evidence are required before any performance claim.
   `31.6674% -> 31.7079%`.  Source is restored to C74.  Lesson: the remaining
   terminal sync should stay canonical for now; codegen-only tail tweaks are
   not enough to reach 40%.
+- Latest scalar-algebra rejection:
+  sheet `78_DQ_ExactKTile` replaced the canonical exact causal
+  `active_k_tiles` calculation with the algebraic form `q_tile + 1`.
+  Static/resource gates passed and metadata showed fewer SGPRs
+  (`65 -> 58`), but H1/S1024 stats regressed
+  `32,597,110 -> 32,615,310`, MMAC active fell
+  `31.6674% -> 31.6334%`, and SCA rose `40,732 -> 42,344`.
+  Source is restored to C74.  Lesson: do not promote scalar simplifications
+  from static metadata alone; same-shape ticks and instruction mix are the
+  decision evidence.
 - Latest rejected producer-ownership variants:
   K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
   scalar/control and barrier debt.  Alternate-page full-KV producers lowered
