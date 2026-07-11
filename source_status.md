@@ -5311,3 +5311,32 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   Therefore the C_dS publisher must use the compact slot table and handle the
   eight boundary holes explicitly; do not assume a dense 512-slot affine
   producer-source map.
+
+## 2026-07-11 dS Source-Pack Workaround Cost Probe
+
+- Decision: `BRINGUP_ONLY_REJECT_FOR_PERF`.
+- Added focused probe `probes/dq_ds_source_pack_cost_probe.cpp` to compare
+  three ways to publish dS into the verified native handoff source slots:
+  `native_slot`, `bpermute_pack`, and `lds_gather_pack`.
+- Static result:
+  `native_slot` and `lds_gather_pack` are clean (`private=0`, no spill).
+  `bpermute_pack` has `private_segment_fixed_size=32`; PMD aborts the
+  dispatch with `driver needs to set valid scratch parameters`.  Do not use
+  this bpermute form as a performance workaround on the current toolchain.
+- PMD compare, `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`,
+  `iters=1024`:
+  `/zys/shaobo_runs/dq_ds_source_pack_cost_compare_20260711_205227_iters1024`.
+  Both runnable paths report `errors=0` and identical checksum, proving the
+  LDS gather pack can construct the same source fragment as native slot
+  scheduling.
+- Cost:
+  `native_slot simTicks=1,176,128,135`; `lds_gather_pack
+  simTicks=1,713,390,315` (`+45.7%`).  LDS instructions rise from `2112` to
+  `6209`, LDS bank conflicts rise from `0` to `24576`, and
+  `LocalMemPipeline.numCyclesSpLds::Sp0Lds` rises from `512` to `16916`.
+- Conclusion:
+  natural-layout dS followed by LDS gather can be a correctness bringup
+  workaround, but it is too expensive for the performance route.  The native
+  C_dS direction remains: schedule C_dS by source slot or find a native
+  MMAC/operand orientation that produces the verified source-slot layout
+  directly.

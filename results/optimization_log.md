@@ -9496,3 +9496,54 @@ Conclusion:
 - Do not add a scalar gather/permute workaround to force this route.  Either
   find a true source-layout producer/MMAC orientation, or return to the
   accepted full3GEMM dQ path and focus on wait/ABarrier/MMAC-island tuning.
+
+## 2026-07-11 dS Source-Pack Workaround Cost
+
+Decision: `BRINGUP_ONLY_REJECT_FOR_PERF`
+
+Question:
+
+- If real C_dS cannot yet be generated directly in `ds_write_matrix` source
+  slots, can a half workaround pack natural-layout dS into the verified
+  source-slot layout cheaply enough to try a full dQ ring?
+
+Implementation:
+
+- Added `probes/dq_ds_source_pack_cost_probe.cpp`.
+- The probe compares:
+  - `native_slot`: each lane directly computes the source-slot value required
+    by `NativeDsSlotMap`.
+  - `bpermute_pack`: natural owner lanes publish values through wave
+    `ds_bpermute_b32`.
+  - `lds_gather_pack`: natural owner lanes store a compact LDS page and source
+    lanes gather dword pairs with `ds_read_b32`.
+- `--path` runs one dispatch at a time so a rejected path cannot abort the
+  other measurements.
+
+Evidence:
+
+- Static metadata:
+  - `native_slot`: `private=0`, `sgpr=68`, `vgpr=29`.
+  - `lds_gather_pack`: `private=0`, `sgpr=88`, `vgpr=39`.
+  - `bpermute_pack`: `private_segment_fixed_size=32`, `sgpr=55`,
+    `vgpr=45`; PMD aborts with scratch-parameter panic.
+- PMD:
+  `/zys/shaobo_runs/dq_ds_source_pack_cost_compare_20260711_205227_iters1024`.
+- Correctness equivalence:
+  both runnable paths report `errors=0` and checksum `10239541.1`.
+- Stats:
+  - `native_slot`: `simTicks=1,176,128,135`, `LDS=2112`,
+    `ldsBankConflict=0`, `Sp0Lds=512`, `MMOP=2048`.
+  - `lds_gather_pack`: `simTicks=1,713,390,315`, `LDS=6209`,
+    `ldsBankConflict=24576`, `Sp0Lds=16916`, `MMOP=2048`.
+
+Conclusion:
+
+- The LDS gather workaround is semantically valid but costs about `+45.7%`
+  simTicks in this focused loop and introduces heavy LDS bank conflict.  It is
+  useful only as a bringup/debug path, not as a performance route.
+- The bpermute workaround is not currently viable: codegen introduces private
+  segment usage, and PMD cannot launch it.
+- Continue pursuing native source-slot C_dS generation or a true native
+  MMAC/operand orientation; do not promote gather/permute packing into the
+  canonical dQ performance kernel.
