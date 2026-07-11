@@ -1172,6 +1172,14 @@ dQ half-page PageUsed note, 2026-07-12:
   ownership tokens unless the design also removes another token or gives the
   producer useful recurring work.
 
+dQ group1 reverse n_tile note, 2026-07-12:
+
+- Reversing `n_tile` order for consumer group1 was a clean no-extra-token
+  attempt at useful-work stagger, but it regressed H1/S1024
+  (`simTicks=36,171,590`, `MMAC active=27.2470%`).  The active source is
+  restored.  Pure chunk-order skew is not enough; future stagger must move
+  different useful work, not just different addresses.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

@@ -5527,3 +5527,18 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `REJECT_STATS_TICKS_REGRESSION`.  Active source was restored and recertified
   to the canonical single-`PageUsed` dQ gate.  Do not split ownership finer
   unless the split removes another token or exposes useful producer work.
+
+## 2026-07-12 dQ group1 reverse n_tile rejected
+
+- Hypothesis:
+  create useful-work stagger without new ABarrier tokens by letting consumer
+  group0 process `n_tile` forward and consumer group1 process it backward.
+- Result:
+  correctness/resource PASS, but H1/S1024 regressed:
+  `simTicks=36,171,590`, `kernel_ticks=32,557,980`,
+  `MMAC active=27.2470%`, `barrierCounter=52,670`,
+  `waitLgkm=14,150.25`, `ldsBankConflict=0`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Active source was restored.  Do not retry
+  pure chunk-order skew; it does not change the consumer instruction mix
+  enough to break the dominant ownership pattern.

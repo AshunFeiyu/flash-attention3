@@ -10062,3 +10062,29 @@ Conclusion:
   do not split `PageUsed` finer unless the split also removes another wait or
   adds recurring useful producer work.  More precise ABarrier ownership can
   make the critical path worse when it only adds bookkeeping.
+
+## 2026-07-12 dQ group1 reverse n_tile rejected
+
+- Hypothesis:
+  keep all canonical barriers and tile sizes unchanged, but make consumer
+  group1 traverse `n_tile` inside a K/V page in reverse order.  This is a
+  no-delay useful-work stagger intended to reduce consumer齐步走 without adding
+  ABarrier traffic.
+- Result:
+  correctness/resource PASS.  Static gate unchanged:
+  `8/40,161/216,161/216,9/40`; metadata `private=0`, `sgpr=67`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness both passed.
+  H1/S1024 stats:
+  `simTicks=36,171,590`, `kernel_ticks=32,557,980`,
+  `MMAC active=27.2470%`, `MMOP=55,296`, `VALU=121,600`,
+  `SCA=77,516`, `LDS=28,656`, `coissue=15,693/18,716`,
+  `barrierCounter=52,670`, `waitLgkm=14,150.25`, `ldsBankConflict=0`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  The instruction structure is still too
+  similar between the two consumer groups; reversing addresses/chunk order
+  alone does not create a meaningful MMAC/VALU pipeline.  Active source was
+  restored.
+- Lesson:
+  future stagger work must move genuinely different useful work across
+  consumers or producers.  Pure iteration-order skew is not enough for this
+  dQ topology.
