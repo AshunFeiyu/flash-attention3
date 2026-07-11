@@ -5371,3 +5371,12 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   lower-bound improvement of `4.49%` kernel ticks and `+0.74pt` MMAC active.
   It proves the hot dQ path has about 4-5% exposed source-layout/control
   overhead to reclaim, but it is not a correctness candidate.
+- Mainline cleanup:
+  removed the opt-in `DQ_NATURAL_WRONG_DS` code path from active
+  `src/dq_kernel.cpp` and `scripts/run_dq_correctness.sh` after recording the
+  evidence above.  PMD restore run
+  `/zys/shaobo_runs/dq_mainline_restore_20260711_221350` reports correctness
+  PASS, `kernel_ticks=32,091,150`, `MMAC active=27.3852%`,
+  `MMOP=55,296`, `VALU=121,632`, `SCA=77,516`, `LDS=28,656`,
+  `coissue=16,119/19,093`, and `ldsBankConflict=0`.  Active dQ is again the
+  correct canonical path only.

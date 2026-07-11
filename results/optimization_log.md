@@ -9649,3 +9649,21 @@ Conclusion:
 - Do not promote this flag.  Use it as a bound: a correct native C_dS
   source-slot producer can plausibly reclaim roughly 4-5% on current H1/S1024
   dQ, but it will not by itself reach 40-60% MMAC active.
+
+Cleanup:
+
+- Removed `DQ_NATURAL_WRONG_DS` and `--natural-wrong-ds` from the active dQ
+  code and smoke script after the measurement.  The focused probe and log rows
+  remain as evidence; the canonical kernel no longer contains the wrong-layout
+  branch.
+- Restore validation:
+  `/zys/shaobo_runs/dq_mainline_restore_20260711_221350` with
+  `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`, H1/S1024.
+  Correctness PASS, static gate PASS, metadata
+  `private=0`, `sgpr_spill=0`, `vgpr_spill=0`, `sgpr=67`, `vgpr=128`,
+  branch windows `8/40,161/216,161/216,9/40`.
+- Restored canonical stats:
+  `simTicks=35,704,760`, `kernel_ticks=32,091,150`, `MMOP=55,296`,
+  `VALU=121,632`, `SCA=77,516`, `LDS=28,656`, `VMEM=1,408`,
+  `coissue=16,119/19,093`, `MMAC active=27.3852%`,
+  `ldsBankConflict=0`.
