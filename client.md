@@ -1294,6 +1294,25 @@ dQ native dS ring formula probe, 2026-07-12:
   MMAC output orientation: can score/dP MMAC produce the source-slot fragment
   natively, or does it require an expensive cross-lane/source-slot transform?
 
+dQ tail accumulator keep-alive prune, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `66_DQ_Tail_KeepAlive_Prune`.
+- Result:
+  `REJECT_PMD_REGISTER_INIT`.  Removing only the post-store
+  `keep_accumulator_live(dq_reg[d_idx])` loop passed static/source gates, but
+  changed WDRA branch codegen materially: producer1 branch reported `38/40`
+  VGPRs instead of the restored canonical `9/40`.  H1/S128 PMD aborted before
+  correctness with `read vgpr70 before writing` and `VGPR index 85 is out of
+  range: VGPR range=[0,40]` on `v_mov_b32`.
+- Evidence:
+  `/zys/shaobo_runs/dq_tail_keepalive_prune_20260712_031836/dq_correctness_20260712_031837`.
+- Lesson:
+  the keep-alive loop is a current WDRA/codegen liveness guard, not removable
+  tail noise.  Canonical source is restored; do not delete this guard without
+  a focused WDRA-exit proof.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

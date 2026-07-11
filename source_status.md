@@ -1,5 +1,30 @@
 # Source Status
 
+## 2026-07-12 dQ Tail Keep-Alive Prune Rejected
+
+Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.
+
+- Motivation:
+  test whether the post-store `keep_accumulator_live(dq_reg[d_idx])` loop in
+  `dq_consumer_full3gemm_role` is removable tail VALU noise.
+- Code:
+  temporary removal only.  No math, tile, LDS, barrier, wait, matrix path, or
+  output ownership change.
+- Gates:
+  build/source gate passed and metadata remained `private=0`, `sgpr=67`,
+  `vgpr=128`, no spill/scratch.  However branch windows changed materially:
+  producer1 branch reported `38/40` VGPRs instead of the restored canonical
+  `9/40`.
+- Failure:
+  H1/S128 PMD aborted before correctness under
+  `/zys/shaobo_runs/dq_tail_keepalive_prune_20260712_031836/dq_correctness_20260712_031837`
+  with `read vgpr70 before writing`, then `VGPR index 85 is out of range:
+  VGPR range=[0,40]` on `v_mov_b32`.
+- Decision:
+  source restored.  Treat the keep-alive loop as part of the current
+  WDRA/codegen liveness contract; do not remove it from canonical dQ without a
+  focused WDRA-exit proof.
+
 ## 2026-07-12 dQ Native dS Ring Structural Probe Accepted
 
 Status: `ACCEPT_PROBE_STRUCTURAL_CANONICAL_UNCHANGED`.

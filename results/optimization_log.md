@@ -10391,3 +10391,23 @@ Conclusion:
   qk/dP are synthetic scalar formula inputs in this probe.  The remaining hard
   question is whether the real qk/dP MMAC result orientation can produce the
   required source-slot fragment without scalar lane permute/gather.
+
+## 2026-07-12 dQ tail keep-alive prune rejected
+
+- Hypothesis:
+  remove the post-store `keep_accumulator_live(dq_reg[d_idx])` loop in
+  `dq_consumer_full3gemm_role`, assuming it is only tail noise after global
+  store.
+- Result:
+  static/source gate and metadata passed, but branch codegen changed
+  materially: producer1 branch reported `38/40` VGPRs instead of the restored
+  canonical `9/40`.  H1/S128 PMD aborted before correctness:
+  `/zys/shaobo_runs/dq_tail_keepalive_prune_20260712_031836/dq_correctness_20260712_031837`.
+  PMD reported `read vgpr70 before writing`, then
+  `VGPR index 85 is out of range: VGPR range=[0,40]` on `v_mov_b32`.
+- Decision:
+  `REJECT_PMD_REGISTER_INIT`.  Source restored.
+- Lesson:
+  the keep-alive loop is part of the current WDRA/codegen liveness contract.
+  Do not delete tail liveness guards in the canonical dQ kernel without a
+  focused WDRA-exit proof.
