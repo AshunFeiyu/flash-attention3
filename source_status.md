@@ -1,5 +1,34 @@
 # Source Status
 
+## 2026-07-12 dQ 12-Wave Single Producer Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  C74 xcu showed two producer wave slots with little useful work and dominant
+  ABarrier/control gaps.  A 12-wave single-producer topology was tested to
+  halve `QDoFilled/PageFilled` producer arrivals and BPS readiness waits.
+- Code:
+  temporary only.  The candidate used one producer branch `waves0-3` to load
+  both Q/dO sidecar groups and both K+V pages, plus two consumer branches
+  `waves4-7` and `waves8-11`.  `PageFilled/QDoFilled` counts were 4;
+  `PageUsed/QDoLatched` stayed 8.
+- Gates:
+  static/resource PASS after producer `s_set_vgpr_size` was raised from 40 to
+  48 to satisfy 3-branch WDRA average alignment.  Metadata:
+  `private=0`, `sgpr=52`, `vgpr=160`, no spill/scratch.  H1/S128 and
+  H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats regressed:
+  `simTicks=32,597,110 -> 32,779,565`.
+  MMAC active was effectively flat:
+  `31.6674% -> 31.6917%`.  VALU/SCA fell
+  `89,216/40,732 -> 88,096/33,400`, but that was not enough.
+- Decision:
+  source restored to the C74 16-wave dual-producer canonical path.  The
+  negative lesson is that producer/control reduction is not useful if it
+  serializes K+V publication and delays page readiness.
+
 ## 2026-07-12 dQ Branchless Causal Mask Accepted
 
 Status: `ACCEPT_PERF_CANONICAL_DQ`.

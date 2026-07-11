@@ -101,6 +101,14 @@ evidence are required before any performance claim.
   sheet `74_DQ_BranchlessCausal`.  xcu still shows remaining
   ABarrier/control/BPS readiness debt (`s_xor_b32`, `s_cbranch_vccnz`,
   `s_waitcnt_vbcnt`); this is the next optimization class, not missing MMAC.
+- Latest structural rejection:
+  sheet `75_DQ_SingleProducer12` tested a 12-wave single-producer topology:
+  waves0-3 publish both Q/dO sidecar groups and both K+V pages, with two
+  consumer groups unchanged.  Correctness/resources were clean after producer
+  VGPR window `40 -> 48`, but H1/S1024 regressed:
+  `simTicks=32,597,110 -> 32,779,565` while MMAC active was flat
+  `31.6674% -> 31.6917%`.  Source is restored to C74.  Lesson: reducing
+  producer/control count is not enough if it serializes K+V page publication.
 - Latest rejected producer-ownership variants:
   K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
   scalar/control and barrier debt.  Alternate-page full-KV producers lowered

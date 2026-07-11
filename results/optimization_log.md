@@ -1,5 +1,41 @@
 # Optimization Log
 
+## 2026-07-12 dQ 12-Wave Single Producer
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Hypothesis:
+
+C74 xcu showed producer wave slots were thin while ABarrier/BPS/control debt
+remained large.  Test a structural 12-wave variant with one 4-wave producer
+that publishes both Q/dO sidecar groups and both K+V pages, while the two
+4-wave consumer groups keep the full dQ 3-GEMM chain for disjoint M rows.
+
+Evidence:
+
+- Workbook: `75_DQ_SingleProducer12`.
+- Temporary source change only; restored after rejection.
+- Static/resource PASS after increasing the producer WDRA window from 40 to 48
+  because 3 WDRA branches require a branch-average VGPR size aligned to the
+  target granularity.  Branch windows were `48/216/216`; symbol metadata was
+  `private=0`, `sgpr=52`, `vgpr=160`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS; `ldsBankConflict=0`.
+- H1/S1024 stats:
+  `simTicks=32,597,110 -> 32,779,565`,
+  `MMAC active=31.6674% -> 31.6917%`,
+  `VALU=89,216 -> 88,096`,
+  `SCA=40,732 -> 33,400`,
+  `coissue=9,431/8,921 -> 9,555/8,866`.
+
+Conclusion:
+
+Reject.  The single producer does reduce some VALU/SCA/control work, but
+serializing K+V BPS publication delays PageFilled enough to regress elapsed
+ticks.  The active source is restored to C74.  Future producer-work changes
+must preserve K/V page-ready timing; producer-count reduction alone is not the
+route to 40% MMAC active.
+
 ## 2026-07-12 dQ Branchless Causal Mask
 
 Decision: `ACCEPT_PERF`
