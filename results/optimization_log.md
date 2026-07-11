@@ -10786,3 +10786,28 @@ Conclusion:
   `__syncthreads()`.  Coissue count alone is not enough.  Stop tail-sync
   codegen tweaks; next useful work must change mainloop ownership or the dS
   dependency graph.
+
+## 2026-07-12 dQ sidecar prefetch under QDo MLS rejected
+
+- Hypothesis:
+  keep sidecar in LDS and keep the existing QDoFilled/QDoLatched ownership,
+  but issue the producer sidecar global load before Q/dO MLS and store it to
+  LDS after the matrix loads.  This should test whether sidecar latency can be
+  hidden under Q/dO MLS without adding another synchronization token.
+- Result:
+  build/static/source gates passed with branch windows
+  `10/40,159/216,159/216,10/40`, metadata `private=0`, `sgpr=65`,
+  `vgpr=128`, and no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.  ASM showed the intended schedule:
+  `global_load_dword` before Q/dO `matrix_load_32x32_b16`, followed by
+  sidecar `ds_write_b32`.
+- Metrics:
+  H1/S1024 stats regressed versus C74 fullperf stats:
+  `simTicks=32,721,325 -> 33,057,115`.  It did reduce local wait/control
+  counters (`waitLgkm 370.750 -> 355.750`,
+  `barrier 1201.750 -> 1144.250`), but VALU/SCA grew
+  (`3116 -> 3235`, `2057 -> 2063`) and elapsed ticks worsened.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Source restored to C74.  Stop
+  sidecar-schedule-only tweaks; the next improvement needs to change useful
+  compute per ownership epoch or solve the native dS dependency graph.

@@ -1,5 +1,40 @@
 # Source Status
 
+## 2026-07-12 dQ Sidecar Prefetch Under QDo MLS Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  C74 xcu still showed producer-side `global_load_dword -> s_waitcnt` on the
+  sidecar path, while Q/dO `matrix_load_32x32_b16` work follows immediately in
+  the same producer branch.  This tested whether loading sidecar into a
+  producer VGPR first, issuing Q/dO MLS, then storing the sidecar to LDS could
+  hide sidecar latency without adding a token.
+- Code:
+  temporary only.  Added a producer-local sidecar prefetch object, moved the
+  sidecar global load before Q/dO MLS, and kept the LDS sidecar store after
+  the Q/dO matrix loads.  QDoFilled/QDoLatched tokens, tile shape, 16-wave
+  roles, K/V pages, consumer math, BPS waits, and output ownership were
+  unchanged.
+- Gates:
+  static/resource PASS with branch windows `10/40,159/216,159/216,10/40`.
+  Metadata stayed clean: `private=0`, `sgpr=65`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.  ASM matched the intended order:
+  `global_load_dword` before Q/dO `matrix_load_32x32_b16`, with the sidecar
+  `ds_write_b32` after the matrix loads.
+- Metrics:
+  H1/S1024 stats regressed versus C74 fullperf stats:
+  `32,721,325 -> 33,057,115` ticks, or `+1.026%`.  Local readiness/control
+  counters improved (`waitLgkm 370.750 -> 355.750`,
+  `barrier 1201.750 -> 1144.250`, coissue-fail fell `246 -> 153`), but the
+  kernel paid back the gain as more instruction work (`VALU 3116 -> 3235`,
+  `SCA 2057 -> 2063`) and worse elapsed ticks.
+- Decision:
+  reject and restore C74 source.  Sidecar schedule-only edits are not a
+  structural route to 40% MMAC active unless paired with a larger ownership or
+  dependency-graph change.
+
 ## 2026-07-12 dQ Exact Active K-Tiles Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

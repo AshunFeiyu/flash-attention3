@@ -136,6 +136,16 @@ evidence are required before any performance claim.
   Source is restored to C74.  Lesson: do not promote scalar simplifications
   from static metadata alone; same-shape ticks and instruction mix are the
   decision evidence.
+- Latest producer-schedule rejection:
+  sheet `79_DQ_SidecarPrefetchMLS` moved the producer sidecar global load
+  before Q/dO MLS, then stored sidecar to LDS after the matrix loads.  Static
+  gates and H1/S128/H1/S1024 correctness passed, and ASM matched the intended
+  `global_load -> matrix_load -> ds_write` schedule.  H1/S1024 stats still
+  regressed versus C74 fullperf stats `32,721,325 -> 33,057,115`; lower
+  local `waitLgkm`/barrier counters were offset by higher VALU/SCA and worse
+  elapsed ticks.  Source is restored to C74.  Lesson: stop sidecar-schedule-only
+  tweaks; the next route must change useful compute per ownership epoch or the
+  native dS dependency graph.
 - Latest rejected producer-ownership variants:
   K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
   scalar/control and barrier debt.  Alternate-page full-KV producers lowered
