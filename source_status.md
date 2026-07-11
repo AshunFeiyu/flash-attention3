@@ -5416,3 +5416,18 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `REJECT_STATS_TICKS_REGRESSION`.  Even with slightly better local stall
   counters/MMAC active, elapsed ticks moved the wrong way.  Active source was
   restored to the previous cleanup form with the post-invalidate sync.
+
+## 2026-07-11 dQ causal full-valid branch rejected
+
+- Hypothesis:
+  skip per-element causal mask checks for non-diagonal fully valid K tiles.
+- Result:
+  correctness/resource PASS, but H1/S1024 regressed sharply:
+  `simTicks=39,260,585`, `kernel_ticks=35,646,975`,
+  `MMAC active=25.3824%`, `VALU=102,040`, `SCA=90,508`,
+  `barrierCounter=79,263.75`, `emptyBufferCounter=43,554.67`,
+  `ldsBankConflict=0`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  VALU fell, but scalar/control and
+  scheduling bubbles grew much more.  Active source was restored; do not
+  duplicate the softmax/dS branch in the hot loop for this topology.

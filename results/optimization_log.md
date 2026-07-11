@@ -9759,3 +9759,48 @@ Conclusion:
 - Tail cleanup is no longer the priority; the next dQ work should target useful
   work per page ownership epoch or source-layout/control overhead in the main
   loop.
+
+## 2026-07-11 dQ Causal Full-Valid Fast Path Probe
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Hypothesis:
+
+- For `Mq=128,Nk=128` causal dQ, most non-diagonal K tiles are fully valid.
+  Avoiding per-element `krow <= qrow` mask checks in those tiles should reduce
+  VALU/SCA in the softmax/dS section without changing MMOP or page ownership.
+
+Implementation:
+
+- Temporarily added a `full_valid_n_tile` branch in the consumer loop.
+- Full-valid n-tiles computed `p` and `dS` directly; diagonal/partial tiles kept
+  the original per-element causal checks.
+
+Evidence:
+
+- Static/resource gate PASS:
+  branch windows `8/40,161/216,161/216,9/40`; metadata `private=0`,
+  `sgpr=67`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq_causal_fullvalid_fastpath_20260711_224401/dq_correctness_20260711_225140`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_causal_fullvalid_fastpath_20260711_224401/dq_correctness_20260711_225148`.
+- Same-shape H1/S1024 versus restored mainline:
+  `simTicks 35,704,760 -> 39,260,585`,
+  `kernel_ticks 32,091,150 -> 35,646,975`,
+  `MMAC active 27.3852% -> 25.3824%`,
+  `VALU 121,632 -> 102,040`,
+  `SCA 77,516 -> 90,508`,
+  `barrierCounter 58,629.75 -> 79,263.75`,
+  `emptyBufferCounter 25,149.42 -> 43,554.67`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- The mask work was not the limiting cost.  Branching the softmax/dS path
+  reduces VALU instructions but increases scalar/control and bubbles enough to
+  lose badly.  Active source was restored.
+- Do not use branch-duplicated causal fast paths in this dQ topology unless a
+  future design makes the full-valid path a separate compile-time specialization
+  or removes the added control from the hot loop.
