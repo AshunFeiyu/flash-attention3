@@ -10438,3 +10438,32 @@ Conclusion:
   can worsen ABarrier scheduling.  Future work must either reduce the
   ownership dependency itself or add real useful producer/consumer work under
   the PageUsed window.
+
+## 2026-07-12 dQ causal predicate minimalization accepted
+
+- Hypothesis:
+  canonical dQ already proves `qrow < seqlen` and `krow < seqlen` for every
+  visited element because `S` is divisible by `Mq=128` and `Nk=128`, and
+  `active_k_tiles` is derived from the q tile end.  Therefore the hot dS
+  predicate can be reduced from
+  `krow < seqlen && qrow < seqlen && krow <= qrow` to `krow <= qrow`.
+- Result:
+  H1/S128 and H1/S1024 correctness PASS; static/source gate PASS.  Metadata
+  improves from `sgpr=67` to `sgpr=65`, with `vgpr=128`, `private=0`, no
+  spill/scratch, and `ldsBankConflict=0`.
+- PMD stats:
+  H1/S1024 stats-only improves
+  `simTicks=36,109,710 -> 33,839,715`,
+  `MMAC active=27.2503% -> 29.4163%`,
+  `SCA=77,516 -> 58,940`, and `VALU=121,632 -> 112,064`.
+- Fullperf/xcu:
+  H1/S1024 fullperf improves
+  `simTicks=36,094,240 -> 34,414,380` and
+  `MMAC active=27.3254% -> 29.2992%`.
+  XCU dispatch duration improves `71,320 -> 67,628`, inst issues
+  `300,928 -> 272,784`.  The top
+  `s_abarrier_try_wait -> s_xor_b32` bubble remains the primary limiter, so
+  this does not solve PageUsed ownership.
+- Decision:
+  `ACCEPT_PERF`.  This is a clean VALU/SCA reduction with no new branch,
+  token, or layout path.  Continue from this as the canonical dQ baseline.

@@ -5839,3 +5839,29 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   PageUsed placement.  Do not continue PageUsed arrive-point micro-placement
   unless the design also removes a dependency/token or adds useful work under
   the ownership wait.
+
+## 2026-07-12 dQ causal predicate minimalization accepted
+
+- Hypothesis:
+  canonical dQ fixed-shape constraints make `qrow < seqlen` and
+  `krow < seqlen` redundant inside the hot dS element loop.  Keep only the
+  actual causal condition, `krow <= qrow`, without adding a full-valid branch.
+- Result:
+  H1/S128 and H1/S1024 correctness PASS.  Static/source gate PASS with
+  metadata `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch, and
+  `ldsBankConflict=0`.
+- Performance:
+  H1/S1024 stats-only:
+  `simTicks=36,109,710 -> 33,839,715`,
+  `MMAC active=27.2503% -> 29.4163%`,
+  `SCA=77,516 -> 58,940`, `VALU=121,632 -> 112,064`.
+  H1/S1024 fullperf:
+  `simTicks=36,094,240 -> 34,414,380`,
+  `MMAC active=27.3254% -> 29.2992%`.
+  XCU dispatch duration improves `71,320 -> 67,628`, and inst issues
+  `300,928 -> 272,784`.
+- Decision:
+  `ACCEPT_PERF`.  Active source now keeps this predicate-minimal path as the
+  canonical dQ baseline.  The remaining top bottleneck is still
+  `s_abarrier_try_wait -> s_xor_b32`; reaching 40% likely needs structural
+  PageUsed/producer-helper work, not more local predicate cleanup.

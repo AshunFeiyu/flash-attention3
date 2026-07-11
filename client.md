@@ -1335,6 +1335,31 @@ dQ PageUsed early release, 2026-07-12:
   ownership dependency or add real useful work during the PageUsed window; do
   not keep splitting/moving PageUsed as a standalone optimization.
 
+dQ causal predicate minimalization, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `68_DQ_CausalMask_Minimal`.
+- Result:
+  `ACCEPT_PERF`.  In canonical dQ, `S%Mq==0` and `S%Nk==0`, and
+  `active_k_tiles` guarantees every visited `krow` is in bounds.  The dS hot
+  loop now checks only `krow <= qrow` instead of rechecking
+  `krow < seqlen && qrow < seqlen` for every element.
+- Evidence:
+  H1/S128 and H1/S1024 correctness PASS; metadata `sgpr=65`, `vgpr=128`,
+  `private=0`, no spill/scratch.  H1/S1024 fullperf improves
+  `simTicks=36,094,240 -> 34,414,380`, MMAC active
+  `27.3254% -> 29.2992%`, SCA `77,516 -> 58,940`, and VALU
+  `121,632 -> 112,064`.  XCU dispatch duration improves
+  `71,320 -> 67,628`.
+- Boundary:
+  this relies on the canonical fixed-shape/divisible-S contract.  Do not carry
+  it to varlen or non-divisible shapes without reintroducing bounds proof.
+- Next:
+  PageUsed/ABarrier ownership remains the top xcu bubble.  The next path must
+  reduce ownership dependence or give producer waves useful medium-weight work;
+  pure PageUsed arrive-point motion was already rejected.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
