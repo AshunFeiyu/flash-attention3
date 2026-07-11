@@ -5915,3 +5915,23 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
 - Decision:
   `REJECT_CORRECTNESS`.  The active canonical source remains unchanged.
   Current dQ requires explicit vbcnt readiness before BPS Filled arrivals.
+
+## 2026-07-12 dQ K-normal prefetch rejected
+
+- Hypothesis:
+  prefetch K-normal fragments for dQ before score/dP so that dS VALU and
+  score/dP MMAC hide the later K-normal `ds_read_matrix` wait.
+- Result:
+  correctness/resource PASS and no bank conflict, but performance regressed.
+  Consumer branch windows grew from `161/216` to `187/216`; no spill, but the
+  longer live range is not free.
+- Metrics:
+  H1/S1024 stats:
+  `simTicks=33,529,405 -> 34,502,195`,
+  `MMAC active=29.5058% -> 28.5053%`,
+  `waitLgkm=14,146.75 -> 11,683.75`,
+  `barrierCounter=44,590.25 -> 49,150.25`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Source restored to canonical.  Do not
+  reintroduce all-D K-normal prefetch; any future prefetch must first budget
+  VGPR lifetime and prove it does not worsen ownership/barrier behavior.

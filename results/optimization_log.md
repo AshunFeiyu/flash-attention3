@@ -10543,3 +10543,32 @@ Conclusion:
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo` reference on ABarrier/BPS readiness; not public
   `dcu-kernel-optimization` yet.
+
+## 2026-07-12 dQ K-normal prefetch rejected
+
+- Hypothesis:
+  the current `n_tile` schedule reads K/V trans fragments for score/dP, then
+  computes dS, then reads K-normal fragments for dQ.  Move K-normal reads into
+  the pre-score operand-read island so the existing score/dP and dS work can
+  hide K-normal readiness.
+- Patch:
+  temporarily changed `dq_update_from_ds_pair` to consume prefetched
+  `k_norm0/k_norm1` arrays, and read those arrays before the qk/dP MMAC
+  island.  No scalar gather, no new token, no output ownership change.
+- Result:
+  static/source PASS; branch windows became
+  `8/40,187/216,187/216,9/40`, with symbol metadata still `private=0`,
+  `sgpr=65`, `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness
+  PASS, and `ldsBankConflict=0`.
+- Metrics:
+  the local wait signal improved, `waitLgkm=14,146.75 -> 11,683.75`, but the
+  primary metrics regressed:
+  `simTicks=33,529,405 -> 34,502,195`,
+  `MMAC active=29.5058% -> 28.5053%`,
+  `barrierCounter=44,590.25 -> 49,150.25`, and
+  `emptyBuffer=21,143.754 -> 22,573.165`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Source restored.  The lesson is that
+  hiding a wait by lengthening operand lifetime can make the whole conveyor
+  worse; future read-ahead ideas need a smaller lifetime budget, not all-D
+  K-normal prefetch.

@@ -1405,6 +1405,28 @@ dQ BPS vbcnt A/B, 2026-07-12:
   readiness boundary, not removable scheduler noise.  Future work must overlap
   or redesign this cost rather than deleting it.
 
+dQ K-normal prefetch, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `71_DQ_KNormal_Prefetch`.
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION`.  Temporarily prefetched K-normal fragments
+  before score/dP so the dQ helper consumed prefetched `k_norm0/k_norm1`.
+  Source was restored after the run.
+- Evidence:
+  resource and correctness were clean: branch windows
+  `8/40,187/216,187/216,9/40`, metadata `private=0`, `sgpr=65`, `vgpr=128`,
+  no spill/scratch, H1/S128 and H1/S1024 PASS, `ldsBankConflict=0`.
+  But H1/S1024 stats regressed:
+  `simTicks=33,529,405 -> 34,502,195`, MMAC active
+  `29.5058% -> 28.5053%`, barrier counter
+  `44,590.25 -> 49,150.25`.
+- Lesson:
+  local wait reduction is not enough.  This did reduce `waitLgkm`
+  `14,146.75 -> 11,683.75`, but the +26 VGPR branch footprint and longer
+  operand lifetime made the conveyor worse.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
