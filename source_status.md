@@ -5161,6 +5161,55 @@ Status: `ACCEPT_FOCUSED_PROBE`.
   the next real dQ-ring prototype should schedule C_dS by native source slot
   rather than compute dS in natural destination order and then move values.
 
+## 2026-07-11 Native Ring MMAC Layout Stress
+
+Status: `REVISE_BEFORE_RING_KERNEL`.
+
+- Stress:
+  compared `NativeDsSlotMap` required logical `(q,krow)` for each source
+  lane/word against the current full3GEMM natural MMAC output convention
+  (`q=lane&15`, `k=lane_n*4+vec`).  The mismatch is broad: most lanes have
+  six to eight mismatched words.
+- Interpretation:
+  the successful source-slot probe is not enough to splice the current
+  natural `qk_acc/dp_acc` into a dS ring.  It proves native publication, but
+  not that the existing MMAC operand layout already produces values in the
+  source-slot order required by `ds_write_matrix`.
+- Existing evidence:
+  prior `dq_dswrite_qowned_chain_probe.cpp` variants already rejected simple
+  lit/direct MMAC plus pack-order attempts.  The new stress explains why:
+  the problem is source-lane logical ownership, not just low/high pack order.
+- Decision:
+  do not write the dQ ring kernel yet.  First find or construct a C_dS operand
+  layout where MMAC naturally computes the source-slot logical `(q,k)` values,
+  or explicitly reject the native ring route if that requires scalar/permute
+  movement.
+
+## 2026-07-11 Source Operand Layout Probe
+
+Status: `REJECT_DIRECT_Q_READ_FORMATS`.
+
+- Probe:
+  `probes/dq_source_operand_layout_probe.cpp`.
+- Question:
+  can any directly supported Q `ds_read_matrix` format make each native
+  source slot see the q row it must compute for `NativeDsSlotMap`?
+- Candidates:
+  `trans row=2 col=1 alt0`, `normal row=2 col=1 alt0`,
+  `trans row=1 col=2 alt0`, and `trans row=1 col=2 alt1`.
+  The normal `row=1 col=2` forms are not accepted by the compiler.
+- Result:
+  `/zys/shaobo_runs/dq_operand_layout_probe_20260711_195417` reports
+  `any_full_match=0`; match counts are `32/504`, `44/504`, `16/504`, and
+  `18/504`.  Metadata is clean (`sgpr=20`, `vgpr=12`, no spill/scratch) and
+  `ldsBankConflict=0`.
+- Decision:
+  direct Q matrix-read format selection cannot make C_dS MMAC produce the
+  source-slot order.  A native ring would need a prearranged Q/dO source
+  layout, a different MMAC operand orientation, or it should be deferred in
+  favor of the accepted full3GEMM dQ path.  Do not add scalar gather or
+  permute in the main path to force this layout.
+
 ## 2026-07-11 dQ dS->dQ native ring blocked by layout proof
 
 - Proposed 16-wave roles are P_K, C_dS, C_dQ, P_V. Two pages exactly fit

@@ -9380,3 +9380,75 @@ Conclusion:
   C_dS publisher computes values in source-slot order.  The next implementation
   step is to replace the toy `krow==probeK` source value with real
   score/dP/softmax-derived dS values in the same source-slot schedule.
+
+## 2026-07-11 Native Ring MMAC Layout Stress
+
+Decision: `REVISE_BEFORE_RING_KERNEL`
+
+Question:
+
+- Can the current natural qk/dP MMAC output be written directly as the native
+  dS source-slot fragment?
+
+Stress:
+
+- Compared the `NativeDsSlotMap` required logical `(q,krow)` per source
+  lane/word with the current natural dQ consumer convention
+  `q=lane&15`, `k=lane_n*4+vec`.
+- Result: most lanes mismatch six to eight of eight source words.  This is
+  a structural ownership mismatch, not a small pack-order issue.
+
+Related evidence:
+
+- `dq_dswrite_qowned_chain_probe.cpp` had already rejected simple q-owned
+  lit/direct MMAC variants plus eight pack candidates.  The new map stress
+  explains the negative result: the source slot expects different logical
+  q ownership than natural MMAC emits.
+
+Conclusion:
+
+- Do not start the full dQ ring kernel yet.  The next focused task is to find
+  a C_dS operand-read/layout schedule that makes MMAC produce source-slot
+  values directly.  If that cannot be done without scalar gather or lane
+  permute, reject the native dS ring route for now and return to the accepted
+  full3GEMM dQ path.
+
+## 2026-07-11 Source Operand Layout Probe
+
+Decision: `REJECT_DIRECT_Q_READ_FORMATS`
+
+Hypothesis:
+
+- Maybe the missing C_dS source-slot layout is just a different native Q
+  `ds_read_matrix` format.
+
+Implementation:
+
+- Added `probes/dq_source_operand_layout_probe.cpp`.
+- It loads a row-tagged Q tile with MLS, then tries all directly supported
+  matrix-read candidates relevant to the current compiler:
+  1. `ds_read_matrix_trans row=2 col=1 alt0`
+  2. `ds_read_matrix row=2 col=1 alt0`
+  3. `ds_read_matrix_trans row=1 col=2 alt0`
+  4. `ds_read_matrix_trans row=1 col=2 alt1`
+- The normal `row=1 col=2` forms fail compilation as unsupported modifier
+  combinations, so they are excluded.
+
+Evidence:
+
+- Build metadata PASS:
+  `private=0`, `sgpr=20`, `vgpr=12`, no spill/scratch.
+- PMD:
+  `/zys/shaobo_runs/dq_operand_layout_probe_20260711_195417`.
+- Results:
+  `operand_layout_final any_full_match=0`;
+  per-mode q-match counts are `32/504`, `44/504`, `16/504`, `18/504`.
+  Stats show `ldsBankConflict=0`, so this is a semantic layout mismatch.
+
+Conclusion:
+
+- Direct Q read-format switching is not enough to make C_dS MMAC emit native
+  source-slot dS values.  The native ring route now requires either a
+  prearranged Q/dO source layout or a different MMAC operand orientation; if
+  that implies scalar gather/permute in the hot path, defer the ring and return
+  to the accepted full3GEMM dQ path.
