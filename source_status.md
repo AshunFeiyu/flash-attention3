@@ -1,5 +1,44 @@
 # Source Status
 
+## 2026-07-12 dQ Sidecar Early Latch Rejected
+
+Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  C74 xcu showed dominant ABarrier/control gaps.  Page0 K/V overwrites only the
+  sidecar LDS region, not the latched Q/dO regions, so a startup-only
+  `SidecarLatched` token was tested to let producers start page0 K/V after the
+  sidecar rows were read, while page1 still waited for full `QDoLatched`.
+- Code:
+  temporary only.  The candidate added one ABarrier token
+  `SidecarLatched`, made consumers arrive it after sidecar LDS reads, and made
+  both producers wait it for `kt==0`.  Tile shape, 16-wave roles, Q/dO latch,
+  K/V page ownership, matrix path, BPS waits, and output ownership were
+  otherwise unchanged.
+- Gates:
+  static/resource PASS with canonical branch windows
+  `8/40,159/216,159/216,9/40`.  Metadata: `private=0`, `sgpr=67`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats-only improved slightly
+  `32,597,110 -> 32,512,025` ticks and
+  `31.6674% -> 31.7890%` MMAC active.  However fullperf regressed
+  `32,721,325 -> 32,877,390` ticks while MMAC active only moved
+  `31.6115% -> 31.7176%`.
+- Evidence:
+  stats run
+  `/zys/shaobo_runs/dq_sidecar_latch_20260712_064000/dq_correctness_20260712_060609`;
+  fullperf
+  `/zys/shaobo_runs/dq_sidecar_latch_fullperf_20260712_065000/dq_correctness_20260712_060750/m5out/0/0/2782681_fa3_bwd_dq_clean.perf`;
+  xcu
+  `/zys/shaobo_runs/dq_sidecar_latch_fullperf_20260712_065000/xcu_outputs/sidecar_latch_d0`.
+- Decision:
+  reject and restore C74 source.  Splitting the startup sidecar lifetime is a
+  useful observation but not a promotion: the added token/control raises SCA
+  and does not shorten the fullperf critical path.  Avoid further fine-grained
+  startup token splitting unless it removes a proven larger wait/control cost.
+
 ## 2026-07-12 dQ 12-Wave Single Producer Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

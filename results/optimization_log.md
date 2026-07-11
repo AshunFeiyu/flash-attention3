@@ -10700,3 +10700,32 @@ Conclusion:
   stop PageUsed arrival-count compression.  Continue with either a native dS
   publisher/ring design, or a producer-useful-work design that reduces
   ownership idle time without adding another synchronization primitive.
+
+## 2026-07-12 dQ sidecar early latch rejected
+
+- Hypothesis:
+  page0 K/V only overwrites the sidecar LDS region, while Q/dO data are latched
+  later into consumer VGPR.  Add a startup-only `SidecarLatched` ABarrier so
+  producers can begin page0 K/V after sidecar reads instead of waiting for full
+  `QDoLatched`.
+- Result:
+  build/static/source gates passed with canonical branch windows
+  `8/40,159/216,159/216,9/40`, metadata `private=0`, `sgpr=67`,
+  `vgpr=128`, and no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  stats-only improved slightly:
+  `simTicks=32,597,110 -> 32,512,025`,
+  `MMAC active=31.6674% -> 31.7890%`.  Fullperf rejected the change:
+  `simTicks=32,721,325 -> 32,877,390`,
+  `MMAC active=31.6115% -> 31.7176%`, with SCA rising
+  `40,732 -> 41,764`.
+- XCU:
+  `/zys/shaobo_runs/dq_sidecar_latch_fullperf_20260712_065000/xcu_outputs/sidecar_latch_d0`.
+  Top bubbles remain ABarrier/control dominated:
+  `s_abarrier_try_wait -> s_xor_b32` about `1,005,360` cycles and
+  `s_barrier -> s_cbranch_vccnz` about `648,908` cycles.
+- Decision:
+  `REJECT_FULLPERF_TICKS_REGRESSION`.  Source restored to C74.  This confirms
+  that fine-grained startup token splitting is not a reliable route to 40%
+  MMAC active unless it removes a larger proven wait/control cost.

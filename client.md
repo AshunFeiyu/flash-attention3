@@ -109,6 +109,15 @@ evidence are required before any performance claim.
   `simTicks=32,597,110 -> 32,779,565` while MMAC active was flat
   `31.6674% -> 31.6917%`.  Source is restored to C74.  Lesson: reducing
   producer/control count is not enough if it serializes K+V page publication.
+- Latest token-split rejection:
+  sheet `76_DQ_SidecarLatch` tested a startup-only `SidecarLatched` token so
+  page0 K/V could begin after consumers read LDS sidecar rows, before full
+  Q/dO latch.  Correctness/resources were clean, but H1/S1024 fullperf
+  regressed `32,721,325 -> 32,877,390` while MMAC active only moved
+  `31.6115% -> 31.7176%`.  Source is restored to C74.  Lesson: fine-grained
+  startup token splitting can improve stats-only noise but still lose under
+  SQTT/fullperf because extra ABarrier/control does not reduce the critical
+  path.
 - Latest rejected producer-ownership variants:
   K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
   scalar/control and barrier debt.  Alternate-page full-KV producers lowered
