@@ -5954,3 +5954,27 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   before `s_abarrier_inv`; future work should reduce mainloop PageUsed
   ownership dependence or introduce a native dS publisher/ring design instead
   of deleting tail-exit discipline.
+
+## 2026-07-12 dQ group-level PageUsed rejected
+
+- Hypothesis:
+  PageUsed arrivals may be too granular.  Replace 8 per-wave PageUsed arrivals
+  with 2 group arrivals by synchronizing each 4-wave consumer group through an
+  EBarrier slot, then having only `wave_local==0` arrive the PageUsed ABarrier.
+- Result:
+  H1/S128 and H1/S1024 correctness PASS; static/source gate PASS with
+  metadata `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch, and
+  `ldsBankConflict=0`.
+- Performance:
+  H1/S1024 stats regressed:
+  `simTicks=33,529,405 -> 35,625,590`,
+  `MMAC active=29.5058% -> 28.0489%`.
+  `MMOP=55,296` is unchanged, so the regression is synchronization/scheduling
+  cost, not less math.
+- Restore:
+  `src/dq_kernel.cpp` restored to canonical tail-second-sync dQ, synced to
+  liuchang, rebuilt remotely, and passed dQ gate plus symbol metadata gate.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  EBarrier group completion is not the right
+  way to compress PageUsed ownership.  Stop this micro-route and move to a
+  design that changes page lifetime or gives producers recurring useful work.

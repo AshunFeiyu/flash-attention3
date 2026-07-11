@@ -10596,3 +10596,29 @@ Conclusion:
   is currently part of the WDRA/PMD role-exit discipline, not just redundant
   performance overhead.  Do not retry tail barrier deletion without a focused
   WDRA-exit proof.
+
+## 2026-07-12 dQ group-level PageUsed rejected
+
+- Hypothesis:
+  reduce mainloop PageUsed ownership churn by changing Page0Used/Page1Used
+  from 8 per-wave consumer arrivals to 2 group-level arrivals.  Each
+  4-wave consumer group first synchronizes with its own EBarrier slot, then
+  `wave_local==0` arrives the PageUsed ABarrier.
+- Result:
+  static/source gates passed with branch windows
+  `8/40,161/216,161/216,9/40`, metadata `private=0`, `sgpr=65`,
+  `vgpr=128`, and no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats regressed:
+  `simTicks=33,529,405 -> 35,625,590`,
+  `MMAC active=29.5058% -> 28.0489%`,
+  `coissue=14,737/16,611`, and `MMOP=55,296` unchanged.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  The EBarrier group sync and added local
+  serialization cost more than the removed ABarrier arrivals.  Source restored
+  to canonical tail-second-sync dQ and remote build/static gates pass.
+- Next:
+  stop PageUsed arrival-count compression.  Continue with either a native dS
+  publisher/ring design, or a producer-useful-work design that reduces
+  ownership idle time without adding another synchronization primitive.

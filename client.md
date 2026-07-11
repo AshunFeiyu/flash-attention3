@@ -1446,6 +1446,30 @@ dQ final PageUsed tail wait, 2026-07-12:
   effort to mainloop ownership structure, such as group-level PageUsed or a
   native dS publisher/ring design.
 
+dQ group-level PageUsed, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `73_DQ_GroupPageUsed`.
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION`.  Temporarily changed PageUsed ownership
+  from 8 per-wave consumer arrivals to 2 group-level arrivals using one
+  EBarrier sync per consumer group plus a representative ABarrier arrive.
+  Source was restored after the run.
+- Evidence:
+  static/source gates passed, branch windows stayed
+  `8/40,161/216,161/216,9/40`, metadata `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness PASS,
+  `ldsBankConflict=0`.
+  H1/S1024 regressed:
+  `simTicks=33,529,405 -> 35,625,590`, MMAC active
+  `29.5058% -> 28.0489%`.
+- Lesson:
+  PageUsed/ABarrier remains a bottleneck class, but reducing ABarrier arrival
+  count through an extra EBarrier is not profitable.  Stop this direction;
+  next work should change the page lifetime or add useful producer-side work,
+  not add another synchronization layer.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
