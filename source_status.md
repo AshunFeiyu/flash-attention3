@@ -5354,3 +5354,20 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   search/control, not because source-slot publication is inherently slow.
   Next native C_dS work must replace runtime reverse lookup with static
   source-lane/word formulas or compile-time tables.
+- dQ-kernel integration lower-bound follow-up:
+  added opt-in `DQ_NATURAL_WRONG_DS=1` / `--natural-wrong-ds=1` to the
+  canonical dQ kernel.  It writes natural-layout dS through
+  `ds_write_matrix_32x16_f16` and reads it back with
+  `ds_read_matrix_trans`, then feeds the existing `dS @ K` update.  This
+  deliberately ignores source-slot correctness and reports
+  `path=canonical_natural_wrong`.
+  Same-build PMD H1/S1024 under `GPU_CHIP=sb`,
+  `GPU_ARGS=['--SQCIPfLines=7']`, run root
+  `/zys/shaobo_runs/dq_natural_wrong_compare_20260711_213517`:
+  default canonical `kernel_ticks=36,916,425`, `MMAC active=25.0871%`,
+  `VALU=143,200`, `LDS=28,656`; natural-wrong
+  `kernel_ticks=35,258,405`, `MMAC active=25.8278%`, `VALU=120,160`,
+  `LDS=30,960`, `ldsBankConflict=0`.  This is a wrong-layout
+  lower-bound improvement of `4.49%` kernel ticks and `+0.74pt` MMAC active.
+  It proves the hot dQ path has about 4-5% exposed source-layout/control
+  overhead to reclaim, but it is not a correctness candidate.

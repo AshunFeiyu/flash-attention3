@@ -368,6 +368,36 @@ __device__ __forceinline__ void dq_update_from_ds_pair(
     }
 }
 
+template <typename Tile, int ConsumerGroup>
+__device__ __forceinline__ void dq_update_from_natural_wrong_handoff(
+    __half* __restrict__ lds,
+    int page,
+    int n_tile,
+    int wave_local,
+    const ins::Vec4F16& ds_vec0,
+    const ins::Vec4F16& ds_vec1,
+    ins::F32x4 (&dq_reg)[8]) {
+    constexpr int MatrixBlockBytes = DqLdsLayout<Tile>::kMatrixBlockBytes;
+    const int scratch_block = ConsumerGroup * 4 + wave_local;
+    const int scratch_offset =
+        DqLdsLayout<Tile>::kPageVBase(page) +
+        scratch_block * MatrixBlockBytes;
+
+    ins::F16x8 natural_ds{};
+    natural_ds.f16x4[0] = ds_vec0;
+    natural_ds.f16x4[1] = ds_vec1;
+    ins::ds_write_matrix_32x16_f16(natural_ds.f16x8, lds, scratch_offset);
+    ins::wait_lgkm(0);
+
+    ins::F16x8 wrong_view{};
+    ins::ds_read_matrix_32x16_trans(lds, scratch_offset, wrong_view.f16x8);
+    ins::wait_lgkm(0);
+
+    dq_update_from_ds_pair<Tile>(
+        lds, page, n_tile, wrong_view.f16x4[0], wrong_view.f16x4[1],
+        dq_reg);
+}
+
 template <typename Bar>
 __device__ __forceinline__ void dq_wait_page_filled(int page, int& phase0, int& phase1);
 
@@ -391,6 +421,7 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
     int seqlen,
     int bh,
     int diag_store,
+    int natural_wrong_ds,
     float softmax_scale,
     float softmax_scale_log2,
     int wave_local) {
@@ -575,8 +606,13 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
                 }
                 ds_vec1[vec_id] = static_cast<_Float16>(ds_value1);
             }
-            dq_update_from_ds_pair<Tile>(
-                lds, page, n_tile, ds_vec0, ds_vec1, dq_reg);
+            if (natural_wrong_ds != 0) {
+                dq_update_from_natural_wrong_handoff<Tile, ConsumerGroup>(
+                    lds, page, n_tile, wave_local, ds_vec0, ds_vec1, dq_reg);
+            } else {
+                dq_update_from_ds_pair<Tile>(
+                    lds, page, n_tile, ds_vec0, ds_vec1, dq_reg);
+            }
         }
         dq_arrive_page_used<Bar>(page);
     }
@@ -676,6 +712,7 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
                   float softmax_scale,
                   float softmax_scale_log2,
                   int diag_store,
+                  int natural_wrong_ds,
                   int q_tile_offset) {
 #if defined(__gfx946__) || defined(__gfx92a__)
     using Tile = dq::ActiveDqTile;
@@ -745,12 +782,12 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
         __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
         dq_consumer_full3gemm_role<Tile, Bar, 0>(
             lds, dq_out, q_base_tile, seqlen, bh, diag_store,
-            softmax_scale, softmax_scale_log2, wave_local);
+            natural_wrong_ds, softmax_scale, softmax_scale_log2, wave_local);
     } else if (wave_id < 12) {
         __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
         dq_consumer_full3gemm_role<Tile, Bar, 1>(
             lds, dq_out, q_base_tile, seqlen, bh, diag_store,
-            softmax_scale, softmax_scale_log2, wave_local);
+            natural_wrong_ds, softmax_scale, softmax_scale_log2, wave_local);
     } else {
         __builtin_hcu_s_set_vgpr_size(40);
         const int lane = static_cast<int>(threadIdx.x % 64);
@@ -811,6 +848,7 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
     (void)softmax_scale;
     (void)softmax_scale_log2;
     (void)diag_store;
+    (void)natural_wrong_ds;
 #endif
 }
 
@@ -1405,7 +1443,7 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
                 static_cast<float*>(dq_out), params->batch,
                 params->num_heads_q, params->seqlen_q, params->softmax_scale,
                 params->softmax_scale * kLog2E, params->reserved_i32[0],
-                q_tile_offset);
+                params->reserved_i32[2], q_tile_offset);
         }
         hipError_t err = hipGetLastError();
         if (err != hipSuccess) {
@@ -1499,6 +1537,9 @@ int main(int argc, char** argv) {
     const int tiles_per_dispatch = arg_int(
         argc, argv, "--tiles-per-dispatch",
         env_int("DQ_TILES_PER_DISPATCH", 0));
+    const int natural_wrong_ds = arg_int(
+        argc, argv, "--natural-wrong-ds",
+        env_int("DQ_NATURAL_WRONG_DS", 0));
 
     ShaoboFa3Params params{};
     params.struct_size = sizeof(params);
@@ -1520,6 +1561,7 @@ int main(int argc, char** argv) {
     params.sync_after_launch = 1;
     params.reserved_i32[0] = diag_store;
     params.reserved_i32[1] = tiles_per_dispatch;
+    params.reserved_i32[2] = natural_wrong_ds;
 
     const size_t tensor_elems =
         static_cast<size_t>(batch) * static_cast<size_t>(heads) *
@@ -1653,14 +1695,18 @@ int main(int argc, char** argv) {
                                static_cast<size_t>(seqlen))
             : -1;
     const bool canonical_path = params.dq_path == dq::kDqPathCanonicalDq;
+    const bool natural_wrong_path =
+        canonical_path && natural_wrong_ds != 0;
     const bool reference_pass =
         dq_metrics.max_abs <= 5.0e-4f && dq_metrics.rel_l2 <= 1.0e-4f;
     const bool canonical_pass =
         dq_metrics.max_abs <= 5.0e-4f && dq_metrics.rmse <= 5.0e-5f &&
         l2_ratio >= 0.80f && l2_ratio <= 1.20f;
     const bool pass = status == SHAOBO_FA3_STATUS_SUCCESS &&
-                      dq_metrics.bad_count == 0 &&
+                      (natural_wrong_path || dq_metrics.bad_count == 0) &&
                       (canonical_path ? canonical_pass : reference_pass);
+    const bool reported_pass =
+        natural_wrong_path ? status == SHAOBO_FA3_STATUS_SUCCESS : pass;
 
     ignore_hip_status(hipFree(delta_dev));
     ignore_hip_status(hipFree(scores_sum_dev));
@@ -1674,7 +1720,8 @@ int main(int argc, char** argv) {
 
     std::printf(
         "%s status=%s B=%d H=%d S=%d D=%d causal=%d workspace_bytes=%zu "
-        "path=%s dq_max_abs=%g dq_mean_abs=%g dq_rmse=%g dq_rel_l2=%g "
+        "path=%s natural_wrong_ds=%d dq_max_abs=%g dq_mean_abs=%g "
+        "dq_rmse=%g dq_rel_l2=%g "
         "actual_l2=%g expected_l2=%g l2_ratio=%g actual_nz=%d expected_nz=%d "
         "actual_nonfinite=%d expected_nonfinite=%d "
         "first_bad_index=%zu first_bad_row=%d first_bad_d=%d "
@@ -1686,8 +1733,9 @@ int main(int argc, char** argv) {
         "sample0=%g/%g sample1=%g/%g bad=%d pass=%d\n",
         "fa3_bwd_dq_correctness", shaobo_fa3_status_string(status), batch,
         heads, seqlen, dim, params.causal, workspace_bytes,
-        canonical != 0 ? "canonical" : "reference",
-        dq_metrics.max_abs, dq_metrics.mean_abs, dq_metrics.rmse,
+        natural_wrong_path ? "canonical_natural_wrong" :
+                             (canonical != 0 ? "canonical" : "reference"),
+        natural_wrong_ds, dq_metrics.max_abs, dq_metrics.mean_abs, dq_metrics.rmse,
         dq_metrics.rel_l2, dq_metrics.actual_l2, dq_metrics.expected_l2,
         l2_ratio, dq_metrics.actual_nonzero, dq_metrics.expected_nonzero,
         dq_metrics.actual_nonfinite, dq_metrics.expected_nonfinite,
@@ -1704,7 +1752,7 @@ int main(int argc, char** argv) {
         !dq_expected.empty() ? dq_expected[0] : 0.0f,
         dq_actual.size() > 1 ? dq_actual[1] : 0.0f,
         dq_expected.size() > 1 ? dq_expected[1] : 0.0f,
-        dq_metrics.bad_count, pass ? 1 : 0);
-    return pass ? 0 : 1;
+        dq_metrics.bad_count, reported_pass ? 1 : 0);
+    return reported_pass ? 0 : 1;
 }
 #endif

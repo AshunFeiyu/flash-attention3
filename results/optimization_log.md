@@ -9590,3 +9590,62 @@ Conclusion:
   next real C_dS source-slot implementation must hard-code/derive direct
   source-lane formulas or compile-time tables, instead of doing runtime
   reverse lookup or gather/permute.
+
+## 2026-07-11 dQ Kernel Natural-Wrong Integration
+
+Decision: `OBSERVE_PERF_LOWER_BOUND_WRONG_DQ`
+
+Question:
+
+- If the focused `natural_wrong` lower bound is integrated into the canonical
+  dQ kernel, how much same-shape H1/S1024 performance can it move?
+
+Implementation:
+
+- Added opt-in runtime flag `DQ_NATURAL_WRONG_DS=1` /
+  `--natural-wrong-ds=1`.
+- The default dQ path remains unchanged: dS stays in VGPR and feeds
+  `dq_update_from_ds_pair`.
+- With the flag enabled, each consumer wave packs natural-layout
+  `ds_vec0/ds_vec1`, writes it through `ds_write_matrix_32x16_f16`, reads it
+  back through `ds_read_matrix_trans`, then calls the existing `dS @ K` update.
+  Scratch uses the current V page with one 2KB slot per consumer wave.  This is
+  intentionally a wrong-layout performance lower bound, not a correctness
+  route.
+
+Evidence:
+
+- Build: `SRC=src/dq_kernel.cpp BIN=build/fa3_bwd_dq_clean
+  ASM=build/fa3_bwd_dq_clean.asm TARGET_GFX=946 BUILD_ASM=1 ./build.sh`.
+- Static gate PASS.
+- Symbol metadata PASS:
+  `private_segment_fixed_size=0`, `sgpr_spill_count=0`,
+  `vgpr_spill_count=0`, `sgpr=68`, `vgpr=128`; branch windows show consumer
+  `155/216`.
+- PMD run root:
+  `/zys/shaobo_runs/dq_natural_wrong_compare_20260711_213517`.
+- Same-build H1/S1024, `GPU_CHIP=sb`,
+  `GPU_ARGS=['--SQCIPfLines=7']`:
+  - default canonical:
+    `simTicks=40,530,035`, `kernel_ticks=36,916,425`,
+    `MMOP=55,296`, `VALU=143,200`, `SCA=81,772`, `LDS=28,656`,
+    `coissue=12,602/14,949`, `MMAC active=25.0871%`,
+    `ldsBankConflict=0`, correctness PASS.
+  - `natural_wrong`:
+    `simTicks=38,872,015`, `kernel_ticks=35,258,405`,
+    `MMOP=55,296`, `VALU=120,160`, `SCA=82,924`, `LDS=30,960`,
+    `coissue=12,230/16,431`, `MMAC active=25.8278%`,
+    `ldsBankConflict=0`, numerical correctness intentionally invalid
+    (`dq_rel_l2=1.4343`) but dispatch succeeds.
+
+Conclusion:
+
+- Wrong-layout dS handoff gives `-4.49%` kernel ticks, `-4.09%` simTicks,
+  `-16.1%` VALU instructions, and `+0.74pt` MMAC active, at the cost of
+  `+8.0%` LDS instructions and lower coissue success.
+- This is real exposed overhead, but far from the 10x focused-probe gap because
+  the full dQ kernel is still dominated by the score/dP/softmax/dQ pipeline,
+  page ownership, and K/V read/update work.
+- Do not promote this flag.  Use it as a bound: a correct native C_dS
+  source-slot producer can plausibly reclaim roughly 4-5% on current H1/S1024
+  dQ, but it will not by itself reach 40-60% MMAC active.

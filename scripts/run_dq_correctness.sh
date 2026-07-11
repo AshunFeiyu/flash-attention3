@@ -40,7 +40,8 @@ export CAUSAL="\${CAUSAL:-1}"
 export CANONICAL_DQ="\${CANONICAL_DQ:-0}"
 export DQ_DIAG_STORE="\${DQ_DIAG_STORE:-0}"
 export DQ_TILES_PER_DISPATCH="\${DQ_TILES_PER_DISPATCH:-0}"
-./${DQ_BIN} --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL} --canonical=\${CANONICAL_DQ} --diag-store=\${DQ_DIAG_STORE} --tiles-per-dispatch=\${DQ_TILES_PER_DISPATCH}
+export DQ_NATURAL_WRONG_DS="\${DQ_NATURAL_WRONG_DS:-0}"
+./${DQ_BIN} --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL} --canonical=\${CANONICAL_DQ} --diag-store=\${DQ_DIAG_STORE} --tiles-per-dispatch=\${DQ_TILES_PER_DISPATCH} --natural-wrong-ds=\${DQ_NATURAL_WRONG_DS}
 EOF
 chmod +x "${case_script}"
 
