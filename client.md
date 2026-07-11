@@ -87,14 +87,20 @@ evidence are required before any performance claim.
   and V.
 - dS is no longer staged in LDS.  Each consumer computes its complete dQ
   chain in VGPR: `QK^T`, `dO V^T`, softmax/dS, then `dS K`.
-- Current active40 baseline:
+- Current canonical dQ baseline:
   `Mq=128,Nk=128,D=128`, startup `Q+dO+sidecar` LDS latch, steady K/V
   double-page ping-pong, BPS `s_waitcnt_vbcnt` before Filled arrivals, and
-  no terminal `AllDone` ABarrier.  H1/S1024 stats after tail cleanup:
-  `simTicks=35,750,715`, `MMAC active=27.3105%`,
-  `coissue=16,037/18,954`, `ldsBankConflict=0`.  xcu shows the current top
-  steady bottleneck is `Page0Used/PageUsed` ownership wait, i.e. producer
-  waves run ahead and wait for consumers before reusing K/V pages.
+  no terminal `AllDone` ABarrier.  The latest accepted C74 branchless causal
+  mask keeps this topology and only removes two per-element dS causal branches.
+  H1/S1024 stats after C74:
+  `simTicks=32,597,110`, `MMAC active=31.6674%`,
+  `MMOP=55,296`, `VALU=89,216`, `coissue=9,431/8,921`,
+  `ldsBankConflict=0`.  H1/S1024 fullperf:
+  `simTicks=32,721,325`, `MMAC active=31.6115%`.  Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `74_DQ_BranchlessCausal`.  xcu still shows remaining
+  ABarrier/control/BPS readiness debt (`s_xor_b32`, `s_cbranch_vccnz`,
+  `s_waitcnt_vbcnt`); this is the next optimization class, not missing MMAC.
 - Latest rejected producer-ownership variants:
   K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
   scalar/control and barrier debt.  Alternate-page full-KV producers lowered

@@ -549,30 +549,26 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
             for (int vec_id = 0; vec_id < 4; ++vec_id) {
                 const int nk0 = n_tile * 32 + lane_n * 4 + vec_id;
                 const int krow0 = k_base_tile + nk0;
-                float ds_value0 = 0.0f;
-                if (krow0 <= qrow) {
-                    const float p0 =
-                        exp2f((qk_acc0.scalar[vec_id] - row_max) *
-                              softmax_scale_log2) /
-                        row_sum;
-                    ds_value0 =
-                        p0 * (dp_acc0.scalar[vec_id] - row_delta) *
-                        softmax_scale;
-                }
+                const int valid0 = krow0 <= qrow;
+                const float p0 =
+                    exp2f((qk_acc0.scalar[vec_id] - row_max) *
+                          softmax_scale_log2) /
+                    row_sum;
+                const float ds_value0 =
+                    p0 * (dp_acc0.scalar[vec_id] - row_delta) *
+                    softmax_scale * static_cast<float>(valid0);
                 ds_vec0[vec_id] = static_cast<_Float16>(ds_value0);
 
                 const int nk1 = n_tile * 32 + 16 + lane_n * 4 + vec_id;
                 const int krow1 = k_base_tile + nk1;
-                float ds_value1 = 0.0f;
-                if (krow1 <= qrow) {
-                    const float p1 =
-                        exp2f((qk_acc1.scalar[vec_id] - row_max) *
-                              softmax_scale_log2) /
-                        row_sum;
-                    ds_value1 =
-                        p1 * (dp_acc1.scalar[vec_id] - row_delta) *
-                        softmax_scale;
-                }
+                const int valid1 = krow1 <= qrow;
+                const float p1 =
+                    exp2f((qk_acc1.scalar[vec_id] - row_max) *
+                          softmax_scale_log2) /
+                    row_sum;
+                const float ds_value1 =
+                    p1 * (dp_acc1.scalar[vec_id] - row_delta) *
+                    softmax_scale * static_cast<float>(valid1);
                 ds_vec1[vec_id] = static_cast<_Float16>(ds_value1);
             }
             dq_update_from_ds_pair<Tile>(

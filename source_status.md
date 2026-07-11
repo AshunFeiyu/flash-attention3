@@ -1,5 +1,42 @@
 # Source Status
 
+## 2026-07-12 dQ Branchless Causal Mask Accepted
+
+Status: `ACCEPT_PERF_CANONICAL_DQ`.
+
+- Motivation:
+  after tail-second-sync cleanup, xcu still showed heavy control latency,
+  including `s_cbranch_vccnz`.  The hot dS loop still had two per-element
+  causal `if (krow <= qrow)` blocks for the two N16 fragments.
+- Code:
+  canonical `src/dq_kernel.cpp` replaces those branches with branchless valid
+  multiplies.  Tile shape, 16-wave roles, Q/dO latch, K/V double pages,
+  PageUsed ownership, BPS waits, matrix path, and output ownership are
+  unchanged.
+- Gates:
+  static/source PASS.  Branch windows improved to
+  `8/40,159/216,159/216,9/40`; metadata remains `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats-only:
+  `simTicks=33,529,405 -> 32,597,110`,
+  `MMAC active=29.5058% -> 31.6674%`,
+  `VALU=112,064 -> 89,216`.
+  H1/S1024 fullperf:
+  `simTicks=33,977,580 -> 32,721,325`,
+  `MMAC active=29.4292% -> 31.6115%`.
+- Evidence:
+  stats run
+  `/zys/shaobo_runs/dq_branchless_causal_20260712_055500/dq_correctness_20260712_053305`;
+  fullperf
+  `/zys/shaobo_runs/dq_branchless_causal_fullperf_20260712_060000/dq_correctness_20260712_053434/m5out/0/0/2781898_fa3_bwd_dq_clean.perf`;
+  xcu
+  `/zys/shaobo_runs/dq_branchless_causal_fullperf_20260712_060000/xcu_outputs/branchless_causal_d0`.
+- Decision:
+  keep as the current canonical dQ baseline.  Remaining bottleneck is still
+  ABarrier/control/BPS readiness, not a missing MMAC path.
+
 ## 2026-07-12 dQ Tail Keep-Alive Prune Rejected
 
 Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.

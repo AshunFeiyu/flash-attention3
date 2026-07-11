@@ -1,5 +1,47 @@
 # Optimization Log
 
+## 2026-07-12 dQ Branchless Causal Mask
+
+Decision: `ACCEPT_PERF`
+
+Hypothesis:
+
+The canonical dQ dS loop still had two per-element causal branches.  Replace
+the `if (krow <= qrow)` blocks with a branchless valid multiply so the hot path
+removes control flow without adding new tokens, changing tile shape, or
+extending operand lifetime.
+
+Evidence:
+
+- Workbook: `74_DQ_BranchlessCausal`.
+- Source: `src/dq_kernel.cpp`; only the ds0/ds1 causal dS predicate is changed.
+- Static/resource PASS:
+  branch windows improved from `8/40,161/216,161/216,9/40` to
+  `8/40,159/216,159/216,9/40`; metadata remains `private=0`, `sgpr=65`,
+  `vgpr=128`, no SGPR/VGPR spill and no scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS; `ldsBankConflict=0`.
+- Stats-only H1/S1024:
+  `simTicks=33,529,405 -> 32,597,110`,
+  `MMAC active=29.5058% -> 31.6674%`,
+  `VALU=112,064 -> 89,216`, `MMOP=55,296` unchanged.
+- Fullperf H1/S1024:
+  `simTicks=33,977,580 -> 32,721,325`,
+  `MMAC active=29.4292% -> 31.6115%`.
+- XCU:
+  `/zys/shaobo_runs/dq_branchless_causal_fullperf_20260712_060000/xcu_outputs/branchless_causal_d0`.
+  Dispatch duration improves `66,668 -> 63,904`, instruction issues
+  `272,656 -> 234,608`, and top `s_cbranch_vccnz` latency drops
+  `708,588 -> 682,412` cycles.
+
+Conclusion:
+
+This is a real canonical micro-win.  The extra invalid-lane diagonal-tile
+`exp2` work is cheaper than the removed branch/control debt.  C74 is now the
+dQ baseline, but it is still only about `31.6%` MMAC active; next work should
+target remaining ABarrier/control ownership and BPS readiness, not missing
+MMAC.
+
 ## 2026-07-12 dQ Source-Slot Fast Formula Probe
 
 Decision: `ACCEPT_PROBE`
