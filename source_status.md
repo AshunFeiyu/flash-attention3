@@ -1,5 +1,29 @@
 # Source Status
 
+## 2026-07-12 dQ K-First Count-Fix Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  C81 hung because PageFilled was reinterpreted as KFilled but still required
+  eight arrivals.  C82 fixed the protocol count to four K producer arrivals
+  and four V producer arrivals, then retested the same K-first overlap idea.
+- Gates:
+  static/resource PASS with branch windows `8/40,127/216,127/216,9/40`.
+  Metadata stayed clean: `private=0`, `sgpr=66`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 regressed `32,597,110 -> 34,374,340` ticks.  MMAC active fell
+  `31.6674% -> 30.3953%`.  VALU stayed `89,216`, but SCA rose
+  `40,732 -> 43,832`; `waitLgkm` rose to `19,929.5`, and coissue became
+  `12,021/10,569`.
+- Decision:
+  reject and restore C74 source.  K-first lowers consumer live VGPR pressure
+  (`159 -> 127`) but breaks the paired score/dP MMAC island and increases
+  wait/control more than it hides V load.  Do not split K/V readiness in the
+  canonical dQ path without a different work order that preserves large MMAC
+  islands.
+
 ## 2026-07-12 dQ K-First V-Overlap Rejected
 
 Status: `REJECT_HANG_SOURCE_RESTORED`.

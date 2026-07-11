@@ -161,6 +161,13 @@ evidence are required before any performance claim.
   restored to C74.  Lesson: K-first overlap needs a focused
   KFilled/VFilled/PageUsed protocol probe before it can re-enter the
   performance kernel.
+- Latest K-first follow-up:
+  sheet `82_DQ_KFirstCountFix` fixed the KFilled arrival count and passed
+  H1/S128/H1/S1024 correctness, proving the C81 hang cause.  It still
+  regressed H1/S1024 `32,597,110 -> 34,374,340` ticks and MMAC active
+  `31.6674% -> 30.3953%`.  Lesson: reducing live VGPR by separating K and V
+  fragments is not enough if it breaks the paired score/dP MMAC island and
+  raises wait/control.
 - Latest rejected producer-ownership variants:
   K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
   scalar/control and barrier debt.  Alternate-page full-KV producers lowered

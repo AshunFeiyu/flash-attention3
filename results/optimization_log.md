@@ -10854,3 +10854,23 @@ Conclusion:
   `REJECT_HANG`.  Source restored to C74 and remote static gates pass again.
   The idea should not be retried in the performance kernel until a focused
   KFilled/VFilled/PageUsed barrier protocol probe proves the exact sequencing.
+
+## 2026-07-12 dQ K-first count-fix rejected
+
+- Hypothesis:
+  C81 hung because KFilled still required eight arrivals even though only four
+  K producer waves arrive.  Fix Page0/1Filled init count to four, keep VFilled
+  count four, and retest K-first score-before-V overlap.
+- Result:
+  static/resource gates passed with branch windows
+  `8/40,127/216,127/216,9/40`, metadata `private=0`, `sgpr=66`, `vgpr=128`,
+  no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 regressed `simTicks=32,597,110 -> 34,374,340`; MMAC active dropped
+  `31.6674% -> 30.3953%`.  VALU stayed `89,216`, but SCA rose
+  `40,732 -> 43,832` and `waitLgkm` rose to `19,929.5`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Source restored to C74.  K-first is a
+  useful resource-pressure lesson, but it breaks the paired score/dP MMAC
+  island and increases readiness/control cost too much in the current topology.
