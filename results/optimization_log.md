@@ -10035,3 +10035,30 @@ Conclusion:
 - Active source is restored to the 16-wave canonical helper shape.
 - Next dQ work must change the ownership/useful-work structure or dS handoff
   topology, not only move matrix reads around the same PageUsed barrier.
+
+## 2026-07-12 dQ half-page PageUsed rejected
+
+- Hypothesis:
+  keep the 16-wave canonical dQ topology, but split page reuse lifetime into
+  `HalfUsed` and full `PageUsed`.  Consumers release a K/V page after finishing
+  `n_tile=0..1`, so producers can reload the first 64 rows of a reused page
+  while consumers finish the second half.
+- Result:
+  correctness/resource PASS.  Static gate remained canonical:
+  `8/40,161/216,161/216,9/40`; metadata `private=0`, `sgpr=59`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness both passed.
+  H1/S1024 stats:
+  `simTicks=36,033,725`, `kernel_ticks=32,420,115`,
+  `MMAC active=27.3829%`, `MMOP=55,296`, `VALU=121,632`,
+  `SCA=76,100`, `LDS=28,656`, `coissue=15,129/18,518`,
+  `barrierCounter=53,286.25`, `waitLgkm=14,024`, `ldsBankConflict=0`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Compared with mainline fullperf
+  (`simTicks=35,881,300`, `MMAC active=27.4198%`,
+  `barrierCounter=50,464`), half-page release is slower and increases barrier
+  pressure.  The data-lifetime proof is correct, but the extra token is not
+  free.  Active source was restored and recertified to the canonical dQ gate.
+- Lesson:
+  do not split `PageUsed` finer unless the split also removes another wait or
+  adds recurring useful producer work.  More precise ABarrier ownership can
+  make the critical path worse when it only adds bookkeeping.

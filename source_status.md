@@ -5511,3 +5511,19 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `REJECT_FULLPERF_TICKS_REGRESSION`.  K-normal read scheduling alone is a
   local wait-counter improvement, not an elapsed-time improvement.  Active
   source is restored; next work must attack ownership/useful-work structure.
+
+## 2026-07-12 dQ half-page PageUsed rejected
+
+- Hypothesis:
+  release the first half of a reused K/V page earlier by adding
+  `Page0HalfUsed/Page1HalfUsed`, while full `PageUsed` still protects the
+  second half.
+- Result:
+  correctness/resource PASS, no spill/scratch, no bank conflict.  H1/S1024
+  regressed versus mainline fullperf:
+  `simTicks=36,033,725` vs `35,881,300`, `MMAC active=27.3829%` vs
+  `27.4198%`, and aggregate `barrierCounter=53,286.25` vs `50,464`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Active source was restored and recertified
+  to the canonical single-`PageUsed` dQ gate.  Do not split ownership finer
+  unless the split removes another token or exposes useful producer work.

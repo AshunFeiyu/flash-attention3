@@ -1163,6 +1163,15 @@ dQ read scheduling note, 2026-07-12:
   the top bubble.  Do not promote read-placement-only changes unless they also
   reduce elapsed ticks and the ownership bubble in xcu.
 
+dQ half-page PageUsed note, 2026-07-12:
+
+- Splitting `PageUsed` into `HalfUsed + Used` passed correctness/resource
+  gates but regressed H1/S1024 (`simTicks=36,033,725`, `MMAC active=27.3829%`)
+  and raised barrier counters versus mainline fullperf.  The active source is
+  restored to the canonical single-`PageUsed` ledger.  Do not add finer
+  ownership tokens unless the design also removes another token or gives the
+  producer useful recurring work.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
