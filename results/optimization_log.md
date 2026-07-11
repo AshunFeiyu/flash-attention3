@@ -9804,3 +9804,45 @@ Conclusion:
 - Do not use branch-duplicated causal fast paths in this dQ topology unless a
   future design makes the full-valid path a separate compile-time specialization
   or removes the added control from the hot loop.
+
+## 2026-07-11 dQ QDo One-Shot Wait No-Toggle Probe
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Hypothesis:
+
+- `QDoFilled` and `QDoLatched` are one-shot startup barriers.  Unlike
+  PageFilled/PageUsed, they do not need phase toggling across K/V page epochs.
+  Removing the `s_xor_b32` phase toggle for these two waits might reduce SCA
+  and SGPR pressure without changing lifetimes.
+
+Implementation:
+
+- Temporarily added `ins::abarrier_try_wait_once`, an inline-asm wait that does
+  not toggle the phase SGPR.
+- Used it only in `dq_wait_qdo_filled` and `dq_wait_qdo_latched`.
+
+Evidence:
+
+- Static/resource gate PASS:
+  branch windows stayed `8/40,161/216,161/216,9/40`; metadata stayed
+  `private=0`, no spill/scratch; `sgpr` fell `67 -> 65`.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq_qdo_wait_once_20260711_225056/dq_correctness_20260711_225836`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_qdo_wait_once_20260711_225056/dq_correctness_20260711_225843`.
+- Same-shape H1/S1024 versus restored mainline:
+  `simTicks 35,704,760 -> 36,104,705`,
+  `kernel_ticks 32,091,150 -> 32,491,095`,
+  `MMAC active 27.3852% -> 27.3167%`,
+  `SCA 77,516 -> 77,116`,
+  `coissue 16,119/19,093 -> 15,878/18,621`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- The no-toggle wait does reduce SGPR/SCA slightly, but it does not reduce
+  elapsed time or improve MMAC active.  Active source and helper were restored.
+- Do not optimize the ABarrier wrapper mechanically; keep focus on main-loop
+  ownership/useful-work structure.

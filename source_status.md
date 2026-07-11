@@ -5431,3 +5431,17 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `REJECT_STATS_TICKS_REGRESSION`.  VALU fell, but scalar/control and
   scheduling bubbles grew much more.  Active source was restored; do not
   duplicate the softmax/dS branch in the hot loop for this topology.
+
+## 2026-07-11 dQ QDo one-shot wait no-toggle rejected
+
+- Hypothesis:
+  remove the phase-toggle `s_xor_b32` only for one-shot `QDoFilled` and
+  `QDoLatched`, while leaving PageFilled/PageUsed unchanged.
+- Result:
+  correctness/resource PASS and `sgpr` fell `67 -> 65`, but H1/S1024 regressed:
+  `simTicks=36,104,705`, `kernel_ticks=32,491,095`,
+  `MMAC active=27.3167%`, `SCA=77,116`, `coissue=15,878/18,621`,
+  `ldsBankConflict=0`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  The wrapper micro-cleanup lowers SCA a bit
+  but does not lower elapsed time.  Active source/helper were restored.
