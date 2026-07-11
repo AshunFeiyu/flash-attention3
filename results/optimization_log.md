@@ -9212,3 +9212,41 @@ Conclusion:
   direction must either increase useful MMAC per ownership epoch, change
   consumer overlap/role timing, or use the native dS handoff slot-map work to
   remove a larger dependency; producer page ownership alone is not enough.
+
+## 2026-07-11 dQ K-First True Overlap Design Review
+
+Decision: `REVISE_BEFORE_CODE`
+
+Workbook:
+
+- `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `51_dq_kfirst_true_overlap`.
+
+Initial thesis:
+
+- Retry K/V split only if it creates real useful work overlap:
+  `KFilled -> score MMAC`, then wait `VFilled` only before dP.  In principle,
+  score could hide V readiness and V could be released earlier than K because
+  dQ needs K but not V.
+
+Design stress result:
+
+- The V early-release part is not valid for the current per-`n_tile` immediate
+  loop.  V for one `n_tile` is dead after its dP, but the same V page is still
+  needed by later `n_tile` chunks.  A page-level `VUsed` cannot safely arrive
+  until all `n_tile` dP work for that K tile is complete.
+- To make V lifetime materially shorter than K, we need one of two bigger
+  designs:
+  1. Store dS/qk/dp-like intermediates and run dQ later, i.e. the native
+     dS handoff/ring path based on the accepted slot-map proof.
+  2. Split VUsed by n_tile/half-page, which resembles earlier fine-token
+     experiments that increased SCA/control and regressed.
+
+Conclusion:
+
+- Do not implement the original K-first early-release pseudocode.  A narrow
+  K-first probe could still test whether score hides VFilled wait, but its
+  upside is limited because VUsed and KUsed remain page-level late releases.
+- The next top-level mainline should favor the native dS handoff/slot-map ring
+  or another design that truly changes useful compute per ownership epoch,
+  rather than more token-only lifetime tweaks.

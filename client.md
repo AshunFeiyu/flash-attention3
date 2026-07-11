@@ -102,6 +102,14 @@ evidence are required before any performance claim.
   `35,750,715 -> 35,807,590` because one producer publishing full K+V
   serialized page availability and raised barrier/wait.  Do not continue
   page-ownership-only tweaks as the main route.
+- K-first true-overlap design review:
+  workbook sheet `51_dq_kfirst_true_overlap` found a pre-code counterexample.
+  In the current per-`n_tile` immediate loop, V cannot be page-level released
+  after one dP because later `n_tile` chunks still need the same V page.
+  K-first can only hide `VFilled` wait, not materially shorten V lifetime,
+  unless we either store dS/qk/dp-like intermediates or add fine n_tile tokens.
+  The latter resembles known token-control regressions; the former points back
+  to the native dS handoff/slot-map ring.
 - Next dQ work stays on the 16-wave mainline.  First try to reduce
   producer-thin `PageUsed` idle through producer-thickening or role rebalance
   while keeping two symmetric full-3GEMM consumer groups.  A 12-wave

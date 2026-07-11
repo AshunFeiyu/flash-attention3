@@ -5029,6 +5029,27 @@ Status: `REJECT_PAGE_OWNERSHIP_ONLY`.
   or the native dS handoff/slot-map route after its layout contract is fully
   integrated.
 
+## 2026-07-11 dQ K-First True-Overlap Review
+
+Status: `REVISE_BEFORE_CODE`.
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `51_dq_kfirst_true_overlap`.
+- Initial idea:
+  wait `KFilled`, compute score, then wait `VFilled` only before dP, hoping to
+  hide V readiness and release V earlier than K.
+- Stress result:
+  with the current per-`n_tile` immediate `score/dP/softmax/dQ` loop, V page
+  cannot be released after one dP because later `n_tile` chunks still need the
+  same V page.  Page-level `VUsed` remains late unless we either store
+  intermediates and run dQ later, or split V tokens by n_tile/half-page.
+- Decision:
+  do not implement the original K-first early-release pseudocode.  A narrow
+  K-first wait-hiding probe has limited upside.  The stronger top-level route
+  is now the native dS handoff/slot-map ring or another design that truly
+  increases useful MMAC per ownership epoch.
+
 ## 2026-07-11 dQ dS->dQ native ring blocked by layout proof
 
 - Proposed 16-wave roles are P_K, C_dS, C_dQ, P_V. Two pages exactly fit
