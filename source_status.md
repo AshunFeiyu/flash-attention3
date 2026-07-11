@@ -1,5 +1,30 @@
 # Source Status
 
+## 2026-07-12 dQ MLS32x16 Direct Source-Slot Probe Rejected
+
+Status: `REJECT_PROBE_SOURCE_PROBE_ONLY`.
+
+- Motivation:
+  previous instruction probes proved `matrix_load_32x16_b16` pairs correctly
+  with 32x16 normal/trans DS readers.  Test whether that official pair also
+  satisfies the stricter dQ `NativeDsSlotMap` source-slot q ownership.
+- Code:
+  only `probes/dq_source_operand_layout_probe.cpp` changed.  The canonical
+  dQ kernel remains untouched.
+- Gates:
+  metadata PASS with `private=0`, `sgpr=20`, `vgpr=12`, no spill/scratch.
+- PMD:
+  `/zys/shaobo_runs/dq_mls32x16_source_slot_20260712_011745`,
+  `simTicks=8,070,335`, `MMOP=0`, `ldsBankConflict=0`.
+- Result:
+  for `load_name=mls32x16`, no tested reader full-matches.  Best q-match is
+  still `44/504` on `normal_32x16_alt0`; decoded coverage is `496/504` for
+  32x16 readers and `248/504` for 16x32 readers.
+- Decision:
+  direct-load/direct-reader source-slot variants are exhausted for now.  A
+  native dS ring must prove a producer/MMAC orientation that creates source
+  slots natively, or the main work should return to canonical full-3GEMM dQ.
+
 ## 2026-07-12 dQ MLS32 Direct ALT Source-Slot Probe Rejected
 
 Status: `REJECT_PROBE_SOURCE_PROBE_ONLY`.

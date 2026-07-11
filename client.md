@@ -122,8 +122,11 @@ evidence are required before any performance claim.
   `57_DQ_DSRead_ALT_SourceSlot` now show that MLS32 direct normal/trans ALT
   readers do not produce the required `NativeDsSlotMap` q ownership.
   `normal_32x16_alt1` was the only new legal reader and gives `40/504` q-match;
-  no tested legal reader reaches `504/504`.  Do not implement the native dS
-  ring by adding gather/permute around this direct-read route; find a native
+  no tested legal reader reaches `504/504`.  Sheet
+  `58_DQ_MLS32x16_SourceSlot` also rejects the official
+  `matrix_load_32x16_b16` pair for this stricter source-slot contract: best
+  q-match is still `44/504`.  Do not implement the native dS ring by adding
+  gather/permute around direct-load/direct-reader routes; find a native
   producer/MMAC source-slot orientation first, or return to canonical full-3GEMM
   dQ barrier/page cadence work.
 - Active accepted dQ source remains the 16-wave tail-cleanup route until a new

@@ -22,9 +22,10 @@ constexpr int kWords = 8;
 constexpr int kRows = 32;
 constexpr int kCols = 64;
 constexpr int kReadModes = 5;
-constexpr int kLoadModes = 2;
+constexpr int kLoadModes = 3;
 constexpr int kModes = kReadModes * kLoadModes;
 constexpr int kMatrix32Bytes = 32 * 32 * 2;
+constexpr int kMatrix32Halfs = kMatrix32Bytes / sizeof(__half);
 constexpr int kLdsHalfs = 4096;
 
 union Frag {
@@ -85,6 +86,19 @@ const char* read_mode_name(int read_mode) {
     }
 }
 
+const char* load_mode_name(int load_mode) {
+    switch (load_mode) {
+        case 0:
+            return "mls32x32";
+        case 1:
+            return "mls32x32_t";
+        case 2:
+            return "mls32x16";
+        default:
+            return "unknown";
+    }
+}
+
 __global__ void __launch_bounds__(kThreads, 1)
     operand_layout_kernel(const __half* __restrict__ q_input,
                           uint16_t* __restrict__ dump) {
@@ -107,7 +121,8 @@ __global__ void __launch_bounds__(kThreads, 1)
     ins::abarrier_seq<false>(kMlsBarrier);
     ins::matrix_load_32x32_b16_bps_lds(lds, q_src, 0, false);
     ins::matrix_load_32x32_b16_bps_lds(
-        lds + kMatrix32Bytes / sizeof(__half), q_src, 0, true);
+        lds + kMatrix32Halfs, q_src, 0, true);
+    ins::matrix_load_32x16_b16_bps_lds(lds + 2 * kMatrix32Halfs, q_src, 0);
     ins::maybe_wait_bps_vbcnt_before_arrive();
     ins::abarrier_arrive_cnt<false>(kMlsBarrier, 1);
     int phase = 0;
@@ -116,8 +131,7 @@ __global__ void __launch_bounds__(kThreads, 1)
 #pragma unroll
     for (int mode = 0; mode < kModes; ++mode) {
         const int load_mode = mode / kReadModes;
-        const __half* page =
-            lds + load_mode * (kMatrix32Bytes / sizeof(__half));
+        const __half* page = lds + load_mode * kMatrix32Halfs;
         Frag frag = read_mode(page, mode);
         ins::wait_lgkm(0);
 #pragma unroll
@@ -254,10 +268,12 @@ int main() {
         const bool full = mapped == 504 && q_match == mapped;
         any_full = any_full || full;
         std::printf(
-            "operand_layout_summary mode=%d load=%d read=%d mapped=%d "
+            "operand_layout_summary mode=%d load=%d load_name=%s read=%d "
+            "mapped=%d "
             "read_name=%s decoded=%d q_match=%d full_match=%d\n",
-            mode, mode / kReadModes, mode % kReadModes,
-            mapped, read_mode_name(mode % kReadModes), decoded, q_match,
+            mode, mode / kReadModes, load_mode_name(mode / kReadModes),
+            mode % kReadModes, mapped,
+            read_mode_name(mode % kReadModes), decoded, q_match,
             full ? 1 : 0);
     }
     std::printf("operand_layout_final any_full_match=%d\n",

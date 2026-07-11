@@ -1,5 +1,43 @@
 # Optimization Log
 
+## 2026-07-12 dQ MLS32x16 Source-Slot Probe
+
+Decision: `REJECT_PROBE`
+
+Hypothesis:
+
+The MLS32 direct reader route failed, but previous instruction probes showed
+`matrix_load_32x16_b16` is the official same-LDS normal/trans positive pair.
+Test whether a 32x16 page can satisfy the `NativeDsSlotMap` source-slot q
+ownership that the native dS ring would need.
+
+Evidence:
+
+- Source: `probes/dq_source_operand_layout_probe.cpp`.
+- Workbook: `58_DQ_MLS32x16_SourceSlot`.
+- Static/resource gate PASS:
+  `private=0`, `sgpr=20`, `vgpr=12`, no SGPR/VGPR spill.
+- PMD run:
+  `/zys/shaobo_runs/dq_mls32x16_source_slot_20260712_011745`.
+- `load_name=mls32x16` result:
+  `trans_32x16_alt0 q_match=32/504 decoded=496/504`,
+  `normal_32x16_alt0 q_match=44/504 decoded=496/504`,
+  `trans_16x32_alt0 q_match=16/504 decoded=248/504`,
+  `trans_16x32_alt1 q_match=18/504 decoded=248/504`,
+  `normal_32x16_alt1 q_match=40/504 decoded=496/504`.
+- Final:
+  `operand_layout_final any_full_match=0`, `simTicks=8,070,335`,
+  `MMOP=0`, `ldsBankConflict=0`.
+
+Conclusion:
+
+The official 32x16 same-LDS normal/trans pairing is valid as an instruction
+contract, but it still does not produce the dQ native source-slot q ownership.
+Do not spend more code on direct-load/direct-reader source-slot variants.
+The native ring needs a different producer/MMAC orientation proof, or the next
+work should return to canonical full-3GEMM dQ and attack PageUsed/ABarrier
+cadence plus MMAC island sizing.
+
 ## 2026-07-12 dQ DSRead ALT Source-Slot Probe
 
 Decision: `REJECT_PROBE`
