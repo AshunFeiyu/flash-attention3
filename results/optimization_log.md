@@ -8946,8 +8946,17 @@ Follow-up after rereading Shaobo ISA/HCU docs:
   `OBSERVE_PRODUCER_FRAGMENT_ABI_UNRESOLVED`: the page-format pairing exists,
   but we have not identified the producer 4-VGPR fragment ABI needed to feed
   `ds_write_matrix_format_f16` from a C_dS MMAC/VALU result.
+- Important prior evidence from the Shaobo MLS layout reference refines this
+  again: a 2026-07-05 focused operand proof accepted
+  `VGPR(dS) -> ds_write_matrix_format(no t) -> ds_read_matrix_trans_format
+  32x16 -> MMAC` with normal `32x16` K readers.  Therefore the native handoff
+  route itself is viable in PMD for a correctly oriented producer fragment.
+  The unresolved part is how to make the real C_dS score/softmax result land
+  in that accepted producer fragment layout without scalar gather, permute, or
+  a hot LDS transpose.
 - The compiler tree does not expose an obvious `V_MOVMATRIX_*` builtin even
   though the ISA dependency table names `V_MOVMATRIX_16X16_B16`.  Do not use
-  inline assembly or permute workarounds in the canonical kernel; ask the
-  compiler/PMD owner for the supported builtin/ABI and whether PMD's
-  `ds_write_matrix : testing` warning means model semantics are incomplete.
+  inline assembly or permute workarounds in the canonical kernel.  First
+  reconstruct/reuse the accepted operand-pair proof, then redesign C_dS to
+  produce that layout natively; only ask the compiler/PMD owner if the required
+  producer layout still cannot be generated with exposed builtins.

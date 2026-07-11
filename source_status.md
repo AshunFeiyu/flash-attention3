@@ -5026,3 +5026,7 @@ Current focus:
   4-VGPR fragment ABI for writing a C_dS MMAC/VALU result.  Corrected M-pair
   focused probes with LIT=0/1 and simple lane-local pack orders still mismatch,
   no bank conflict.  Keep canonical dQ unchanged until the ABI is clarified.
+- Prior positive instruction proof exists in the Shaobo MLS layout reference:
+  `VGPR(dS) -> ds_write_matrix_format(no t) -> ds_read_matrix_trans_format
+  32x16 -> MMAC` pairs with normal `32x16` K readers.  Treat the current block
+  as a real-C_dS-layout generation problem, not as a native handoff rejection.

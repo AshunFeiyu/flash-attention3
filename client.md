@@ -1074,3 +1074,9 @@ dQ dS->dQ ring2, 2026-07-11:
   the exact 4-VGPR source expected by `ds_write_matrix_format_f16`.  Corrected
   M-pair probes with 2KB pages, LIT=0/1, and four simple fp16 pack orders still
   mismatch direct `dS@K`, with zero LDS bank conflict.
+- Important prior proof:
+  the Shaobo MLS layout reference records a passing 2026-07-05 operand probe:
+  `VGPR(dS) -> ds_write_matrix_format(no t) -> ds_read_matrix_trans_format
+  32x16 -> MMAC` with normal `32x16` K readers.  So the next task is not to
+  abandon the native handoff; it is to make C_dS produce that accepted
+  dQ-friendly layout directly.
