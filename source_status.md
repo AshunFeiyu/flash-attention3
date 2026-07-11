@@ -5935,3 +5935,22 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `REJECT_STATS_TICKS_REGRESSION`.  Source restored to canonical.  Do not
   reintroduce all-D K-normal prefetch; any future prefetch must first budget
   VGPR lifetime and prove it does not worsen ownership/barrier behavior.
+
+## 2026-07-12 dQ final PageUsed tail wait rejected
+
+- Hypothesis:
+  replace the remaining terminal CTA-wide sync before ABarrier invalidation
+  with a wave0 final `PageUsed` wait for the last K/V pages.
+- Result:
+  build/static gates PASS and branch windows remain
+  `8/40,161/216,161/216,9/40`, but H1/S128 PMD aborts before correctness with
+  `vgpr81 is not init or has been freed` in the MMOP path.
+- Restore:
+  `src/dq_kernel.cpp` was restored to the accepted tail-second-sync canonical
+  path and synced to liuchang.  Remote rebuild, dQ gate, and symbol metadata
+  gate pass again.
+- Decision:
+  `REJECT_PMD_REGISTER_INIT`.  Keep the first terminal `__syncthreads()`
+  before `s_abarrier_inv`; future work should reduce mainloop PageUsed
+  ownership dependence or introduce a native dS publisher/ring design instead
+  of deleting tail-exit discipline.

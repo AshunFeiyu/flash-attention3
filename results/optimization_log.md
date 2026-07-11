@@ -10572,3 +10572,27 @@ Conclusion:
   hiding a wait by lengthening operand lifetime can make the whole conveyor
   worse; future read-ahead ideas need a smaller lifetime budget, not all-D
   K-normal prefetch.
+
+## 2026-07-12 dQ final PageUsed tail wait rejected
+
+- Hypothesis:
+  after the tail-second-sync cleanup, xcu still showed a large
+  `s_barrier -> s_cbranch_vccnz` terminal bubble.  Replace the first terminal
+  CTA-wide `__syncthreads()` before `s_abarrier_inv` with a narrower proof:
+  wave0 waits final `Page0Used` and `Page1Used` tokens, then invalidates all
+  dQ ABarriers.
+- Result:
+  build/static/source gates passed with unchanged branch windows
+  `8/40,161/216,161/216,9/40`, metadata `private=0`, `sgpr=65`,
+  `vgpr=128`, and no spill/scratch.  H1/S128 PMD aborted before correctness:
+  `warn: read vgpr81 before writing` and
+  `panic: ... vgpr81 is not init or has been freed` during MMOP execution.
+- Evidence:
+  `/zys/shaobo_runs/dq_tail_final_used_wait_20260712_052500/dq_correctness_20260712_050037/pmd_stdout.log`.
+  The active source was restored and rebuilt; dQ gate and symbol metadata gate
+  pass again.
+- Decision:
+  `REJECT_PMD_REGISTER_INIT`.  The terminal sync before ABarrier invalidation
+  is currently part of the WDRA/PMD role-exit discipline, not just redundant
+  performance overhead.  Do not retry tail barrier deletion without a focused
+  WDRA-exit proof.

@@ -1427,6 +1427,25 @@ dQ K-normal prefetch, 2026-07-12:
   `14,146.75 -> 11,683.75`, but the +26 VGPR branch footprint and longer
   operand lifetime made the conveyor worse.
 
+dQ final PageUsed tail wait, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `72_DQ_Tail_FinalUsed_Wait`.
+- Result:
+  `REJECT_PMD_REGISTER_INIT`.  Temporarily replaced the remaining terminal
+  `__syncthreads()` before `s_abarrier_inv` with wave0 waits on the final
+  `Page0Used/Page1Used` tokens.  Source was restored after the run.
+- Evidence:
+  build/static gates passed with unchanged branch windows
+  `8/40,161/216,161/216,9/40`, but H1/S128 PMD aborted before correctness:
+  `vgpr81 is not init or has been freed` during MMOP execution.
+- Lesson:
+  the first terminal sync before ABarrier invalidation is part of the current
+  WDRA/PMD role-exit discipline.  Do not keep deleting tail barriers; move
+  effort to mainloop ownership structure, such as group-level PageUsed or a
+  native dS publisher/ring design.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
