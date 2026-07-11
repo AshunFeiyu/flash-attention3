@@ -9104,3 +9104,55 @@ Compact source-slot map follow-up:
   a canonical C_dS publisher cannot assume a dense 512-slot affine source map.
   It must either use a table/formula validated against the compact map or
   explicitly mask the eight boundary holes before handing dS to C_dQ.
+
+## 2026-07-11 dQ K/V Split Ownership Minimal Probe
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Hypothesis:
+
+- The current dQ `Mq=128,Nk=128,D=128` path has separate producer roles for K
+  and V, but both producers arrive the same `PageFilled(count=8)` token.
+  Splitting this into `KFilled(count=4)` and `VFilled(count=4)` might expose
+  finer ownership and reduce the dominant PageUsed/PageFilled ABarrier bubble.
+
+Implementation:
+
+- Branch `exp/dq-kv-split-ownership`.
+- Canonical dQ only, no phase stack and no math-order change.
+- Replaced page tokens with K/V tokens:
+  `Page{0,1}KFilled/KUsed` and `Page{0,1}VFilled/VUsed`.
+- K/V `Filled` count is 4 because each producer group has four waves.
+  K/V `Used` count remains 8 because both consumer groups consume each K/V
+  page before producer overwrite is legal.
+
+Evidence:
+
+- Static/resource gate PASS:
+  producer0 `8/40`, consumer0 `161/216`, consumer1 `161/216`,
+  producer1 `9/40`; metadata `private=0`, `sgpr=67`, `vgpr=128`,
+  `sgpr_spill=0`, `vgpr_spill=0`.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq_kv_split_min_s128_20260711_180613/dq_correctness_20260711_180613`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_kv_split_min_s1024_20260711_180641/dq_correctness_20260711_180641`.
+- Same-shape H1/S1024 stats versus accepted dQ tail-cleanup baseline:
+  `simTicks 35,750,715 -> 36,198,435`,
+  `MMOP=55,296`, `VALU=121,632`, `LDS=28,656`, `VMEM=1,408`
+  unchanged, but `SCA 77,516 -> 81,784`,
+  coissue `16,037/18,954 -> 15,222/18,657`,
+  barrier sum `51,690 -> 54,599.75`,
+  waitLgkm sum `13,954.75 -> 14,387.75`,
+  emptyBuffer sum `21,735.922 -> 23,166.422`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Reject and do not keep in the active route.  Splitting the ledger without
+  changing consumer work order creates more scalar/control and barrier cost
+  while useful MMOP/VALU/LDS work is unchanged.
+- K/V split ownership is only worth retrying if the consumer actually starts
+  useful score work after `KFilled` and delays `VFilled` until dP, or if another
+  design gives the producer groups recurring useful work.  Token splitting by
+  itself is a negative pattern.
