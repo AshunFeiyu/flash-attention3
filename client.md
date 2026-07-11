@@ -154,6 +154,13 @@ evidence are required before any performance claim.
   first-update path added code size/control and raised VALU/SCA.  Source is
   restored to C74.  Lesson: zero-seed is safe for fixed first-MMAC islands,
   not for persistent accumulators that need runtime first-update state.
+- Latest structural rejection:
+  sheet `81_DQ_KFirstVOverlap` split K/V readiness and changed consumer order
+  to `KFilled -> score -> VFilled -> dP -> dS -> dQ`.  Static resources looked
+  promising (`consumer 159/216 -> 127/216`), but H1/S128 hung.  Source is
+  restored to C74.  Lesson: K-first overlap needs a focused
+  KFilled/VFilled/PageUsed protocol probe before it can re-enter the
+  performance kernel.
 - Latest rejected producer-ownership variants:
   K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
   scalar/control and barrier debt.  Alternate-page full-KV producers lowered

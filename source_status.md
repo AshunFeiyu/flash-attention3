@@ -1,5 +1,36 @@
 # Source Status
 
+## 2026-07-12 dQ K-First V-Overlap Rejected
+
+Status: `REJECT_HANG_SOURCE_RESTORED`.
+
+- Motivation:
+  C74 waits for a combined K+V PageFilled token before score/dP work starts.
+  C81 split the page-ready protocol into KFilled and VFilled so consumers could
+  compute `score = Q @ K^T` after K arrives while producer1 continues loading V,
+  then wait VFilled for `dP = dO @ V^T`.
+- Code:
+  temporary only.  Existing PageFilled tokens became KFilled; two VFilled
+  tokens were added.  The consumer hot path changed from interleaved
+  score+dP MMAC to `K read -> score MMAC -> VFilled wait -> V read -> dP
+  MMAC -> dS -> dQ`.  PageUsed still protected K/V page reuse.
+- Static evidence:
+  build/static gates passed.  Consumer branch windows dropped
+  `159/216 -> 127/216`, metadata stayed clean (`private=0`, `sgpr=66`,
+  `vgpr=128`, no spill/scratch), and main matrix path stayed on
+  `ds_read_matrix + v_mmac`.  The cost was more control:
+  `s_abarrier_init 6 -> 8`, `s_abarrier_try_wait 12 -> 16`,
+  `s_cbranch_vccnz 38 -> 45`.
+- Runtime:
+  H1/S128 did not complete in normal time and was interrupted.  No H1/S1024
+  stats were collected.  Source and remote build were restored to C74 and
+  recertified with branch windows `8/40,159/216,159/216,9/40`.
+- Decision:
+  reject.  K-first can reduce live VGPR pressure, but the naive page-level
+  VFilled protocol is not valid with the current PageUsed/QDoLatched lifetime.
+  Retry only as a focused barrier protocol probe before touching the
+  performance kernel again.
+
 ## 2026-07-12 dQ Accumulator Zero-Seed Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

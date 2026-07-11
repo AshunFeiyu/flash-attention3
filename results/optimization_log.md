@@ -10833,3 +10833,24 @@ Conclusion:
   `REJECT_STATS_TICKS_REGRESSION`.  Source restored to C74.  Do not apply
   zero-seed to long-lived dQ accumulators through a first-update branch; keep
   zero-seed for fixed first-MMAC islands only.
+
+## 2026-07-12 dQ K-first V-overlap rejected
+
+- Hypothesis:
+  split K and V page readiness so consumers can start `Q @ K^T` after KFilled
+  while producer1 is still publishing V.  This targets the combined PageFilled
+  ownership wait without changing dQ output ownership or staging dS in LDS.
+- Result:
+  static gates passed.  Consumer branch windows improved
+  `159/216 -> 127/216`, metadata stayed `private=0`, `sgpr=66`, `vgpr=128`,
+  no spill/scratch, and the main matrix path still had no ordinary DS matrix
+  reads.  Static control grew: ABarrier init/inv `6 -> 8`, seq `4 -> 8`,
+  try_wait `12 -> 16`, and `s_cbranch_vccnz 38 -> 45`.
+- Runtime:
+  H1/S128 did not complete in normal time and was interrupted.  The run root
+  is `/zys/shaobo_runs/dq_kfirst_voverlap_20260712_090000`; no H1/S1024 stats
+  were collected.
+- Decision:
+  `REJECT_HANG`.  Source restored to C74 and remote static gates pass again.
+  The idea should not be retried in the performance kernel until a focused
+  KFilled/VFilled/PageUsed barrier protocol probe proves the exact sequencing.
