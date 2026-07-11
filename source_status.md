@@ -1,5 +1,35 @@
 # Source Status
 
+## 2026-07-12 dQ Tail Raw SBarrier Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  C74 xcu showed a large terminal/control row
+  `s_barrier -> s_cbranch_vccnz`.  Removing the pre-invalidate tail sync had
+  already failed with PMD VGPR-init errors, so this candidate preserved the
+  sync semantics but emitted a raw `s_barrier` instead of HIP
+  `__syncthreads()`.
+- Code:
+  temporary only.  Added a small `raw_s_barrier()` helper and replaced only the
+  normal-path tail `__syncthreads()` before `s_abarrier_inv`.  Mainloop,
+  math, tile, PageUsed/QDo ownership, BPS waits, diagnostic sync, and output
+  ownership were unchanged.
+- Gates:
+  static/resource PASS with branch windows `8/40,159/216,159/216,9/40`.
+  Metadata: `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch.  H1/S128
+  and H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats regressed
+  `32,597,110 -> 32,835,530` ticks.  MMAC active moved only
+  `31.6674% -> 31.7079%`, and instruction mix was unchanged
+  (`MMOP=55,296`, `VALU=89,216`, `SCA=40,732`).
+- Decision:
+  reject and restore C74 source.  Coissue increased slightly, but it did not
+  become elapsed-time improvement.  Stop tail-sync codegen tweaks for now; the
+  remaining route to 40% MMAC active must attack mainloop ownership or the
+  native dS-ring dependency graph.
+
 ## 2026-07-12 dQ Sidecar Early Latch Rejected
 
 Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.

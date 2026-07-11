@@ -10729,3 +10729,26 @@ Conclusion:
   `REJECT_FULLPERF_TICKS_REGRESSION`.  Source restored to C74.  This confirms
   that fine-grained startup token splitting is not a reliable route to 40%
   MMAC active unless it removes a larger proven wait/control cost.
+
+## 2026-07-12 dQ tail raw s_barrier rejected
+
+- Hypothesis:
+  the remaining terminal `__syncthreads()` is required for WDRA/PMD role exit
+  and ABarrier invalidation, but its HIP wrapper appears in xcu as a large
+  `s_barrier -> s_cbranch_vccnz` bubble.  Preserve the hardware barrier while
+  replacing the wrapper with a raw `s_barrier`.
+- Result:
+  build/static/source gates passed with unchanged branch windows
+  `8/40,159/216,159/216,9/40`, metadata `private=0`, `sgpr=65`,
+  `vgpr=128`, and no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats regressed:
+  `simTicks=32,597,110 -> 32,835,530`.  MMAC active barely moved
+  `31.6674% -> 31.7079%`.  MMOP/VALU/SCA/LDS/VMEM were unchanged:
+  `55,296/89,216/40,732/28,656/1,408`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Source restored to canonical
+  `__syncthreads()`.  Coissue count alone is not enough.  Stop tail-sync
+  codegen tweaks; next useful work must change mainloop ownership or the dS
+  dependency graph.

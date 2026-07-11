@@ -118,6 +118,14 @@ evidence are required before any performance claim.
   startup token splitting can improve stats-only noise but still lose under
   SQTT/fullperf because extra ABarrier/control does not reduce the critical
   path.
+- Latest tail-control rejection:
+  sheet `77_DQ_Tail_RawSBarrier` preserved the mandatory pre-invalidate tail
+  sync but emitted raw `s_barrier` instead of HIP `__syncthreads()`.  It
+  passed correctness/resources, but H1/S1024 stats regressed
+  `32,597,110 -> 32,835,530` with MMAC active only
+  `31.6674% -> 31.7079%`.  Source is restored to C74.  Lesson: the remaining
+  terminal sync should stay canonical for now; codegen-only tail tweaks are
+  not enough to reach 40%.
 - Latest rejected producer-ownership variants:
   K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
   scalar/control and barrier debt.  Alternate-page full-KV producers lowered
