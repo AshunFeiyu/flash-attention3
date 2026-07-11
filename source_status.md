@@ -5380,3 +5380,24 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `MMOP=55,296`, `VALU=121,632`, `SCA=77,516`, `LDS=28,656`,
   `coissue=16,119/19,093`, and `ldsBankConflict=0`.  Active dQ is again the
   correct canonical path only.
+
+## 2026-07-11 dQ sidecar/QDo latch split rejected
+
+- Hypothesis:
+  since page0 K/V overlays only sidecar, and page1 overlays full Q/dO, split
+  startup release into `SidecarLatched` for page0 and `QDoLatched` for page1.
+- Temporary implementation:
+  barrier id 6 became `SidecarLatched`; consumers read sidecar, waited
+  `lgkmcnt(0)`, arrived `SidecarLatched`, then read Q/dO matrix fragments and
+  arrived the existing `QDoLatched`.
+- Result:
+  correctness PASS and resource gate PASS (`private=0`, no spill/scratch,
+  branch windows `8/40,161/216,161/216,9/40`), but H1/S1024 regressed versus
+  restored mainline:
+  `simTicks=36,954,190`, `kernel_ticks=33,340,580`,
+  `MMAC active=27.1510%`, `SCA=78,404`, `coissue=14,869/15,306`,
+  `ldsBankConflict=0`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  More precise sidecar/QDo ownership is not
+  useful by itself; the added token outweighs earlier page0 publication.  Active
+  source was restored to the single `QDoLatched` startup ledger.

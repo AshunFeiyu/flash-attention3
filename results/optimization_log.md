@@ -9667,3 +9667,51 @@ Cleanup:
   `VALU=121,632`, `SCA=77,516`, `LDS=28,656`, `VMEM=1,408`,
   `coissue=16,119/19,093`, `MMAC active=27.3852%`,
   `ldsBankConflict=0`.
+
+## 2026-07-11 dQ Sidecar/QDo Latch Split Probe
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Hypothesis:
+
+- `page0` K/V only overlaps the tiny sidecar area, while `page1` overlaps the
+  full `Q/dO` LDS area.  Split the startup ownership into `SidecarLatched` and
+  `QDoLatched`, so producers can publish page0 after consumers latch sidecar,
+  instead of waiting for the full Q/dO matrix-read latch.
+
+Implementation:
+
+- Temporarily repurposed barrier id 6 as `SidecarLatched`.
+- Consumers performed `sidecar LDS read -> wait_lgkm(0) -> arrive
+  SidecarLatched`, then read Q/dO matrix fragments and arrived the existing
+  `QDoLatched`.
+- Producers waited `SidecarLatched` before `kt=0/page0`, and waited
+  `QDoLatched` only before `kt=1/page1`.
+
+Evidence:
+
+- Static/resource gate PASS:
+  branch windows stayed `8/40,161/216,161/216,9/40`; metadata stayed
+  `private=0`, no SGPR/VGPR spill, `sgpr=68`, `vgpr=128`.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq_sidecar_latch_split_20260711_222351/dq_correctness_20260711_223131`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_sidecar_latch_split_20260711_222351/dq_correctness_20260711_223143`.
+- Same-shape H1/S1024 versus restored mainline:
+  `simTicks 35,704,760 -> 36,954,190`,
+  `kernel_ticks 32,091,150 -> 33,340,580`,
+  `MMAC active 27.3852% -> 27.1510%`,
+  `VALU 121,632 -> 115,360`,
+  `SCA 77,516 -> 78,404`,
+  `coissue 16,119/19,093 -> 14,869/15,306`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- The extra ownership token costs more than the earlier page0 publication can
+  recover.  Sidecar/QDo lifetime splitting is not the route to 40% MMAC active
+  in the current dQ topology.
+- Active source was restored to the single `QDoLatched` startup ledger.  Do not
+  retry finer token splits unless the design also increases useful work per
+  ownership epoch or removes another token.
