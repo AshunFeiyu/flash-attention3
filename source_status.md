@@ -51,6 +51,32 @@ Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.
   Do not collapse this dQ K-normal wait split without a focused
   ds_read_matrix/MMAC VGPR-init proof.
 
+## 2026-07-12 dQ Native dS Ring Formula Probe Accepted
+
+Status: `ACCEPT_PROBE_FORMULA_SOURCE_SLOT_CANONICAL_UNCHANGED`.
+
+- Motivation:
+  after proving deterministic source-slot handoff, test whether source-slot
+  publication also works with real softmax/dS-style scalar formula, including
+  `exp2` and float-to-half conversion.
+- Code:
+  added standalone `probes/dq_native_ds_ring_formula_probe.cpp`.  Canonical
+  `src/dq_kernel.cpp` is unchanged.
+- Gates:
+  metadata `private=0`, `sgpr=22`, `vgpr=120`, no spill/scratch.  ASM uses
+  `ds_write_matrix_format`, `ds_read_matrix_trans_format`, normal
+  `ds_read_matrix_format`, and `v_mmac`; no gather/permute matrix fallback.
+- PMD:
+  `/zys/shaobo_runs/dq_native_ds_ring_formula_20260712_030944`.
+  All four slot checks passed; stats: `simTicks=6,556,550`, `MMOP=4`,
+  `VALU=329`, `SCA=476`, `LDS=30`, `ldsBankConflict=0`.  PMD warns
+  `VOP3P__V_MAD_MIXLO_F16 not test`, but numerical output is correct for this
+  focused formula path.
+- Decision:
+  accept as probe evidence.  The remaining blocker for a real dQ ring is
+  qk/dP MMAC output orientation into `NativeDsSlotMap`, not LDS handoff or the
+  scalar softmax/dS formula itself.
+
 ## 2026-07-12 dQ Tail No-Invalidate Fast Exit Rejected
 
 Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.

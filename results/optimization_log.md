@@ -10368,3 +10368,26 @@ Conclusion:
   of the PMD/WDRA-visible readiness boundary for the second half of the
   K-normal fragments.  Do not collapse dQ K-normal read waits without a focused
   ds_read_matrix/MMAC VGPR-init probe or compiler/PMD fix.
+
+## 2026-07-12 dQ native dS ring formula probe accepted
+
+- Hypothesis:
+  after the deterministic structural handoff passed, test whether a C_dS
+  publisher can compute softmax/dS formula values directly in
+  `NativeDsSlotMap` source-slot order and publish them through the same native
+  `ds_write_matrix -> ds_read_matrix_trans -> MMAC` path.
+- Result:
+  `/zys/shaobo_runs/dq_native_ds_ring_formula_20260712_030944` PASS.
+  `slot0_low/high` and `slot1_low/high` all passed; producer_done=1,
+  publisher_done=2, consumer_done=2.  Metadata PASS:
+  `private=0`, `sgpr=22`, `vgpr=120`, no spill/scratch.  Stats:
+  `simTicks=6,556,550`, `MMOP=4`, `VALU=329`, `SCA=476`, `LDS=30`,
+  `ldsBankConflict=0`.
+- Decision:
+  `ACCEPT_PROBE_FORMULA_SOURCE_SLOT`.  This proves formula generation plus
+  source-slot publication and native C_dQ consumption without gather/permute.
+  Canonical dQ remains unchanged.
+- Boundary:
+  qk/dP are synthetic scalar formula inputs in this probe.  The remaining hard
+  question is whether the real qk/dP MMAC result orientation can produce the
+  required source-slot fragment without scalar lane permute/gather.

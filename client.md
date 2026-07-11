@@ -1274,6 +1274,26 @@ dQ dS@K read-batch wait collapse, 2026-07-12:
   PMD/WDRA VGPR readiness tracking of the K-normal fragments, not merely a
   conservative scheduler wait.
 
+dQ native dS ring formula probe, 2026-07-12:
+
+- Standalone probe:
+  `probes/dq_native_ds_ring_formula_probe.cpp`.
+- Evidence:
+  `/zys/shaobo_runs/dq_native_ds_ring_formula_20260712_030944`;
+  workbook sheet
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `65_DQ_NativeRing_FormulaProbe`.
+- Result:
+  `ACCEPT_PROBE_FORMULA_SOURCE_SLOT`.  A C_dS publisher can compute synthetic
+  softmax/dS formula values directly in `NativeDsSlotMap` source-slot order,
+  write them with `ds_write_matrix_32x16_f16`, and have C_dQ consume them with
+  `ds_read_matrix_trans` plus K-normal MMAC.  No gather/permute/bpermute or
+  ordinary matrix `ds_read_b*`; `ldsBankConflict=0`; no spill/scratch.
+- Boundary:
+  qk/dP are still synthetic scalar formula inputs.  The next real blocker is
+  MMAC output orientation: can score/dP MMAC produce the source-slot fragment
+  natively, or does it require an expensive cross-lane/source-slot transform?
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
