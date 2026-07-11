@@ -5865,3 +5865,34 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   canonical dQ baseline.  The remaining top bottleneck is still
   `s_abarrier_try_wait -> s_xor_b32`; reaching 40% likely needs structural
   PageUsed/producer-helper work, not more local predicate cleanup.
+
+## 2026-07-12 dQ tail second sync prune accepted
+
+- Hypothesis:
+  the post-`s_abarrier_inv` `__syncthreads()` is only required for the
+  diagnostic store path.  The normal `diag_store=0` path can skip it while
+  still keeping the first terminal sync and all ABarrier invalidates.
+- Source:
+  `src/dq_kernel.cpp` now wraps only the second terminal sync inside
+  `if (diag_store != 0)`.  No math, matrix path, wait placement, PageUsed
+  placement, or keepalive code changed.
+- Result:
+  H1/S128 and H1/S1024 correctness PASS; static/source gate PASS with
+  metadata `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch, and
+  `ldsBankConflict=0`.
+- Performance:
+  H1/S1024 stats-only:
+  `simTicks=33,839,715 -> 33,529,405`,
+  `MMAC active=29.4163% -> 29.5058%`.
+  H1/S1024 fullperf:
+  `simTicks=34,414,380 -> 33,977,580`,
+  `MMAC active=29.2992% -> 29.4292%`,
+  `barrierCounter=48,247.75 -> 46,545.75`.
+- XCU:
+  top `s_abarrier_try_wait -> s_xor_b32` bubble improves
+  `1,115,944 -> 1,082,188` cycles.  The remaining
+  `s_barrier -> s_cbranch_vccnz` bubble is still visible at `704,020` cycles.
+- Decision:
+  `ACCEPT_SMALL_PERF`.  This is the active canonical dQ source, but it is not
+  the 40% MMAC active solution.  Continue with structural PageUsed/ABarrier
+  ownership or useful producer-work design.

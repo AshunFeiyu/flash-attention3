@@ -10467,3 +10467,34 @@ Conclusion:
 - Decision:
   `ACCEPT_PERF`.  This is a clean VALU/SCA reduction with no new branch,
   token, or layout path.  Continue from this as the canonical dQ baseline.
+
+## 2026-07-12 dQ tail second sync prune accepted
+
+- Hypothesis:
+  the first terminal `__syncthreads()` before `s_abarrier_inv` and the
+  invalidates themselves are required by the current WDRA/PMD exit discipline,
+  but the second terminal `__syncthreads()` after invalidation is only needed
+  when `diag_store != 0`.  Move only that second sync under the diagnostic
+  branch.
+- Result:
+  H1/S128 and H1/S1024 correctness PASS; static/source gate PASS.  Metadata
+  stays `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch, and
+  `ldsBankConflict=0`.
+- PMD stats:
+  stats-only H1/S1024 improves
+  `simTicks=33,839,715 -> 33,529,405` and
+  `MMAC active=29.4163% -> 29.5058%`, with the hot instruction counts
+  unchanged.
+- Fullperf/xcu:
+  H1/S1024 fullperf improves
+  `simTicks=34,414,380 -> 33,977,580`,
+  `MMAC active=29.2992% -> 29.4292%`, `barrierCounter=48,247.75 -> 46,545.75`,
+  and `waitLgkm=14,390.25 -> 14,068`.
+  XCU top `s_abarrier_try_wait -> s_xor_b32` bubble drops
+  `1,115,944 -> 1,082,188` cycles.  The visible
+  `s_barrier -> s_cbranch_vccnz` bubble remains large at `704,020` cycles,
+  so this is not a structural cleanup of the terminal sync pattern.
+- Decision:
+  `ACCEPT_SMALL_PERF`.  Keep this one-line canonical cleanup because all gates
+  agree, but continue treating PageUsed/ABarrier ownership as the main route
+  toward 40% MMAC active.

@@ -789,8 +789,8 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
         __builtin_hcu_s_abarrier_inv(Bar::kQDoFilled);
         __builtin_hcu_s_abarrier_inv(Bar::kQDoLatched);
     }
-    __syncthreads();
     if (diag_store != 0) {
+        __syncthreads();
         const int tid = workitem_x();
         if (tid < 64) {
             dq_out[tid] = 1.0f;

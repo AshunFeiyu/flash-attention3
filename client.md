@@ -1360,6 +1360,31 @@ dQ causal predicate minimalization, 2026-07-12:
   reduce ownership dependence or give producer waves useful medium-weight work;
   pure PageUsed arrive-point motion was already rejected.
 
+dQ tail second sync prune, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `69_DQ_Tail_SecondSync`.
+- Result:
+  `ACCEPT_SMALL_PERF`.  The active dQ source keeps the first terminal
+  `__syncthreads()` and all `s_abarrier_inv` calls, but moves the second
+  terminal sync inside `if (diag_store != 0)`.
+- Evidence:
+  H1/S128 and H1/S1024 correctness PASS; metadata `sgpr=65`, `vgpr=128`,
+  `private=0`, no spill/scratch.  H1/S1024 fullperf improves
+  `simTicks=34,414,380 -> 33,977,580`, MMAC active
+  `29.2992% -> 29.4292%`, barrier counter
+  `48,247.75 -> 46,545.75`, and waitLgkm `14,390.25 -> 14,068`.
+- XCU:
+  top `s_abarrier_try_wait -> s_xor_b32` bubble improves
+  `1,115,944 -> 1,082,188` cycles.  `s_barrier -> s_cbranch_vccnz` remains
+  large at `704,020` cycles, so this did not solve the terminal/ownership
+  bottleneck.
+- Next:
+  continue toward 40% MMAC active by reducing PageUsed/ABarrier ownership
+  dependence or adding useful producer work.  Do not spend more turns moving
+  the same PageUsed arrive point unless the design removes a dependency/token.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
