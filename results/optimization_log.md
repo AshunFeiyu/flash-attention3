@@ -9250,3 +9250,62 @@ Conclusion:
 - The next top-level mainline should favor the native dS handoff/slot-map ring
   or another design that truly changes useful compute per ownership epoch,
   rather than more token-only lifetime tweaks.
+
+## 2026-07-11 dQ Slotmap Recheck Before Native Ring Code
+
+Decision: `ACCEPT_NATIVE_SPLIT_HANDOFF_CONTRACT`
+
+Question:
+
+- Before writing the native dS ring, re-run the focused slotmap probe on the
+  current liuchang/zys1 path to verify whether the handoff contract is still
+  `split_low/high` rather than pair-accumulator.
+
+Evidence:
+
+- Run:
+  `/zys/shaobo_runs/dq_slotmap_recheck_20260711_191700`.
+- Probe output:
+  `slotmap_reverse_split_result pair_pass=0 low_pass=1 high_pass=1 split_pass=1`;
+  `slotmap_reverse_final pass=1`.
+- Slot label table:
+  group0 `w0=0 w1=1 w2=2 w3=3 w4=0 w5=1 w6=2 w7=3`;
+  group1 `4..7`; group2 `8..11`; group3 `12..15`, duplicated across the
+  two word half-regions.
+- Health:
+  focused probe metadata is clean and consume dispatch has `ldsBankConflict=0`.
+
+Conclusion:
+
+- The native matrixized handoff remains viable, but only with split
+  half-region accumulators.  The next code step must prototype
+  `C_dS split publisher -> two N32 dS LDS slots -> C_dQ split consumer`.
+  Do not use pair-accumulator `ds_write_matrix`, scalar gather, permute, or
+  ordinary `ds_read_b32` as the main handoff path.
+
+## 2026-07-11 Native Ring Code Skeleton
+
+Decision: `ACCEPT_PREP_ONLY_NO_PERF_CLAIM`
+
+Change:
+
+- Added `ins::ds_write_matrix_32x16_f16` as the single wrapper for the verified
+  native B16 matrix write format.
+- Added `dq::NativeDsRingDqTile` and `dq::DqNativeDsRingBarrierLedger`.
+  The contract fixes the first prototype at `Mq=64,Nk=128,D=128,12wave`,
+  two `N32` dS slots, and compile-time LDS budget checks.
+
+Evidence:
+
+- Canonical dQ build and metadata gate PASS on remote
+  `/zys/shaobo/fa3_bwd_wasp_clean`: `private=0`, `sgpr=67`, `vgpr=128`,
+  no spill/scratch.
+- H1/S128 canonical smoke PASS:
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260711_192915`.
+
+Conclusion:
+
+- This is preparation only.  It does not claim performance improvement and
+  does not change the accepted dQ kernel.  The next implementation step is the
+  minimal C_dS split publisher prototype that uses the slot-map half-region
+  contract.

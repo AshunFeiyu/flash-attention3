@@ -149,6 +149,21 @@ __device__ __forceinline__ void ds_read_matrix_32x16_trans(
 #endif
 }
 
+__device__ __forceinline__ void ds_write_matrix_32x16_f16(
+    Vec8F16 frag,
+    __half* lds,
+    int lds_offset) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    auto* ptr = reinterpret_cast<_Float16*>(
+        reinterpret_cast<char*>(lds) + lds_offset);
+    __builtin_hcu_ds_write_matrix_format_f16(frag, ptr, 16, 2, 1, 0, 0);
+#else
+    (void)frag;
+    (void)lds;
+    (void)lds_offset;
+#endif
+}
+
 __device__ __forceinline__ void ds_read_matrix_trans_pair(
     const __half* lds,
     int lds_offset,

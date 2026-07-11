@@ -5077,6 +5077,48 @@ Status: `DESIGN_READY_FOR_CODE_REVIEW`.
   12-wave ring as a general preference; it is allowed only because the role
   graph is different.
 
+## 2026-07-11 dQ Slotmap Recheck Before Native Ring Code
+
+Status: `ACCEPT_NATIVE_SPLIT_HANDOFF_CONTRACT`.
+
+- Run:
+  `/zys/shaobo_runs/dq_slotmap_recheck_20260711_191700`.
+- Result:
+  `slotmap_reverse_split_result pair_pass=0 low_pass=1 high_pass=1 split_pass=1`
+  and `slotmap_reverse_final pass=1`.  The group/word K-row labels remain
+  `slot_k[group][word] = group * 4 + (word & 3)`, with word halves `0..3`
+  and `4..7` carrying separate half-regions.
+- Resource/health:
+  metadata gate was clean for the slotmap probe (`private=0`, no spills), and
+  the consume dispatch reports `ldsBankConflict=0`.
+- Implementation implication:
+  the dQ native dS ring must publish and consume dS as two split half-region
+  accumulator streams.  A pair-accumulator `ds_write_matrix` handoff is known
+  wrong for this layout.  Do not add scalar gather, `bpermute/mpermute`, or
+  ordinary `ds_read_b32` as the main path unless a separate focused probe
+  proves the native path impossible.
+
+## 2026-07-11 Native Ring Code Skeleton
+
+Status: `ACCEPT_PREP_ONLY_NO_PERF_CLAIM`.
+
+- Change:
+  added a reusable `ds_write_matrix_32x16_f16` wrapper for the verified B16
+  page-format write, and added `NativeDsRingDqTile` plus
+  `DqNativeDsRingBarrierLedger` compile-time contracts.
+- Boundary:
+  the canonical dQ kernel is not changed and still uses the accepted
+  `Mq=128,Nk=128,16wave` full-3GEMM path.  This commit is only scaffolding for
+  the future native dS ring prototype.
+- Gates:
+  remote build and symbol metadata gate PASS on `/zys/shaobo/fa3_bwd_wasp_clean`:
+  `private=0`, `sgpr=67`, `vgpr=128`, no SGPR/VGPR spill.  H1/S128 canonical
+  smoke PASS at
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dq_correctness_20260711_192915`.
+- Next:
+  implement the minimal C_dS split publisher prototype using the accepted
+  slot-map half-region contract before touching the performance dQ path.
+
 ## 2026-07-11 dQ dS->dQ native ring blocked by layout proof
 
 - Proposed 16-wave roles are P_K, C_dS, C_dQ, P_V. Two pages exactly fit
