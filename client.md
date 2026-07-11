@@ -1143,3 +1143,19 @@ Slot-map reverse result, 2026-07-11:
   `(group=3,q=15,word=4..7)`.  This means the next C_dS publisher must use the
   compact dst->src slot table, not an assumed full 512-slot affine formula.
   The split-accumulator proof still passes in the same run.
+
+dQ Nk256 single-page result, 2026-07-11:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `51_Nk256_SinglePage`.
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION`.  H1/S256 and H1/S1024 correctness passed
+  after fixing SGPR spill with `n_tile` `unroll 4`, but H1/S1024 regressed:
+  `simTicks=41,586,545` vs mainline `35,704,760`, and MMAC active fell
+  `27.3852% -> 24.3812%`.
+- Lesson:
+  reducing PageUsed epochs by making one 128KB K/V page is not enough.
+  It removes K/V double buffering/prefetch and adds causal padding work; do
+  not retry `Nk256` single-page unless the output/causal ownership design also
+  changes.

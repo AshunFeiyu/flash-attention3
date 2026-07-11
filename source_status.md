@@ -1,5 +1,36 @@
 # Source Status
 
+## 2026-07-11 dQ Nk256 Single-Page Epoch Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  workbook-first test of a structural dQ tile change: `Mq128/Nk128` two K/V
+  pages -> `Mq128/Nk256` one 128KB K/V page.  The hoped-for win was fewer
+  `PageFilled/PageUsed` ownership epochs in H1/S1024 (`36 -> 20`) and twice
+  as much MMAC per epoch (`1536 -> 3072`).
+- Gates:
+  the first full-unroll build spilled SGPR (`sgpr_spill_count=9`).  Changing
+  only the `n_tile` loop to `unroll 4` fixed resources:
+  branch windows `8/40,158/216,158/216,9/40`; metadata `private=0`,
+  `sgpr=58`, `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S256 and H1/S1024 PASS under
+  `/zys/shaobo_runs/dq_nk256_singlepage_20260711_231218`.
+- Stats:
+  H1/S1024 versus restored mainline regressed:
+  `simTicks 35,704,760 -> 41,586,545`,
+  `kernel_ticks 32,091,150 -> 37,972,935`,
+  `MMAC active 27.3852% -> 24.3812%`,
+  `MMOP 55,296 -> 61,440`,
+  `VALU 121,632 -> 147,072`,
+  `barrierCounter 58,629.75 -> 86,381.5`,
+  `ldsBankConflict=0`.
+- Decision:
+  source restored to `Mq128/Nk128` double-page.  Do not retry `Nk256`
+  single-page alone; it loses K/V prefetch/double buffering and adds causal
+  padding work faster than it removes ownership tokens.
+
 ## 2026-07-09 Formal Toolchain Switch To Zwj/Liuchang Overlay
 
 Status: `ACCEPT_ENV_SWITCH`.

@@ -9846,3 +9846,57 @@ Conclusion:
   elapsed time or improve MMAC active.  Active source and helper were restored.
 - Do not optimize the ABarrier wrapper mechanically; keep focus on main-loop
   ownership/useful-work structure.
+
+## 2026-07-11 dQ Nk256 Single-Page Epoch Probe
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Hypothesis:
+
+- Increase useful MMAC per ownership epoch by changing canonical dQ from
+  `Mq128/Nk128` two K/V pages to `Mq128/Nk256` one 128KB K/V page.  This cuts
+  H1/S1024 causal K/V epochs from `36` to `20` and doubles per-epoch MMAC
+  from `1536` to `3072`.
+
+Design record:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `51_Nk256_SinglePage`.
+
+Implementation:
+
+- Startup still stages `Q+dO+sidecar` in LDS and consumers latch them to VGPR.
+- Steady state overlays K/V on the whole LDS as one page.
+- The first full-unroll build had `sgpr_spill_count=9`; limiting the `n_tile`
+  loop to `unroll 4` fixed the resource gate.
+
+Evidence:
+
+- Static/resource gate PASS after the unroll fix:
+  branch windows `8/40,158/216,158/216,9/40`; metadata `private=0`,
+  `sgpr=58`, `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S256 and H1/S1024 under
+  `/zys/shaobo_runs/dq_nk256_singlepage_20260711_231218`.
+- Same-shape H1/S1024 versus restored mainline:
+  `simTicks 35,704,760 -> 41,586,545`,
+  `kernel_ticks 32,091,150 -> 37,972,935`,
+  `MMAC active 27.3852% -> 24.3812%`,
+  `MMOP 55,296 -> 61,440`,
+  `VALU 121,632 -> 147,072`,
+  `SCA 77,516 -> 69,256`,
+  `LDS 28,656 -> 31,728`,
+  `barrierCounter 58,629.75 -> 86,381.5`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Fewer ownership epochs is not sufficient.  The single-page layout loses K/V
+  double buffering/prefetch, introduces extra causal padding MMOP, and grows
+  barrier/VALU/LDS exposure enough to lower MMAC active and regress ticks.
+- Active source was restored to `Mq128/Nk128` double-page.
+- Do not retry `Nk256` single-page as an isolated tile change.  The next
+  structural route should either reduce PageUsed ownership without losing K/V
+  prefetch, or solve the native dS/source-slot handoff so dQ can change role
+  topology rather than only tile size.
