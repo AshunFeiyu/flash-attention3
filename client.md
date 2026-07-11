@@ -1385,6 +1385,26 @@ dQ tail second sync prune, 2026-07-12:
   dependence or adding useful producer work.  Do not spend more turns moving
   the same PageUsed arrive point unless the design removes a dependency/token.
 
+dQ BPS vbcnt A/B, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `70_DQ_BPS_VBCNT_AB`.
+- Result:
+  `REJECT_CORRECTNESS`.  Built an isolated
+  `build/fa3_bwd_dq_no_vbcnt` with
+  `EXTRA_CXXFLAGS=-DSHAOBO_BPS_VBCNT_BEFORE_ARRIVE=0`; canonical source was
+  not changed.
+- Evidence:
+  no-vbcnt asm has `s_waitcnt_vbcnt=0`, branch windows remain
+  `8/40,161/216,161/216,9/40`, and static dQ gate PASS.  H1/S128 PMD
+  completed but correctness failed with `pass=0`, `actual_nonfinite=8192`,
+  `bad=8192`, first output `nan`.
+- Lesson:
+  in the current dQ BPS+ABarrier path, `s_waitcnt_vbcnt 0` is a correctness
+  readiness boundary, not removable scheduler noise.  Future work must overlap
+  or redesign this cost rather than deleting it.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

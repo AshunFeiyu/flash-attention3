@@ -5896,3 +5896,22 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `ACCEPT_SMALL_PERF`.  This is the active canonical dQ source, but it is not
   the 40% MMAC active solution.  Continue with structural PageUsed/ABarrier
   ownership or useful producer-work design.
+
+## 2026-07-12 dQ no-vbcnt A/B rejected
+
+- Hypothesis:
+  because xcu showed `s_waitcnt_vbcnt` and
+  `matrix_load_32x32_b16 -> s_waitcnt_vbcnt` as visible latency, test whether
+  dQ can rely on ABarrier PageFilled ownership without explicit BPS vbcnt
+  waits.
+- Method:
+  no canonical source change.  Built a separate binary
+  `build/fa3_bwd_dq_no_vbcnt` with
+  `EXTRA_CXXFLAGS=-DSHAOBO_BPS_VBCNT_BEFORE_ARRIVE=0`.
+- Result:
+  build and dQ gate PASS; asm has `s_waitcnt_vbcnt=0`, and branch windows stay
+  `8/40,161/216,161/216,9/40`.  H1/S128 PMD completed but correctness failed:
+  `pass=0`, `actual_nonfinite=8192`, `bad=8192`, first output is `nan`.
+- Decision:
+  `REJECT_CORRECTNESS`.  The active canonical source remains unchanged.
+  Current dQ requires explicit vbcnt readiness before BPS Filled arrivals.

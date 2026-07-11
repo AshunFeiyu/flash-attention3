@@ -10498,3 +10498,48 @@ Conclusion:
   `ACCEPT_SMALL_PERF`.  Keep this one-line canonical cleanup because all gates
   agree, but continue treating PageUsed/ABarrier ownership as the main route
   toward 40% MMAC active.
+
+## 2026-07-12 dQ no-vbcnt A/B rejected
+
+- Hypothesis:
+  xcu showed `s_waitcnt_vbcnt` as a visible latency source in canonical dQ.
+  Build a separate dQ binary with
+  `-DSHAOBO_BPS_VBCNT_BEFORE_ARRIVE=0` to test whether PageFilled ABarrier
+  ownership is already enough to make BPS-published MLS data safe.
+- Result:
+  build and static/source gate PASS.  The isolated asm has
+  `s_waitcnt_vbcnt=0`, with unchanged branch windows
+  `8/40,161/216,161/216,9/40`.
+- Correctness:
+  H1/S128 PMD completed without model panic, but numerical comparison failed:
+  `pass=0`, `actual_nonfinite=8192`, `bad=8192`, and
+  `first_bad_actual=nan`.
+- Decision:
+  `REJECT_CORRECTNESS`.  Do not disable vbcnt in the current dQ path.  The
+  wait is a data-readiness boundary, not just scheduler noise.
+
+## Skill Candidate
+
+- Trigger / 适用场景:
+  Shaobo kernels publishing BPS/MLS-loaded LDS packets through ABarrier
+  Filled tokens.
+- Rule / 可复用规则:
+  ABarrier ownership does not by itself prove BPS data readiness.  Do not
+  remove `s_waitcnt_vbcnt 0` before Filled arrival unless a focused
+  correctness probe for that exact producer/consumer path passes.
+- Evidence / 证据:
+  dQ no-vbcnt A/B, 2026-07-12:
+  `/zys/shaobo_runs/dq_bps_vbcnt_ab_20260712_045500/dq_correctness_20260712_043553`.
+  Build/static gate passed and asm had zero `s_waitcnt_vbcnt`, but H1/S128
+  produced NaNs and `pass=0`.
+- Boundary / 适用边界:
+  Proven for current canonical dQ `matrix_load_32x32_b16 bps lds` +
+  PageFilled/PageUsed protocol.  Other MLS/BPS forms still need their own
+  probe.
+- Counterexample / 反例或不适用情况:
+  If a future instruction probe proves PMD/hardware ABarrier can directly
+  track BPS completion for a different token protocol, the wait may be
+  removable there.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo` reference on ABarrier/BPS readiness; not public
+  `dcu-kernel-optimization` yet.
