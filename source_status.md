@@ -1,5 +1,26 @@
 # Source Status
 
+## 2026-07-12 dQ Tail No-Invalidate Fast Exit Rejected
+
+Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.
+
+- Motivation:
+  xcu mainline showed `s_barrier -> s_cbranch_vccnz` as a large terminal
+  bubble, so normal-path terminal `__syncthreads()+abarrier_inv` was tested
+  under `diag_store != 0` only.
+- Gates:
+  static/resource PASS with unchanged branch windows
+  `8/40,161/216,161/216,9/40`; metadata `private=0`, `sgpr=67`,
+  `vgpr=128`, no spill/scratch.
+- Failure:
+  H1/S128 PMD aborted before correctness with
+  `panic condition !regInit[regIdx] occurred: cu0 simd1 vgpr81 is not init or has been freed`
+  in MMOP execute.
+- Decision:
+  source restored to canonical tail cleanup.  Treat terminal sync/invalidate
+  as required by the current WDRA/PMD role-exit path unless a focused
+  WDRA-exit probe proves otherwise.
+
 ## 2026-07-12 dQ Score/dP Wait Split Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

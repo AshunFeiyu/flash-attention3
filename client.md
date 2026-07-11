@@ -136,6 +136,14 @@ evidence are required before any performance claim.
   `MMAC active=27.1810%`.  The source is restored to canonical `wait_lgkm(8)`;
   do not retry finer score/dP wait splitting while PageUsed/ABarrier ownership
   remains the dominant limiter.
+- Latest tail-cleanup probe:
+  sheet `60_DQ_TailNoInvFastExit` tried skipping terminal
+  `__syncthreads()+abarrier_inv` on the normal path because xcu showed
+  `s_barrier -> s_cbranch_vccnz` at `18.28%`.  Static/resource passed, but
+  H1/S128 PMD aborted with `vgpr81 is not init or has been freed` in MMOP.
+  Source is restored.  Treat the terminal sync/invalidate as required by the
+  current WDRA/PMD role-exit path unless a focused WDRA-exit probe proves
+  otherwise.
 - Active accepted dQ source remains the 16-wave tail-cleanup route until a new
   prototype passes correctness/resource/perf gates.  The native dS ring is
   allowed to start as 12-wave because its role decomposition is fundamentally

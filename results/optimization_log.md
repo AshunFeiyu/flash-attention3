@@ -1,5 +1,35 @@
 # Optimization Log
 
+## 2026-07-12 dQ Tail No-Invalidate Fast Exit
+
+Decision: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`
+
+Hypothesis:
+
+XCU mainline showed a large terminal `s_barrier -> s_cbranch_vccnz` bubble
+(`18.28%`).  Since no performance-path code uses ABarrier tokens after all
+roles finish, try moving terminal `__syncthreads()` plus `abarrier_inv` under
+`diag_store != 0`.
+
+Evidence:
+
+- Workbook: `60_DQ_TailNoInvFastExit`.
+- Static/resource PASS:
+  branch windows `8/40,161/216,161/216,9/40`, `private=0`, `sgpr=67`,
+  `vgpr=128`, no spill/scratch.
+- H1/S128 PMD abort before correctness:
+  `/zys/shaobo_runs/dq_tail_noinv_20260712_013135/dq_correctness_20260712_013916/pmd_stdout.log`.
+- Abort:
+  `panic condition !regInit[regIdx] occurred: cu0 simd1 vgpr81 is not init or has been freed`
+  during MMOP execute.
+
+Conclusion:
+
+The tail sync/invalidate is not currently removable as ordinary overhead.  It
+appears to be part of the WDRA/PMD role-exit/register-liveness discipline, or a
+hidden ABI cleanup requirement.  Source restored to canonical tail cleanup.
+Do not retry fast-exit without a focused WDRA-exit probe.
+
 ## 2026-07-12 dQ Score/dP Wait12 Split
 
 Decision: `REJECT_STATS_TICKS_REGRESSION`
