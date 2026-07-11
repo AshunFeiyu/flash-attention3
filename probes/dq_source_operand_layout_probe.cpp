@@ -21,7 +21,7 @@ constexpr int kWaveSize = 64;
 constexpr int kWords = 8;
 constexpr int kRows = 32;
 constexpr int kCols = 64;
-constexpr int kReadModes = 4;
+constexpr int kReadModes = 5;
 constexpr int kLoadModes = 2;
 constexpr int kModes = kReadModes * kLoadModes;
 constexpr int kMatrix32Bytes = 32 * 32 * 2;
@@ -54,15 +54,35 @@ __device__ __forceinline__ Frag read_mode(const __half* lds, int mode) {
     } else if (read_mode == 2) {
         frag.f16x8 =
             __builtin_hcu_ds_read_matrix_trans_format_f16(ptr, 16, 1, 2, 0);
-    } else {
+    } else if (read_mode == 3) {
         frag.f16x8 =
             __builtin_hcu_ds_read_matrix_trans_format_f16(ptr, 16, 1, 2, 1);
+    } else {
+        frag.f16x8 =
+            __builtin_hcu_ds_read_matrix_format_f16(ptr, 16, 2, 1, 1);
     }
 #else
     (void)lds;
     (void)mode;
 #endif
     return frag;
+}
+
+const char* read_mode_name(int read_mode) {
+    switch (read_mode) {
+        case 0:
+            return "trans_32x16_alt0";
+        case 1:
+            return "normal_32x16_alt0";
+        case 2:
+            return "trans_16x32_alt0";
+        case 3:
+            return "trans_16x32_alt1";
+        case 4:
+            return "normal_32x16_alt1";
+        default:
+            return "unknown";
+    }
 }
 
 __global__ void __launch_bounds__(kThreads, 1)
@@ -235,9 +255,10 @@ int main() {
         any_full = any_full || full;
         std::printf(
             "operand_layout_summary mode=%d load=%d read=%d mapped=%d "
-            "decoded=%d q_match=%d full_match=%d\n",
-            mode, mode / kReadModes, mode % kReadModes, mapped, decoded,
-            q_match, full ? 1 : 0);
+            "read_name=%s decoded=%d q_match=%d full_match=%d\n",
+            mode, mode / kReadModes, mode % kReadModes,
+            mapped, read_mode_name(mode % kReadModes), decoded, q_match,
+            full ? 1 : 0);
     }
     std::printf("operand_layout_final any_full_match=%d\n",
                 any_full ? 1 : 0);

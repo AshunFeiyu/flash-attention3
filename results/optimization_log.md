@@ -1,5 +1,44 @@
 # Optimization Log
 
+## 2026-07-12 dQ DSRead ALT Source-Slot Probe
+
+Decision: `REJECT_PROBE`
+
+Hypothesis:
+
+The direct source-slot read probe had only tested four DS matrix reader forms.
+Because the Shaobo ISA documents ALT/interleave variants, extend the focused
+probe before abandoning the idea that one MLS32 LDS page can be read into the
+NativeDsSlotMap source-slot order without gather/permute.
+
+Evidence:
+
+- Source: `probes/dq_source_operand_layout_probe.cpp`.
+- Compile boundary: current compiler rejects
+  `trans_32x16_alt1`, `trans_32x16_alt2`, `normal_32x16_alt2`, and
+  `trans_16x32_alt2` as unsupported DS matrix format combinations.
+- Legal reader set tested after narrowing:
+  `trans_32x16_alt0`, `normal_32x16_alt0`, `trans_16x32_alt0`,
+  `trans_16x32_alt1`, and `normal_32x16_alt1`, each over MLS32 non-transposed
+  and transposed load pages.
+- Static/resource gate PASS:
+  `private=0`, `sgpr=20`, `vgpr=12`, no SGPR/VGPR spill.
+- PMD run:
+  `/zys/shaobo_runs/dq_dsread_alt_source_slot_20260712_010656`.
+- Result:
+  `operand_layout_final any_full_match=0`.  Best legal q-match remains
+  `44/504` for `normal_32x16_alt0`; the new `normal_32x16_alt1` gives
+  `40/504`.  `simTicks=7,895,615`, `MMOP=0`, `ldsBankConflict=0`.
+
+Conclusion:
+
+ALT/interleave on the legal MLS32 direct readers does not solve the dQ
+source-slot ownership contract.  Do not implement the native dS ring by adding
+hot-path gather/permute around this direct-read route.  The remaining native
+route must find a producer/MMAC orientation that writes values into source-slot
+order, or return to canonical full-3GEMM dQ and optimize PageUsed/ABarrier
+cadence and MMAC island shape.
+
 ## 2026-07-10 dKV Precise SQTT Localization
 
 Decision: `OBSERVE_BOTTLENECK_LOCALIZED`

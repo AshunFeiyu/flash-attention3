@@ -117,6 +117,15 @@ evidence are required before any performance claim.
   two `N32` LDS slots using the previously accepted slot-map direction rather
   than scalar gather/permute.  This is the first candidate that truly changes
   the dependency graph: C_dS softmax/VALU can overlap with C_dQ dQ MMAC.
+- Latest source-slot probe:
+  workbook sheets `56_DQ_SourceSlot_NativeRing` and
+  `57_DQ_DSRead_ALT_SourceSlot` now show that MLS32 direct normal/trans ALT
+  readers do not produce the required `NativeDsSlotMap` q ownership.
+  `normal_32x16_alt1` was the only new legal reader and gives `40/504` q-match;
+  no tested legal reader reaches `504/504`.  Do not implement the native dS
+  ring by adding gather/permute around this direct-read route; find a native
+  producer/MMAC source-slot orientation first, or return to canonical full-3GEMM
+  dQ barrier/page cadence work.
 - Active accepted dQ source remains the 16-wave tail-cleanup route until a new
   prototype passes correctness/resource/perf gates.  The native dS ring is
   allowed to start as 12-wave because its role decomposition is fundamentally

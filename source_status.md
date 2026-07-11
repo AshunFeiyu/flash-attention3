@@ -1,5 +1,33 @@
 # Source Status
 
+## 2026-07-12 dQ MLS32 Direct ALT Source-Slot Probe Rejected
+
+Status: `REJECT_PROBE_SOURCE_PROBE_ONLY`.
+
+- Motivation:
+  before coding a native dS source-slot ring, exhaust the official DS matrix
+  ALT/interleave readers that might let one MLS32 LDS page satisfy
+  `NativeDsSlotMap` q ownership without hot-path gather/permute.
+- Code:
+  only `probes/dq_source_operand_layout_probe.cpp` changed.  The canonical
+  dQ kernel in `src/dq_kernel.cpp` was not touched.
+- Compile boundary:
+  current compiler rejects `trans_32x16_alt1`, `trans_32x16_alt2`,
+  `normal_32x16_alt2`, and `trans_16x32_alt2`.  The legal tested addition is
+  `normal_32x16_alt1`.
+- Gates:
+  metadata PASS with `private=0`, `sgpr=20`, `vgpr=12`, no spill/scratch.
+- PMD:
+  `/zys/shaobo_runs/dq_dsread_alt_source_slot_20260712_010656`,
+  `simTicks=7,895,615`, `MMOP=0`, `ldsBankConflict=0`.
+- Result:
+  `operand_layout_final any_full_match=0`; best legal q-match is still
+  `44/504` (`normal_32x16_alt0`), while `normal_32x16_alt1` is `40/504`.
+- Decision:
+  do not route native dS ring through MLS32 direct ALT readers.  Continue only
+  with a different native producer/MMAC orientation proof, or return to the
+  canonical full-3GEMM dQ path and optimize barrier/page cadence.
+
 ## 2026-07-11 dQ Nk256 Single-Page Epoch Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
