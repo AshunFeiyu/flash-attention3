@@ -95,6 +95,13 @@ evidence are required before any performance claim.
   `coissue=16,037/18,954`, `ldsBankConflict=0`.  xcu shows the current top
   steady bottleneck is `Page0Used/PageUsed` ownership wait, i.e. producer
   waves run ahead and wait for consumers before reusing K/V pages.
+- Latest rejected producer-ownership variants:
+  K/V split tokens regressed `35,750,715 -> 36,198,435` by adding
+  scalar/control and barrier debt.  Alternate-page full-KV producers lowered
+  SCA (`77,516 -> 66,476`) but still regressed ticks
+  `35,750,715 -> 35,807,590` because one producer publishing full K+V
+  serialized page availability and raised barrier/wait.  Do not continue
+  page-ownership-only tweaks as the main route.
 - Next dQ work stays on the 16-wave mainline.  First try to reduce
   producer-thin `PageUsed` idle through producer-thickening or role rebalance
   while keeping two symmetric full-3GEMM consumer groups.  A 12-wave

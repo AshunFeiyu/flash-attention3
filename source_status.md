@@ -5007,6 +5007,28 @@ Current focus:
   A 12-wave one-producer topology is fallback/control only, not the default
   direction.
 
+## 2026-07-11 dQ Producer Ownership Variants Rejected
+
+Status: `REJECT_PAGE_OWNERSHIP_ONLY`.
+
+- K/V split-token variant:
+  correctness/resource clean, but H1/S1024 regressed
+  `35,750,715 -> 36,198,435`; `SCA`, barrier, wait, and empty-buffer counters
+  all grew while useful `MMOP/VALU/LDS/VMEM` stayed unchanged.
+- Alternate-page full-KV producer variant:
+  correctness/resource clean and kept the same `Mq128/Nk128/D128` math.
+  P0 owned full K+V for even/page0 K tiles and P1 owned full K+V for odd/page1
+  K tiles, reducing `PageFilled` count from 8 to 4.  H1/S1024 still regressed
+  `35,750,715 -> 35,807,590`; `SCA` fell `77,516 -> 66,476`, but barrier and
+  wait rose because full K+V page publication became serialized inside one
+  producer group.
+- Decision:
+  restore the accepted dQ tail-cleanup route.  Do not keep tuning producer
+  page ownership alone.  The next top-level option needs a larger algorithmic
+  lever: more useful MMAC per ownership epoch, a real consumer-overlap change,
+  or the native dS handoff/slot-map route after its layout contract is fully
+  integrated.
+
 ## 2026-07-11 dQ dS->dQ native ring blocked by layout proof
 
 - Proposed 16-wave roles are P_K, C_dS, C_dQ, P_V. Two pages exactly fit

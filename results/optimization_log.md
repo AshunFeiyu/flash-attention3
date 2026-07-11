@@ -9156,3 +9156,59 @@ Conclusion:
   useful score work after `KFilled` and delays `VFilled` until dP, or if another
   design gives the producer groups recurring useful work.  Token splitting by
   itself is a negative pattern.
+
+## 2026-07-11 dQ Alternate-Page Full-KV Producer
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Top-level design check:
+
+- The previous Mq192/1P3C idea was stopped before code because it is not safe
+  on the fixed diagnostic shape `S=1024`: `1024 % 192 != 0`, and current
+  Q/dO `matrix_load` has no proven row-mask or padded-source contract for the
+  q-tail.  This is recorded in workbook sheet `49_dq_mq192_1p3c`.
+- Replacement candidate kept `Mq=128,Nk=128,D=128` so the S1024 baseline is
+  directly comparable.  Only producer ownership changed:
+  waves0-3 publish full K+V for even/page0 K tiles, waves12-15 publish full
+  K+V for odd/page1 K tiles.  Consumers and all math stayed unchanged.
+
+Hypothesis:
+
+- Baseline has both producer groups rendezvous on each `PageFilled(count=8)`
+  token: P0 publishes K and P1 publishes V.  Reducing each page fill to one
+  producer group (`count=4`) might reduce filled-token control and keep P1
+  from becoming thin in the q-loop后半段.
+
+Evidence:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `50_dq_altpage_fullkv`.
+- Static/resource PASS:
+  producer0 `8/40`, consumer0 `161/216`, consumer1 `161/216`,
+  producer1 `9/40`; metadata `private=0`, `sgpr=60`, `vgpr=128`,
+  `sgpr_spill=0`, `vgpr_spill=0`.
+- Correctness PASS:
+  H1/S128
+  `/zys/shaobo_runs/dq_altpage_fullkv_s128_20260711_184157/dq_correctness_20260711_184157`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_altpage_fullkv_s1024_20260711_184204/dq_correctness_20260711_184204`.
+- Same-shape H1/S1024 stats versus accepted `dq40a_tail_cleanup`:
+  `simTicks 35,750,715 -> 35,807,590`,
+  `MMOP=55,296`, `VALU=121,632`, `LDS=28,656`, `VMEM=1,408`
+  unchanged, `SCA 77,516 -> 66,476`,
+  coissue `16,037/18,954 -> 16,309/19,349`,
+  barrier sum `51,690 -> 54,589.25`,
+  waitLgkm sum `13,954.75 -> 14,134.75`,
+  emptyBuffer sum `21,735.922 -> 19,112.422`,
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Reject and restore active route.  The hypothesis partly worked at the
+  scalar-control level (`SCA` fell), but moving full K+V load into one producer
+  serialized page availability enough that barrier/wait/ticks regressed.
+- Do not continue by tweaking this page ownership variant.  Next top-level
+  direction must either increase useful MMAC per ownership epoch, change
+  consumer overlap/role timing, or use the native dS handoff slot-map work to
+  remove a larger dependency; producer page ownership alone is not enough.
