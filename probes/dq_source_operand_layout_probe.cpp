@@ -21,7 +21,10 @@ constexpr int kWaveSize = 64;
 constexpr int kWords = 8;
 constexpr int kRows = 32;
 constexpr int kCols = 64;
-constexpr int kModes = 4;
+constexpr int kReadModes = 4;
+constexpr int kLoadModes = 2;
+constexpr int kModes = kReadModes * kLoadModes;
+constexpr int kMatrix32Bytes = 32 * 32 * 2;
 constexpr int kLdsHalfs = 4096;
 
 union Frag {
@@ -41,16 +44,17 @@ __device__ __forceinline__ Frag read_mode(const __half* lds, int mode) {
     Frag frag{};
 #if defined(__gfx946__) || defined(__gfx92a__)
     auto* ptr = reinterpret_cast<_Float16*>(const_cast<__half*>(lds));
-    if (mode == 0) {
+    const int read_mode = mode % kReadModes;
+    if (read_mode == 0) {
         frag.f16x8 =
             __builtin_hcu_ds_read_matrix_trans_format_f16(ptr, 16, 2, 1, 0);
-    } else if (mode == 1) {
+    } else if (read_mode == 1) {
         frag.f16x8 =
             __builtin_hcu_ds_read_matrix_format_f16(ptr, 16, 2, 1, 0);
-    } else if (mode == 2) {
+    } else if (read_mode == 2) {
         frag.f16x8 =
             __builtin_hcu_ds_read_matrix_trans_format_f16(ptr, 16, 1, 2, 0);
-    } else if (mode == 3) {
+    } else {
         frag.f16x8 =
             __builtin_hcu_ds_read_matrix_trans_format_f16(ptr, 16, 1, 2, 1);
     }
@@ -81,7 +85,9 @@ __global__ void __launch_bounds__(kThreads, 1)
 
     ins::Vec4U32 q_src = ins::prepare_matrix_src(q_input, kCols);
     ins::abarrier_seq<false>(kMlsBarrier);
-    ins::matrix_load_32x16_b16_bps_lds(lds, q_src, 0);
+    ins::matrix_load_32x32_b16_bps_lds(lds, q_src, 0, false);
+    ins::matrix_load_32x32_b16_bps_lds(
+        lds + kMatrix32Bytes / sizeof(__half), q_src, 0, true);
     ins::maybe_wait_bps_vbcnt_before_arrive();
     ins::abarrier_arrive_cnt<false>(kMlsBarrier, 1);
     int phase = 0;
@@ -89,7 +95,10 @@ __global__ void __launch_bounds__(kThreads, 1)
 
 #pragma unroll
     for (int mode = 0; mode < kModes; ++mode) {
-        Frag frag = read_mode(lds, mode);
+        const int load_mode = mode / kReadModes;
+        const __half* page =
+            lds + load_mode * (kMatrix32Bytes / sizeof(__half));
+        Frag frag = read_mode(page, mode);
         ins::wait_lgkm(0);
 #pragma unroll
         for (int word = 0; word < kWords; ++word) {
@@ -225,9 +234,10 @@ int main() {
         const bool full = mapped == 504 && q_match == mapped;
         any_full = any_full || full;
         std::printf(
-            "operand_layout_summary mode=%d mapped=%d decoded=%d "
-            "q_match=%d full_match=%d\n",
-            mode, mapped, decoded, q_match, full ? 1 : 0);
+            "operand_layout_summary mode=%d load=%d read=%d mapped=%d "
+            "decoded=%d q_match=%d full_match=%d\n",
+            mode, mode / kReadModes, mode % kReadModes, mapped, decoded,
+            q_match, full ? 1 : 0);
     }
     std::printf("operand_layout_final any_full_match=%d\n",
                 any_full ? 1 : 0);

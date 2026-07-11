@@ -9452,3 +9452,47 @@ Conclusion:
   prearranged Q/dO source layout or a different MMAC operand orientation; if
   that implies scalar gather/permute in the hot path, defer the ring and return
   to the accepted full3GEMM dQ path.
+
+## 2026-07-11 MLS32 Direct Source-Slot Recheck
+
+Decision: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`
+
+Hypothesis:
+
+- The previous direct-read probe used `matrix_load_32x16`.  Recheck whether
+  `matrix_load_32x32` with native MLS transpose/non-transpose pages plus the
+  supported DS matrix readers can make Q appear in the `NativeDsSlotMap`
+  source-slot q ownership.
+
+Implementation:
+
+- Extended `probes/dq_source_operand_layout_probe.cpp` to cover eight
+  combinations: two MLS pages (`matrix_load_32x32` non-transposed and
+  transposed) times four supported readers:
+  `trans row=2 col=1 alt0`, `normal row=2 col=1 alt0`,
+  `trans row=1 col=2 alt0`, and `trans row=1 col=2 alt1`.
+
+Evidence:
+
+- Remote build and symbol metadata gate PASS:
+  `private=0`, `sgpr=20`, `vgpr=12`, no spill/scratch.
+- Asm contains both
+  `matrix_load_32x32_b16 ... bps lds` and
+  `matrix_load_32x32_b16 ... t bps lds`, followed by the four DS reader forms
+  for each page.
+- PMD run:
+  `/zys/shaobo_runs/dq_operand_layout_mls32_probe_20260711_200044`.
+- Result:
+  `operand_layout_final any_full_match=0`.  For both load modes, q-match
+  counts are `32/504`, `44/504`, `16/504`, and `18/504`.  Stats show
+  `ldsBankConflict=0`.
+
+Conclusion:
+
+- Same-LDS native normal/trans matrix reads are real, but this specific
+  direct Q source-slot mapping is not.  The mismatch is semantic ownership of
+  Q rows per source lane/word, not bank conflict and not lack of DS matrix
+  instructions.
+- Do not add a scalar gather/permute workaround to force this route.  Either
+  find a true source-layout producer/MMAC orientation, or return to the
+  accepted full3GEMM dQ path and focus on wait/ABarrier/MMAC-island tuning.

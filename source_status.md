@@ -5210,6 +5210,36 @@ Status: `REJECT_DIRECT_Q_READ_FORMATS`.
   favor of the accepted full3GEMM dQ path.  Do not add scalar gather or
   permute in the main path to force this layout.
 
+## 2026-07-11 MLS32 Direct Source-Slot Recheck
+
+Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
+
+- Probe:
+  extended `probes/dq_source_operand_layout_probe.cpp` from one
+  `matrix_load_32x16` page to two `matrix_load_32x32` pages: non-transposed
+  MLS and transposed MLS.  Each page is read with the four supported native
+  DS matrix reader candidates.
+- Evidence:
+  remote metadata gate remains clean (`sgpr=20`, `vgpr=12`, no
+  spill/scratch).  PMD run
+  `/zys/shaobo_runs/dq_operand_layout_mls32_probe_20260711_200044` reports
+  `operand_layout_final any_full_match=0`.  The q-match counts are unchanged
+  between the non-transposed and transposed MLS pages:
+  `32/504`, `44/504`, `16/504`, and `18/504`; stats still show
+  `ldsBankConflict=0`.
+- Interpretation:
+  this is not a bank-conflict or instruction-availability issue.  The native
+  MLS/DS combinations can read data, but they do not assign the logical Q row
+  to the source lane/word required by `NativeDsSlotMap`.  Therefore the dS
+  ring cannot be made correct merely by swapping `matrix_load_32x32` transpose
+  flags or DS reader formats.
+- Decision:
+  do not build the full native dS ring kernel on this direct-read hypothesis.
+  The remaining native-ring options are a genuinely prearranged Q/dO source
+  layout or a different MMAC operand orientation; if those require hot-path
+  scalar gather, lane permute, or scattered DS reads, defer the ring and
+  continue optimizing the accepted full3GEMM dQ path.
+
 ## 2026-07-11 dQ dS->dQ native ring blocked by layout proof
 
 - Proposed 16-wave roles are P_K, C_dS, C_dQ, P_V. Two pages exactly fit
