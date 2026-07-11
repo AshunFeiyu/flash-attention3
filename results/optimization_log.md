@@ -8895,3 +8895,59 @@ Conclusion:
   work or rebalance role ownership while preserving two symmetric full-3GEMM
   consumers. A 12-wave one-producer topology is only a fallback/control
   experiment if 16-wave resource use proves structurally wasteful.
+
+## 2026-07-11 dS producer -> dQ consumer native-layout gate
+
+The proposed ring is structurally sound on paper: P_K / C_dS / C_dQ / P_V,
+`Mq=128,Nk=128,D=128`, and two 64KB pages alternating
+`K+V -> K+dS -> free`. C_dQ is the sole dQ accumulator/store owner, so the
+route avoids both duplicate score/dP and split-K CTA tail reduction.
+
+Focused evidence now blocks a canonical implementation:
+
+- `dq_native_ds_write_roundtrip_probe.cpp` compiled and executed normal/trans
+  `ds_write_matrix_format_f16`, m32x16 and mt16x32 readers, and MMAC. It had
+  zero bank conflicts but no naive register-identity pairing.
+- `dq_native_ds_write_mmac_output_probe.cpp` then used the real producer
+  shape: `v_mmac` score outputs -> fp16 `ds_vec0/ds_vec1` packing -> all four
+  HCU-exposed writer candidates and the reader pairings that compiled on the
+  current toolchain -> C_dQ-like dQ MMAC. Every pairing differed from direct
+  `dS@K`. PMD ran the instructions, had `private=0`, `sgpr=8`, `vgpr=80`,
+  and `ldsBankConflict=0`.
+- PMD prints `ds_write_matrix : testing` during both runs. Therefore this is
+  evidence that the desired fragment ABI has not been proven on this model,
+  not proof that silicon cannot support the handoff.
+
+Decision: `OBSERVE_NO_NATIVE_PAIR`.
+
+- Keep the main `Mq128/Nk128` dQ source untouched.
+- Do not bridge the gap with scalar LDS gathers, bpermute/mpermute, or an LDS
+  transpose/source-layout copy. Those would invalidate the native-instruction
+  premise of the new architecture.
+- Next action is a minimal instruction question/repro for the compiler/PMD
+  owner: which `ds_write_matrix_format_f16` producer fragment and which
+  `ds_read_matrix` form form the supported C_dS-result -> C_dQ-lhs contract;
+  also confirm whether the PMD warning denotes incomplete execution semantics.
+
+Follow-up after rereading Shaobo ISA/HCU docs:
+
+- The broader "no native pair" wording is too strong.  The ISA Delta documents
+  paired page formats for B16 `DS_WRITE_MATRIX_FORMAT` row=2 col=1: group4
+  writes a `32x16` tile for direct `DS_READ_MATRIX_FORMAT` group4 use, and the
+  transpose variants are also specified.  HCU currently exposes the normal
+  `m32x16` alt0/alt1 forms and `m32x16` transpose alt0; it rejects one
+  documented-looking transpose alt1 combination in this compiler.
+- A corrected M-pair probe uses adjacent MMAC outputs along the M/Q dimension,
+  allocates 2KB per candidate page to cover transpose-reader footprint, and
+  tests both LIT=1 and LIT=0 MMAC output plus four simple lane-local fp16
+  packing orders.  All eight direct pack candidates still mismatch direct
+  `dS@K`, with `ldsBankConflict=0`.
+- Current status is therefore
+  `OBSERVE_PRODUCER_FRAGMENT_ABI_UNRESOLVED`: the page-format pairing exists,
+  but we have not identified the producer 4-VGPR fragment ABI needed to feed
+  `ds_write_matrix_format_f16` from a C_dS MMAC/VALU result.
+- The compiler tree does not expose an obvious `V_MOVMATRIX_*` builtin even
+  though the ISA dependency table names `V_MOVMATRIX_16X16_B16`.  Do not use
+  inline assembly or permute workarounds in the canonical kernel; ask the
+  compiler/PMD owner for the supported builtin/ABI and whether PMD's
+  `ds_write_matrix : testing` warning means model semantics are incomplete.

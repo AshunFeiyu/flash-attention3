@@ -1052,3 +1052,25 @@ BPS/vbcnt promoted to default, 2026-07-11:
 - Treat this as a useful local BPS readiness fix, not as the top-level BWD
   solution. The next design must still target dKV fragmentation/ownership
   epochs, using Tri Dao FA3 BWD and Shaobo FWD as the structural references.
+
+dQ dS->dQ ring2, 2026-07-11:
+
+- The design remains on branch `exp/dq-ds-to-dq-ring2`, not the canonical
+  source: P_K / C_dS / C_dQ / P_V; M128/N128 pages change from `K+V` to
+  `K+dS`, and only C_dQ owns dQ output.
+- A focused HCU builtin gate is unresolved. The first roundtrip probe and a
+  second real `MMAC output -> fp16 ds_vec -> ds_write -> reader -> dQ MMAC`
+  probe cover the HCU-exposed writer/read candidates that compile on the
+  current toolchain. All candidate paths differ from direct dS@K despite no
+  spill or LDS bank conflict.
+- No canonical workaround is allowed. The current question is the supported
+  ds_write producer/reader fragment ABI or PMD's `ds_write_matrix : testing`
+  semantics; this must be resolved before integrating the otherwise viable
+  two-consumer ring.
+- Follow-up after rereading ISA/HCU docs:
+  `DS_WRITE_MATRIX_FORMAT` and `DS_READ_MATRIX_FORMAT` do have documented B16
+  page-format pairings.  The unresolved piece is not "hardware has no pair";
+  it is the producer fragment ABI: how to turn a C_dS MMAC/VALU result into
+  the exact 4-VGPR source expected by `ds_write_matrix_format_f16`.  Corrected
+  M-pair probes with 2KB pages, LIT=0/1, and four simple fp16 pack orders still
+  mismatch direct `dS@K`, with zero LDS bank conflict.

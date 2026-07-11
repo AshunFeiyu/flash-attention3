@@ -5006,3 +5006,23 @@ Current focus:
   lowers `PageUsed` idle while preserving two symmetric full-3GEMM consumers.
   A 12-wave one-producer topology is fallback/control only, not the default
   direction.
+
+## 2026-07-11 dQ dS->dQ native ring blocked by layout proof
+
+- Proposed 16-wave roles are P_K, C_dS, C_dQ, P_V. Two pages exactly fit
+  `K+V -> K+dS` at M128/N128/D128; C_dQ would be the only dQ writer.
+- Two focused builtin probes compile and run on PMD with native DS write/read,
+  MMAC, `private=0`, and zero LDS bank conflicts. The stronger probe uses real
+  MMAC output converted to the intended fp16 dS packing and sweeps the
+  HCU-exposed writer/read candidates that compile on the current toolchain.
+- All variants fail direct dS@K MMAC equivalence. PMD emits
+  `ds_write_matrix : testing`, so classify this as `OBSERVE_NO_NATIVE_PAIR`.
+- Canonical dQ source remains untouched. Do not introduce scalar gather or
+  permute workarounds; first obtain the correct producer/consumer DS matrix
+  ABI or a PMD semantic clarification.
+- ISA/HCU recheck refines the status:
+  documented B16 write/read page-format pairings exist, so this is not a
+  proven native-instruction absence.  The current block is the producer
+  4-VGPR fragment ABI for writing a C_dS MMAC/VALU result.  Corrected M-pair
+  focused probes with LIT=0/1 and simple lane-local pack orders still mismatch,
+  no bank conflict.  Keep canonical dQ unchanged until the ABI is clarified.
