@@ -127,6 +127,42 @@ struct DqNativeDsRingBarrierLedger {
     static constexpr int kDsSlot1Used = 7;
 };
 
+struct NativeDsSlotMap {
+    static constexpr int kInvalid = -1;
+    static constexpr int kWordsPerFrag = 8;
+    static constexpr int kWaveSize = 64;
+
+    static constexpr int slot_krow(int group, int word) {
+        return group * 4 + (word & 3);
+    }
+
+    static constexpr int dst_source_lane(int group, int q, int word) {
+        const int lane = 4 + 2 * group + 16 * (q & 3) +
+                         ((word >> 1) & 1) + 8 * (word >> 2);
+        return lane < kWaveSize ? lane : kInvalid;
+    }
+
+    static constexpr int dst_source_word(int q, int word) {
+        return 2 * (q >> 2) + (word & 1);
+    }
+
+    static constexpr bool is_mapped(int group, int q, int word) {
+        return dst_source_lane(group, q, word) != kInvalid;
+    }
+};
+
+static_assert(NativeDsSlotMap::dst_source_lane(0, 0, 0) == 4,
+              "slotmap formula must match focused probe");
+static_assert(NativeDsSlotMap::dst_source_lane(0, 1, 4) == 28,
+              "slotmap formula must match focused probe");
+static_assert(NativeDsSlotMap::dst_source_word(0, 7) == 1,
+              "slotmap formula must match focused probe");
+static_assert(NativeDsSlotMap::dst_source_word(15, 7) == 7,
+              "slotmap formula must match focused probe");
+static_assert(NativeDsSlotMap::dst_source_lane(3, 15, 7) ==
+                  NativeDsSlotMap::kInvalid,
+              "slotmap formula must preserve known boundary holes");
+
 struct OptimizationTargets {
     static constexpr int kTargetMmacActiveSharePercent = 40;
     static constexpr bool kRequireNoScratch = true;

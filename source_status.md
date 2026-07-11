@@ -5119,6 +5119,27 @@ Status: `ACCEPT_PREP_ONLY_NO_PERF_CLAIM`.
   implement the minimal C_dS split publisher prototype using the accepted
   slot-map half-region contract before touching the performance dQ path.
 
+## 2026-07-11 Native dS Slotmap Formula
+
+Status: `ACCEPT_CODE_CONTRACT`.
+
+- Observation:
+  compact map parsing showed only `10/504` mapped slots are same-lane writes.
+  That does not imply a required permute.  It means C_dS must schedule work by
+  source slot: each source lane computes the logical dS value that the native
+  `ds_write_matrix -> ds_read_matrix_trans` path will expose to C_dQ.
+- Formula:
+  added `dq::NativeDsSlotMap`.  For destination `(group,q,word)`,
+  `src_lane = 4 + 2*group + 16*(q&3) + ((word>>1)&1) + 8*(word>>2)`;
+  lanes `>=64` are the known boundary holes.  `src_word = 2*(q>>2) + (word&1)`;
+  `slot_krow = group*4 + (word&3)`.
+- Gate:
+  remote canonical dQ build and metadata gate still PASS after adding the
+  formula static asserts.
+- Next:
+  the C_dS publisher prototype should invert or directly use this formula so
+  producer lanes generate the required source-slot values natively.
+
 ## 2026-07-11 dQ dS->dQ native ring blocked by layout proof
 
 - Proposed 16-wave roles are P_K, C_dS, C_dQ, P_V. Two pages exactly fit

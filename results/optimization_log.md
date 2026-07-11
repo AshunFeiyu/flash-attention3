@@ -9309,3 +9309,35 @@ Conclusion:
   does not change the accepted dQ kernel.  The next implementation step is the
   minimal C_dS split publisher prototype that uses the slot-map half-region
   contract.
+
+## 2026-07-11 Native dS Slotmap Formula
+
+Decision: `ACCEPT_CODE_CONTRACT`
+
+Finding:
+
+- Parsing the compact slotmap showed `same_lane=10/504`, with holes at
+  `(group=2,q=15,word=4..7)` and `(group=3,q=15,word=4..7)`.
+- This is not a reason to add permute.  Instead, C_dS must schedule by native
+  source slot: the lane computes the logical dS value that its source slot will
+  publish to the C_dQ destination.
+
+Code contract:
+
+- Added `dq::NativeDsSlotMap`:
+  `src_lane = 4 + 2*group + 16*(q&3) + ((word>>1)&1) + 8*(word>>2)`;
+  `src_word = 2*(q>>2) + (word&1)`;
+  `slot_krow = group*4 + (word&3)`;
+  `src_lane >= 64` marks the known boundary holes.
+- Static asserts cover representative probe rows and the boundary hole.
+
+Gate:
+
+- Remote canonical dQ build and symbol metadata gate still PASS after adding
+  the formula.
+
+Next:
+
+- Implement a minimal C_dS split publisher prototype that uses this source-slot
+  schedule, then feeds C_dQ through `ds_write_matrix_32x16_f16` and
+  `ds_read_matrix_trans`, without scalar gather or permute.
