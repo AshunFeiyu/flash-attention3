@@ -1258,6 +1258,22 @@ dQ native dS ring structural probe, 2026-07-12:
   `s_set_vgpr_size`; a first version with pre-role `lane` and an ordinary LDS
   clear loop triggered PMD uninitialized-VGPR/LDS-index failure.
 
+dQ dS@K read-batch wait collapse, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `64_DQ_DQGemm_Batch8_Wait0`.
+- Result:
+  `REJECT_PMD_REGISTER_INIT`.  Changing only `dq_update_from_ds_pair` from
+  `read8 -> wait_lgkm(4) -> half MMAC -> wait_lgkm(0) -> half MMAC` to
+  `read8 -> wait_lgkm(0) -> full MMAC island` passed static/resource gates
+  but PMD aborted on H1/S128 with `vgpr81 is not init or has been freed` during
+  MMOP.
+- Lesson:
+  keep the canonical split wait in dQ.  It appears to be required for current
+  PMD/WDRA VGPR readiness tracking of the K-normal fragments, not merely a
+  conservative scheduler wait.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

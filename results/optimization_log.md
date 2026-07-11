@@ -10346,3 +10346,25 @@ Conclusion:
   branch after `s_set_vgpr_size`; otherwise PMD can see uninitialized VGPR
   state in branch-local LDS paths.  Next step is to replace deterministic dS
   with canonical C_dS arithmetic in the standalone probe.
+
+## 2026-07-12 dQ dS@K batch8 wait0 rejected
+
+- Hypothesis:
+  in canonical dQ, change only `dq_update_from_ds_pair`: after issuing the
+  eight K-normal `ds_read_matrix` instructions, wait for all of them with
+  `wait_lgkm(0)` and run one longer dQ MMAC island, instead of the current
+  `wait_lgkm(4) -> first half MMAC -> wait_lgkm(0) -> second half MMAC`.
+- Result:
+  static/source gate and metadata passed (`private=0`, `sgpr=67`,
+  `vgpr=128`, no spill/scratch), but H1/S128 PMD aborted before correctness:
+  `/zys/shaobo_runs/dq_dqgemm_batch8_wait0_20260712_030114/dq_correctness_20260712_030114`.
+  PMD reported `read vgpr81 before writing`, then
+  `panic ... vgpr81 is not init or has been freed` during MMOP execute.
+- Decision:
+  `REJECT_PMD_REGISTER_INIT`.  Source restored to canonical
+  `wait_lgkm(4)` plus the mid `wait_lgkm(0)`.
+- Lesson:
+  this wait split is not just performance conservatism.  It is currently part
+  of the PMD/WDRA-visible readiness boundary for the second half of the
+  K-normal fragments.  Do not collapse dQ K-normal read waits without a focused
+  ds_read_matrix/MMAC VGPR-init probe or compiler/PMD fix.

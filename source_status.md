@@ -27,6 +27,30 @@ Status: `ACCEPT_PROBE_STRUCTURAL_CANONICAL_UNCHANGED`.
   deterministic dS with canonical C_dS arithmetic in source-slot order; only
   after that should the canonical dQ kernel be modified.
 
+## 2026-07-12 dQ dS@K Batch8 Wait0 Rejected
+
+Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.
+
+- Motivation:
+  test the user-requested larger `ds_read_matrix`/MMAC island on the canonical
+  dQ `dS@K` stage by waiting for all eight K-normal reads before a single
+  longer MMAC island.
+- Code:
+  temporary change only in `dq_update_from_ds_pair`: `wait_lgkm(4)` was changed
+  to `wait_lgkm(0)`, and the middle `wait_lgkm(0)` was removed.
+- Gates:
+  build and source/static gate passed; metadata remained `private=0`,
+  `sgpr=67`, `vgpr=128`, no spill/scratch.
+- Failure:
+  H1/S128 PMD aborted before correctness under
+  `/zys/shaobo_runs/dq_dqgemm_batch8_wait0_20260712_030114/dq_correctness_20260712_030114`
+  with `read vgpr81 before writing` followed by
+  `vgpr81 is not init or has been freed` in MMOP execute.
+- Decision:
+  source restored to canonical `wait_lgkm(4)` plus middle `wait_lgkm(0)`.
+  Do not collapse this dQ K-normal wait split without a focused
+  ds_read_matrix/MMAC VGPR-init proof.
+
 ## 2026-07-12 dQ Tail No-Invalidate Fast Exit Rejected
 
 Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.
