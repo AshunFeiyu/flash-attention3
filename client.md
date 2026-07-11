@@ -110,11 +110,18 @@ evidence are required before any performance claim.
   unless we either store dS/qk/dp-like intermediates or add fine n_tile tokens.
   The latter resembles known token-control regressions; the former points back
   to the native dS handoff/slot-map ring.
-- Next dQ work stays on the 16-wave mainline.  First try to reduce
-  producer-thin `PageUsed` idle through producer-thickening or role rebalance
-  while keeping two symmetric full-3GEMM consumer groups.  A 12-wave
-  one-producer topology is only a fallback/control experiment if 16-wave proves
-  structurally wasteful.
+- Next top-level design candidate:
+  workbook sheet `52_dq_native_ds_ring` proposes a correctness-first
+  `Mq64,Nk128,D128,12wave` native dS handoff/ring prototype.  Roles are
+  producer, C_dS publisher, and C_dQ consumer/writer.  dS is streamed through
+  two `N32` LDS slots using the previously accepted slot-map direction rather
+  than scalar gather/permute.  This is the first candidate that truly changes
+  the dependency graph: C_dS softmax/VALU can overlap with C_dQ dQ MMAC.
+- Active accepted dQ source remains the 16-wave tail-cleanup route until a new
+  prototype passes correctness/resource/perf gates.  The native dS ring is
+  allowed to start as 12-wave because its role decomposition is fundamentally
+  different (`producer -> C_dS -> C_dQ`), not because 12-wave is generally
+  preferred over 16-wave.
 - Current evidence:
   after Q/dO latch, K/V double-page reuse, K/V trans split-wait, qk/dP
   MMAC-zero seeding, and `n_tile` pair-island scheduling, H1/S128

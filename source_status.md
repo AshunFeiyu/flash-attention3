@@ -5050,6 +5050,33 @@ Status: `REVISE_BEFORE_CODE`.
   is now the native dS handoff/slot-map ring or another design that truly
   increases useful MMAC per ownership epoch.
 
+## 2026-07-11 dQ Native dS Ring Design
+
+Status: `DESIGN_READY_FOR_CODE_REVIEW`.
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `52_dq_native_ds_ring`.
+- Proposed prototype:
+  `Mq=64,Nk=128,D=128,12wave` with roles
+  `producer -> C_dS publisher -> C_dQ consumer/writer`.
+- Rationale:
+  producer/page-ownership-only designs did not move MMAC active.  The dS ring
+  changes the dependency graph: C_dS computes score/dP/softmax and streams
+  fp16 dS through two `N32` LDS slots using native matrixized
+  `ds_write_matrix -> ds_read_matrix` handoff; C_dQ consumes dS with K-normal
+  matrix reads and issues dQ MMAC.
+- Resource sketch:
+  startup Q+dO+sidecar is about `33.5KB`; steady K/V single page is `64KB`;
+  two dS N32 slots are `8KB`, comfortably below 128KB.  This is why the first
+  prototype uses Mq64 and a single K/V page rather than forcing the current
+  Mq128 double-page layout.
+- Boundary:
+  the active accepted source remains the 16-wave dQ tail-cleanup route until
+  this prototype passes correctness/resource/perf gates.  Do not present the
+  12-wave ring as a general preference; it is allowed only because the role
+  graph is different.
+
 ## 2026-07-11 dQ dS->dQ native ring blocked by layout proof
 
 - Proposed 16-wave roles are P_K, C_dS, C_dQ, P_V. Two pages exactly fit
