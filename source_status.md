@@ -5030,3 +5030,8 @@ Current focus:
   `VGPR(dS) -> ds_write_matrix_format(no t) -> ds_read_matrix_trans_format
   32x16 -> MMAC` pairs with normal `32x16` K readers.  Treat the current block
   as a real-C_dS-layout generation problem, not as a native handoff rejection.
+- Next focused probe:
+  explicitly chain `Q_trans x K32` q-owned score generation into
+  `ds_write_matrix(no t)`, then have the dQ role consume it with
+  `ds_read_matrix_trans 32x16` and normal K readers.  This tests the actual
+  bridge from C_dS computation layout to the prior accepted dQ handoff layout.
