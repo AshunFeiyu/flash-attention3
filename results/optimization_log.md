@@ -1,5 +1,39 @@
 # Optimization Log
 
+## 2026-07-12 dQ Score/dP Wait12 Split
+
+Decision: `REJECT_STATS_TICKS_REGRESSION`
+
+Hypothesis:
+
+After issuing the score/dP K/V trans matrix reads, the current code waits at
+`lgkmcnt(8)` before starting D-block 0/1 MMAC.  Since D-block 0 depends only on
+the earliest K/V read group, try `wait_lgkm(12) -> D-block0 MMAC ->
+wait_lgkm(8) -> D-block1 MMAC -> wait_lgkm(0) -> D-block2/3`.
+
+Evidence:
+
+- Workbook: `59_DQ_ScoreDP_Wait12`.
+- Static/resource PASS:
+  branch windows `8/40,161/216,161/216,9/40`, `private=0`, `sgpr=67`,
+  `vgpr=128`, no spill/scratch.
+- Correctness PASS:
+  H1/S128 `/zys/shaobo_runs/dq_score_wait12_20260712_012423/dq_correctness_20260712_012424`;
+  H1/S1024 `/zys/shaobo_runs/dq_score_wait12_20260712_012423/dq_correctness_20260712_012432`.
+- H1/S1024 stats:
+  `simTicks=36,199,800`, `kernel_ticks=32,586,190`,
+  `MMAC active=27.1810%`, `MMOP=55,296`, `VALU=121,632`,
+  `SCA=77,516`, `LDS=28,656`, `VMEM=1,408`,
+  coissue `15,760/17,888`, `waitLgkm=13,636`,
+  `barrier=52,102.75`, `ldsBankConflict=0`.
+
+Conclusion:
+
+This is slower than the mainline fullperf reference (`simTicks=35,881,300`,
+`MMAC active=27.4198%`) and does not reduce the real limiter.  Source restored
+to canonical `wait_lgkm(8)` before D-block0/1.  Do not retry finer score/dP
+wait splitting until PageUsed/ABarrier ownership is no longer dominant.
+
 ## 2026-07-12 dQ MLS32x16 Source-Slot Probe
 
 Decision: `REJECT_PROBE`

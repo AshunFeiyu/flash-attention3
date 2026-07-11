@@ -129,6 +129,13 @@ evidence are required before any performance claim.
   gather/permute around direct-load/direct-reader routes; find a native
   producer/MMAC source-slot orientation first, or return to canonical full-3GEMM
   dQ barrier/page cadence work.
+- Latest canonical dQ micro-probe:
+  sheet `59_DQ_ScoreDP_Wait12` tested splitting the score/dP read wait into
+  `wait12 -> dblock0 -> wait8 -> dblock1 -> wait0 -> dblock2/3`.  It passed
+  correctness/resources but regressed H1/S1024 to `simTicks=36,199,800` and
+  `MMAC active=27.1810%`.  The source is restored to canonical `wait_lgkm(8)`;
+  do not retry finer score/dP wait splitting while PageUsed/ABarrier ownership
+  remains the dominant limiter.
 - Active accepted dQ source remains the 16-wave tail-cleanup route until a new
   prototype passes correctness/resource/perf gates.  The native dS ring is
   allowed to start as 12-wave because its role decomposition is fundamentally

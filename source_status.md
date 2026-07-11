@@ -1,5 +1,26 @@
 # Source Status
 
+## 2026-07-12 dQ Score/dP Wait Split Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  test whether score/dP matrix-read latency can be hidden by starting D-block0
+  MMAC after `wait_lgkm(12)` rather than waiting at `lgkmcnt(8)` for D-block0
+  and D-block1 together.
+- Gates:
+  static/resource PASS with unchanged branch windows
+  `8/40,161/216,161/216,9/40`; metadata `private=0`, `sgpr=67`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness PASS.
+- Stats:
+  H1/S1024 `simTicks=36,199,800`, `kernel_ticks=32,586,190`,
+  `MMAC active=27.1810%`, `waitLgkm=13,636`, `barrier=52,102.75`,
+  `ldsBankConflict=0`.
+- Decision:
+  source restored to canonical score/dP `wait_lgkm(8)`.  This micro-split
+  regresses elapsed ticks and active share; the next useful optimization must
+  address PageUsed/ABarrier ownership or useful work per ownership epoch.
+
 ## 2026-07-12 dQ MLS32x16 Direct Source-Slot Probe Rejected
 
 Status: `REJECT_PROBE_SOURCE_PROBE_ONLY`.
