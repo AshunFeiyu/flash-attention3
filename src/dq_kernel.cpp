@@ -369,16 +369,10 @@ __device__ __forceinline__ void dq_update_from_ds_pair(
 }
 
 template <typename Bar>
-__device__ __forceinline__ void dq_wait_k_filled(int page, int& phase0, int& phase1);
+__device__ __forceinline__ void dq_wait_page_filled(int page, int& phase0, int& phase1);
 
 template <typename Bar>
-__device__ __forceinline__ void dq_wait_v_filled(int page, int& phase0, int& phase1);
-
-template <typename Bar>
-__device__ __forceinline__ void dq_arrive_k_used(int page);
-
-template <typename Bar>
-__device__ __forceinline__ void dq_arrive_v_used(int page);
+__device__ __forceinline__ void dq_arrive_page_used(int page);
 
 template <typename Bar>
 __device__ __forceinline__ void dq_wait_qdo_filled(int& phase);
@@ -420,10 +414,8 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
     const __half* q_lds = lds + DqLdsLayout<Tile>::kQBase / sizeof(__half);
     const __half* dout_lds =
         lds + DqLdsLayout<Tile>::kDoutBase / sizeof(__half);
-    int k_filled_phase0 = 0;
-    int k_filled_phase1 = 0;
-    int v_filled_phase0 = 0;
-    int v_filled_phase1 = 0;
+    int filled_phase0 = 0;
+    int filled_phase1 = 0;
     int qdo_filled_phase = 0;
     dq_wait_qdo_filled<Bar>(qdo_filled_phase);
 
@@ -462,8 +454,7 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
 
     for (int kt = 0; kt < active_k_tiles; ++kt) {
         const int page = kt & 1;
-        dq_wait_k_filled<Bar>(page, k_filled_phase0, k_filled_phase1);
-        dq_wait_v_filled<Bar>(page, v_filled_phase0, v_filled_phase1);
+        dq_wait_page_filled<Bar>(page, filled_phase0, filled_phase1);
         const int k_base_tile = kt * Nk;
         const __half* k_lds =
             lds + DqLdsLayout<Tile>::kPageKBase(page) / sizeof(__half);
@@ -587,8 +578,7 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
             dq_update_from_ds_pair<Tile>(
                 lds, page, n_tile, ds_vec0, ds_vec1, dq_reg);
         }
-        dq_arrive_k_used<Bar>(page);
-        dq_arrive_v_used<Bar>(page);
+        dq_arrive_page_used<Bar>(page);
     }
 
     if (diag_store == 0) {
@@ -602,100 +592,51 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
 }
 
 template <typename Bar>
-__device__ __forceinline__ void dq_seq_k_filled(int page) {
+__device__ __forceinline__ void dq_seq_page_filled(int page) {
     if (page == 0) {
-        ins::abarrier_seq<false>(Bar::kPage0KFilled);
+        ins::abarrier_seq<false>(Bar::kPage0Filled);
     } else {
-        ins::abarrier_seq<false>(Bar::kPage1KFilled);
+        ins::abarrier_seq<false>(Bar::kPage1Filled);
     }
 }
 
 template <typename Bar>
-__device__ __forceinline__ void dq_seq_v_filled(int page) {
+__device__ __forceinline__ void dq_arrive_page_filled(int page) {
     if (page == 0) {
-        ins::abarrier_seq<false>(Bar::kPage0VFilled);
+        ins::abarrier_arrive_cnt<false>(Bar::kPage0Filled, 1);
     } else {
-        ins::abarrier_seq<false>(Bar::kPage1VFilled);
+        ins::abarrier_arrive_cnt<false>(Bar::kPage1Filled, 1);
     }
 }
 
 template <typename Bar>
-__device__ __forceinline__ void dq_arrive_k_filled(int page) {
+__device__ __forceinline__ void dq_wait_page_filled(int page,
+                                                    int& phase0,
+                                                    int& phase1) {
     if (page == 0) {
-        ins::abarrier_arrive_cnt<false>(Bar::kPage0KFilled, 1);
+        ins::abarrier_try_wait<true>(Bar::kPage0Filled, phase0);
     } else {
-        ins::abarrier_arrive_cnt<false>(Bar::kPage1KFilled, 1);
+        ins::abarrier_try_wait<true>(Bar::kPage1Filled, phase1);
     }
 }
 
 template <typename Bar>
-__device__ __forceinline__ void dq_arrive_v_filled(int page) {
+__device__ __forceinline__ void dq_wait_page_used(int page,
+                                                  int& phase0,
+                                                  int& phase1) {
     if (page == 0) {
-        ins::abarrier_arrive_cnt<false>(Bar::kPage0VFilled, 1);
+        ins::abarrier_try_wait<true>(Bar::kPage0Used, phase0);
     } else {
-        ins::abarrier_arrive_cnt<false>(Bar::kPage1VFilled, 1);
+        ins::abarrier_try_wait<true>(Bar::kPage1Used, phase1);
     }
 }
 
 template <typename Bar>
-__device__ __forceinline__ void dq_wait_k_filled(int page,
-                                                 int& phase0,
-                                                 int& phase1) {
+__device__ __forceinline__ void dq_arrive_page_used(int page) {
     if (page == 0) {
-        ins::abarrier_try_wait<true>(Bar::kPage0KFilled, phase0);
+        ins::abarrier_arrive_cnt<false>(Bar::kPage0Used, 1);
     } else {
-        ins::abarrier_try_wait<true>(Bar::kPage1KFilled, phase1);
-    }
-}
-
-template <typename Bar>
-__device__ __forceinline__ void dq_wait_v_filled(int page,
-                                                 int& phase0,
-                                                 int& phase1) {
-    if (page == 0) {
-        ins::abarrier_try_wait<true>(Bar::kPage0VFilled, phase0);
-    } else {
-        ins::abarrier_try_wait<true>(Bar::kPage1VFilled, phase1);
-    }
-}
-
-template <typename Bar>
-__device__ __forceinline__ void dq_wait_k_used(int page,
-                                               int& phase0,
-                                               int& phase1) {
-    if (page == 0) {
-        ins::abarrier_try_wait<true>(Bar::kPage0KUsed, phase0);
-    } else {
-        ins::abarrier_try_wait<true>(Bar::kPage1KUsed, phase1);
-    }
-}
-
-template <typename Bar>
-__device__ __forceinline__ void dq_wait_v_used(int page,
-                                               int& phase0,
-                                               int& phase1) {
-    if (page == 0) {
-        ins::abarrier_try_wait<true>(Bar::kPage0VUsed, phase0);
-    } else {
-        ins::abarrier_try_wait<true>(Bar::kPage1VUsed, phase1);
-    }
-}
-
-template <typename Bar>
-__device__ __forceinline__ void dq_arrive_k_used(int page) {
-    if (page == 0) {
-        ins::abarrier_arrive_cnt<false>(Bar::kPage0KUsed, 1);
-    } else {
-        ins::abarrier_arrive_cnt<false>(Bar::kPage1KUsed, 1);
-    }
-}
-
-template <typename Bar>
-__device__ __forceinline__ void dq_arrive_v_used(int page) {
-    if (page == 0) {
-        ins::abarrier_arrive_cnt<false>(Bar::kPage0VUsed, 1);
-    } else {
-        ins::abarrier_arrive_cnt<false>(Bar::kPage1VUsed, 1);
+        ins::abarrier_arrive_cnt<false>(Bar::kPage1Used, 1);
     }
 }
 
@@ -747,14 +688,10 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
     (void)batch;
     const uint32_t wave_id = __builtin_hcu_get_wave_id();
     if (wave_id == 0) {
-        __builtin_hcu_s_abarrier_init(Bar::kPage0KFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kPage0KUsed, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kPage0VFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kPage0VUsed, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kPage1KFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kPage1KUsed, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kPage1VFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kPage1VUsed, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kPage0Filled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kPage0Used, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kPage1Filled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kPage1Used, 8);
         __builtin_hcu_s_abarrier_init(Bar::kQDoFilled, 8);
         __builtin_hcu_s_abarrier_init(Bar::kQDoLatched, 8);
     }
@@ -775,8 +712,8 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
     if (wave_id < 4) {
         __builtin_hcu_s_set_vgpr_size(40);
         const int lane = static_cast<int>(threadIdx.x % 64);
-        int k_used_phase0 = 0;
-        int k_used_phase1 = 0;
+        int used_phase0 = 0;
+        int used_phase1 = 0;
         int qdo_latched_phase = 0;
         dq_load_q_dout_group<Tile>(
             q, dout, lds, 0, wave_local, q_base_tile, qkv_base);
@@ -784,9 +721,9 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
             scores_max, scores_sum, delta, lds, 0, wave_local, lane,
             q_base_tile, row_base);
         ins::wait_vmem_lgkm();
-        dq_seq_k_filled<Bar>(0);
+        dq_seq_page_filled<Bar>(0);
         if (active_k_tiles > 1) {
-            dq_seq_k_filled<Bar>(1);
+            dq_seq_page_filled<Bar>(1);
         }
         ins::maybe_wait_bps_vbcnt_before_arrive();
         dq_arrive_qdo_filled<Bar>();
@@ -796,13 +733,13 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
             if (kt == 0) {
                 dq_wait_qdo_latched<Bar>(qdo_latched_phase);
             } else if (kt > 1) {
-                dq_wait_k_used<Bar>(page, k_used_phase0, k_used_phase1);
-                dq_seq_k_filled<Bar>(page);
+                dq_wait_page_used<Bar>(page, used_phase0, used_phase1);
+                dq_seq_page_filled<Bar>(page);
             }
             dq_load_k_tile_page<Tile>(
                 k, lds, wave_local, page, k_base_tile, qkv_base);
             ins::maybe_wait_bps_vbcnt_before_arrive();
-            dq_arrive_k_filled<Bar>(page);
+            dq_arrive_page_filled<Bar>(page);
         }
     } else if (wave_id < 8) {
         __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
@@ -817,8 +754,8 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
     } else {
         __builtin_hcu_s_set_vgpr_size(40);
         const int lane = static_cast<int>(threadIdx.x % 64);
-        int v_used_phase0 = 0;
-        int v_used_phase1 = 0;
+        int used_phase0 = 0;
+        int used_phase1 = 0;
         int qdo_latched_phase = 0;
         dq_load_q_dout_group<Tile>(
             q, dout, lds, 1, wave_local, q_base_tile, qkv_base);
@@ -826,10 +763,6 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
             scores_max, scores_sum, delta, lds, 1, wave_local, lane,
             q_base_tile, row_base);
         ins::wait_vmem_lgkm();
-        dq_seq_v_filled<Bar>(0);
-        if (active_k_tiles > 1) {
-            dq_seq_v_filled<Bar>(1);
-        }
         ins::maybe_wait_bps_vbcnt_before_arrive();
         dq_arrive_qdo_filled<Bar>();
         for (int kt = 0; kt < active_k_tiles; ++kt) {
@@ -838,26 +771,21 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
             if (kt == 0) {
                 dq_wait_qdo_latched<Bar>(qdo_latched_phase);
             } else if (kt > 1) {
-                dq_wait_v_used<Bar>(page, v_used_phase0, v_used_phase1);
-                dq_seq_v_filled<Bar>(page);
+                dq_wait_page_used<Bar>(page, used_phase0, used_phase1);
             }
             dq_load_v_tile_page<Tile>(
                 v, lds, wave_local, page, k_base_tile, qkv_base);
             ins::maybe_wait_bps_vbcnt_before_arrive();
-            dq_arrive_v_filled<Bar>(page);
+            dq_arrive_page_filled<Bar>(page);
         }
     }
 
     __syncthreads();
     if (wave_id == 0) {
-        __builtin_hcu_s_abarrier_inv(Bar::kPage0KFilled);
-        __builtin_hcu_s_abarrier_inv(Bar::kPage0KUsed);
-        __builtin_hcu_s_abarrier_inv(Bar::kPage0VFilled);
-        __builtin_hcu_s_abarrier_inv(Bar::kPage0VUsed);
-        __builtin_hcu_s_abarrier_inv(Bar::kPage1KFilled);
-        __builtin_hcu_s_abarrier_inv(Bar::kPage1KUsed);
-        __builtin_hcu_s_abarrier_inv(Bar::kPage1VFilled);
-        __builtin_hcu_s_abarrier_inv(Bar::kPage1VUsed);
+        __builtin_hcu_s_abarrier_inv(Bar::kPage0Filled);
+        __builtin_hcu_s_abarrier_inv(Bar::kPage0Used);
+        __builtin_hcu_s_abarrier_inv(Bar::kPage1Filled);
+        __builtin_hcu_s_abarrier_inv(Bar::kPage1Used);
         __builtin_hcu_s_abarrier_inv(Bar::kQDoFilled);
         __builtin_hcu_s_abarrier_inv(Bar::kQDoLatched);
     }
