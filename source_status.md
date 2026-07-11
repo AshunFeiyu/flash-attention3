@@ -5816,3 +5816,26 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `REJECT_STATS_TICKS_REGRESSION`.  Active source was restored.  Do not retry
   pure chunk-order skew; it does not change the consumer instruction mix
   enough to break the dominant ownership pattern.
+
+## 2026-07-12 dQ PageUsed early release rejected
+
+- Hypothesis:
+  release a K/V page immediately after the last K-normal `ds_read_matrix`
+  reaches `wait_lgkm(0)`, before the final dQ MMAC half, because the remaining
+  operand fragments should be resident in VGPR.
+- Result:
+  correctness/resource PASS, no spill/scratch, `ldsBankConflict=0`.
+  Stats-only H1/S1024 was slightly positive, but fullperf did not support the
+  target:
+  `simTicks=36,094,240 -> 36,046,920`,
+  `MMAC active=27.3254% -> 27.2589%`,
+  `barrierCounter=50,779.75 -> 52,556.25`.
+- XCU:
+  top `s_abarrier_try_wait -> s_xor_b32` bubble worsened
+  `1,140,988 -> 1,188,124` cycles (`26.57% -> 27.31%`), so the tiny tick drop
+  is not a trustworthy pipeline improvement.
+- Decision:
+  `OBSERVE_REJECT_SOURCE_RESTORED`.  Active source was restored to canonical
+  PageUsed placement.  Do not continue PageUsed arrive-point micro-placement
+  unless the design also removes a dependency/token or adds useful work under
+  the ownership wait.

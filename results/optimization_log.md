@@ -10411,3 +10411,30 @@ Conclusion:
   the keep-alive loop is part of the current WDRA/codegen liveness contract.
   Do not delete tail liveness guards in the canonical dQ kernel without a
   focused WDRA-exit proof.
+
+## 2026-07-12 dQ PageUsed early release observed and rejected
+
+- Hypothesis:
+  after the last K-normal `ds_read_matrix` in a page has reached
+  `wait_lgkm(0)`, the remaining dQ MMAC half only uses VGPR fragments.  Move
+  the existing `dq_arrive_page_used` before that final MMAC half so producers
+  can reuse the K/V page slightly earlier.
+- Result:
+  correctness/resource PASS and no bank conflict.  Stats-only H1/S1024 moved
+  `simTicks=36,109,710 -> 36,084,230`, but fullperf evidence was not aligned
+  with the optimization target: `simTicks=36,094,240 -> 36,046,920` while
+  MMAC active fell `27.3254% -> 27.2589%`, and barrier counter rose
+  `50,779.75 -> 52,556.25`.
+- XCU:
+  the dominant `s_abarrier_try_wait -> s_xor_b32` bubble worsened from
+  `1,140,988` cycles (`26.57%`, max `7,635`) to `1,188,124` cycles
+  (`27.31%`, max `8,675`).
+- Decision:
+  `OBSERVE_REJECT_SOURCE_RESTORED`.  The small tick drop is not supported by
+  the target evidence path and does not move MMAC active toward 40%.  Canonical
+  source is restored.
+- Lesson:
+  moving the existing PageUsed arrive point is too small a lifetime change and
+  can worsen ABarrier scheduling.  Future work must either reduce the
+  ownership dependency itself or add real useful producer/consumer work under
+  the PageUsed window.

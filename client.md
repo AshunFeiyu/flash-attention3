@@ -1313,6 +1313,28 @@ dQ tail accumulator keep-alive prune, 2026-07-12:
   tail noise.  Canonical source is restored; do not delete this guard without
   a focused WDRA-exit proof.
 
+dQ PageUsed early release, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `67_DQ_PageUsed_EarlyRelease`.
+- Result:
+  `OBSERVE_REJECT_SOURCE_RESTORED`.  Moving `dq_arrive_page_used` from after
+  the `n_tile` loop to just after the last K-normal `wait_lgkm(0)` passed
+  correctness/resource gates, but the evidence did not support promotion.
+  Fullperf H1/S1024 had a tiny tick drop
+  `36,094,240 -> 36,046,920`, while MMAC active fell
+  `27.3254% -> 27.2589%` and barrier counter rose
+  `50,779.75 -> 52,556.25`.
+- XCU:
+  top `s_abarrier_try_wait -> s_xor_b32` bubble worsened
+  `1,140,988 -> 1,188,124` cycles.  The source is restored to canonical
+  PageUsed placement.
+- Lesson:
+  PageUsed micro-placement is not enough.  The next route must reduce the
+  ownership dependency or add real useful work during the PageUsed window; do
+  not keep splitting/moving PageUsed as a standalone optimization.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
