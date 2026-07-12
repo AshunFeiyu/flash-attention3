@@ -11081,3 +11081,48 @@ Conclusion:
   `REJECT_STATS_OBSERVE_XCU`.  Source restored to the accepted boundary-mask
   canonical code.  Keep the xcu output as bottleneck evidence, but do not
   promote a readability/helper refactor that regresses same-shape ticks.
+
+## 2026-07-12 dQ boundary n_tile classify accepted
+
+- Hypothesis:
+  after the accepted causal boundary-mask fast path, the final causal boundary
+  K tile still computes every `n_tile` through the expensive score/dP/softmax
+  and dQ path.  For many q rows, some of those boundary n_tiles are either
+  fully valid or fully invalid at the 16-row wave granularity.  Classifying
+  `n_tile` as `full-valid`, `partial`, or `fully-invalid` should remove
+  redundant causal work without adding new ABarrier ownership.
+- Source:
+  in `dq_consumer_full3gemm_role`, compute `n_tile_k0/n_tile_k1` and
+  `wave_q0/wave_q1` at the start of the n-tile loop.  Fully invalid boundary
+  n_tiles `continue`; fully valid n_tiles use the no-mask dS path; only partial
+  n_tiles keep the per-element `krow <= qrow` mask.  Tile shape, 16-wave role
+  ownership, Q/dO latch, K/V page ownership, matrix path, and output ownership
+  are unchanged.
+- Static/resource:
+  dQ gate PASS and symbol metadata PASS.  Branch windows improve from the
+  accepted boundary baseline `167/216` to `159/216` for both consumer roles.
+  Metadata remains `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- Metrics:
+  first H1/S1024 stats:
+  `simTicks=30,040,010`, MMAC active `31.9575%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,316`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=5,933/10,088`, `ldsBankConflict=0`.
+  Repeat H1/S1024 stats:
+  `simTicks=29,706,495`, MMAC active `32.0864%`,
+  `coissue=6,280/10,438`, with the same instruction counts.
+  Versus the accepted boundary-mask baseline, repeat ticks improve
+  `30,523,220 -> 29,706,495` (`-2.68%`), and MMOP drops
+  `55,296 -> 50,688` because invalid causal-boundary MMAC work is removed.
+- Profiler:
+  helper fullperf still aborts before dispatch in `libhsakmt` buffer overflow,
+  matching the current canonical codegen limitation.  Artifacts are under
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260712_dq_boundary_ntile_classify_h1s1024_sqc7_stats`.
+- Decision:
+  `ACCEPT_TICKS_ACTIVE_OBSERVE`.  Accept as an algorithmic cleanup because it
+  removes provably redundant invalid causal work and lowers same-shape ticks.
+  Do not claim it solves the pipeline: whole-kernel MMAC active falls because
+  the numerator removes invalid MMAC work, so the next route remains ABarrier
+  ownership/useful overlap or native dS source-slot redesign.

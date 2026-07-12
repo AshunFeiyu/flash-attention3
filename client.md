@@ -1587,6 +1587,22 @@ dQ source-slot orientation probe, 2026-07-12:
   source-slot rearrangement; otherwise optimization should return to canonical
   dQ ABarrier/page-ownership structure.
 
+dQ boundary n_tile classify, 2026-07-12:
+
+- Result:
+  `ACCEPT_TICKS_ACTIVE_OBSERVE`.  Canonical dQ now skips fully invalid
+  boundary n_tiles and uses no-mask dS for fully valid boundary n_tiles.
+- Evidence:
+  H1/S128 and H1/S1024 correctness PASS, no spill/scratch,
+  `ldsBankConflict=0`.  Repeat H1/S1024 stats:
+  `simTicks=29,706,495`, `MMAC active=32.0864%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,316`.
+- Lesson:
+  removing invalid causal MMAC work improves ticks but can lower aggregate
+  MMAC active because the removed work was counted as MMOP.  Treat this as
+  algorithm cleanup, not proof that the WASP pipeline is fixed.  Next focus is
+  still ABarrier ownership/useful overlap or native dS source-slot design.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

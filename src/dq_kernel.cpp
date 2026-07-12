@@ -456,12 +456,22 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
         const int page = kt & 1;
         dq_wait_page_filled<Bar>(page, filled_phase0, filled_phase1);
         const int k_base_tile = kt * Nk;
+        const bool boundary_k_tile = (kt + 1 == active_k_tiles);
         const __half* k_lds =
             lds + DqLdsLayout<Tile>::kPageKBase(page) / sizeof(__half);
         const __half* v_lds =
             lds + DqLdsLayout<Tile>::kPageVBase(page) / sizeof(__half);
 #pragma unroll
         for (int n_tile = 0; n_tile < Nk / 32; ++n_tile) {
+            const int n_tile_k0 = k_base_tile + n_tile * 32;
+            const int n_tile_k1 = n_tile_k0 + 31;
+            const int wave_q0 = q_base_tile + local_m16 * 16;
+            const int wave_q1 = wave_q0 + 15;
+            if (boundary_k_tile && n_tile_k0 > wave_q1) {
+                continue;
+            }
+            const bool n_tile_full_valid =
+                !boundary_k_tile || n_tile_k1 <= wave_q0;
             ins::F16x8 k_frag0[KBlocks];
             ins::F16x8 k_frag1[KBlocks];
             ins::F16x8 v_frag0[KBlocks];
@@ -545,8 +555,7 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
 
             ins::Vec4F16 ds_vec0;
             ins::Vec4F16 ds_vec1;
-            const bool boundary_k_tile = (kt + 1 == active_k_tiles);
-            if (boundary_k_tile) {
+            if (!n_tile_full_valid) {
 #pragma unroll
                 for (int vec_id = 0; vec_id < 4; ++vec_id) {
                     const int nk0 = n_tile * 32 + lane_n * 4 + vec_id;

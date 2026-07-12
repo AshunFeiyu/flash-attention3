@@ -784,7 +784,7 @@ Current goal:
 Current code state:
 
 - Branch: `shaobo/dq-xcu-guided-dq-kernel`.
-- Canonical dQ tile: `Mq=128,Nk=64,D=128,16 waves`.
+- Canonical dQ tile: `Mq=128,Nk=128,D=128,16 waves`.
 - Role ownership is now 16-wave full-3GEMM:
   waves0-3 producer for Q/dO group0 sidecar and K, waves4-7 consumer group0
   rows 0-63, waves8-11 consumer group1 rows 64-127, waves12-15 producer for
@@ -6501,3 +6501,46 @@ boundary-mask canonical path.
 - Decision:
   reject as canonical, keep as evidence.  Readability/modularity and higher
   active share do not justify slower same-shape ticks.
+
+## 2026-07-12 dQ boundary n_tile classify
+
+Status: `ACCEPT_TICKS_ACTIVE_OBSERVE`; this is the current canonical dQ
+source.
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `91_DQ_BoundaryNTile`.
+- Source change:
+  inside the final causal boundary K tile, each `n_tile` is classified at
+  16-row wave granularity:
+  fully invalid n_tiles are skipped, fully valid n_tiles use the no-mask dS
+  path, and only partial n_tiles keep per-element `krow <= qrow` masking.
+  Tile shape, 16-wave role ownership, Q/dO latch, K/V page ownership, LDS
+  layout, and output ownership are unchanged.
+- Static/resource:
+  dQ gate PASS and symbol metadata PASS.  Consumer branch windows improve to
+  `159/216` from the accepted boundary baseline `167/216`.  Metadata is
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- PMD stats:
+  first H1/S1024 run:
+  `simTicks=30,040,010`, MMAC active `31.9575%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,316`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=5,933/10,088`, `ldsBankConflict=0`.
+  Repeat H1/S1024 run:
+  `simTicks=29,706,495`, MMAC active `32.0864%`, same instruction counts,
+  `coissue=6,280/10,438`, `ldsBankConflict=0`.
+  Versus the accepted boundary-mask baseline, repeat ticks improve
+  `30,523,220 -> 29,706,495` (`-2.68%`), while `MMOP` drops
+  `55,296 -> 50,688`.
+- Profiler limitation:
+  helper fullperf with `HSA_TOOLS_LIB` still aborts before dispatch in
+  `libhsakmt` buffer-overflow handling.  Stats-only artifacts are archived at
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260712_dq_boundary_ntile_classify_h1s1024_sqc7_stats`.
+- Decision:
+  accept as a canonical algorithmic cleanup.  It removes invalid causal work,
+  so lower whole-kernel MMAC active is not enough to reject it; however it does
+  not advance the core pipeline target to 40%.  Next work should attack
+  ABarrier ownership/useful overlap or the native dS source-slot design.
