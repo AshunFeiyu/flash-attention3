@@ -1614,6 +1614,22 @@ dQ boundary n_tile classify, 2026-07-12:
   algorithm cleanup, not proof that the WASP pipeline is fixed.  Next focus is
   still ABarrier ownership/useful overlap or native dS source-slot design.
 
+dQ q-tile split evidence, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `93_DQ_QTileSplit`.
+- Result:
+  `OBSERVE_QTILE_SPLIT_CAUSAL_FRONTLOAD`.  Running H1/S1024 causal with one
+  q-tile per dispatch shows MMAC active rises from `11.045%` at tile0 to
+  `40.815%` at tile7; tiles5-7 are already above `40%`.
+- Lesson:
+  current dQ's late causal steady region is not fundamentally stuck at 32%.
+  The average is pulled down by early tiles where valid causal work is small
+  but ABarrier/control/setup cost stays fixed.  Next work should address
+  early-tile specialization or useful work per ownership epoch before more
+  main-path matrix-read/MMAC micro-tweaks.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

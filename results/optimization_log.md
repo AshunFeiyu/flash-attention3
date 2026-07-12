@@ -11189,3 +11189,29 @@ Conclusion:
   Do not claim it solves the pipeline: whole-kernel MMAC active falls because
   the numerator removes invalid MMAC work, so the next route remains ABarrier
   ownership/useful overlap or native dS source-slot redesign.
+
+## 2026-07-12 dQ q-tile split: causal frontload explains aggregate active
+
+- Hypothesis:
+  the canonical dQ whole-kernel `~32%` MMAC active may hide a split between
+  early causal tiles with tiny valid K range and later steady tiles that already
+  have enough MMOP work to amortize ABarrier/control.
+- Result:
+  `OBSERVE_QTILE_SPLIT_CAUSAL_FRONTLOAD`.  With
+  `DQ_TILES_PER_DISPATCH=1`, H1/S1024 causal split into eight dispatches:
+  tile0 `11.045%`, tile1 `27.199%`, tile2 `32.959%`,
+  tile3 `36.409%`, tile4 `37.876%`, tile5 `40.121%`,
+  tile6 `40.357%`, tile7 `40.815%` MMAC active; all tiles have
+  `ldsBankConflict=0`.
+- Evidence:
+  run
+  `/zys/shaobo_runs/dq_qtile_split_20260712_111249/dq_correctness_20260712_112030`;
+  workbook sheet
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`
+  `93_DQ_QTileSplit`.
+- Decision:
+  no source change.  Late causal tiles already cross the near-term 40% active
+  target, so the next route should target early causal-tile fixed overhead or
+  increase useful work per ABarrier ownership epoch.  Treat this as a top-level
+  scheduling/ownership issue rather than evidence that the main matrix path is
+  missing MMAC.

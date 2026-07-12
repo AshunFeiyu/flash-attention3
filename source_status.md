@@ -1,5 +1,33 @@
 # Source Status
 
+## 2026-07-12 dQ q-tile Split Evidence
+
+Status: `OBSERVE_QTILE_SPLIT_CAUSAL_FRONTLOAD`.
+
+- Motivation:
+  after canonical contract cleanup, split H1/S1024 causal dQ into one
+  `q_tile` per dispatch to determine whether the ~32% whole-kernel MMAC
+  active is a uniform pipeline failure or mostly caused by early causal tiles
+  with small valid K range.
+- Run:
+  `/zys/shaobo_runs/dq_qtile_split_20260712_111249/dq_correctness_20260712_112030`,
+  with `DQ_TILES_PER_DISPATCH=1`, `GPU_CHIP=sb`, and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- Metrics:
+  per-dispatch MMAC active rises monotonically with causal valid range:
+  tile0 `11.045%`, tile1 `27.199%`, tile2 `32.959%`,
+  tile3 `36.409%`, tile4 `37.876%`, tile5 `40.121%`,
+  tile6 `40.357%`, tile7 `40.815%`; `ldsBankConflict=0` for all tiles.
+- Interpretation:
+  late q-tiles already meet the near-term `40%+` dQ active target.  The
+  aggregate H1/S1024 active near `32%` is mostly dragged down by early causal
+  tiles where MMOP work is small but fixed ABarrier/control/setup cost remains.
+- Decision:
+  record as evidence, no code change.  Do not keep blindly tweaking the
+  `ds_read_matrix -> MMAC` main path; next candidates should either specialize
+  early causal tiles, increase useful work per ownership epoch, or revisit the
+  dS dependency graph with a resource proof.
+
 ## 2026-07-12 dQ Builtin Try-Wait Rejected
 
 Status: `REJECT_METADATA_PRIVATE_SEGMENT_SOURCE_RESTORED`.
