@@ -6395,3 +6395,35 @@ Status: `REJECT_PROBE_CANONICAL_UNCHANGED`.
   stop simple reader-orientation swaps.  Either build a costed
   source-slot-rearrangement probe, or return to canonical dQ ABarrier and
   ownership optimization.
+
+## 2026-07-12 dQ PageUsed tail-elide
+
+Status: `REJECT_FULLPERF_REGRESSION`, source restored to C74.
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `88_DQ_PageUsedTail`.
+- Source experiment:
+  temporarily changed the consumer page release to
+  `if (kt + 2 < active_k_tiles) dq_arrive_page_used(page);`.
+  This removes only PageUsed arrives that no future producer should consume.
+- Static/resource:
+  dQ gate PASS; symbol metadata PASS with branch windows
+  `8/40,159/216,159/216,9/40`, `private=0`, `sgpr=65`, `vgpr=128`,
+  no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- PMD/xcu evidence:
+  stats-only looked slightly better:
+  `simTicks=32,597,110 -> 32,533,865`,
+  `MMAC active=31.6674% -> 31.7365%`.
+  Fullperf regressed:
+  `simTicks=32,721,325 -> 32,879,210`,
+  `MMAC active=31.6115% -> 31.5371%`.
+  xcu detail regressed too: dispatch duration `63,904 -> 64,252`, with
+  `s_xor_b32` latency rising to `1,049,684` cycles.
+- Decision:
+  reject.  The ownership-lifetime argument is correct, but the added guard and
+  control edge are not free.  Source is restored to canonical unconditional
+  `dq_arrive_page_used(page)`.

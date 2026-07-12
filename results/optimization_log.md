@@ -10984,3 +10984,29 @@ Conclusion:
   to compute all page dP before dQ, which requires a new resource plan for
   qk/dp/dS storage or recomputation.  Do not retry VUsed as a small token
   patch.
+
+## 2026-07-12 dQ PageUsed tail-elide rejected
+
+- Hypothesis:
+  in C74, producers only wait `PageUsed(page)` when reusing that page two
+  `kt` iterations later.  Therefore the final two consumer
+  `dq_arrive_page_used(page)` calls have no future producer waiter and might be
+  removable with `if (kt + 2 < active_k_tiles)`.
+- Result:
+  temporary source passed build/static/resource gates with branch windows
+  `8/40,159/216,159/216,9/40`, metadata `private=0`, `sgpr=65`,
+  `vgpr=128`, and no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  stats-only showed a tiny improvement versus C74:
+  `simTicks=32,597,110 -> 32,533,865`, MMAC active
+  `31.6674% -> 31.7365%`.  Fullperf contradicted it:
+  `simTicks=32,721,325 -> 32,879,210`, MMAC active
+  `31.6115% -> 31.5371%`.
+  xcu detail also regressed: dispatch duration `63,904 -> 64,252`, and
+  `s_xor_b32` latency rose to `1,049,684` cycles.
+- Decision:
+  `REJECT_FULLPERF_REGRESSION`.  The lifetime proof is valid, but the extra
+  guard/control cost and scheduling change erase the removed tail-arrive cost.
+  Source restored to C74.  Do not retry PageUsed tail pruning unless it can be
+  made compile-time/static without adding a hot control edge.
