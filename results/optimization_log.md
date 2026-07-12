@@ -12083,3 +12083,31 @@ Status: `REJECT_FULLPERF_REGRESSION_SOURCE_RESTORED`
   improve the actual pipeline.  This confirms the current dQ bottleneck is not
   the final-page guard; continue with producer useful work, ownership epoch
   reduction, or native dS handoff only after a resource proof.
+
+## 2026-07-12 dQ AllDone Terminal Handshake
+
+Status: `REJECT_PMD_ABARRIER_ILL_OP_SOURCE_RESTORED`
+
+- Design basis:
+  xcu for the accepted dQ boundary split shows a large terminal
+  `s_barrier -> s_cbranch_vccnz` issue gap.  The candidate tried to replace
+  that CTA-wide terminal sync with a local ABarrier ledger: initialize
+  `kAllDone`, have every role group arrive after its work, have all waves wait
+  `kAllDone`, then let wave0 invalidate the ABarriers.  No mainloop, tile,
+  formula, ownership, or matrix-path instruction changed.
+- Gates:
+  static/source/metadata PASS with `private=0`, `sgpr=65`, `vgpr=128`,
+  no spill/scratch.  Branch windows stayed `8/40,159/216,159/216,9/40`.
+- PMD:
+  H1/S128 aborted before correctness with
+  `ABARRIER_ILL_OP_ERROR of abarrier_wait: barId 6 has already been invalidated
+  at the current time`.  Run:
+  `/zys/shaobo_runs/dq_alldone_terminal_20260712_234111/dq_correctness_20260712_234111`.
+- Restore:
+  source restored locally and remotely; remote dQ gate recertified PASS.
+- Decision:
+  reject.  `AllDone` arrive/wait does not by itself prove every peer wave has
+  safely moved past the wait instruction before wave0 invalidates the barrier.
+  The current terminal `__syncthreads()` has real semantic weight.  Do not
+  remove it again without a two-phase invalidate protocol or documented ABI
+  proof.

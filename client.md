@@ -1942,3 +1942,20 @@ dQ tail guard removal, 2026-07-12:
   the remaining dQ gap to 40% MMAC active is not this final guard.  Focus on
   producer useful work, ownership epoch reduction, or a native dS handoff with
   a written LDS/VGPR/ABarrier budget.
+
+dQ AllDone terminal handshake, 2026-07-12:
+
+- Result:
+  `REJECT_PMD_ABARRIER_ILL_OP_SOURCE_RESTORED`.  Replacing the terminal CTA
+  `__syncthreads()` with a single `kAllDone` arrive/wait ledger is not safe.
+- Evidence:
+  static/resource gates passed, but H1/S128 PMD aborted before correctness:
+  `ABARRIER_ILL_OP_ERROR ... barId 6 has already been invalidated` during
+  `abarrier_wait`.
+- Restore:
+  source is back to the canonical terminal `__syncthreads()` plus wave0
+  invalidate, and the remote dQ gate passes again.
+- Lesson:
+  terminal barrier cost is real, but the current sync also protects ABarrier
+  invalidation.  Do not retry a one-phase AllDone replacement; a valid design
+  needs two-phase safe invalidation or a documented Shaobo ABarrier ABI rule.

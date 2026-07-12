@@ -7336,3 +7336,18 @@ dQ tail guard removal, 2026-07-12:
   this guard is not the dQ pipeline limiter.  Keep the accepted boundary
   K-tile split as canonical and spend the next dQ effort on producer useful
   work, fewer ownership epochs, or a resource-budgeted native dS handoff.
+
+dQ AllDone terminal handshake, 2026-07-12:
+
+- Tried and rejected at H1/S128 PMD smoke.  The candidate replaced the
+  terminal CTA `__syncthreads()` with a `kAllDone` ABarrier where all 16 waves
+  arrive and wait before wave0 invalidates the ABarrier IDs.
+- Static/resource gates passed, but PMD aborted with
+  `ABARRIER_ILL_OP_ERROR ... barId 6 has already been invalidated` during
+  `abarrier_wait`.
+- The source was restored locally and remotely; remote dQ gate passes again.
+- Lesson:
+  ABarrier arrive/wait is not a safe replacement for the terminal CTA sync
+  before invalidation.  Wave0 can invalidate while another wave is still in or
+  just reaching the wait path.  Any future terminal-sync reduction needs a
+  two-phase safe-invalidate design or documented ABI proof.
