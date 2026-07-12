@@ -11625,3 +11625,32 @@ Conclusion:
   versus the accepted repeat best and improves coissue/active without resource
   cost.  It is not the structural solution: remaining work must still attack
   ownership/wait/control bubbles to move toward 40% MMAC active.
+
+## 2026-07-12 dQ Latch Helper Extract Rejected
+
+Status: `REJECT_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Hypothesis:
+  extracting the Q/dO/sidecar latch into a dedicated helper would improve code
+  cohesion after the accepted compute-helper extraction without changing
+  generated hot-path structure.
+- Patch:
+  temporary `dq_latch_qdo_sidecar<Tile>` helper wrapping sidecar LDS reads,
+  Q/dO `ds_read_matrix_32x16_trans`, and the latch wait.  No algorithm, tile,
+  ABarrier, or matrix-path change.
+- Gates:
+  build, dQ source gate, and metadata gate PASS:
+  branch windows `8/40,158/216,158/216,9/40`, `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness PASS.
+- Metrics:
+  H1/S1024 `simTicks=29,466,255`, `MMOP=50,688`, `VALU=57,968`,
+  `SCA=54,172`, `LDS=26,352`, `VMEM=1,408`, `coissue=11,672/10,291`,
+  `waitLgkm=16,566.25`, `barrier=56,715`, `ldsBankConflict=0`.
+  This regresses versus the accepted `dq_latched_compute_helper` repeat
+  `29,216,460` ticks.
+- Evidence:
+  `/zys/shaobo_runs/dq_latch_helper_20260712_152624`.
+- Decision:
+  reject and restore source.  Keep the accepted compute helper, but leave the
+  latch inline in the consumer unless a future source/SQTT profile proves a
+  real instruction or live-range benefit.

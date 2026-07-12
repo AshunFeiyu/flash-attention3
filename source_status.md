@@ -1,5 +1,35 @@
 # Source Status
 
+## 2026-07-12 dQ Latch Helper Extract Rejected
+
+Status: `REJECT_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  after accepting `dq_compute_pages_from_latched`, test whether extracting the
+  Q/dO/sidecar latch into `dq_latch_qdo_sidecar` keeps the code more
+  high-cohesion without changing math, ABarrier ownership, or matrix paths.
+- Static/resource:
+  remote build, dQ source gate, and metadata gate PASS.  Branch windows stayed
+  `8/40,158/216,158/216,9/40`; metadata stayed `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS.
+- Metrics:
+  H1/S1024 under `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']` produced
+  `simTicks=29,466,255`, `MMOP=50,688`, `VALU=57,968`, `SCA=54,172`,
+  `LDS=26,352`, `VMEM=1,408`, `coissue=11,672/10,291`,
+  `waitLgkm=16,566.25`, `barrier=56,715`, `ldsBankConflict=0`.
+  This is slower than the accepted latched-compute repeat
+  `29,216,460` ticks.
+- Evidence:
+  root `/zys/shaobo_runs/dq_latch_helper_20260712_152624`;
+  H1/S1024 stats
+  `/zys/shaobo_runs/dq_latch_helper_20260712_152624/dq_correctness_20260712_152630/m5out/0/0/stats.txt`.
+- Decision:
+  reject and restore source.  Code structure alone is not enough: helper
+  extraction that preserves instruction counts but worsens same-shape ticks
+  should not stay in the canonical dQ route.
+
 ## 2026-07-12 dQ Latched Compute Helper Accepted
 
 Status: `ACCEPT_MICRO_CODE_GOVERNANCE`.

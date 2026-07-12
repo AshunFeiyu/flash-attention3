@@ -83,6 +83,12 @@ evidence are required before any performance claim.
   `simTicks=29,706,495`, MMAC active `32.0864%`, `MMOP=50,688`,
   `VALU=58,144`, `SCA=54,316`, `LDS=26,352`, `VMEM=1,408`,
   `coissue=6,280/10,438`, `ldsBankConflict=0`.
+- 2026-07-12 latest code-governance result:
+  `dq_compute_pages_from_latched` is accepted as canonical because it passed
+  correctness/resources and repeated at `29,216,460` ticks.  The follow-up
+  `dq_latch_qdo_sidecar` extraction was rejected and removed: it still passed
+  H1/S128/H1/S1024 and resource gates but regressed H1/S1024 to
+  `29,466,255` ticks with unchanged instruction counts.
 - 2026-07-12 `.53` recert:
   jump host `.53` recovered and remote `/zys/shaobo/fa3_bwd_wasp_clean` was
   resynced from local canonical commit `a351fc3`.  Build/gates pass with
