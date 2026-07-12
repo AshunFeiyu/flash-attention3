@@ -1872,3 +1872,34 @@ dKV tail cleanup, 2026-07-12:
   dispatch.
 - This is not a structural 40% MMAC-active solution; keep focusing on
   PageUsed/ABarrier ownership and useful producer work.
+
+dQ boundary K-tile split, 2026-07-12:
+
+- Result:
+  `ACCEPT_CANONICAL_XCU`.  dQ now uses compile-time paths for normal K pages
+  and the final causal boundary K page.  The normal path removes the runtime
+  `boundary_k_tile` branch from every `n_tile`; only the last K page keeps
+  causal validity logic.
+- What did not change:
+  formula DAG, `Mq=128,Nk=128,D=128`, Q/dO+sidecar latch, K/V
+  PageFilled/PageUsed ownership, setprio MMAC islands, and dQ store ownership.
+  No wrong-layout path, `natural_wrong`, `ds_read_b32`, bpermute, gather, or
+  workaround layout route is in canonical dQ.
+- Evidence:
+  static/resource gates pass with `private=0`, `sgpr=65`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 causal correctness pass and
+  `ldsBankConflict=0`.
+- PMD/xcu:
+  repeat stats H1/S1024: `28,225,925` ticks, `MMOP=50,688`,
+  `VALU=68,144`, `SCA=41,644`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=15,376/13,547`, `barrier=49,459.25`.
+  Fullperf H1/S1024: `27,984,775` ticks, PMD MMAC active `33.174%`,
+  VOP active `24.502%`, `coissue=15,475/13,656`,
+  `barrier=49,629.0`.  xcu outputs are at
+  `/zys/shaobo_runs/dq_boundary_page_split_fullperf_20260712_225237/xcu_outputs`.
+- Lesson:
+  this is a real control-path reduction and becomes the current dQ best, but
+  it does not solve the 40% target.  xcu still shows `s_xor_b32`,
+  `s_cbranch_vccnz`, waitcnt, and thin producer waves ahead of MMAC.  Next
+  useful work should either make producers do recurring useful work during
+  PageUsed waits, or revisit native dS handoff with a full LDS/VGPR budget.

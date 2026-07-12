@@ -11966,3 +11966,55 @@ Status: `ACCEPT_SMALL_STATS_ONLY_XCU_PENDING`
   PageUsed/ABarrier ownership bubble or move MMAC active toward 40% by itself;
   the next structural dKV work must still target useful producer work or
   sidecar/raw lifetime.
+
+## 2026-07-12 dQ Boundary K-Tile Split
+
+Status: `ACCEPT_CANONICAL_XCU`
+
+- Design basis:
+  keep the dQ algorithm DAG and ownership exactly unchanged:
+  `QK^T`, `dO V^T`, softmax/dS, and `dS K` still run on
+  `Mq=128,Nk=128,D=128`; Q/dO plus sidecar are latched before the K/V page
+  stream; PageFilled/PageUsed remains the K/V ownership ledger.  The only
+  change is to split normal K tiles and the final causal-boundary K tile into
+  compile-time paths.  Normal K tiles no longer carry the runtime
+  `boundary_k_tile` branch in every `n_tile`; only the final K tile keeps the
+  causal validity logic.
+- Source change:
+  `dq_compute_pages_from_latched` is now parameterized by
+  `BoundaryKTile`.  A wrapper loops over `kt + 1 < active_k_tiles` with
+  `BoundaryKTile=false`, then calls the final page with
+  `BoundaryKTile=true`.  No failed layout path, `natural_wrong`, `ds_read_b32`,
+  bpermute, gather, or workaround enters the canonical matrix path.
+- Gates:
+  dQ build, source gate, and symbol metadata PASS.  Resources remain
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch.  H1/S128 and
+  H1/S1024 correctness PASS, `ldsBankConflict=0`.
+- Metrics:
+  repeat stats H1/S1024 gives `simTicks=28,225,925`, `MMOP=50,688`,
+  `VALU=68,144`, `SCA=41,644`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=15,376/13,547`, `waitLgkm=16,473`, `barrier=49,459.25`.
+  Fullperf gives `simTicks=27,984,775`, PMD MMAC active `33.174%`,
+  VOP active `24.502%`, `coissue=15,475/13,656`, `waitLgkm=16,602.75`,
+  `barrier=49,629.0`, `ldsBankConflict=0`.
+- XCU:
+  fullperf path:
+  `/zys/shaobo_runs/dq_boundary_page_split_fullperf_20260712_225237/dq_correctness_20260712_225237/m5out/0/0/2796314_fa3_bwd_dq_clean.perf`.
+  xcu output path:
+  `/zys/shaobo_runs/dq_boundary_page_split_fullperf_20260712_225237/xcu_outputs`.
+  xcu detail shows duration `53,496`, inst issues `209,008`,
+  avg active waves `82.69`.  Hot rows remain control heavy:
+  `s_xor_b32 25.32%`, `s_cbranch_vccnz 17.56%`, `mmop_fp16 12.98%`,
+  `s_waitcnt_vbcnt 9.00%`, `s_waitcnt 4.67%`.  Pipeline/simd CSV files were
+  exported under the xcu output directory.
+- Residual warning:
+  PMD still prints `read vgpr168 before writing`, but correctness and resource
+  gates pass.  Keep this as an observation for future PMD/WDRA tracking, not
+  as proof of algorithm error.
+- Decision:
+  accept.  This beats the current canonical dQ fullperf `29,269,240` ticks and
+  the setprio fullperf `29,793,855` ticks, while reducing SCA and barrier
+  exposure.  It is not the 40% MMAC-active solution; the next dQ bottleneck is
+  still ABarrier/control plus thin producer waves.  The next structural
+  attempt should either give producers recurring useful work under PageUsed
+  wait or revisit the native dS handoff design with a full resource budget.

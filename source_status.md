@@ -7278,3 +7278,30 @@ dKV tail second sync cleanup, 2026-07-12:
   accepted as a small terminal cleanup only.  Fullperf/xcu is pending because
   the attempted fullperf run aborted before dispatch with the known libhsakmt
   buffer overflow.  This does not address the steady PageUsed ownership bubble.
+
+dQ boundary K-tile split, 2026-07-12:
+
+- Source:
+  canonical dQ now splits page compute into compile-time non-boundary and
+  final-boundary K-tile paths.  Normal K pages run without the runtime
+  `boundary_k_tile` check; the final causal page keeps the n-tile validity
+  logic.  The formula DAG, `Mq=128,Nk=128,D=128`, Q/dO+sidecar latch, K/V
+  PageFilled/PageUsed ownership, and setprio MMAC islands are unchanged.
+- Invariants:
+  no `natural_wrong` or wrong-layout switch is in the main path.  No
+  `ds_read_b32`, bpermute, gather, or layout workaround was added to the main
+  matrix path.
+- Evidence:
+  H1/S128 and H1/S1024 correctness pass with `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch, and `ldsBankConflict=0`.
+  Fullperf H1/S1024 is `27,984,775` ticks with PMD MMAC active `33.174%`,
+  `MMOP=50,688`, `VALU=68,144`, `SCA=41,644`, `LDS=26,352`,
+  `VMEM=1,408`, `coissue=15,475/13,656`, and `barrier=49,629.0`.
+  xcu output is under
+  `/zys/shaobo_runs/dq_boundary_page_split_fullperf_20260712_225237/xcu_outputs`.
+- Boundary:
+  accepted as a canonical control-path cleanup.  It improves same-shape ticks
+  and active share over the previous dQ canonical, but xcu still points to
+  `s_xor_b32`, `s_cbranch_vccnz`, waitcnt, and thin producer waves.  Continue
+  toward 40% MMAC active through producer useful work or a resource-budgeted
+  native dS handoff, not by adding workaround layout paths.
