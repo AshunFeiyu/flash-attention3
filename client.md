@@ -95,6 +95,11 @@ evidence are required before any performance claim.
   a nested-quote SSH command accidentally dropped `--SQCIPfLines=7` and
   produced a false regression (`31,546,515` ticks / `29.7161%`).  Prefer
   heredoc or the `scripts/env.sh` default for PMD runs.
+- Latest structural reject:
+  page0 non-overlap preload reduced barrier and raised active share to about
+  `32.85%`, but repeat H1/S1024 was `29,939,455` ticks and did not beat the
+  accepted `29,706,495`; source restored.  Page0 startup ownership matters, but
+  splitting the single sidecar-overlap K block is not enough.
 - 2026-07-12 latest rejected micro-restore:
   restoring the old SoA `Vec4F32` consumer sidecar LDS reads passed remote
   build/static/metadata and H1/S128/H1/S1024 correctness, but the available

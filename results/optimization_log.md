@@ -11417,3 +11417,47 @@ Conclusion:
   band, but is not a new best.  Future SSH-driven PMD commands should avoid
   nested quote construction for `GPU_ARGS`; prefer heredoc or let `env.sh`
   supply the default SQ7 value.
+
+## 2026-07-12 dQ page0 non-overlap preload rejected
+
+- Hypothesis:
+  `Page0` K/V steady page overlaps the startup sidecar only in the first K
+  32x32 block.  Let producers preload non-overlapping page0 K/V blocks while
+  consumers latch Q/dO/sidecar, then wait `QDoLatched` only before writing the
+  sidecar-overlap K block.  This should reduce startup `PageFilled` barrier
+  slack without adding new ABarrier tokens or changing math.
+- Source experiment:
+  canonical dQ producer0 used a split page0 K loader: all K blocks except
+  `producer_wave==0 && n32==0` before `QDoLatched`, then the single overlap
+  block after `QDoLatched`.  Producer1 loaded page0 V before `QDoLatched` and
+  waited only before page1.  Tile shape, Q/dO latch, K/V pages, consumers, and
+  output ownership were unchanged.
+- Static/resource:
+  build, dQ gate, and metadata gate PASS.  Metadata stayed `private=0`,
+  `vgpr=128`, no spill/scratch, but `sgpr` rose `65 -> 74`; branch windows
+  stayed `8/40,159/216,159/216,9/40`.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- PMD stats:
+  first H1/S1024 run:
+  `simTicks=29,704,675`, MMAC active `32.8463%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,624`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=6,266/10,838`, `waitLgkm=16,190.0`, `barrier=51,926.0`,
+  `ldsBankConflict=0`.
+  Repeat:
+  `simTicks=29,939,455`, MMAC active `32.8568%`,
+  `coissue=6,013/10,041`, `waitLgkm=16,396.8`, `barrier=52,662.0`,
+  `ldsBankConflict=0`.
+- Evidence:
+  first run
+  `/zys/shaobo_runs/dq_page0_preload_nonoverlap_20260712_135155/dq_correctness_20260712_135200`;
+  repeat
+  `/zys/shaobo_runs/dq_page0_preload_nonoverlap_repeat_20260712_135308/dq_correctness_20260712_135308`.
+- Decision:
+  `REJECT_ACTIVE_ONLY_TICKS_UNSTABLE_SOURCE_RESTORED`.  The hypothesis is
+  partially true: barrier falls by roughly `3.5k-4.2k` cycles and active share
+  rises by about `0.8pp`.  It is not enough to beat the accepted repeat best
+  `29,706,495` ticks in a stable way, and it costs extra SGPR/SCA.  Keep this
+  as evidence that page0 startup ownership matters, but do not preserve the
+  split preloader in canonical source.

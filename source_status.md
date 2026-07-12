@@ -6827,3 +6827,24 @@ Status: `OBSERVE_ENV_RECERT`; source unchanged.
   `dq_boundary_ntile_classify` remains the accepted best at `29,706,495`
   ticks / `32.0864%` MMAC active.  No source change is promoted by this
   recert.
+
+## 2026-07-12 dQ page0 non-overlap preload
+
+Status: `REJECT_ACTIVE_ONLY_TICKS_UNSTABLE`; source restored.
+
+- Idea:
+  preload the page0 K/V regions that do not overlap the startup sidecar before
+  `QDoLatched`, then write only the sidecar-overlap K block after
+  `QDoLatched`.
+- Gates:
+  static/resource and H1/S128/H1/S1024 correctness passed; no spill/scratch and
+  `ldsBankConflict=0`.  SGPR rose `65 -> 74`.
+- Result:
+  first H1/S1024 nearly tied the best (`29,704,675` ticks), with MMAC active
+  `32.8463%` and barrier `51,926.0`; repeat was `29,939,455` ticks, MMAC
+  active `32.8568%`, barrier `52,662.0`.
+- Decision:
+  reject despite better active/barrier.  Repeat ticks do not beat the accepted
+  `29,706,495`, and the extra SGPR/SCA cost is not free.  The useful lesson is
+  that page0 startup ownership is real, but splitting one conflict block is not
+  a sufficient structural fix.
