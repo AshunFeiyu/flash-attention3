@@ -6891,6 +6891,16 @@ Status: `ACCEPT_MICRO_CANONICAL`; this is now the current canonical dQ source.
   `/zys/shaobo_runs/dq_setprio_mmac_islands_20260712_141620`;
   repeat
   `/zys/shaobo_runs/dq_setprio_mmac_islands_repeat_20260712_141804`.
+- Fullperf/xcu:
+  fullperf root
+  `/zys/shaobo_runs/dq_setprio_fullperf_20260712_143128`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260712_143128_dq_setprio_h1s1024_sqc7_fullperf`.
+  Fullperf stats are `29,793,855` ticks, MMAC active `32.2046%`,
+  `coissue=11,320/9,937`, `waitLgkm=16,482.2`, `barrier=58,991.2`,
+  `ldsBankConflict=0`.
+  xcu detail top rows are `s_xor_b32 27.13%`, `s_cbranch_vccnz 17.20%`,
+  `mmop_fp16 12.39%`, `s_waitcnt_vbcnt 9.00%`.  Representative pipeline CSV
+  shows producer wave bubble `98.78%` and consumer MMOP wave bubble `61.42%`.
 - Decision:
   accept as a canonical micro-win.  It proves FWD-style priority helps dQ
   scheduler/coissue behavior without extra resource cost, but it does not

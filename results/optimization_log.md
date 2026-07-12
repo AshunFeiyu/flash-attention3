@@ -11507,6 +11507,17 @@ Conclusion:
   workbook
   `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
   sheet `101_DQ_SetprioAccept`.
+- Fullperf/xcu:
+  fullperf root
+  `/zys/shaobo_runs/dq_setprio_fullperf_20260712_143128`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260712_143128_dq_setprio_h1s1024_sqc7_fullperf`.
+  Fullperf stats are `simTicks=29,793,855`, MMAC active `32.2046%`,
+  `coissue=11,320/9,937`, `waitLgkm=16,482.2`, `barrier=58,991.2`,
+  `ldsBankConflict=0`.
+  xcu detail says the remaining hot rows are mostly control/ownership:
+  `s_xor_b32 27.13%`, `s_cbranch_vccnz 17.20%`, `mmop_fp16 12.39%`,
+  `s_waitcnt_vbcnt 9.00%`.  Representative pipeline CSV shows producer wave
+  bubble `98.78%` and consumer MMOP wave bubble `61.42%`.
 - Decision:
   `ACCEPT_MICRO_CANONICAL`.  This is a valid FWD-style micro-win and should
   stay in the canonical dQ baseline.  It improves ticks by `0.27M-0.56M`

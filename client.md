@@ -1776,3 +1776,11 @@ dQ setprio MMAC islands, 2026-07-12:
   FWD-style priority is a real micro-win for canonical dQ and should remain in
   the baseline.  It improves scheduler/coissue behavior but does not solve the
   larger ownership/wait/control bottleneck or reach the 40% MMAC active target.
+- Fullperf/xcu:
+  archived at
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260712_143128_dq_setprio_h1s1024_sqc7_fullperf`.
+  Fullperf gives `29,793,855` ticks / `32.2046%` MMAC active.  xcu shows the
+  remaining top rows are control/ownership-heavy: `s_xor_b32 27.13%`,
+  `s_cbranch_vccnz 17.20%`, `s_waitcnt_vbcnt 9.00%`, while `mmop_fp16` is
+  `12.39%`.  Producer representative bubble is `98.78%`, consumer MMOP
+  representative bubble is `61.42%`.
