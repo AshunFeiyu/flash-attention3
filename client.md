@@ -77,6 +77,16 @@ evidence are required before any performance claim.
 
 ## Current dQ Override
 
+- 2026-07-12 latest rejected micro-restore:
+  restoring the old SoA `Vec4F32` consumer sidecar LDS reads passed remote
+  build/static/metadata and H1/S128/H1/S1024 correctness, but the available
+  H1/S1024 stats backup is truncated and only proves
+  `system.simTicks=29,960,840`, slower than the accepted repeat best
+  `29,706,495`.  Decision:
+  `REJECT_STATS_INCOMPLETE_TICKS_REGRESSION_SOURCE_RESTORED`.  Canonical dQ
+  source is restored to scalar volatile sidecar LDS reads; do not restore old
+  sidecar micro-wins without same-shape repeat and full active/resource
+  evidence.
 - 2026-07-12 cleanup:
   active `include/dq_contract.h` now only carries the canonical dQ contract
   (`ActiveDqTile`, `DqBarrierLedger`, and optimization targets).  Native dS

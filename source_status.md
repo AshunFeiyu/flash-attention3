@@ -1,5 +1,37 @@
 # Source Status
 
+## 2026-07-12 dQ Sidecar Vec4 Restore Rejected
+
+Status: `REJECT_STATS_INCOMPLETE_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  restore the historical SoA `Vec4F32` consumer sidecar LDS reads for
+  `row_max/row_sum/row_delta`, replacing three scalar volatile reads, to test
+  whether the old sidecar micro-win still applies after the current boundary
+  n_tile canonical cleanup.
+- Gates:
+  remote build, dQ source gate, and metadata gate PASS.  Resources stayed
+  legal: branch windows `8/40,159/216,159/216,9/40`, `private=0`,
+  `sgpr=65`, `vgpr=128`, no spill/scratch.  ASM counts:
+  `ds_read_b128=4`, `ds_read_b32=2`, `ds_read_matrix=214`.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS.
+- Metrics:
+  the only local H1/S1024 stats backup is truncated to 31 lines, so full
+  SIMD/runtime counters cannot be used as promotion evidence.  Visible
+  `system.simTicks=29,960,840`, which is slower than the accepted repeat best
+  `29,706,495`.
+- Evidence:
+  H1/S128
+  `/zys/shaobo_runs/dq_restore_sidecar_vec4_20260712_124638/dq_correctness_20260712_125418`;
+  H1/S1024
+  `/zys/shaobo_runs/dq_restore_sidecar_vec4_20260712_124702/dq_correctness_20260712_125442`;
+  partial local stats `work/tmp/dq_restore_sidecar_vec4_stats.txt`.
+- Decision:
+  reject and restore canonical source.  Correct/resource-clean sidecar read
+  aggregation is not enough; it must beat the current canonical repeat best
+  and provide full active/resource counters before promotion.
+
 ## 2026-07-12 dQ QDoFilled Group Split Rejected
 
 Status: `REJECT_STATS_NO_BEST_WIN_SOURCE_RESTORED`.

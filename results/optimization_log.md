@@ -11345,3 +11345,38 @@ Conclusion:
   `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.  The final sync/invalidate is
   still needed for the current PMD/WDRA role-exit discipline.  This confirms
   the tail bubble is real but not safely removable by deleting cleanup.
+
+## 2026-07-12 dQ sidecar Vec4 restore rejected
+
+- Hypothesis:
+  restore the historical SoA `Vec4F32` LDS sidecar read for
+  `row_max/row_sum/row_delta`, replacing three scalar volatile loads in the
+  consumer softmax path, to recover the old accepted sidecar micro-win without
+  changing tile shape, Q/dO latch, K/V page ownership, or matrix MMAC paths.
+- Static/resource:
+  remote build, dQ source gate, and symbol metadata gate passed.  Metadata was
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch; branch windows stayed
+  `8/40,159/216,159/216,9/40`.  ASM counts were `ds_read_b128=4`,
+  `ds_read_b32=2`, `ds_read_matrix=214`.
+- Correctness:
+  H1/S128 and H1/S1024 causal correctness passed under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- PMD stats:
+  the local stats backup is truncated to 31 lines, so SIMD runtime counters,
+  coissue, and `ldsBankConflict` cannot be proven from that file.  The visible
+  H1/S1024 `system.simTicks` is `29,960,840`, worse than the accepted repeat
+  best `29,706,495`.
+- Evidence:
+  H1/S128 run
+  `/zys/shaobo_runs/dq_restore_sidecar_vec4_20260712_124638/dq_correctness_20260712_125418`;
+  H1/S1024 run
+  `/zys/shaobo_runs/dq_restore_sidecar_vec4_20260712_124702/dq_correctness_20260712_125442`;
+  partial local stats backup
+  `work/tmp/dq_restore_sidecar_vec4_stats.txt`.
+- Decision:
+  `REJECT_STATS_INCOMPLETE_TICKS_REGRESSION_SOURCE_RESTORED`.  Do not promote
+  this restore: it is correct and resource-clean, but it does not beat the
+  current canonical boundary n_tile repeat best, and the available stats are
+  too weak to prove the required active-share/resource counters.  Keep the
+  canonical scalar sidecar read while the next optimization targets the larger
+  startup/page-ownership or early causal-tile bottleneck.
