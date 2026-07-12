@@ -1,5 +1,27 @@
 # Source Status
 
+## 2026-07-12 dQ Consumer1 Reverse M16 Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  q-tile split suggested early causal tiles may suffer per-SIMD work
+  imbalance.  The temporary mapping kept consumer0 rows `0..3` but reversed
+  consumer1 rows to `7..4`, pairing same-SIMD work as `(0,7)`, `(1,6)`,
+  `(2,5)`, `(3,4)` instead of `(0,4)`, `(1,5)`, `(2,6)`, `(3,7)`.
+- Gates:
+  remote build/source/metadata PASS with unchanged resources:
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch.  H1/S128 and
+  H1/S1024 correctness PASS; `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats were `simTicks=30,142,840`, MMAC active `32.2965%`,
+  `MMOP=50,688`, `VALU=58,144`, `SCA=54,316`,
+  `coissue=6,237/9,730`.  This regresses versus accepted repeat best
+  `29,706,495` ticks.
+- Decision:
+  reject and restore canonical source.  Row pairing alone does not move the
+  critical path; PageFilled/PageUsed/softmax/control remain dominant.
+
 ## 2026-07-12 dQ Conditional Page Barrier Rejected
 
 Status: `REJECT_STATS_NO_BEST_WIN_SOURCE_RESTORED`.

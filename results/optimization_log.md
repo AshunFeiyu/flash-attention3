@@ -11240,3 +11240,24 @@ Conclusion:
   standalone branch-level pruning it only ties the first-run canonical number
   and regresses against the accepted repeat best.  Future early-tile work must
   remove a larger fixed-cost block or change the amount of useful work per CTA.
+
+## 2026-07-12 dQ consumer1 reverse M16 mapping rejected
+
+- Hypothesis:
+  early causal q-tiles may be hurt by per-SIMD row-work imbalance.  Reversing
+  consumer1's M16 row mapping pairs same-SIMD consumer waves as `(0,7)`,
+  `(1,6)`, `(2,5)`, `(3,4)`, which should balance causal n-tile counts better
+  than the canonical `(0,4)`, `(1,5)`, `(2,6)`, `(3,7)`.
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.  Static/resource gates and
+  H1/S128/H1/S1024 correctness passed.  H1/S1024 stats:
+  `simTicks=30,142,840`, MMAC active `32.2965%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,316`, `coissue=6,237/9,730`,
+  `ldsBankConflict=0`.
+- Evidence:
+  run
+  `/zys/shaobo_runs/dq_consumer1_reverse_m16_20260712_115000/dq_correctness_20260712_114901`.
+- Decision:
+  reject and restore source.  The mapping is correct but does not beat the
+  canonical repeat best; row-work imbalance is not the dominant critical path
+  once the current ABarrier/page ownership and softmax path are included.

@@ -1644,6 +1644,19 @@ dQ conditional page barrier lifetime, 2026-07-12:
   change, such as changing useful work per CTA or a separate proven early-tile
   schedule, not another small PageUsed/init tweak.
 
+dQ consumer1 reverse M16 mapping, 2026-07-12:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.  Pairing same-SIMD consumer
+  waves as `(0,7)/(1,6)/(2,5)/(3,4)` instead of canonical
+  `(0,4)/(1,5)/(2,6)/(3,7)` passed correctness and gates, but H1/S1024 was
+  `simTicks=30,142,840`, `MMAC active=32.2965%`, worse than the accepted
+  repeat best.
+- Lesson:
+  causal row-work balance is a plausible concern, but this simple ownership
+  remap does not move the critical path.  Continue focusing on larger
+  ownership/softmax/control restructuring or native dS dependency design.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
