@@ -77,7 +77,9 @@ evidence are required before any performance claim.
   dP-before-Q first-pair split passed correctness/resources but regressed
   `simTicks 46,716,670 -> 48,090,770` and MMAC active
   `33.2391% -> 32.5023%`, so keep score/dP fused unless xcu proves a real
-  dO-ready/Q-not-ready gap.
+  dO-ready/Q-not-ready gap; after half-filled merge, removing producer1
+  `seq_q_half_filled` reduced SCA but regressed repeat ticks
+  `46,698,470 -> 46,755,345` and MMAC active `33.3278% -> 33.1816%`.
   Do not keep any of these in active source.
 - Next dKV work should target ABarrier/page lifetime or useful MMAC per
   ownership epoch while keeping sidecar LDS-local and the hot matrix path on

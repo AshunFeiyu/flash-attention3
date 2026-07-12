@@ -1,5 +1,33 @@
 # Source Status
 
+## 2026-07-12 dKV Producer1 Filled-Seq Prune Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  after `dkv_half_filled_merge`, both producer groups still call
+  `seq_q_half_filled` on the same combined `Q0Filled/Q1Filled` tokens.  Test
+  whether producer1 can skip `seq` and only publish dO plus arrive, reducing
+  SCA without changing LDS layout, MMAC count, or Used lifetime.
+- Gates:
+  temporary source passed build, dKV source gate, and metadata gate:
+  branch windows `14/16,221/240,221/240,8/16`; `private=0`, `sgpr=97`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 causal correctness
+  PASS; `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 produced `simTicks=46,755,345`, MMAC active `33.1816%`,
+  `MMOP=131,072`, `VALU=168,384`, `SCA=111,432`,
+  `coissue=38,424/26,956`, `waitLgkm=52,109.50`,
+  `barrier=141,081.26`.  It lowers SCA by 512 versus
+  `dkv_half_filled_merge`, but regresses repeat ticks
+  `46,698,470 -> 46,755,345`, lowers MMAC active, and raises wait/barrier.
+- Evidence:
+  `/zys/shaobo_runs/dkv_half_filled_seq_p0only_20260712_162013`.
+- Decision:
+  reject and restore source.  `s_abarrier_seq` removal is not a free
+  instruction-count win; it can worsen the ready cadence even when correctness
+  holds.
+
 ## 2026-07-12 dKV Half-Filled Token Merge Observed
 
 Status: `OBSERVE_STATS_REPEAT_WIN_FULLPERF_PMD_STARTUP_BLOCKED`.

@@ -1,5 +1,33 @@
 # Optimization Log
 
+## 2026-07-12 dKV Producer1 Filled-Seq Prune Probe
+
+- Hypothesis:
+  after merging Q/dO half-filled readiness, producer0 and producer1 both call
+  `seq_q_half_filled` for the same token.  Maybe producer0 can own the `seq`
+  and producer1 can only arrive after dO MLS/BPS, trimming SCA.
+- Source experiment:
+  temporary only.  Removed `seq_q_half_filled<Wdra, 0/1>()` from
+  `producer_vdout_loop`; all `QUsed`/`DoutUsed`, arrive counts, and consumer
+  waits were unchanged.
+- Static/resource:
+  build, dKV gate, and metadata gate PASS.  Branch windows
+  `14/16,221/240,221/240,8/16`; metadata `private=0`, `sgpr=97`,
+  `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS; `ldsBankConflict=0`.
+- PMD stats:
+  H1/S1024 `simTicks=46,755,345`, MMAC active `33.1816%`,
+  `MMOP=131,072`, `VALU=168,384`, `SCA=111,432`,
+  `coissue=38,424/26,956`, `waitLgkm=52,109.50`,
+  `barrier=141,081.26`.
+- Evidence:
+  `/zys/shaobo_runs/dkv_half_filled_seq_p0only_20260712_162013`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.  Lower SCA and higher
+  coissue are not enough: ticks and MMAC active regress, and wait/barrier
+  increase.  Keep the producer1 `seq` calls in the canonical route.
+
 ## 2026-07-12 dKV Half-Filled Token Merge
 
 - Hypothesis:
