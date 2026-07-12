@@ -7351,3 +7351,18 @@ dQ AllDone terminal handshake, 2026-07-12:
   before invalidation.  Wave0 can invalidate while another wave is still in or
   just reaching the wait path.  Any future terminal-sync reduction needs a
   two-phase safe-invalidate design or documented ABI proof.
+
+dKV ReleasePage read/wait merge, 2026-07-12:
+
+- Tried and rejected after H1/S1024 stats.  The candidate merged dO and Q
+  ReleasePage source reads into one 8-read `ds_read_matrix` island and one
+  `wait_lgkm(0)`, then arrived both dO/Q half-used tokens together.
+- H1/S128 and H1/S1024 correctness passed with no spill/scratch and
+  `ldsBankConflict=0`.  The valid H1/S1024 stats improved local counters
+  (`waitLgkm=50,116.5`, `coissue=37,324/25,924`) but regressed ticks to
+  `46,648,875` versus accepted repeat `46,605,650`.
+- The source was restored locally and remotely; remote dKV gate passes again.
+- Lesson:
+  early dO-half release is part of the current ownership conveyor.  Reducing
+  one wait can still lose if it delays producer reuse.  Keep current early
+  release unless a new design preserves release timing while hiding wait.

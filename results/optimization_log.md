@@ -12111,3 +12111,34 @@ Status: `REJECT_PMD_ABARRIER_ILL_OP_SOURCE_RESTORED`
   The current terminal `__syncthreads()` has real semantic weight.  Do not
   remove it again without a two-phase invalidate protocol or documented ABI
   proof.
+
+## 2026-07-12 dKV ReleasePage Read/Wait Merge
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Design basis:
+  dKV xcu shows high `s_waitcnt` and `ds_read_matrix -> s_waitcnt` issue
+  gaps.  The ReleasePage branch currently reads dO sources, waits, releases
+  the dO half, then reads Q sources, waits, and releases the Q half.  The
+  candidate merged dO+Q source reads into one 8-read `ds_read_matrix` island
+  and one `wait_lgkm(0)`, then arrived both half-used tokens.  Formula DAG,
+  `Mq=128`, K/V resident ownership, Q/dO half tokens, softmax/dS, dV/dK MMAC,
+  store ownership, and matrixized path stayed unchanged.
+- Gates:
+  static/source/metadata PASS with `private=0`, `sgpr=99`, `vgpr=128`,
+  no spill/scratch.  H1/S128 and one H1/S1024 correctness PASS,
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats were mixed: `waitLgkm` improved to `50,116.5` from the
+  accepted dKV tail-cleanup repeat `52,009`, coissue success improved to
+  `37,324` from `35,755`, and MMAC active was `33.620%`; however ticks
+  regressed to `46,648,875` versus accepted repeat `46,605,650`.
+  Instruction counts stayed `MMOP=131,072`, `VALU=168,384`, `SCA=111,248`,
+  `LDS=79,360`, `VMEM=4,352`.
+- Repeat status:
+  two repeat attempts aborted before dispatch with the known libhsakmt buffer
+  overflow, not a kernel PMD panic.
+- Decision:
+  reject and restore source.  The early dO-half release appears to matter
+  more than removing one wait in this ownership conveyor.  Do not promote
+  wait-count reductions unless same-shape ticks also drop.

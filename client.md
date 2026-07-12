@@ -1959,3 +1959,22 @@ dQ AllDone terminal handshake, 2026-07-12:
   terminal barrier cost is real, but the current sync also protects ABarrier
   invalidation.  Do not retry a one-phase AllDone replacement; a valid design
   needs two-phase safe invalidation or a documented Shaobo ABarrier ABI rule.
+
+dKV ReleasePage read/wait merge, 2026-07-12:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.  Merging dO+Q ReleasePage
+  reads into one 8-read island reduced wait counters but did not reduce ticks.
+- Evidence:
+  static/resource gates passed and H1/S128/H1/S1024 correctness passed.
+  H1/S1024 stats were `46.649M` ticks, `waitLgkm=50,116.5`,
+  `coissue=37,324/25,924`, `MMAC active=33.620%`, `ldsBankConflict=0`.
+  Current accepted dKV repeat is `46.606M` ticks with worse local wait/coissue
+  counters, so this is not a promotion.
+- Restore:
+  source is back to the canonical early dO-half release path, and remote dKV
+  gate passes.
+- Lesson:
+  in dKV, producer reuse timing can dominate local wait-count reductions.
+  Optimize ownership conveyor timing, not just the number of `s_waitcnt`
+  instructions.
