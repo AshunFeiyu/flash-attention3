@@ -1669,6 +1669,25 @@ dQ tail no-invalidate, 2026-07-12:
   terminal role-exit discipline.  Do not remove tail cleanup in canonical dQ
   unless a focused ABI/PMD proof makes it safe.
 
+dQ dS-cache VUsed, 2026-07-12:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.  This was the corrected
+  version of VUsed early release: compute all page-local `score+dP+dS`, cache
+  four dS fragment pairs in VGPR, release V with `VUsed`, then reread K and
+  compute `dQ`.
+- Evidence:
+  gates and H1/S128/H1/S1024 correctness passed, no spill/scratch,
+  `ldsBankConflict=0`.  H1/S1024 regressed to `simTicks=30,905,875`,
+  `MMAC active=31.1624%`, `VALU=63,968`, `SCA=63,672`,
+  `coissue=5,802/11,721`.
+- Lesson:
+  this proves the legal V-early lifetime is too expensive in the current
+  canonical dQ loop.  Extra tokens, two-phase n-tile traversal, and dS cache
+  live range dominate the overlap benefit.  Do not retry VUsed as a small
+  token split; any next dQ improvement needs a larger ownership/dependency
+  redesign or early-causal-tile specialization.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

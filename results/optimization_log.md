@@ -1,5 +1,37 @@
 # Optimization Log
 
+## 2026-07-12 dQ dS-Cache VUsed
+
+Decision: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+Hypothesis:
+
+The previous VUsed early-release attempt was semantically too early because the
+same V page is still needed by later `n_tile` dP work.  Try the correct
+lifetime: compute all page-local `score + dP + dS` fragments first, cache four
+dS fragment pairs in VGPR, arrive `VUsed`, then reread K and compute
+`dQ = dS @ K`.
+
+Evidence:
+
+- Temporary source added separate `Page{0,1}VFilled/VUsed` tokens and split
+  the consumer page loop into dS-cache and dQ-update phases.
+- Build/source/metadata gates passed.  Consumer branch windows grew
+  `159 -> 175/216`; metadata remained legal:
+  `private=0`, `sgpr=69`, `vgpr=128`, no spill/scratch.
+- H1/S128 and H1/S1024 correctness passed; `ldsBankConflict=0`.
+- H1/S1024 stats regressed to `simTicks=30,905,875`,
+  `MMAC active=31.1624%`, `MMOP=50,688`, `VALU=63,968`,
+  `SCA=63,672`, `coissue=5,802/11,721`.
+
+Conclusion:
+
+Reject and restore source.  The lifetime is now correct, but it pays for that
+correctness with extra ABarrier tokens, a two-phase n-tile loop, larger live
+dS cache, and more VALU/SCA/barrier work.  This closes the small VUsed
+early-release direction: improving dQ now needs a larger ownership/dependency
+change, not another token-level split.
+
 ## 2026-07-12 dQ Builtin Try-Wait
 
 Decision: `REJECT_METADATA_PRIVATE_SEGMENT_SOURCE_RESTORED`

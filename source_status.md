@@ -1,5 +1,32 @@
 # Source Status
 
+## 2026-07-12 dQ dS-Cache VUsed Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  previous VUsed token-only release was semantically too early.  This
+  candidate implemented the correct lifetime version: for each K/V page,
+  consumers compute all page-local `score + dP + dS` fragments first, cache
+  four `dS` fragment pairs in VGPR, arrive `VUsed`, then reread K and compute
+  `dQ`.  Producer1 waits `VUsed` and uses separate `VFilled` tokens so V for
+  the next page can load while K remains live for dQ.
+- Gates:
+  build/source/metadata PASS.  Resources grew but stayed legal:
+  consumer windows `159 -> 175/216`, `private=0`, `sgpr=69`, `vgpr=128`,
+  no SGPR/VGPR spill.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 regressed to `simTicks=30,905,875`, MMAC active `31.1624%`,
+  `MMOP=50,688`, `VALU=63,968`, `SCA=63,672`, `LDS=26,352`,
+  `VMEM=1,408`, `coissue=5,802/11,721`, `waitLgkm=15,421.2`,
+  `barrier=56,671.2`.
+- Decision:
+  reject and restore canonical source.  Correct V early-release does create a
+  plausible lifetime, but extra ABarrier tokens, two-phase n-tile loops, and
+  dS cache live range increase control/VALU enough to overwhelm producer
+  overlap.
+
 ## 2026-07-12 dQ Tail No-Invalidate Rejected
 
 Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.
