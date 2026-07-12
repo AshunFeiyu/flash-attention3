@@ -11453,7 +11453,10 @@ Conclusion:
   first run
   `/zys/shaobo_runs/dq_page0_preload_nonoverlap_20260712_135155/dq_correctness_20260712_135200`;
   repeat
-  `/zys/shaobo_runs/dq_page0_preload_nonoverlap_repeat_20260712_135308/dq_correctness_20260712_135308`.
+  `/zys/shaobo_runs/dq_page0_preload_nonoverlap_repeat_20260712_135308/dq_correctness_20260712_135308`;
+  workbook
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `100_DQ_Page0Reject`.
 - Decision:
   `REJECT_ACTIVE_ONLY_TICKS_UNSTABLE_SOURCE_RESTORED`.  The hypothesis is
   partially true: barrier falls by roughly `3.5k-4.2k` cycles and active share
