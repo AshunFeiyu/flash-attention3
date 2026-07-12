@@ -6264,3 +6264,36 @@ Status: `REJECT_MLS32_DIRECT_Q_SOURCE_SLOT`.
   `REJECT_STATS_TICKS_REGRESSION`.  EBarrier group completion is not the right
   way to compress PageUsed ownership.  Stop this micro-route and move to a
   design that changes page lifetime or gives producers recurring useful work.
+
+## 2026-07-12 dQ source-slot coordinate probe
+
+Status: `OBSERVE_LAYOUT_FACT_REJECT_DIRECT_SOURCE_SLOT`.
+
+- Canonical source status:
+  `src/dq_kernel.cpp` remains at the accepted C74 branchless-causal canonical
+  path.  No performance kernel code was changed.
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `83_DQ_SourceSlotCoord`.
+- Probe source:
+  `probes/dq_source_slot_coordinate_probe.cpp`.
+- Build evidence:
+  `SRC=probes/dq_source_slot_coordinate_probe.cpp BIN=build/dq_source_slot_coordinate_probe ASM=build/dq_source_slot_coordinate_probe.asm TARGET_GFX=946 BUILD_ASM=1 ./build.sh`
+  emits the intended native matrix path: `matrix_load_32x32_b16 ... t bps lds`,
+  `ds_read_matrix_trans_format`, `v_mmac_f32_16x16x16_f16 ... lit`,
+  `ds_write_matrix_format`.  Metadata has no scratch/spill.
+- PMD evidence:
+  run `/zys/shaobo_runs/dq_source_slot_coord_probe_20260712_081829`.
+  Stdout reports `identity_errors=0`, proving the canonical score MMAC
+  computes the intended `(q,k)` coordinates in its own natural output layout.
+  It also reports `source_slot_errors=502 source_slots=504` and
+  `read_identity_errors=510`, proving that directly packing those natural
+  outputs into `ds_write_matrix_32x16_f16` does not produce the
+  `NativeDsSlotMap` source-slot layout.
+- Stats:
+  `simTicks=10,401,755`, `MMOP=16`, `VALU=479`, `SCA=339`, `LDS=158`,
+  `VMEM=8`, `ldsBankConflict=0`, `MMAC active=0.8579%`.
+- Next:
+  do not integrate natural MMAC-output `ds_write_matrix` into canonical dQ.
+  Either find a native reader/MMAC orientation that produces source-slot order
+  directly, or return to canonical dQ ownership/ABarrier optimization.

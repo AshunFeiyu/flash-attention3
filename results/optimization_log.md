@@ -10874,3 +10874,34 @@ Conclusion:
   `REJECT_STATS_TICKS_REGRESSION`.  Source restored to C74.  K-first is a
   useful resource-pressure lesson, but it breaks the paired score/dP MMAC
   island and increases readiness/control cost too much in the current topology.
+
+## 2026-07-12 dQ source-slot coordinate probe
+
+- Hypothesis:
+  before integrating a native dS ring, prove whether the real canonical
+  `Q @ K^T` MMAC output already lands in the source-lane/source-word order
+  required by `ds_write_matrix_32x16_f16`.  If it does, dS can be published to
+  LDS without scalar gather/permute.  If not, the next design must change the
+  producer MMAC orientation or accept a non-native transform cost.
+- Source:
+  added standalone `probes/dq_source_slot_coordinate_probe.cpp`.  Canonical
+  `src/dq_kernel.cpp` is unchanged.
+- Evidence:
+  PMD run `/zys/shaobo_runs/dq_source_slot_coord_probe_20260712_081829`
+  completed.  The probe uses the canonical score MMAC read pattern
+  (`matrix_load_32x32_b16 ... t bps lds`, `ds_read_matrix_trans_format`,
+  `v_mmac_f32_16x16x16_f16 ... lit`) with a coordinate-coded dot product.
+  Canonical MMAC identity mapping is correct:
+  `identity_errors=0`.  Direct source-slot publication is not correct:
+  `source_slot_errors=502/504`, and direct `ds_write_matrix -> ds_read_matrix`
+  readback has `read_identity_errors=510/512`.
+- Stats:
+  focused probe stats: `simTicks=10,401,755`, `MMOP=16`, `VALU=479`,
+  `SCA=339`, `LDS=158`, `VMEM=8`, `ldsBankConflict=0`.
+- Decision:
+  `OBSERVE_LAYOUT_FACT_REJECT_DIRECT_SOURCE_SLOT`.  The score arithmetic is
+  not the issue; the current MMAC output lane/word order is not the
+  `NativeDsSlotMap` source-slot order.  Do not wire canonical MMAC output
+  directly into `ds_write_matrix`.  Next useful work is a focused probe for a
+  different native MMAC/reader orientation that produces source-slot order, or
+  a top-level decision to abandon the native dS ring for the current dQ target.

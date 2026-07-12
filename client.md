@@ -1543,6 +1543,28 @@ dQ group-level PageUsed, 2026-07-12:
   next work should change the page lifetime or add useful producer-side work,
   not add another synchronization layer.
 
+dQ source-slot coordinate probe, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `83_DQ_SourceSlotCoord`.
+- Result:
+  `OBSERVE_LAYOUT_FACT_REJECT_DIRECT_SOURCE_SLOT`.  Added standalone
+  `probes/dq_source_slot_coordinate_probe.cpp`; canonical dQ source was not
+  changed.
+- Evidence:
+  PMD run `/zys/shaobo_runs/dq_source_slot_coord_probe_20260712_081829`
+  shows canonical score MMAC natural coordinates are correct
+  (`identity_errors=0`), but the same lane/word order is not the
+  `ds_write_matrix` source-slot order (`source_slot_errors=502/504`), and
+  direct readback fails (`read_identity_errors=510/512`).  Stats show no LDS
+  bank conflict in the probe (`ldsBankConflict=0`).
+- Lesson:
+  the native dS ring blocker is layout ownership, not score arithmetic.  Do not
+  directly write canonical MMAC output to LDS with `ds_write_matrix`; first
+  prove a native MMAC/reader orientation that emits `NativeDsSlotMap` source
+  order, or choose a different top-level dQ design.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
