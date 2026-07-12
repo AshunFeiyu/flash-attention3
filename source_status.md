@@ -1,5 +1,28 @@
 # Source Status
 
+## 2026-07-12 dQ Builtin Try-Wait Rejected
+
+Status: `REJECT_METADATA_PRIVATE_SEGMENT_SOURCE_RESTORED`.
+
+- Motivation:
+  xcu fullperf shows the largest bubble as
+  `s_abarrier_try_wait -> s_xor_b32`.  The current dQ wait wrappers use the
+  inline-asm `ins::abarrier_try_wait<true>` path; test whether the builtin
+  path improves codegen or scheduling.
+- Code:
+  temporary only.  Changed dQ PageFilled, PageUsed, QDoFilled, and QDoLatched
+  wait wrappers from `ins::abarrier_try_wait<true>` to
+  `ins::abarrier_try_wait<false>`.
+- Result:
+  build and dQ source gate passed, but symbol metadata failed:
+  `private_segment_fixed_size=12`, `sgpr=69`, `vgpr=128`,
+  no SGPR/VGPR spill.  The canonical hard gate requires private segment zero.
+- Decision:
+  reject without PMD.  Source restored to inline-asm wait wrappers and remote
+  metadata gate recertified back to `private=0`, `sgpr=65`, `vgpr=128`.
+  Do not retry builtin try-wait on this toolchain unless compiler evidence
+  shows it no longer creates private segment.
+
 ## 2026-07-12 dQ Contract Cleanup Recertified
 
 Status: `OBSERVE_CLEANUP_RECERT_CANONICAL_UNCHANGED`.

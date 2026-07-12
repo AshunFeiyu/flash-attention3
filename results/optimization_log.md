@@ -1,5 +1,33 @@
 # Optimization Log
 
+## 2026-07-12 dQ Builtin Try-Wait
+
+Decision: `REJECT_METADATA_PRIVATE_SEGMENT_SOURCE_RESTORED`
+
+Hypothesis:
+
+XCU shows the dominant gap as `s_abarrier_try_wait -> s_xor_b32`.  Current dQ
+uses the inline-asm `ins::abarrier_try_wait<true>` wrapper, which explicitly
+emits `s_xor_b32` for phase toggling.  Test whether the builtin wrapper
+`ins::abarrier_try_wait<false>` improves codegen or scheduling.
+
+Evidence:
+
+- Temporary source-only change: switched PageFilled, PageUsed, QDoFilled, and
+  QDoLatched wait wrappers to the builtin path.
+- Build and dQ source gate passed.
+- Symbol metadata failed:
+  `private_segment_fixed_size=12`, `sgpr=69`, `vgpr=128`, no SGPR/VGPR spill.
+- Source restored to inline-asm wait wrappers.
+- Remote metadata recert after restore:
+  `private=0`, `sgpr=65`, `vgpr=128`, no SGPR/VGPR spill.
+
+Conclusion:
+
+Reject without PMD.  The builtin path violates the no-private-segment hard
+gate on the current compiler/PMD route.  Keep inline-asm wait wrappers; attack
+ABarrier/control by changing ownership cadence or dependency graph instead.
+
 ## 2026-07-12 dQ Contract Cleanup
 
 Decision: `OBSERVE_CLEANUP_RECERT_CANONICAL_UNCHANGED`
