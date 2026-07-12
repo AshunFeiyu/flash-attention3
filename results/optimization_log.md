@@ -12048,3 +12048,38 @@ Status: `REJECT_STATIC_SGPR_SPILL`
   avoid template path duplication or first shrink scalar/sidecar live ranges.
   The next dKV attempt should use existing xcu evidence to reduce ownership
   wait/control without increasing branch-local scalar pressure.
+
+## 2026-07-12 dQ Tail Guard Removal
+
+Status: `REJECT_FULLPERF_REGRESSION_SOURCE_RESTORED`
+
+- Design basis:
+  the candidate kept the dQ formula DAG, `Mq=128,Nk=128,D=128`, Q/dO plus
+  sidecar latch, K/V PageFilled/PageUsed ownership, MMAC islands, and stores
+  unchanged.  It only removed the `active_k_tiles > 0` guard before the final
+  boundary K-page call.  The launch proof is valid for canonical dQ shapes:
+  `seqlen_q > 0`, `seqlen_q % BlockMq == 0`, `seqlen_k == seqlen_q`, and
+  `grid.x = seqlen_q / BlockMq`, so every launched q tile has
+  `active_k_tiles >= 1`.
+- Gates:
+  static/source/metadata PASS with `private=0`, `sgpr=65`, `vgpr=128`,
+  no spill/scratch.  H1/S128 and H1/S1024 correctness PASS,
+  `ldsBankConflict=0`.
+- Metrics:
+  stats-only was mixed: first H1/S1024 `27,875,120` ticks, repeat
+  `28,193,620` ticks versus prior boundary-split repeat `28,225,925`.
+  Fullperf regressed to `28,388,360` ticks versus accepted boundary-split
+  fullperf `27,984,775`.  PMD MMAC active was `33.190%`, VOP active
+  `24.306%`, `MMOP=50,688`, `VALU=67,876`, `SCA=41,708`, `LDS=26,352`,
+  `VMEM=1,408`, `coissue=16,205/14,356`, `waitLgkm=16,378.75`,
+  `barrier=48,591.0`.
+- Evidence:
+  fullperf:
+  `/zys/shaobo_runs/dq_tail_guard_removed_fullperf_20260712_232538/dq_correctness_20260712_232538/m5out/0/0/2796941_fa3_bwd_dq_clean.perf`.
+  xcu output:
+  `/zys/shaobo_runs/dq_tail_guard_removed_fullperf_20260712_232538/xcu_outputs`.
+- Decision:
+  reject and restore source.  The proof is logically valid but it does not
+  improve the actual pipeline.  This confirms the current dQ bottleneck is not
+  the final-page guard; continue with producer useful work, ownership epoch
+  reduction, or native dS handoff only after a resource proof.

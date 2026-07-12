@@ -7321,3 +7321,18 @@ dKV full-valid q-pair split, 2026-07-12:
   shape.  It adds too much branch-local scalar live range.  Future dKV causal
   fast-path work needs a lower-SGPR formulation or prior scalar-live-range
   cleanup.
+
+dQ tail guard removal, 2026-07-12:
+
+- Tried and rejected after fullperf.  The candidate removed the final
+  `active_k_tiles > 0` guard in the dQ page wrapper.  The canonical launch
+  proof is sound and static/resource/correctness gates passed, but fullperf
+  regressed to `28,388,360` ticks versus the accepted boundary-split fullperf
+  `27,984,775`.
+- The source was restored locally and remotely.  No wrong-layout path,
+  `natural_wrong`, `ds_read_b32`, bpermute, gather, or workaround layout route
+  was introduced.
+- Lesson:
+  this guard is not the dQ pipeline limiter.  Keep the accepted boundary
+  K-tile split as canonical and spend the next dQ effort on producer useful
+  work, fewer ownership epochs, or a resource-budgeted native dS handoff.

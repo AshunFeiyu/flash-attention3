@@ -1922,3 +1922,23 @@ dKV full-valid q-pair split, 2026-07-12:
   exact/full-valid template paths increases SGPR live range more than the
   potential mask-control saving.  Future dKV causal work needs a lower-SGPR
   formulation or scalar-live-range cleanup before another fast path split.
+
+dQ tail guard removal, 2026-07-12:
+
+- Result:
+  `REJECT_FULLPERF_REGRESSION_SOURCE_RESTORED`.  Removing the final
+  `active_k_tiles > 0` guard is valid for canonical dQ launch geometry, but it
+  did not improve the real pipeline.
+- Evidence:
+  static/resource gates pass and H1/S128/H1/S1024 correctness pass with no
+  spill/scratch and `ldsBankConflict=0`.  Stats-only was mixed
+  (`27.875M` first, `28.194M` repeat), but fullperf regressed to `28.388M`
+  ticks versus the accepted boundary K-tile split `27.985M`.  MMAC active
+  stayed around `33.19%`.
+- Restore:
+  source is back to the canonical boundary K-tile split.  Do not retry this as
+  an optimization unless a future compiler changes the generated control flow.
+- Lesson:
+  the remaining dQ gap to 40% MMAC active is not this final guard.  Focus on
+  producer useful work, ownership epoch reduction, or a native dS handoff with
+  a written LDS/VGPR/ABarrier budget.
