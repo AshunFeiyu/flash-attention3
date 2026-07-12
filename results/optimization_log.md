@@ -11261,3 +11261,24 @@ Conclusion:
   reject and restore source.  The mapping is correct but does not beat the
   canonical repeat best; row-work imbalance is not the dominant critical path
   once the current ABarrier/page ownership and softmax path are included.
+
+## 2026-07-12 dQ tail no-invalidate rejected
+
+- Hypothesis:
+  xcu shows a large terminal `s_barrier -> s_cbranch_vccnz` bubble.  If no
+  wave uses ABarrier after the main roles finish, removing the normal-path tail
+  `__syncthreads()` plus `s_abarrier_inv` might eliminate that bubble and let
+  workgroup teardown clean up.
+- Static evidence:
+  source/static/metadata gates passed, with `private=0`, `sgpr=63`,
+  `vgpr=128`, no spill/scratch.
+- Runtime:
+  H1/S128 PMD aborted before correctness with
+  `read vgpr81 before writing` and
+  `panic: cu0 simd1 vgpr81 is not init or has been freed` during MMOP
+  execution.  Run
+  `/zys/shaobo_runs/dq_no_tail_inv_20260712_121000/dq_correctness_20260712_120139`.
+- Decision:
+  `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.  The final sync/invalidate is
+  still needed for the current PMD/WDRA role-exit discipline.  This confirms
+  the tail bubble is real but not safely removable by deleting cleanup.

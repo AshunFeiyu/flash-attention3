@@ -1,5 +1,29 @@
 # Source Status
 
+## 2026-07-12 dQ Tail No-Invalidate Rejected
+
+Status: `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.
+
+- Motivation:
+  xcu fullperf showed a large tail bubble:
+  `s_barrier -> s_cbranch_vccnz` at `14.88%`.  The candidate removed the
+  normal-path terminal `__syncthreads()` and `s_abarrier_inv` sequence, leaving
+  `diag_store` synchronization unchanged, to test whether ABarrier resources
+  can be left to workgroup teardown after the last use.
+- Static:
+  build/source/metadata PASS; resources even improved locally to
+  `private=0`, `sgpr=63`, `vgpr=128`, no spill/scratch.
+- Runtime:
+  H1/S128 PMD aborted before correctness:
+  `read vgpr81 before writing` and
+  `panic: cu0 simd1 vgpr81 is not init or has been freed` during MMOP
+  execution.  Run:
+  `/zys/shaobo_runs/dq_no_tail_inv_20260712_121000/dq_correctness_20260712_120139`.
+- Decision:
+  reject and restore canonical source.  The terminal sync/invalidate sequence
+  remains part of the current WDRA/PMD role-exit discipline; do not remove it
+  in the performance kernel without a focused PMD/ABI proof.
+
 ## 2026-07-12 dQ Consumer1 Reverse M16 Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

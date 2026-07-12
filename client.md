@@ -1657,6 +1657,18 @@ dQ consumer1 reverse M16 mapping, 2026-07-12:
   remap does not move the critical path.  Continue focusing on larger
   ownership/softmax/control restructuring or native dS dependency design.
 
+dQ tail no-invalidate, 2026-07-12:
+
+- Result:
+  `REJECT_PMD_REGISTER_INIT_SOURCE_RESTORED`.  Removing normal-path terminal
+  `__syncthreads()+s_abarrier_inv` passed static metadata and reduced SGPR
+  `65 -> 63`, but H1/S128 PMD aborted with
+  `vgpr81 is not init or has been freed` during MMOP.
+- Lesson:
+  the xcu tail bubble is real, but the current PMD/WDRA path still needs the
+  terminal role-exit discipline.  Do not remove tail cleanup in canonical dQ
+  unless a focused ABI/PMD proof makes it safe.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:
