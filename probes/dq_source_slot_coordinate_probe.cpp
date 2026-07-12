@@ -25,7 +25,8 @@ constexpr int kMatrixBlockHalfs = kMatrixBlockBytes / sizeof(__half);
 constexpr int kQBase = 0;
 constexpr int kKBase = kQBase + kKBlocks * kMatrixBlockHalfs;
 constexpr int kDsBase = kKBase + kKBlocks * kMatrixBlockHalfs;
-constexpr int kLdsHalfs = kDsBase + 1024;
+constexpr int kModes = 4;
+constexpr int kLdsHalfs = kDsBase + kModes * 1024;
 constexpr int kWordsPerLane = 8;
 
 union Frag8 {
@@ -53,6 +54,93 @@ __device__ __forceinline__ uint16_t half_bits(_Float16 value) {
         uint16_t u;
     } v{value};
     return v.u;
+}
+
+template <int Mode>
+__device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
+                                             float* __restrict__ acc_dump,
+                                             float* __restrict__ read_dump,
+                                             uint16_t* __restrict__ read_bits,
+                                             int lane) {
+    Frag8 q_reg[kKBlocks];
+    Frag8 k_frag0[kKBlocks];
+    Frag8 k_frag1[kKBlocks];
+#pragma unroll
+    for (int d_block = 0; d_block < kKBlocks; ++d_block) {
+        const int lds_offset = d_block * kMatrixBlockBytes;
+        if constexpr (Mode == 0 || Mode == 2) {
+            ins::ds_read_matrix_32x16_trans(lds + kQBase, lds_offset,
+                                            q_reg[d_block].f16x8);
+        } else {
+            ins::ds_read_matrix_32x16_normal(lds + kQBase, lds_offset,
+                                             q_reg[d_block].f16x8);
+        }
+
+        if constexpr (Mode == 0 || Mode == 1) {
+            ins::ds_read_matrix_trans_pair(lds + kKBase, lds_offset,
+                                           k_frag0[d_block].f16x8,
+                                           k_frag1[d_block].f16x8);
+        } else {
+            ins::ds_read_matrix_normal_pair(lds + kKBase, lds_offset,
+                                            k_frag0[d_block].f16x8,
+                                            k_frag1[d_block].f16x8);
+        }
+    }
+
+    ins::F32x4 zero;
+    ins::zero_vgpr2(zero.u64[0]);
+    ins::zero_vgpr2(zero.u64[1]);
+
+    Acc4 acc0{};
+    Acc4 acc1{};
+    ins::wait_lgkm(0);
+    acc0.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[0],
+                                 k_frag0[0].f16x4[0], zero.f32);
+    acc1.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[0],
+                                 k_frag1[0].f16x4[0], zero.f32);
+#pragma unroll
+    for (int k_half = 1; k_half < 2; ++k_half) {
+        acc0.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[k_half],
+                                     k_frag0[0].f16x4[k_half], acc0.f32);
+        acc1.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[k_half],
+                                     k_frag1[0].f16x4[k_half], acc1.f32);
+    }
+#pragma unroll
+    for (int d_block = 1; d_block < kKBlocks; ++d_block) {
+#pragma unroll
+        for (int k_half = 0; k_half < 2; ++k_half) {
+            acc0.f32 = ins::mmac_f16_lit(q_reg[d_block].f16x4[k_half],
+                                         k_frag0[d_block].f16x4[k_half],
+                                         acc0.f32);
+            acc1.f32 = ins::mmac_f16_lit(q_reg[d_block].f16x4[k_half],
+                                         k_frag1[d_block].f16x4[k_half],
+                                         acc1.f32);
+        }
+    }
+
+    Frag8 natural{};
+    const int dump_base = (Mode * kWaveSize + lane) * kWordsPerLane;
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+        acc_dump[dump_base + i] = acc0.f[i];
+        acc_dump[dump_base + 4 + i] = acc1.f[i];
+        natural.h[i] = static_cast<_Float16>(acc0.f[i]);
+        natural.h[4 + i] = static_cast<_Float16>(acc1.f[i]);
+    }
+
+    ins::ds_write_matrix_32x16_f16(natural.f16x8,
+                                   lds + kDsBase + Mode * 1024, 0);
+    ins::wait_lgkm(0);
+    Frag8 readback{};
+    readback.f16x8 = __builtin_hcu_ds_read_matrix_trans_format_f16(
+        reinterpret_cast<_Float16*>(lds + kDsBase + Mode * 1024), 16, 2, 1,
+        0);
+    ins::wait_lgkm(0);
+#pragma unroll
+    for (int i = 0; i < kWordsPerLane; ++i) {
+        read_dump[dump_base + i] = static_cast<float>(readback.h[i]);
+        read_bits[dump_base + i] = half_bits(readback.h[i]);
+    }
 }
 
 __global__ void __launch_bounds__(kThreads, 1)
@@ -95,71 +183,10 @@ dq_source_slot_coordinate_probe_kernel(const __half* __restrict__ q,
     int phase = 0;
     ins::abarrier_try_wait<false>(kMlsBarrier, phase);
 
-    Frag8 q_reg[kKBlocks];
-    Frag8 k_frag0[kKBlocks];
-    Frag8 k_frag1[kKBlocks];
-#pragma unroll
-    for (int d_block = 0; d_block < kKBlocks; ++d_block) {
-        const int lds_offset = d_block * kMatrixBlockBytes;
-        ins::ds_read_matrix_32x16_trans(lds + kQBase, lds_offset,
-                                        q_reg[d_block].f16x8);
-        ins::ds_read_matrix_trans_pair(lds + kKBase, lds_offset,
-                                       k_frag0[d_block].f16x8,
-                                       k_frag1[d_block].f16x8);
-    }
-
-    ins::F32x4 zero;
-    ins::zero_vgpr2(zero.u64[0]);
-    ins::zero_vgpr2(zero.u64[1]);
-
-    Acc4 acc0{};
-    Acc4 acc1{};
-    ins::wait_lgkm(0);
-    acc0.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[0],
-                                 k_frag0[0].f16x4[0], zero.f32);
-    acc1.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[0],
-                                 k_frag1[0].f16x4[0], zero.f32);
-#pragma unroll
-    for (int k_half = 1; k_half < 2; ++k_half) {
-        acc0.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[k_half],
-                                     k_frag0[0].f16x4[k_half], acc0.f32);
-        acc1.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[k_half],
-                                     k_frag1[0].f16x4[k_half], acc1.f32);
-    }
-#pragma unroll
-    for (int d_block = 1; d_block < kKBlocks; ++d_block) {
-#pragma unroll
-        for (int k_half = 0; k_half < 2; ++k_half) {
-            acc0.f32 = ins::mmac_f16_lit(q_reg[d_block].f16x4[k_half],
-                                         k_frag0[d_block].f16x4[k_half],
-                                         acc0.f32);
-            acc1.f32 = ins::mmac_f16_lit(q_reg[d_block].f16x4[k_half],
-                                         k_frag1[d_block].f16x4[k_half],
-                                         acc1.f32);
-        }
-    }
-
-    Frag8 natural{};
-#pragma unroll
-    for (int i = 0; i < 4; ++i) {
-        acc_dump[lane * kWordsPerLane + i] = acc0.f[i];
-        acc_dump[lane * kWordsPerLane + 4 + i] = acc1.f[i];
-        natural.h[i] = static_cast<_Float16>(acc0.f[i]);
-        natural.h[4 + i] = static_cast<_Float16>(acc1.f[i]);
-    }
-
-    ins::ds_write_matrix_32x16_f16(natural.f16x8, lds + kDsBase, 0);
-    ins::wait_lgkm(0);
-    Frag8 readback{};
-    readback.f16x8 = __builtin_hcu_ds_read_matrix_trans_format_f16(
-        reinterpret_cast<_Float16*>(lds + kDsBase), 16, 2, 1, 0);
-    ins::wait_lgkm(0);
-#pragma unroll
-    for (int i = 0; i < kWordsPerLane; ++i) {
-        read_dump[lane * kWordsPerLane + i] =
-            static_cast<float>(readback.h[i]);
-        read_bits[lane * kWordsPerLane + i] = half_bits(readback.h[i]);
-    }
+    compute_mode<0>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<1>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<2>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<3>(lds, acc_dump, read_dump, read_bits, lane);
 
     __syncthreads();
     if (lane == 0) {
@@ -226,18 +253,35 @@ bool decode_qk(float value, int& q, int& k) {
     return q >= 0 && q < 32 && k >= 0 && k < 64;
 }
 
-void summarize_acc(const std::vector<float>& acc_dump) {
+const char* mode_name(int mode) {
+    switch (mode) {
+        case 0:
+            return "q_trans_k_trans";
+        case 1:
+            return "q_normal_k_trans";
+        case 2:
+            return "q_trans_k_normal";
+        case 3:
+            return "q_normal_k_normal";
+        default:
+            return "unknown";
+    }
+}
+
+bool summarize_acc(const std::vector<float>& acc_dump, int mode) {
     int identity_errors = 0;
     int source_slot_errors = 0;
     int source_slots = 0;
     int printed = 0;
+    const int mode_base = mode * kWaveSize * kWordsPerLane;
     for (int lane = 0; lane < kWaveSize; ++lane) {
         const int identity_q = lane & 15;
         const int group = lane >> 4;
         for (int word = 0; word < kWordsPerLane; ++word) {
             int q = -1;
             int k = -1;
-            const bool ok = decode_qk(acc_dump[lane * kWordsPerLane + word],
+            const int idx = mode_base + lane * kWordsPerLane + word;
+            const bool ok = decode_qk(acc_dump[idx],
                                       q, k);
             const int identity_k = (word >= 4 ? 16 : 0) + group * 4 +
                                    (word & 3);
@@ -262,7 +306,7 @@ void summarize_acc(const std::vector<float>& acc_dump) {
                             "dst_group=%d dst_word=%d value=%g\n",
                             lane, word, q, k, dst_q, expected_k, dst_group,
                             dst_word,
-                            acc_dump[lane * kWordsPerLane + word]);
+                            acc_dump[idx]);
                         ++printed;
                     }
                 }
@@ -270,24 +314,27 @@ void summarize_acc(const std::vector<float>& acc_dump) {
         }
     }
     std::printf(
-        "source_slot_coordinate_acc_summary identity_errors=%d "
+        "source_slot_coordinate_acc_summary mode=%d name=%s identity_errors=%d "
         "source_slot_errors=%d source_slots=%d identity_pass=%d "
         "source_slot_direct_pass=%d\n",
-        identity_errors, source_slot_errors, source_slots,
+        mode, mode_name(mode), identity_errors, source_slot_errors, source_slots,
         identity_errors == 0 ? 1 : 0,
         source_slot_errors == 0 && source_slots != 0 ? 1 : 0);
+    return source_slot_errors == 0 && source_slots != 0;
 }
 
-void summarize_direct_read(const std::vector<float>& read_dump) {
+bool summarize_direct_read(const std::vector<float>& read_dump, int mode) {
     int read_identity_errors = 0;
     int printed = 0;
+    const int mode_base = mode * kWaveSize * kWordsPerLane;
     for (int lane = 0; lane < kWaveSize; ++lane) {
         const int q_expected = lane & 15;
         const int group = lane >> 4;
         for (int word = 0; word < kWordsPerLane; ++word) {
             int q = -1;
             int k = -1;
-            const bool ok = decode_qk(read_dump[lane * kWordsPerLane + word],
+            const int idx = mode_base + lane * kWordsPerLane + word;
+            const bool ok = decode_qk(read_dump[idx],
                                       q, k);
             const int k_expected = group * 4 + (word & 3);
             if (!ok || q != q_expected || k != k_expected) {
@@ -297,16 +344,19 @@ void summarize_direct_read(const std::vector<float>& read_dump) {
                         "direct_read_mismatch lane=%d word=%d got_q=%d "
                         "got_k=%d expected_q=%d expected_k=%d value=%g\n",
                         lane, word, q, k, q_expected, k_expected,
-                        read_dump[lane * kWordsPerLane + word]);
+                        read_dump[idx]);
                     ++printed;
                 }
             }
         }
     }
     std::printf(
-        "source_slot_coordinate_direct_read_summary read_identity_errors=%d "
+        "source_slot_coordinate_direct_read_summary mode=%d name=%s "
+        "read_identity_errors=%d "
         "read_identity_pass=%d\n",
-        read_identity_errors, read_identity_errors == 0 ? 1 : 0);
+        mode, mode_name(mode), read_identity_errors,
+        read_identity_errors == 0 ? 1 : 0);
+    return read_identity_errors == 0;
 }
 
 }  // namespace
@@ -319,7 +369,7 @@ int main() {
     uint16_t* bits_dev = nullptr;
 
     const size_t matrix_bytes = kRows * kDim * sizeof(__half);
-    const size_t dump_elems = kWaveSize * kWordsPerLane;
+    const size_t dump_elems = kModes * kWaveSize * kWordsPerLane;
     check_hip(hipMalloc(reinterpret_cast<void**>(&q_dev), matrix_bytes),
               "hipMalloc q");
     check_hip(hipMalloc(reinterpret_cast<void**>(&k_dev), matrix_bytes),
@@ -374,8 +424,16 @@ int main() {
                         hipMemcpyDeviceToHost),
               "hipMemcpy bits");
 
-    summarize_acc(acc_dump);
-    summarize_direct_read(read_dump);
+    bool any_source_slot_pass = false;
+    bool any_direct_read_pass = false;
+    for (int mode = 0; mode < kModes; ++mode) {
+        any_source_slot_pass |= summarize_acc(acc_dump, mode);
+        any_direct_read_pass |= summarize_direct_read(read_dump, mode);
+    }
+    std::printf(
+        "source_slot_orientation_final any_source_slot_pass=%d "
+        "any_direct_read_pass=%d\n",
+        any_source_slot_pass ? 1 : 0, any_direct_read_pass ? 1 : 0);
 
     (void)hipFree(bits_dev);
     (void)hipFree(read_dev);

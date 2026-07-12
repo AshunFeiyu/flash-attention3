@@ -1565,6 +1565,28 @@ dQ source-slot coordinate probe, 2026-07-12:
   prove a native MMAC/reader orientation that emits `NativeDsSlotMap` source
   order, or choose a different top-level dQ design.
 
+dQ source-slot orientation probe, 2026-07-12:
+
+- Workbook sheet:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  `84_DQ_SourceSlotOrient`.
+- Result:
+  `REJECT_PROBE_CANONICAL_UNCHANGED`.  Extended only
+  `probes/dq_source_slot_coordinate_probe.cpp`; canonical dQ source was not
+  changed.
+- Evidence:
+  PMD run `/zys/shaobo_runs/dq_source_slot_orient_probe_20260712_083046`
+  tested four native reader combinations.  Only canonical
+  `q_trans_k_trans` preserves natural coordinates (`identity_errors=0`), but
+  it still fails source-slot order (`source_slot_errors=502/504`).  The other
+  three modes fail both identity and source-slot.  Final:
+  `any_source_slot_pass=0`, `any_direct_read_pass=0`, `ldsBankConflict=0`.
+- Lesson:
+  simple normal/trans reader swaps are not the missing native dS-ring link.
+  Further native dS work needs either a new instruction form or a measured
+  source-slot rearrangement; otherwise optimization should return to canonical
+  dQ ABarrier/page-ownership structure.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

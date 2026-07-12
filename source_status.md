@@ -6297,3 +6297,34 @@ Status: `OBSERVE_LAYOUT_FACT_REJECT_DIRECT_SOURCE_SLOT`.
   do not integrate natural MMAC-output `ds_write_matrix` into canonical dQ.
   Either find a native reader/MMAC orientation that produces source-slot order
   directly, or return to canonical dQ ownership/ABarrier optimization.
+
+## 2026-07-12 dQ source-slot orientation probe
+
+Status: `REJECT_PROBE_CANONICAL_UNCHANGED`.
+
+- Canonical source status:
+  `src/dq_kernel.cpp` remains unchanged from the accepted C74 branchless-causal
+  canonical path.
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `84_DQ_SourceSlotOrient`.
+- Probe source:
+  `probes/dq_source_slot_coordinate_probe.cpp` now tests four native reader
+  combinations:
+  `q_trans_k_trans`, `q_normal_k_trans`, `q_trans_k_normal`,
+  `q_normal_k_normal`.
+- PMD evidence:
+  run `/zys/shaobo_runs/dq_source_slot_orient_probe_20260712_083046`.
+  Summary:
+  mode0 `identity_errors=0 source_slot_errors=502/504`;
+  mode1 `identity_errors=448 source_slot_errors=502/504`;
+  mode2 `identity_errors=510 source_slot_errors=502/504`;
+  mode3 `identity_errors=512 source_slot_errors=502/504`.
+  The final result is `any_source_slot_pass=0 any_direct_read_pass=0`.
+- Stats:
+  `simTicks=12,640,355`, `MMOP=64`, `VALU=693`, `SCA=438`, `LDS=248`,
+  `VMEM=8`, `ldsBankConflict=0`, `MMAC active=2.5806%`.
+- Next:
+  stop simple reader-orientation swaps.  Either build a costed
+  source-slot-rearrangement probe, or return to canonical dQ ABarrier and
+  ownership optimization.

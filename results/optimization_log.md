@@ -10905,3 +10905,31 @@ Conclusion:
   directly into `ds_write_matrix`.  Next useful work is a focused probe for a
   different native MMAC/reader orientation that produces source-slot order, or
   a top-level decision to abandon the native dS ring for the current dQ target.
+
+## 2026-07-12 dQ source-slot orientation probe
+
+- Hypothesis:
+  the direct source-slot failure might be specific to the canonical
+  `Q trans + K trans` reader pair.  Test simple legal native reader
+  combinations before concluding that a source-slot rearrangement is required.
+- Source:
+  extended standalone `probes/dq_source_slot_coordinate_probe.cpp` with four
+  modes: `q_trans_k_trans`, `q_normal_k_trans`, `q_trans_k_normal`,
+  `q_normal_k_normal`.  Canonical `src/dq_kernel.cpp` is unchanged.
+- Evidence:
+  PMD run `/zys/shaobo_runs/dq_source_slot_orient_probe_20260712_083046`.
+  Mode0 is the only identity-correct score path:
+  `identity_errors=0`, but it still has `source_slot_errors=502/504`.
+  Modes1-3 do not preserve the natural score coordinates and also fail
+  source-slot order:
+  `identity_errors=448/510/512`, `source_slot_errors=502/504` for all.
+  Final line: `any_source_slot_pass=0`, `any_direct_read_pass=0`.
+- Stats:
+  `simTicks=12,640,355`, `MMOP=64`, `VALU=693`, `SCA=438`, `LDS=248`,
+  `VMEM=8`, `ldsBankConflict=0`.
+- Decision:
+  `REJECT_PROBE`.  Simple normal/trans reader swaps do not produce
+  `NativeDsSlotMap` source order.  Do not spend more time on reader-swap
+  variants unless a new HCU instruction form is identified.  Next route must
+  either quantify a source-slot rearrangement cost or return to canonical dQ
+  ABarrier/ownership optimization.
