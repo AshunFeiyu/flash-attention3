@@ -12018,3 +12018,33 @@ Status: `ACCEPT_CANONICAL_XCU`
   still ABarrier/control plus thin producer waves.  The next structural
   attempt should either give producers recurring useful work under PageUsed
   wait or revisit the native dS handoff design with a full resource budget.
+
+## 2026-07-12 dKV Full-Valid Q-Pair Split
+
+Status: `REJECT_STATIC_SGPR_SPILL`
+
+- Design basis:
+  current dKV already uses a causal-exact path, but it still evaluates the
+  per-element `owner_krow <= qrow` mask in q-pairs that are fully valid for the
+  current K16 owner.  The candidate kept algorithm, tile, MMAC count, K/V/Q/dO
+  ownership, and ABarrier lifecycle unchanged, and added a compile-time
+  `FullValid` softmax/dS path for q-pairs where
+  `owner_k_base + 15 <= q_pair_base`.
+- Source change:
+  temporary `FullValid` template parameter on
+  `softmax_ds_owner16_causal_exact_tile_ctx`, plus a small split wrapper
+  around `consume_mq_mpair_owner16_causal_exact_tile`.
+- Gate result:
+  build and dKV source gate PASS, but symbol metadata FAIL:
+  `private=0`, `sgpr=100`, `sgpr_spill_count=20`, `vgpr=128`,
+  `vgpr_spill_count=0`.  No PMD correctness or performance run was allowed.
+- Restore:
+  canonical dKV source restored locally and remotely; remote dKV gate and
+  symbol metadata recertified PASS with `private=0`, `sgpr=99`,
+  `sgpr_spill_count=0`, `vgpr=128`.
+- Decision:
+  reject.  Duplicating full-valid/exact consumer code is too expensive for
+  current dKV SGPR pressure.  If we revisit dKV causal fast paths, it must
+  avoid template path duplication or first shrink scalar/sidecar live ranges.
+  The next dKV attempt should use existing xcu evidence to reduce ownership
+  wait/control without increasing branch-local scalar pressure.

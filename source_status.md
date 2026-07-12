@@ -7305,3 +7305,19 @@ dQ boundary K-tile split, 2026-07-12:
   `s_xor_b32`, `s_cbranch_vccnz`, waitcnt, and thin producer waves.  Continue
   toward 40% MMAC active through producer useful work or a resource-budgeted
   native dS handoff, not by adding workaround layout paths.
+
+dKV full-valid q-pair split, 2026-07-12:
+
+- Tried and rejected before PMD.  The idea was to keep dKV math, tile,
+  ownership, and MMAC count unchanged while adding a compile-time full-valid
+  softmax/dS path for q-pairs that are entirely causal-valid for the owner
+  K16.
+- Build and dKV source gate passed, but symbol metadata failed with
+  `sgpr_spill_count=20` (`private=0`, `sgpr=100`, `vgpr=128`).  The source was
+  restored and the remote canonical dKV gate now passes again with
+  `sgpr_spill_count=0`.
+- Lesson:
+  do not duplicate dKV exact/full-valid consumer paths in the current code
+  shape.  It adds too much branch-local scalar live range.  Future dKV causal
+  fast-path work needs a lower-SGPR formulation or prior scalar-live-range
+  cleanup.

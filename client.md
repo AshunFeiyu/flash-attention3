@@ -1903,3 +1903,22 @@ dQ boundary K-tile split, 2026-07-12:
   `s_cbranch_vccnz`, waitcnt, and thin producer waves ahead of MMAC.  Next
   useful work should either make producers do recurring useful work during
   PageUsed waits, or revisit native dS handoff with a full LDS/VGPR budget.
+
+dKV full-valid q-pair split, 2026-07-12:
+
+- Result:
+  `REJECT_STATIC_SGPR_SPILL`.  I tried the dKV analogue of the dQ boundary
+  cleanup: add a compile-time full-valid softmax/dS path for q-pairs where the
+  current owner K16 is entirely causal-valid.
+- Why rejected:
+  build and source gate passed, but symbol metadata failed before PMD:
+  `private=0`, `sgpr=100`, `sgpr_spill_count=20`, `vgpr=128`.  This violates
+  the no-spill gate, so correctness/perf were not run.
+- Restore:
+  canonical dKV source was restored locally and remotely; remote dKV gate
+  recertified with `sgpr_spill_count=0`.
+- Lesson:
+  dKV consumer is already close to scalar pressure limits.  Duplicating
+  exact/full-valid template paths increases SGPR live range more than the
+  potential mask-control saving.  Future dKV causal work needs a lower-SGPR
+  formulation or scalar-live-range cleanup before another fast path split.
