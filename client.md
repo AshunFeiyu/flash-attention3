@@ -77,6 +77,24 @@ evidence are required before any performance claim.
 
 ## Current dQ Override
 
+- 2026-07-12 current canonical:
+  `dq_boundary_ntile_classify` is still the accepted best.  Repeat H1/S1024
+  under `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']` is
+  `simTicks=29,706,495`, MMAC active `32.0864%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,316`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=6,280/10,438`, `ldsBankConflict=0`.
+- 2026-07-12 `.53` recert:
+  jump host `.53` recovered and remote `/zys/shaobo/fa3_bwd_wasp_clean` was
+  resynced from local canonical commit `a351fc3`.  Build/gates pass with
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch and branch windows
+  `8/40,159/216,159/216,9/40`; H1/S128 and H1/S1024 causal correctness pass.
+  The SQ7 recert run gives `simTicks=30,237,935`, MMAC active `31.7677%` with
+  identical instruction counts to the best run, so it is an
+  `OBSERVE_ENV_RECERT`, not a new best.
+- Command caution:
+  a nested-quote SSH command accidentally dropped `--SQCIPfLines=7` and
+  produced a false regression (`31,546,515` ticks / `29.7161%`).  Prefer
+  heredoc or the `scripts/env.sh` default for PMD runs.
 - 2026-07-12 latest rejected micro-restore:
   restoring the old SoA `Vec4F32` consumer sidecar LDS reads passed remote
   build/static/metadata and H1/S128/H1/S1024 correctness, but the available

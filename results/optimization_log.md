@@ -11380,3 +11380,40 @@ Conclusion:
   too weak to prove the required active-share/resource counters.  Keep the
   canonical scalar sidecar read while the next optimization targets the larger
   startup/page-ownership or early causal-tile bottleneck.
+
+## 2026-07-12 dQ canonical resync on liuchang .53
+
+- Context:
+  jump host `.53` recovered.  Remote
+  `/zys/shaobo/fa3_bwd_wasp_clean` is a plain source copy rather than a git
+  checkout, so local canonical `a351fc3` files were synced back with tar:
+  `src/dq_kernel.cpp`, `client.md`, `source_status.md`,
+  `results/optimization_log.md`, and `results/perf_ledger.csv`.
+- Static/resource:
+  remote build, dQ gate, and metadata gate passed after sync.  Metadata stayed
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch; branch windows stayed
+  `8/40,159/216,159/216,9/40`.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS on `GPU_CHIP=sb`.
+- PMD/SQ7 recert:
+  an initial nested SSH command accidentally passed an empty `GPU_ARGS`,
+  producing no `--SQCIPfLines=7` in PMD args and regressed H1/S1024 to
+  `31,546,515` ticks / `29.7161%` MMAC active.  This is an environment-command
+  artifact, not a kernel result.
+  Re-running with heredoc and default `env.sh` restored
+  `GPU_ARGS=['--SQCIPfLines=7']`; H1/S1024 passed with
+  `simTicks=30,237,935`, MMAC active `31.7677%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,316`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=6,155/10,056`, `ldsBankConflict=0`.
+- Evidence:
+  SQ7 recert run
+  `/zys/shaobo_runs/dq_canonical_resync_sq7_20260712_134117/dq_correctness_20260712_134117`;
+  stats
+  `/zys/shaobo_runs/dq_canonical_resync_sq7_20260712_134117/dq_correctness_20260712_134117/m5out/0/0/stats.txt`.
+- Decision:
+  `OBSERVE_ENV_RECERT`.  No source promotion.  The accepted repeat best remains
+  `dq_boundary_ntile_classify` at `29,706,495` ticks / `32.0864%`; current
+  SQ7 recert has identical instruction counts and is within a small run-to-run
+  band, but is not a new best.  Future SSH-driven PMD commands should avoid
+  nested quote construction for `GPU_ARGS`; prefer heredoc or let `env.sh`
+  supply the default SQ7 value.

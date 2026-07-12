@@ -6798,3 +6798,32 @@ source.
   so lower whole-kernel MMAC active is not enough to reject it; however it does
   not advance the core pipeline target to 40%.  Next work should attack
   ABarrier ownership/useful overlap or the native dS source-slot design.
+
+## 2026-07-12 dQ liuchang .53 canonical resync
+
+Status: `OBSERVE_ENV_RECERT`; source unchanged.
+
+- Context:
+  jump host `.53` recovered.  Remote `/zys/shaobo/fa3_bwd_wasp_clean` is a
+  plain source copy, so local canonical commit `a351fc3` files were synced back
+  to it.
+- Static/resource:
+  build, dQ gate, and metadata gate PASS.  Metadata remains `private=0`,
+  `sgpr=65`, `vgpr=128`, no spill/scratch.  Branch windows remain
+  `8/40,159/216,159/216,9/40`.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS.
+- PMD stats:
+  with `GPU_CHIP=sb` and `GPU_ARGS=['--SQCIPfLines=7']`, H1/S1024 gives
+  `simTicks=30,237,935`, MMAC active `31.7677%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,316`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=6,155/10,056`, `ldsBankConflict=0`.
+- Caution:
+  a nested-quote SSH run accidentally omitted SQ7 and produced
+  `simTicks=31,546,515`, MMAC active `29.7161%`.  Treat that as command/env
+  error, not a kernel regression.  Use heredoc or `scripts/env.sh` defaults for
+  future PMD runs.
+- Current best:
+  `dq_boundary_ntile_classify` remains the accepted best at `29,706,495`
+  ticks / `32.0864%` MMAC active.  No source change is promoted by this
+  recert.
