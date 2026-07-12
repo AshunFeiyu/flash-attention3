@@ -1753,3 +1753,26 @@ dQ Nk256 single-page result, 2026-07-11:
   It removes K/V double buffering/prefetch and adds causal padding work; do
   not retry `Nk256` single-page unless the output/causal ownership design also
   changes.
+
+dQ setprio MMAC islands, 2026-07-12:
+
+- Result:
+  `ACCEPT_MICRO_CANONICAL`.  FWD-style `s_setprio` is now wrapped around dQ
+  score/dP and `dS @ K` MMAC islands.  Tile shape, math, LDS layout, ABarrier
+  tokens, Q/dO latch, K/V page ownership, and store ownership are unchanged.
+- Evidence:
+  static/resource gates pass with `private=0`, `sgpr=65`, `vgpr=128`, no
+  spill/scratch, and branch windows `8/40,159/216,159/216,9/40`.  H1/S128 and
+  H1/S1024 causal correctness pass under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- PMD:
+  H1/S1024 improves from accepted best `29,706,495` ticks / `32.0864%`
+  MMAC active to first run `29,145,480` ticks / `32.7016%`, repeat
+  `29,438,955` ticks / `32.5598%`.  Instruction counts stay the same:
+  `MMOP=50,688`, `VALU=58,144`, `SCA=54,316`, `LDS=26,352`, `VMEM=1,408`;
+  `ldsBankConflict=0`.  Coissue success improves from `6,280` to
+  `10,706`/`11,366`.
+- Lesson:
+  FWD-style priority is a real micro-win for canonical dQ and should remain in
+  the baseline.  It improves scheduler/coissue behavior but does not solve the
+  larger ownership/wait/control bottleneck or reach the 40% MMAC active target.

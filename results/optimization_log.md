@@ -11464,3 +11464,52 @@ Conclusion:
   `29,706,495` ticks in a stable way, and it costs extra SGPR/SCA.  Keep this
   as evidence that page0 startup ownership matters, but do not preserve the
   split preloader in canonical source.
+
+## 2026-07-12 dQ setprio MMAC islands accepted
+
+- Hypothesis:
+  FWD raises priority around QK MMAC islands and lowers it before softmax or
+  other work.  Canonical dQ had long score/dP and dS@K MMAC islands but no
+  `s_setprio`.  Wrapping only these MMAC islands should improve scheduler
+  behavior and coissue without changing math, tile, LDS, ABarrier ownership, or
+  output ownership.
+- Source change:
+  added `ins::raise_priority_2()` / `ins::lower_priority()` around the
+  score+dP MMAC island in the dQ consumer loop and around
+  `dq_update_from_ds_pair`.
+- Static/resource:
+  build, dQ gate, and symbol metadata gate PASS.  Metadata stays
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch, branch windows
+  `8/40,159/216,159/216,9/40`.  ASM contains repeated `s_setprio 2` /
+  `s_setprio 0` pairs in `fa3_bwd_dq_kernel`.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- PMD stats:
+  accepted repeat best:
+  `simTicks=29,706,495`, MMAC active `32.0864%`,
+  `coissue=6,280/10,438`.
+  Setprio first:
+  `simTicks=29,145,480`, MMAC active `32.7016%`,
+  `coissue=10,706/9,408`, `waitLgkm=16,337.8`,
+  `barrier=56,236.2`, `ldsBankConflict=0`.
+  Setprio repeat:
+  `simTicks=29,438,955`, MMAC active `32.5598%`,
+  `coissue=11,366/9,916`, `waitLgkm=16,368.5`,
+  `barrier=56,600.8`, `ldsBankConflict=0`.
+  Instruction counts are unchanged:
+  `MMOP=50,688`, `VALU=58,144`, `SCA=54,316`, `LDS=26,352`,
+  `VMEM=1,408`.
+- Evidence:
+  first root `/zys/shaobo_runs/dq_setprio_mmac_islands_20260712_141620`;
+  repeat
+  `/zys/shaobo_runs/dq_setprio_mmac_islands_repeat_20260712_141804`;
+  workbook
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `101_DQ_SetprioAccept`.
+- Decision:
+  `ACCEPT_MICRO_CANONICAL`.  This is a valid FWD-style micro-win and should
+  stay in the canonical dQ baseline.  It improves ticks by `0.27M-0.56M`
+  versus the accepted repeat best and improves coissue/active without resource
+  cost.  It is not the structural solution: remaining work must still attack
+  ownership/wait/control bubbles to move toward 40% MMAC active.

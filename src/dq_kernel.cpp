@@ -322,6 +322,7 @@ __device__ __forceinline__ void dq_update_from_ds_pair(
     const __half* k_lds =
         lds + DqLdsLayout<Tile>::kPageKBase(page) / sizeof(__half);
 
+    ins::raise_priority_2();
     ins::F16x8 k_norm0[Tile::kHeadDim / 32];
     ins::F16x8 k_norm1[Tile::kHeadDim / 32];
 #pragma unroll
@@ -366,6 +367,7 @@ __device__ __forceinline__ void dq_update_from_ds_pair(
             ins::mmac_f16_lit(ds_vec1, k_norm1[d_block].f16x4[1],
                               dq_reg[d_block * 2 + 1].f32);
     }
+    ins::lower_priority();
 }
 
 template <typename Bar>
@@ -491,6 +493,7 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
             ins::F32x4 qk_acc1;
             ins::F32x4 dp_acc0;
             ins::F32x4 dp_acc1;
+            ins::raise_priority_2();
             ins::wait_lgkm(8);
             qk_acc0.f32 = ins::mmac_f16_lit(
                 q_reg[0].f16x4[0], k_frag0[0].f16x4[0], mmac_zero.f32);
@@ -552,6 +555,7 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
                         v_frag1[d_block].f16x4[k_half], dp_acc1.f32);
                 }
             }
+            ins::lower_priority();
 
             ins::Vec4F16 ds_vec0;
             ins::Vec4F16 ds_vec1;

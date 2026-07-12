@@ -6848,3 +6848,51 @@ Status: `REJECT_ACTIVE_ONLY_TICKS_UNSTABLE`; source restored.
   `29,706,495`, and the extra SGPR/SCA cost is not free.  The useful lesson is
   that page0 startup ownership is real, but splitting one conflict block is not
   a sufficient structural fix.
+
+## 2026-07-12 dQ setprio MMAC islands
+
+Status: `ACCEPT_MICRO_CANONICAL`; this is now the current canonical dQ source.
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `101_DQ_SetprioAccept`.
+- Design basis:
+  FWD wraps QK MMAC islands with `s_setprio 2` and lowers priority before
+  softmax/other work.  dKV already uses the shared
+  `ins::raise_priority_2/lower_priority` wrappers, but canonical dQ had no
+  priority islands.  This candidate applies the same FWD-style scheduling only
+  to dQ MMAC islands.
+- Source change:
+  add `ins::raise_priority_2()` / `ins::lower_priority()` around the
+  score+dP MMAC island inside the dQ consumer loop, and around the
+  `dq_update_from_ds_pair` `dS @ K` MMAC helper.  No tile, math, LDS layout,
+  ABarrier token, Q/dO latch, K/V page, or store ownership change.
+- Static/resource:
+  build, dQ gate, and metadata gate PASS.  Metadata remains `private=0`,
+  `sgpr=65`, `vgpr=128`, no spill/scratch.  Branch windows remain
+  `8/40,159/216,159/216,9/40`.  ASM shows repeated `s_setprio 2` /
+  `s_setprio 0` pairs in `fa3_bwd_dq_kernel`.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- PMD stats:
+  accepted repeat best was `29,706,495` ticks, MMAC active `32.0864%`,
+  `coissue=6,280/10,438`.
+  First H1/S1024 setprio run: `29,145,480` ticks, MMAC active `32.7016%`,
+  `coissue=10,706/9,408`, `waitLgkm=16,337.8`, `barrier=56,236.2`,
+  `ldsBankConflict=0`.
+  Repeat: `29,438,955` ticks, MMAC active `32.5598%`,
+  `coissue=11,366/9,916`, `waitLgkm=16,368.5`, `barrier=56,600.8`,
+  `ldsBankConflict=0`.
+  Instruction counts are unchanged: `MMOP=50,688`, `VALU=58,144`,
+  `SCA=54,316`, `LDS=26,352`, `VMEM=1,408`.
+- Evidence:
+  H1/S128/H1/S1024 first root
+  `/zys/shaobo_runs/dq_setprio_mmac_islands_20260712_141620`;
+  repeat
+  `/zys/shaobo_runs/dq_setprio_mmac_islands_repeat_20260712_141804`.
+- Decision:
+  accept as a canonical micro-win.  It proves FWD-style priority helps dQ
+  scheduler/coissue behavior without extra resource cost, but it does not
+  resolve the remaining ABarrier/wait/control bottleneck or reach the 40%
+  MMAC active target.
