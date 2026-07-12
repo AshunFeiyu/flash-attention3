@@ -1,5 +1,36 @@
 # Optimization Log
 
+## 2026-07-12 dQ QDoFilled Group Split
+
+Decision: `REJECT_STATS_NO_BEST_WIN_SOURCE_RESTORED`
+
+Hypothesis:
+
+Current fullperf shows a large ABarrier/control bubble.  PMD trace maps one
+early wait class to `barId 4` (`QDoFilled`), where both consumers wait for all
+eight producer waves.  Split the startup filled token into group-local
+`QDoFilled0` and `QDoFilled1`, while leaving `QDoLatched` as a single 8-wave
+token because page0 K/V reuses the sidecar LDS region.
+
+Evidence:
+
+- Temporary source changed only the dQ barrier ledger and QDo filled
+  wait/arrive wrappers.
+- Build/source/metadata gates passed with unchanged resources:
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch.
+- H1/S128 and H1/S1024 correctness passed; `ldsBankConflict=0`.
+- H1/S1024 first run: `simTicks=29,853,915`, MMAC active `32.3773%`,
+  `coissue=6,046/9,704`, `waitLgkm=16,374.2`, `barrier=55,755.8`.
+- H1/S1024 repeat: `simTicks=29,870,295`, MMAC active `32.0531%`,
+  `coissue=6,135/10,288`, `waitLgkm=16,500.8`, `barrier=56,716.5`.
+
+Conclusion:
+
+Reject and restore source.  The split is legal but not enough: it does not
+beat the accepted repeat best `29,706,495`, and the repeat still shows high
+barrier cost.  Startup remains constrained by sidecar/QDo latch before page0
+K/V can overwrite the shared sidecar LDS page.
+
 ## 2026-07-12 dQ dS-Cache VUsed
 
 Decision: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`

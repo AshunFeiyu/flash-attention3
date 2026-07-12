@@ -1688,6 +1688,23 @@ dQ dS-cache VUsed, 2026-07-12:
   token split; any next dQ improvement needs a larger ownership/dependency
   redesign or early-causal-tile specialization.
 
+dQ QDoFilled group split, 2026-07-12:
+
+- Result:
+  `REJECT_STATS_NO_BEST_WIN_SOURCE_RESTORED`.  Splitting startup
+  `QDoFilled` into group-local 4-wave tokens passed correctness/resources, but
+  did not beat the accepted dQ best.
+- Evidence:
+  H1/S1024 first run `simTicks=29,853,915`, MMAC active `32.3773%`;
+  repeat `simTicks=29,870,295`, MMAC active `32.0531%`;
+  `ldsBankConflict=0`, no spill/scratch.  Accepted repeat best remains
+  `29,706,495`.
+- Lesson:
+  the startup bubble is not just "consumer waiting for the other Q/dO group".
+  Page0 K/V still cannot overwrite the shared sidecar LDS until all consumers
+  have latched sidecar/QDo.  Do not continue QDoFilled token splitting as a
+  standalone optimization.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

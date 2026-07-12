@@ -1,5 +1,34 @@
 # Source Status
 
+## 2026-07-12 dQ QDoFilled Group Split Rejected
+
+Status: `REJECT_STATS_NO_BEST_WIN_SOURCE_RESTORED`.
+
+- Motivation:
+  fullperf/xcu evidence showed large early `s_abarrier_try_wait -> s_xor`
+  bubbles, and PMD trace showed consumers waiting on `barId 4`
+  (`QDoFilled`) before all eight producer waves arrived.  This candidate split
+  `QDoFilled` into group-local 4-wave tokens so consumer0 only waited
+  producer0 and consumer1 only waited producer1.  `QDoLatched` remained a
+  single 8-wave CTA token because page0 K/V overwrites the shared sidecar LDS
+  region.
+- Gates:
+  build/source/metadata PASS.  Resources unchanged:
+  branch windows `8/40,159/216,159/216,9/40`, `private=0`, `sgpr=65`,
+  `vgpr=128`, no SGPR/VGPR spill.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 first run: `simTicks=29,853,915`, MMAC active `32.3773%`,
+  `MMOP=50,688`, `coissue=6,046/9,704`, `waitLgkm=16,374.2`,
+  `barrier=55,755.8`.  Repeat: `simTicks=29,870,295`, MMAC active
+  `32.0531%`, `coissue=6,135/10,288`, `waitLgkm=16,500.8`,
+  `barrier=56,716.5`.
+- Decision:
+  reject and restore canonical source.  Group-local `QDoFilled` can reduce one
+  startup dependency, but it does not beat the accepted repeat best
+  `29,706,495` ticks.  The remaining startup critical path still runs through
+  sidecar/QDo latch and page0 K/V overwrite ownership.
+
 ## 2026-07-12 dQ dS-Cache VUsed Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
