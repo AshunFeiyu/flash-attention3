@@ -1860,3 +1860,15 @@ dKV/dQ ownership follow-up, 2026-07-12:
   dQ producer global-load lookahead during PageUsed waits, or a native
   dS/ownership redesign with a focused resource proof.  Avoid more small
   Page1-token pruning and avoid raw2/Mq128 until sidecar fits under 128KB.
+
+dKV tail cleanup, 2026-07-12:
+
+- Accepted a tiny canonical dKV cleanup: remove only the second terminal
+  `__syncthreads()` after wave0 ABarrier invalidation.  AllDone wait, first
+  CTA sync, and wave0-only invalidate remain.
+- H1/S128/H1/S1024 correctness and resource gates pass; H1/S1024 repeat is
+  `46.606M` ticks versus previous repeat `46.682M`.  Fullperf/xcu is pending
+  because the fullperf run hit the known libhsakmt buffer overflow before
+  dispatch.
+- This is not a structural 40% MMAC-active solution; keep focusing on
+  PageUsed/ABarrier ownership and useful producer work.

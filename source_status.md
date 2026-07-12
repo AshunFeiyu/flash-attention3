@@ -7261,3 +7261,20 @@ Dual-kernel ownership follow-up, 2026-07-12:
   do not continue runtime Page1-token pruning as a standalone tweak.  Prefer
   useful producer global-load lookahead during PageUsed wait, or a larger
   native dS/ownership redesign after a focused resource proof.
+
+dKV tail second sync cleanup, 2026-07-12:
+
+- Source:
+  canonical dKV now removes only the second terminal `__syncthreads()` after
+  wave0 ABarrier invalidation.  All waves still arrive/wait `AllDone`, pass
+  the first CTA barrier, and keep wave0-only invalidation.  Mainloop ownership,
+  tile, sidecar, and matrix path are unchanged.
+- Evidence:
+  gates and H1/S128/H1/S1024 correctness pass with `private=0`, `sgpr=99`,
+  `vgpr=128`, no spill/scratch, and `ldsBankConflict=0`.  H1/S1024 first
+  `46,591,090` ticks, repeat `46,605,650` ticks, versus previous
+  wave0-invalidate repeat `46,682,090`.
+- Boundary:
+  accepted as a small terminal cleanup only.  Fullperf/xcu is pending because
+  the attempted fullperf run aborted before dispatch with the known libhsakmt
+  buffer overflow.  This does not address the steady PageUsed ownership bubble.

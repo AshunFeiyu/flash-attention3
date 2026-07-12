@@ -1990,7 +1990,6 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
         __builtin_hcu_s_abarrier_inv(Bar::kDout1Used);
         __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
     }
-    __syncthreads();
 #else
     (void)dout;
     (void)q;

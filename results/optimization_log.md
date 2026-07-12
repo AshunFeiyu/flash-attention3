@@ -11934,3 +11934,35 @@ short-causal Page1 prune.
   first run regresses and the expected control reduction does not show up in
   SCA/wait/barrier.  This is not a stable, explainable path toward 40% MMAC
   active.
+
+## 2026-07-12 dKV Tail Second Sync Cleanup
+
+Status: `ACCEPT_SMALL_STATS_ONLY_XCU_PENDING`
+
+- Design basis:
+  keep the WDRA-safe role-exit discipline that survived PMD: every role still
+  arrives and waits `AllDone`, then all waves pass the first CTA barrier before
+  wave0 invalidates the ABarrier tokens.  Only the second CTA barrier after
+  invalidation is removed.  Tile, math, Q/dO/K/V ownership, sidecar path, and
+  MMAC islands are unchanged.
+- Gates:
+  build, dKV source gate, and metadata gate PASS with `private=0`, `sgpr=99`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness PASS,
+  `ldsBankConflict=0`.
+- Metrics:
+  first H1/S1024 `simTicks=46,591,090`, `coissue=36,878/25,643`,
+  `waitLgkm=52,873`, `barrier=141,481.5`.
+  Repeat `simTicks=46,605,650`, `coissue=35,755/25,066`,
+  `waitLgkm=52,009`, `barrier=139,871`, with `MMOP=131,072`,
+  `VALU=168,384`, `SCA=111,248`, `LDS=79,360`, `VMEM=4,352`.
+  Prior `dkv_wave0_terminal_invalidate` repeat was `46,682,090` ticks.
+- Fullperf/xcu:
+  attempted at
+  `/zys/shaobo_runs/dkv_tail_second_sync_fullperf_20260712_223453`, but PMD
+  aborted before dispatch with the known libhsakmt buffer overflow.  Mark xcu
+  pending.
+- Decision:
+  accept as a small terminal cleanup.  This does not solve the main-loop
+  PageUsed/ABarrier ownership bubble or move MMAC active toward 40% by itself;
+  the next structural dKV work must still target useful producer work or
+  sidecar/raw lifetime.
