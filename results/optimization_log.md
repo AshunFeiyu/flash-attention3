@@ -1,5 +1,72 @@
 # Optimization Log
 
+## 2026-07-12 dQ Setprio Reverse M16 Retest
+
+- Hypothesis:
+  the old `consumer1 reverse M16` row-pair balancing failed before `s_setprio`.
+  After priority islands, same-SIMD scheduling may interact differently with
+  paired row work, so retest the one-line mapping change without any other
+  code movement.
+- Source experiment:
+  temporary only.  Changed consumer1's `local_m16` order from `4,5,6,7` to
+  `7,6,5,4`, pairing same-SIMD consumer row counts as
+  `(0,7),(1,6),(2,5),(3,4)`.
+- Static/resource:
+  build, dQ gate, and metadata gate PASS.  Metadata stayed
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch, branch windows
+  `8/40,159/216,159/216,9/40`.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS.
+- PMD stats:
+  H1/S1024 successful run:
+  `simTicks=29,148,665`, MMAC active `32.7388%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,316`, `LDS=26,352`,
+  `coissue=10,919/9,596`, `ldsBankConflict=0`.
+  This is statistically tied with setprio first `29,145,480` and better than
+  setprio repeat `29,438,955`, but not a stable promotion.
+- Repeat issue:
+  two repeats aborted before dispatch with the known libhsakmt
+  `buffer overflow detected` startup failure.  There is no clean repeat.
+- Evidence:
+  successful root
+  `/zys/shaobo_runs/dq_setprio_reverse_m16_retest_20260712_150345`;
+  abort roots
+  `/zys/shaobo_runs/dq_setprio_reverse_m16_retest_repeat_20260712_150450`
+  and
+  `/zys/shaobo_runs/dq_setprio_reverse_m16_retest_repeat2_20260712_150522`.
+- Decision:
+  `OBSERVE_NEEDS_REPEAT_SOURCE_RESTORED`.  Source restored to canonical
+  `local_m16 = ConsumerGroup * 4 + wave_local`.  Do not promote until the PMD
+  startup issue allows clean repeat/xcu evidence.
+
+## 2026-07-12 dQ BPS vbcnt Off Probe
+
+- Hypothesis:
+  xcu on the accepted setprio dQ fullperf listed `s_waitcnt_vbcnt` as a
+  visible top row.  Since dKV benefits from BPS-vbcnt but dQ has a different
+  startup/page ownership cadence, test whether dQ can compile with
+  `SHAOBO_BPS_VBCNT_BEFORE_ARRIVE=0` and rely on existing ABarrier/page
+  ownership alone.
+- Probe:
+  no source edit.  Built only `src/dq_kernel.cpp` as
+  `build/fa3_bwd_dq_clean_novbcnt` with
+  `EXTRA_CXXFLAGS=-DSHAOBO_BPS_VBCNT_BEFORE_ARRIVE=0`.
+- Static/resource:
+  dQ gate and metadata gate PASS.  Metadata stayed legal:
+  branch windows `8/40,159/216,159/216,9/40`, `private=0`,
+  `sgpr=63`, `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 causal PASS.  H1/S1024 causal FAIL with NaNs:
+  `actual_nonfinite=6144`, first bad row `640`, last bad row `687`.
+- Evidence:
+  run root `/zys/shaobo_runs/dq_novbcnt_probe_20260712_145055`;
+  failing run
+  `/zys/shaobo_runs/dq_novbcnt_probe_20260712_145055/dq_correctness_20260712_145100`.
+- Decision:
+  `REJECT_CORRECTNESS_BPS_READINESS`.  `s_waitcnt_vbcnt` is part of the
+  matrix-load readiness contract for this dQ path.  Do not remove it as a
+  source-level micro-optimization without a narrower lifetime proof.
+
 ## 2026-07-12 dQ QDoFilled Group Split
 
 Decision: `REJECT_STATS_NO_BEST_WIN_SOURCE_RESTORED`

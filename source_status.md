@@ -1,5 +1,68 @@
 # Source Status
 
+## 2026-07-12 dQ Setprio Reverse M16 Retest Observed
+
+Status: `OBSERVE_NEEDS_REPEAT_SOURCE_RESTORED`.
+
+- Motivation:
+  `consumer1 reverse M16` was rejected before `s_setprio` because ticks
+  regressed.  Retest the one-line row-work balancing after the accepted
+  FWD-style priority islands, since same-SIMD scheduling changed.
+- Gates:
+  temporary source only.  Build, dQ source gate, and metadata gate PASS:
+  branch windows `8/40,159/216,159/216,9/40`, `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness PASS.
+- Metrics:
+  H1/S1024 successful run:
+  `simTicks=29,148,665`, MMAC active `32.7388%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,316`, `LDS=26,352`, `ldsBankConflict=0`,
+  coissue `10,919/9,596`.  This is effectively tied with setprio first
+  `29,145,480` and better than setprio repeat `29,438,955`, but not stable
+  enough to promote.
+- Repeat issue:
+  two immediate repeat attempts aborted before dispatch in libhsakmt
+  `buffer overflow detected`, the known PMD startup issue, so no clean repeat
+  stats are available.
+- Evidence:
+  successful root
+  `/zys/shaobo_runs/dq_setprio_reverse_m16_retest_20260712_150345`;
+  abort roots
+  `/zys/shaobo_runs/dq_setprio_reverse_m16_retest_repeat_20260712_150450`
+  and
+  `/zys/shaobo_runs/dq_setprio_reverse_m16_retest_repeat2_20260712_150522`.
+- Decision:
+  observe only and restore canonical row mapping.  Row balancing may have a
+  small interaction with `s_setprio`, but it does not yet prove a stable ticks
+  win or move MMAC active toward 40%.
+
+## 2026-07-12 dQ BPS vbcnt Off Probe Rejected
+
+Status: `REJECT_CORRECTNESS_BPS_READINESS_SOURCE_UNCHANGED`.
+
+- Motivation:
+  the accepted setprio fullperf/xcu profile still showed
+  `s_waitcnt_vbcnt` as a visible source row (`9.00%`).  Test whether dQ can
+  remove the default BPS readiness waits before `QDoFilled`/`PageFilled`
+  arrivals, as an isolated compile-flag probe with no source changes.
+- Gates:
+  temporary build used
+  `EXTRA_CXXFLAGS=-DSHAOBO_BPS_VBCNT_BEFORE_ARRIVE=0`,
+  `BIN=build/fa3_bwd_dq_clean_novbcnt`.  dQ source gate and metadata gate
+  PASS.  Resources were legal and slightly smaller:
+  branch windows `8/40,159/216,159/216,9/40`, `private=0`,
+  `sgpr=63`, `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 causal PASS.  H1/S1024 causal FAIL with NaNs:
+  `actual_nonfinite=6144`, first bad row `640`, last bad row `687`.
+- Evidence:
+  run root `/zys/shaobo_runs/dq_novbcnt_probe_20260712_145055`;
+  failing H1/S1024 run
+  `/zys/shaobo_runs/dq_novbcnt_probe_20260712_145055/dq_correctness_20260712_145100`.
+- Decision:
+  reject.  The vbcnt row is real readiness cost, not removable control
+  debris.  Keep default BPS-vbcnt for dQ unless a future source-level lifetime
+  proof narrows it to a safe subset.
+
 ## 2026-07-12 dQ Sidecar Vec4 Restore Rejected
 
 Status: `REJECT_STATS_INCOMPLETE_TICKS_REGRESSION_SOURCE_RESTORED`.
