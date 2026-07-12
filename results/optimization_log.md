@@ -11891,3 +11891,46 @@ Status: `REJECT_TICKS_REGRESSION_SOURCE_RESTORED`
   reject and restore source.  Keep the accepted compute helper, but leave the
   latch inline in the consumer unless a future source/SQTT profile proves a
   real instruction or live-range benefit.
+
+## 2026-07-12 Dual-Kernel Ownership Follow-Up
+
+Status: `DEFER_RESOURCE` for dKV raw2/Mq128, `REJECT_UNSTABLE` for dQ
+short-causal Page1 prune.
+
+- dKV design stress:
+  xcu for the current Mq128 dKV canonical shows the main loop still waits on
+  raw Q/dO ownership (`Q1Used/Dout1Used` around 5.1k cycles), so raw double
+  buffering is the natural next hypothesis.  Under the current contract,
+  however, `RawBuffers=2` at `Mq=128` consumes the full 128KB LDS budget with
+  Q+dO alone; the existing LDS sidecar needs another about 3KB.  The older
+  `w16_raw2_sidecar_kv_overlay` result was an Mq64 route and only a small
+  1.5% win, so it cannot be promoted to the current Mq128 canonical by a
+  one-line tile change.
+- dKV decision:
+  no code change.  Future raw2 work must first prove a sidecar lifetime or
+  overlay design that fits 128KB, keeps sidecar off consumer global reads, and
+  preserves the native MLS/BPS + `ds_read_matrix` + MMAC path.
+- dQ experiment:
+  temporarily made Page1 ABarrier init/invalidate conditional on
+  `active_k_tiles > 1`, leaving the 3-GEMM math, Q/dO latch, K/V page
+  ownership, MMAC islands, and store ownership unchanged.
+- Gates:
+  build, dQ source gate, and metadata gate PASS with `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness PASS,
+  `ldsBankConflict=0`.
+- Metrics:
+  first H1/S1024 `simTicks=29,242,395`, `coissue=11,544/10,164`,
+  `waitLgkm=17,050.75`, `barrier=56,312.25`.  Repeat
+  `simTicks=29,174,600`, `coissue=11,994/10,576`, `waitLgkm=17,125.5`,
+  `barrier=56,814.75`, with `MMOP=50,688`, `VALU=57,968`, `SCA=54,184`,
+  `LDS=26,352`, `VMEM=1,408`.
+- Evidence:
+  first
+  `/zys/shaobo_runs/dq_short_causal_page1_prune_20260712_221344`;
+  repeat
+  `/zys/shaobo_runs/dq_short_causal_page1_prune_repeat_20260712_221749`.
+- Decision:
+  reject and restore source.  The repeat tick is slightly favorable, but the
+  first run regresses and the expected control reduction does not show up in
+  SCA/wait/barrier.  This is not a stable, explainable path toward 40% MMAC
+  active.

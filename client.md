@@ -1846,3 +1846,17 @@ dQ setprio MMAC islands, 2026-07-12:
   `s_cbranch_vccnz 17.20%`, `s_waitcnt_vbcnt 9.00%`, while `mmop_fp16` is
   `12.39%`.  Producer representative bubble is `98.78%`, consumer MMOP
   representative bubble is `61.42%`.
+
+dKV/dQ ownership follow-up, 2026-07-12:
+
+- dKV raw2 at current `Mq=128` was not implemented: Q+dO raw double buffering
+  consumes the full 128KB LDS budget before sidecar, so it needs a separate
+  sidecar lifetime/overlay design rather than a tile alias change.
+- dQ short-causal Page1 init/invalidate pruning was tested and restored.
+  H1/S128/H1/S1024 correctness and resource gates passed, but H1/S1024 was
+  unstable (`29.242M` first, `29.175M` repeat) and did not reduce SCA/wait or
+  explain the pipeline.  Keep canonical clean.
+- Next useful directions:
+  dQ producer global-load lookahead during PageUsed waits, or a native
+  dS/ownership redesign with a focused resource proof.  Avoid more small
+  Page1-token pruning and avoid raw2/Mq128 until sidecar fits under 128KB.

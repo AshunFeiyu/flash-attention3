@@ -7240,3 +7240,24 @@ Status: `ACCEPT_MICRO_CANONICAL`; this is now the current canonical dQ source.
   scheduler/coissue behavior without extra resource cost, but it does not
   resolve the remaining ABarrier/wait/control bottleneck or reach the 40%
   MMAC active target.
+
+Dual-kernel ownership follow-up, 2026-07-12:
+
+- dKV raw2/Mq128:
+  current Mq128 canonical still exposes Q/dO raw ownership waits in xcu, but
+  raw double buffering at Mq128 is not a one-line change.  Q+dO raw2 consumes
+  128KB by itself, and the current sidecar-in-LDS path needs additional space.
+  No source change was made.  Future raw2 work must first design a sidecar
+  lifetime/overlay that fits 128KB and keeps the main path on
+  MLS/BPS + `ds_read_matrix` + MMAC.
+- dQ short-causal Page1 prune:
+  a temporary branch made Page1 ABarrier init/invalidate conditional on
+  `active_k_tiles > 1`.  Static/resource gates and H1/S128/H1/S1024 correctness
+  passed with no spill/scratch and `ldsBankConflict=0`, but H1/S1024 metrics
+  were not stable or explanatory: first `29,242,395` ticks, repeat
+  `29,174,600` ticks, while SCA did not drop and wait/barrier did not improve.
+  Source was restored and remote dQ gate recertified.
+- Next:
+  do not continue runtime Page1-token pruning as a standalone tweak.  Prefer
+  useful producer global-load lookahead during PageUsed wait, or a larger
+  native dS/ownership redesign after a focused resource proof.
