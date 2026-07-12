@@ -1,5 +1,40 @@
 # Source Status
 
+## 2026-07-12 dQ WG-Local K/V Duplicate Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  C74 xcu showed producer/control wave slots with only ~449 instructions but
+  ~36K bubble cycles and ~98.8% bubble rate.  The dominant producer wait was
+  steady `PageUsed` ownership (`s_abarrier_try_wait -> s_xor_b32` contexts
+  around 5.6K-7.8K cycles), while consumer slots already carried the expected
+  MMAC work.  This candidate tested whether each producer group should load a
+  full local K+V page for its paired consumer, trading duplicated K/V MLS for
+  local PageFilled/PageUsed counts of four.
+- Code:
+  temporary only.  Producers waves0-3 loaded K+V into page0 for consumer0,
+  producers waves12-15 loaded K+V into page1 for consumer1, and each consumer
+  read only its own page.  Q/dO/sidecar latch remained CTA-wide because the
+  two steady pages overwrite the shared startup Q/dO or sidecar LDS regions.
+- Gates:
+  static/resource PASS with branch windows `8/40,160/216,160/216,9/40`.
+  Metadata stayed clean: `private=0`, `sgpr=77`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 regressed versus C74 stats:
+  `simTicks 32,597,110 -> 35,871,745`; MMAC active fell
+  `31.6674% -> 29.2945%`.  MMOP stayed `55,296`, but duplicated K/V raised
+  VMEM `1,408 -> 2,560`; SCA fell `40,732 -> 24,652`, yet
+  `barrierCounter` rose to `66,261.25` and elapsed ticks worsened.
+- Decision:
+  reject and restore C74 source.  Making producer waves thicker by duplicating
+  K/V does not compensate for losing K/V double-buffer prefetch and doubling
+  matrix-load traffic.  The next route should preserve shared K/V reuse and
+  attack PageUsed latency by increasing useful work per ownership epoch or by
+  changing the dS dependency graph, not by duplicating the page.
+
 ## 2026-07-12 dQ K-First Count-Fix Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

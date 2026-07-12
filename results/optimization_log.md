@@ -10933,3 +10933,32 @@ Conclusion:
   variants unless a new HCU instruction form is identified.  Next route must
   either quantify a source-slot rearrangement cost or return to canonical dQ
   ABarrier/ownership optimization.
+
+## 2026-07-12 dQ WG-local K/V duplicate rejected
+
+- Hypothesis:
+  C74 xcu shows producer/control slots are extremely thin and wait-heavy:
+  producer slots have roughly `449/443` instructions but `36K` bubble cycles
+  and top `PageUsed`-like try-wait contexts around `5.6K-7.8K` cycles.  Test a
+  WG-local steady-state design where producer0 loads a full K+V page for
+  consumer0 and producer1 loads a full K+V page for consumer1.  This keeps the
+  two consumer groups symmetric and tries to replace cross-consumer page
+  ownership with local four-wave ownership.
+- Result:
+  temporary source passed static/resource gates with branch windows
+  `8/40,160/216,160/216,9/40`, metadata `private=0`, `sgpr=77`,
+  `vgpr=128`, and no spill/scratch.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 regressed versus C74:
+  `simTicks=32,597,110 -> 35,871,745`; MMAC active
+  `31.6674% -> 29.2945%`.  MMOP stayed `55,296`; VALU moved only
+  `89,216 -> 89,760`; SCA improved `40,732 -> 24,652`; but duplicated K/V
+  raised VMEM `1,408 -> 2,560`, coissue fell `9,431/8,921 -> 6,783/6,647`,
+  and `barrierCounter` rose to `66,261.25`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION`.  Source restored to C74.  Producer
+  thickening by duplicating K/V is not a route to 40% MMAC active; it loses
+  shared K/V reuse and double-buffer prefetch.  Preserve shared K/V pages in
+  the next canonical route and attack ownership by larger useful work per
+  epoch or a real dS dependency-graph change.
