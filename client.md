@@ -1630,6 +1630,20 @@ dQ q-tile split evidence, 2026-07-12:
   early-tile specialization or useful work per ownership epoch before more
   main-path matrix-read/MMAC micro-tweaks.
 
+dQ conditional page barrier lifetime, 2026-07-12:
+
+- Result:
+  `REJECT_STATS_NO_BEST_WIN_SOURCE_RESTORED`.  Conditionalizing PageUsed and
+  Page1Filled init/arrive/inv by `active_k_tiles` was correct and passed all
+  gates, but H1/S1024 only reached `simTicks=30,037,735`,
+  `MMAC active=32.1251%`, not better than the accepted repeat best
+  `29,706,495`.
+- Lesson:
+  early causal ABarrier overhead is real, but tiny branch-level lifetime
+  pruning is not enough.  Future early-tile work needs a bigger top-level
+  change, such as changing useful work per CTA or a separate proven early-tile
+  schedule, not another small PageUsed/init tweak.
+
 dQ Nk256 single-page result, 2026-07-11:
 
 - Workbook sheet:

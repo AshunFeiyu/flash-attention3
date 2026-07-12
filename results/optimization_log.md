@@ -11215,3 +11215,28 @@ Conclusion:
   increase useful work per ABarrier ownership epoch.  Treat this as a top-level
   scheduling/ownership issue rather than evidence that the main matrix path is
   missing MMAC.
+
+## 2026-07-12 dQ conditional page barrier lifetime rejected
+
+- Hypothesis:
+  early causal q-tiles do not reuse all K/V pages, so PageUsed/Page1Filled
+  init/arrive/inv can be skipped unless `active_k_tiles` proves the page will
+  be reused.  This targets the fixed ABarrier/control cost exposed by the
+  q-tile split without changing matrix math or LDS layout.
+- Result:
+  `REJECT_STATS_NO_BEST_WIN_SOURCE_RESTORED`.  Static/resource gates and
+  correctness passed, with metadata unchanged (`private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch).  H1/S1024 stats:
+  `simTicks=30,037,735`, MMAC active `32.1251%`, `MMOP=50,688`,
+  `VALU=58,144`, `SCA=54,168`, `coissue=6,534/10,781`,
+  `ldsBankConflict=0`.
+- Evidence:
+  run
+  `/zys/shaobo_runs/dq_conditional_page_barriers_20260712_112500/dq_correctness_20260712_113909`.
+  A repeat run hit the known PMD/libhsakmt startup buffer-overflow before
+  dispatch and was not used as kernel evidence.
+- Decision:
+  reject and restore source.  The idea is semantically valid, but as a
+  standalone branch-level pruning it only ties the first-run canonical number
+  and regresses against the accepted repeat best.  Future early-tile work must
+  remove a larger fixed-cost block or change the amount of useful work per CTA.

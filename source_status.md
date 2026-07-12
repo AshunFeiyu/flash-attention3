@@ -1,5 +1,31 @@
 # Source Status
 
+## 2026-07-12 dQ Conditional Page Barrier Rejected
+
+Status: `REJECT_STATS_NO_BEST_WIN_SOURCE_RESTORED`.
+
+- Motivation:
+  q-tile split showed early causal tiles are dominated by fixed
+  ABarrier/control cost.  This candidate made PageUsed/Page1Filled init,
+  arrive, and invalidate conditional on whether the page can actually be
+  reused for the current `active_k_tiles`.
+- Gates:
+  remote build, dQ source gate, and metadata gate PASS:
+  branch windows `8/40,159/216,159/216,9/40`, `private=0`, `sgpr=65`,
+  `vgpr=128`, no SGPR/VGPR spill.  H1/S128 and H1/S1024 correctness PASS;
+  `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats were `simTicks=30,037,735`, MMAC active `32.1251%`,
+  `MMOP=50,688`, `VALU=58,144`, `SCA=54,168`, `coissue=6,534/10,781`.
+  This does not beat the current accepted repeat baseline
+  `29,706,495` ticks, and only ties the first-run boundary n-tile number
+  `30,040,010`.
+- Decision:
+  reject and restore canonical source.  Conditional ABarrier lifetime pruning
+  is logically correct but too small; added branch/control offsets the saved
+  init/arrive/inv cost.  Do not retry PageUsed/init pruning as a standalone
+  tweak.
+
 ## 2026-07-12 dQ q-tile Split Evidence
 
 Status: `OBSERVE_QTILE_SPLIT_CAUSAL_FRONTLOAD`.
