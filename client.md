@@ -82,8 +82,12 @@ evidence are required before any performance claim.
   (`ActiveDqTile`, `DqBarrierLedger`, and optimization targets).  Native dS
   ring/source-slot structs were moved to `probes/dq_probe_contract.h`, so the
   performance route has no leftover wrong-layout/prototype path constants.
-  Local source gate passes with no asm input; remote build/asm/PMD recert is
-  pending current jump-host recovery.
+  Remote build/asm/static gates pass with `private=0`, `sgpr=65`, `vgpr=128`,
+  no spill/scratch.  H1/S128 and H1/S1024 correctness pass.  H1/S1024 fullperf
+  archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260712_dq_contract_cleanup_h1s1024_sqc7_fullperf`,
+  `simTicks=30,262,960`, `MMAC active=32.0547%`, `ldsBankConflict=0`.
+  This is an `OBSERVE_CLEANUP_RECERT`, not a performance optimization.
 - Current canonical source has moved from the earlier 12-wave dS-worker route
   to a 16-wave full-3GEMM dQ route.  Do not describe the current dQ kernel as
   12-wave: the active source uses `__launch_bounds__(1024, 1)` and

@@ -1,8 +1,8 @@
 # Source Status
 
-## 2026-07-12 dQ Contract Cleanup Pending Remote Build
+## 2026-07-12 dQ Contract Cleanup Recertified
 
-Status: `CLEANUP_PENDING_REMOTE_BUILD_CANONICAL_UNCHANGED`.
+Status: `OBSERVE_CLEANUP_RECERT_CANONICAL_UNCHANGED`.
 
 - Motivation:
   keep the clean repo honest: the active dQ contract should describe only the
@@ -14,15 +14,34 @@ Status: `CLEANUP_PENDING_REMOTE_BUILD_CANONICAL_UNCHANGED`.
   `include/dq_contract.h` into `probes/dq_probe_contract.h`.  Updated the
   source-slot probe files to include the probe-local contract.  Removed the
   unused `kDqPathNativeDsRingPrototype` constant from the active contract.
-- Local gate:
+- Gates:
   `python3 scripts/check_dq_kernel_gate.py --source src/dq_kernel.cpp
   --contract include/dq_contract.h --asm /tmp/nonexistent_dq_cleanup.asm`
   PASS.  `rg` confirms the native dS ring/source-slot contract now only
   appears under `probes/`, not in `include/`, `src/`, or `scripts/`.
-- Pending:
-  remote build/asm metadata/correctness/PMD recert is pending because the
-  current liuchang/new-perf jump route is timing out.  This cleanup is intended
-  to be codegen-neutral for `src/dq_kernel.cpp`.
+  Remote build/asm dQ gate and metadata gate also PASS:
+  branch windows `8/40,159/216,159/216,9/40`, `private=0`, `sgpr=65`,
+  `vgpr=128`, no SGPR/VGPR spill.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- Perf recert:
+  H1/S1024 fullperf stats report `simTicks=30,262,960`,
+  `MMAC active=32.0547%`, `MMOP=50,688`, `VALU=58,144`, `SCA=54,316`,
+  `LDS=26,352`, `VMEM=1,408`, `coissue=6,096/9,906`,
+  `ldsBankConflict=0`.
+- XCU:
+  helper `.perf` and xcu outputs are archived under
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260712_dq_contract_cleanup_h1s1024_sqc7_fullperf`.
+  Top bubbles: `s_abarrier_try_wait -> s_xor_b32` `24.67%`,
+  terminal `s_barrier -> s_cbranch_vccnz` `14.88%`,
+  `abarrier -> salu_32` `7.85%`,
+  `s_cmp_lg_u32 -> s_waitcnt_vbcnt` `6.55%`, and
+  `lds_matrix -> immed` `4.37%`.
+- Decision:
+  accept the cleanup as code hygiene only.  It does not improve the 40% MMAC
+  active target; the next dQ work remains structural ABarrier/control reduction
+  or native dS dependency-graph redesign.
 
 ## 2026-07-12 dQ VUsed Early-Release Rejected
 

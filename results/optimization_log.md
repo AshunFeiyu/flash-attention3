@@ -2,7 +2,7 @@
 
 ## 2026-07-12 dQ Contract Cleanup
 
-Decision: `CLEANUP_PENDING_REMOTE_BUILD_CANONICAL_UNCHANGED`
+Decision: `OBSERVE_CLEANUP_RECERT_CANONICAL_UNCHANGED`
 
 Moved native dS ring/source-slot probe-only contracts out of the active dQ
 contract header:
@@ -15,10 +15,25 @@ contract header:
   include it.
 - Canonical `src/dq_kernel.cpp` was not changed.
 
-Local source gate without asm input passes.  Remote build/asm/PMD recert is
-pending jump-host recovery; this cleanup should not affect generated kernel
-code because it only moves unused probe declarations out of the active
-contract.
+Local source gate without asm input passes.  Remote build/asm dQ gate and
+metadata gate also pass: branch windows `8/40,159/216,159/216,9/40`,
+`private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024
+correctness pass.  H1/S1024 fullperf stats:
+`simTicks=30,262,960`, `MMAC active=32.0547%`, `MMOP=50,688`,
+`VALU=58,144`, `SCA=54,316`, `LDS=26,352`, `VMEM=1,408`,
+`coissue=6,096/9,906`, `ldsBankConflict=0`.
+
+XCU evidence is archived at
+`/Volumes/172.20.68.76/共享/shaobo/perf/20260712_dq_contract_cleanup_h1s1024_sqc7_fullperf`.
+Top bubbles are still ABarrier/control dominated:
+`s_abarrier_try_wait -> s_xor_b32` 24.67%,
+`s_barrier -> s_cbranch_vccnz` 14.88%, `abarrier -> salu_32` 7.85%,
+`s_waitcnt_vbcnt` 6.55%, and `lds_matrix -> immed` 4.37%.
+
+Conclusion: keep the cleanup.  It is code hygiene, not a performance
+optimization.  The next dQ work must attack ABarrier ownership/control or a
+native dS dependency graph; the cleanup alone does not move the 40% MMAC-active
+target.
 
 ## 2026-07-12 dQ Exact Active K-Tiles
 
