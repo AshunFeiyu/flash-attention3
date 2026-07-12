@@ -1,5 +1,61 @@
 # Source Status
 
+## 2026-07-12 Current Dual-Kernel Status After XCU Reprofile
+
+Status: `OBSERVE_PROFILE`; source unchanged.
+
+- dKV:
+  current canonical source remains `dkv_wave0_terminal_invalidate` on the
+  16-wave `Mq=128,Nk=128,D=128` dKV route.  H1/S1024 fullperf at
+  `/zys/shaobo_runs/dkv_wave0_inv_fullperf_20260712_211315` passes
+  correctness and keeps `ldsBankConflict=0`, with
+  `simTicks=46,829,510`, `MMOP=131,072`, `VALU=168,384`,
+  `SCA=111,248`, `LDS=79,360`, `VMEM=4,352`.
+  xcu shows `s_xor_b32 34.64%`, `s_waitcnt 19.54%`, MMAC `10.73%`,
+  and representative Q1/Dout1 page-used waits dominated by
+  `s_abarrier_try_wait -> s_xor_b32`.  The tail AllDone wait is visible but is
+  not safely removable yet.
+- dQ:
+  current canonical source remains the setprio/read-priority route with the
+  accepted `dq_compute_pages_from_latched` helper and without
+  natural-wrong/layout experiments.  H1/S1024 fullperf at
+  `/zys/shaobo_runs/dq_canonical_fullperf_20260712_212222` passes
+  correctness and keeps `ldsBankConflict=0`, with `simTicks=29,269,240`,
+  `MMOP=50,688`, `VALU=57,968`, `SCA=54,172`, `LDS=26,352`,
+  `VMEM=1,408`.  xcu shows `s_xor_b32 26.70%`,
+  `s_cbranch_vccnz 17.35%`, MMAC `12.52%`, and a Page0Used
+  `s_abarrier_try_wait -> s_xor_b32` bubble with max duration `6,319` cycles.
+- Shared conclusion:
+  the next optimization should be selected from ownership/page-lifetime
+  evidence.  Do not assume the problem is missing MMAC, and do not reintroduce
+  `ds_read_b32`, bpermute, gather, or wrong-layout workarounds in either
+  canonical path.
+
+## 2026-07-12 Owner-Teardown Early-Exit Rejected
+
+Status: `REJECT_PMD_VGPR_TRACKING_ABORT_SOURCE_RESTORED`.
+
+- Temporary change:
+  all roles arrived a final ownership token, but only wave0 waited and
+  invalidated ABarriers; non-wave0 roles exited early.  This targeted xcu's
+  visible dKV AllDone tail wait and dQ terminal `s_barrier -> s_cbranch`
+  bubble without changing formulas, tiles, or matrix paths.
+- Static/resource:
+  dKV and dQ both passed static gates and metadata before PMD; no
+  spill/scratch/private segment regression was seen.
+- PMD:
+  dKV H1/S128 aborted with `vgpr47 is not init or has been freed` during
+  MMAC in
+  `/zys/shaobo_runs/owner_teardown_stats_20260712_2134/dkv_mmac_correctness_20260712_213619`.
+  dQ H1/S128 aborted with `vgpr81 is not init or has been freed` during
+  MMAC in
+  `/zys/shaobo_runs/dq_owner_teardown_20260712_2140/dq_correctness_20260712_213749`.
+- Decision:
+  source restored and remote dQ gate recertified.  Keep all-wave terminal
+  convergence in the canonical kernels.  Any future attempt to reduce terminal
+  cleanup must first be a focused WDRA-exit ABI/PMD probe, not a mainline
+  kernel change.
+
 ## 2026-07-12 dKV Wave0 Terminal Invalidate Accepted
 
 Status: `ACCEPT_MICRO_CANONICAL`.

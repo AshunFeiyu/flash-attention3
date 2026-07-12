@@ -1,5 +1,81 @@
 # Optimization Log
 
+## 2026-07-12 dKV/dQ Fullperf XCU Reprofile
+
+- Status:
+  `OBSERVE_PROFILE`; no source change.
+- Design context:
+  both kernels remain on the clean canonical route.  dKV uses
+  `Mq=128,Nk=128,D=128`, 16 waves, resident K/V, Q/dO half-page ownership,
+  LDS sidecar, and score/dP/softmax/dS/dV/dK MMAC islands.  dQ uses
+  `Mq=128,Nk=128,D=128`, 16 waves, startup Q/dO/sidecar latch, K/V pages, and
+  score/dP/softmax/dS/dQ MMAC islands.  Main matrix paths remain
+  MLS/BPS + `ds_read_matrix` + MMAC with no `ds_read_b32`, gather, bpermute, or
+  wrong-layout workaround in the canonical path.
+- dKV evidence:
+  fullperf root
+  `/zys/shaobo_runs/dkv_wave0_inv_fullperf_20260712_211315`.
+  H1/S1024 causal correctness PASS; `simTicks=46,829,510`,
+  `MMOP=131,072`, `VALU=168,384`, `SCA=111,248`, `LDS=79,360`,
+  `VMEM=4,352`, `ldsBankConflict=0`.
+  xcu detail for
+  `/zys/shaobo_runs/dkv_wave0_inv_fullperf_20260712_211315/dkv_mmac_correctness_20260712_212056/m5out/0/0/2793936_fa3_bwd_wasp_clean.perf`
+  reports duration `94,976`, waves `128`, inst issues `563,088`, and hot
+  rows `s_xor_b32 34.64%`, `s_waitcnt 19.54%`,
+  `v_mmac_f32_16x16x16_f16 10.73%`, `s_waitcnt_vbcnt 4.34%`,
+  `ds_read_matrix_trans_format 3.21%`.
+  The selected Q1/Dout1-used window shows `s_abarrier_try_wait -> s_xor_b32`
+  around `5,171` cycles; the tail AllDone window shows
+  `s_abarrier_try_wait -> s_waitcnt` around `12,327` cycles.
+- dQ evidence:
+  fullperf root
+  `/zys/shaobo_runs/dq_canonical_fullperf_20260712_212222`.
+  H1/S1024 causal correctness PASS; `simTicks=29,269,240`,
+  `MMOP=50,688`, `VALU=57,968`, `SCA=54,172`, `LDS=26,352`,
+  `VMEM=1,408`, `ldsBankConflict=0`.
+  xcu detail for
+  `/zys/shaobo_runs/dq_canonical_fullperf_20260712_212222/dq_correctness_20260712_213002/m5out/0/0/2794756_fa3_bwd_dq_clean.perf`
+  reports duration `56,320`, waves `128`, inst issues `215,072`, and hot
+  rows `s_xor_b32 26.70%`, `s_cbranch_vccnz 17.35%`,
+  `mmop_fp16 12.52%`, `s_waitcnt_vbcnt 8.96%`, `s_waitcnt 4.48%`,
+  `lds_matrix 3.19%`.  The top Page0Used bubble is
+  `s_abarrier_try_wait -> s_xor_b32` with max duration `6,319` cycles, and
+  terminal `s_barrier -> s_cbranch_vccnz` is `15.26%`.
+- Decision:
+  both kernels are bottlenecked primarily by ABarrier ownership/control
+  exposure, not by missing MMAC instructions.  Next changes should be directed
+  at page-used lifetime, useful producer work before waits, or increasing
+  useful work per ownership epoch.  Treat `v_mov`, sidecar global waits, and
+  local priority tweaks as secondary until xcu says otherwise.
+
+## 2026-07-12 dKV/dQ Owner-Teardown Rejected
+
+- Status:
+  `REJECT_PMD_VGPR_TRACKING_ABORT_SOURCE_RESTORED`.
+- Hypothesis:
+  since xcu shows terminal AllDone / CTA-sync bubbles, make only wave0 wait on
+  the final ownership token and invalidate ABarriers while non-wave0 roles exit
+  early.  The algorithm DAG, tile, ABarrier mainloop, and matrix paths were
+  unchanged.
+- Gates:
+  both temporary sources passed static/resource gates before PMD.  dKV stayed
+  at branch windows `14/16,221/240,221/240,8/16`; dQ stayed at
+  `8/40,158/216,158/216,9/40`; both had `private=0` and no spill/scratch.
+- PMD result:
+  dKV H1/S128 aborted in
+  `/zys/shaobo_runs/owner_teardown_stats_20260712_2134/dkv_mmac_correctness_20260712_213619`
+  with `vgpr47 is not init or has been freed` during
+  `V_MMAC_F32_16X16X16_F16`.
+  dQ H1/S128 aborted in
+  `/zys/shaobo_runs/dq_owner_teardown_20260712_2140/dq_correctness_20260712_213749`
+  with `vgpr81 is not init or has been freed` during
+  `V_MMAC_F32_16X16X16_F16`.
+- Decision:
+  reject and restore both sources.  Current PMD/WDRA role-exit discipline needs
+  all role waves to remain converged through terminal cleanup, or PMD register
+  init/free tracking or a hidden WDRA ABI assumption breaks.  Do not retry
+  non-wave0 early exit without a focused WDRA-exit ABI proof.
+
 ## 2026-07-12 dKV Terminal Invalidate
 
 - Result:

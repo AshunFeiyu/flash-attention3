@@ -54,6 +54,20 @@ evidence are required before any performance claim.
   `46,682,090` ticks, `SCA=111,248`, `coissue=37,013/25,997`,
   `ldsBankConflict=0`.  It is only a tail-control win; mainloop ABarrier/page
   ownership remains the dKV bottleneck.
+- Latest dKV fullperf/xcu:
+  `/zys/shaobo_runs/dkv_wave0_inv_fullperf_20260712_211315` passes H1/S1024
+  correctness with `simTicks=46,829,510`, `MMOP=131,072`,
+  `VALU=168,384`, `SCA=111,248`, `LDS=79,360`, `VMEM=4,352`,
+  `ldsBankConflict=0`.  xcu shows the dominant rows are ownership/control:
+  `s_xor_b32 34.64%`, `s_waitcnt 19.54%`, MMAC `10.73%`; the selected
+  Q1/Dout1-used window has `s_abarrier_try_wait -> s_xor_b32` around
+  `5.1k` cycles, and tail AllDone has `s_abarrier_try_wait -> s_waitcnt`
+  around `12.3k` cycles.
+- Latest rejected terminal experiment:
+  wave0-only final wait / non-wave0 early exit passed static gates but PMD
+  aborted on H1/S128 with `vgpr47 is not init or has been freed` during MMAC.
+  Source is restored.  Do not reduce dKV terminal convergence again without a
+  focused WDRA-exit ABI proof.
 - Fixed-env H1/S1024 full perf:
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_033115_dkv_qused_before_softmax_h1s1024_sqc7_fullperf`,
   `simTicks=46,716,670`, `kernel_ticks=43,103,060`,
@@ -117,6 +131,20 @@ evidence are required before any performance claim.
   regressed to `29,979,040` ticks.  Source has been restored locally and
   remotely.  Keep the current dQ priority island covering read/wait/MMAC until
   xcu evidence says otherwise.
+- 2026-07-12 latest dQ fullperf/xcu:
+  `/zys/shaobo_runs/dq_canonical_fullperf_20260712_212222` passes H1/S1024
+  correctness with `simTicks=29,269,240`, `MMOP=50,688`,
+  `VALU=57,968`, `SCA=54,172`, `LDS=26,352`, `VMEM=1,408`,
+  `ldsBankConflict=0`.  xcu shows `s_xor_b32 26.70%`,
+  `s_cbranch_vccnz 17.35%`, MMAC `12.52%`, `s_waitcnt_vbcnt 8.96%`.
+  Top Page0Used wait reaches `6.3k` cycles; terminal CTA sync is still
+  visible.  This confirms the next dQ direction is ownership/control exposure
+  or useful work per ownership epoch, not matrix-path replacement.
+- 2026-07-12 latest rejected terminal experiment:
+  adding final AllDone then letting only wave0 wait/invalidate caused H1/S128
+  PMD abort with `vgpr81 is not init or has been freed` during MMAC despite
+  clean static gates.  Source is restored and dQ gate recertified.  Keep all
+  role waves converged through terminal cleanup in the canonical path.
 - 2026-07-12 `.53` recert:
   jump host `.53` recovered and remote `/zys/shaobo/fa3_bwd_wasp_clean` was
   resynced from local canonical commit `a351fc3`.  Build/gates pass with
