@@ -1,5 +1,33 @@
 # Source Status
 
+## 2026-07-12 dQ Latched Compute Helper Accepted
+
+Status: `ACCEPT_MICRO_CODE_GOVERNANCE`.
+
+- Motivation:
+  prepare the short-causal fast path without duplicating score/dP/softmax/dQ
+  code.  Extract the page-consume math after Q/dO/sidecar latch into one
+  helper while keeping the canonical PageFilled/PageUsed protocol unchanged.
+- Static/resource:
+  build, dQ gate, and metadata gate PASS.  Consumer branch windows improved
+  from `159/216` to `158/216`; metadata stayed `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS.
+- Metrics:
+  after moving `mmac_zero` back to the outer consumer scope, H1/S1024 runs were
+  `29,289,260` ticks / `32.8632%` MMAC active and repeat
+  `29,216,460` ticks / `32.6674%`.  Instruction counts improved versus
+  setprio canonical: `VALU 58,144 -> 57,968`, `SCA 54,316 -> 54,172`,
+  `MMOP=50,688`, `LDS=26,352`, `ldsBankConflict=0`.
+- Evidence:
+  first root `/tmp/dq_refactor_151548`;
+  repeat root `/tmp/dq_refactor_repeat_151642`.
+- Decision:
+  accept.  This is primarily code governance and live-range cleanup, not the
+  40% MMAC-active structural solution.  It enables a future short-causal path
+  to reuse the exact same compute helper instead of stacking duplicated code.
+
 ## 2026-07-12 dQ Setprio Reverse M16 Retest Observed
 
 Status: `OBSERVE_NEEDS_REPEAT_SOURCE_RESTORED`.

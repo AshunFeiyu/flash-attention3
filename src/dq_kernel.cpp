@@ -385,17 +385,23 @@ __device__ __forceinline__ void dq_arrive_qdo_filled();
 template <typename Bar>
 __device__ __forceinline__ void dq_arrive_qdo_latched();
 
-template <typename Tile, typename Bar, int ConsumerGroup>
-__device__ __forceinline__ void dq_consumer_full3gemm_role(
-    __half* __restrict__ lds,
-    float* __restrict__ dq_out,
+template <typename Tile, typename Bar, bool UsePageBarriers>
+__device__ __forceinline__ void dq_compute_pages_from_latched(
+    const __half* __restrict__ lds,
     int q_base_tile,
-    int seqlen,
-    int bh,
-    int diag_store,
+    int local_m16,
+    float row_max,
+    float row_sum,
+    float row_delta,
+    const ins::F16x8 (&q_reg)[Tile::kHeadDim / 32],
+    const ins::F16x8 (&dout_reg)[Tile::kHeadDim / 32],
     float softmax_scale,
     float softmax_scale_log2,
-    int wave_local) {
+    int active_k_tiles,
+    int& filled_phase0,
+    int& filled_phase1,
+    const ins::F32x4& mmac_zero,
+    ins::F32x4 (&dq_reg)[8]) {
     constexpr int Dim = Tile::kHeadDim;
     constexpr int Nk = Tile::kBlockNk;
     constexpr int KBlocks = Dim / 32;
@@ -403,60 +409,14 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
     const int lane = static_cast<int>(threadIdx.x % 64);
     const int lane_mq = lane % 16;
     const int lane_n = lane / 16;
-    const int local_m16 = ConsumerGroup * 4 + wave_local;
-    const int m32_block = local_m16 / 2;
-    const int mhalf_offset = (local_m16 & 1) == 0 ? 0 : 1024;
     const int local_row = local_m16 * 16 + lane_mq;
     const int qrow = q_base_tile + local_row;
-    const int q_tile_end =
-        q_base_tile + Tile::kBlockMq < seqlen ? q_base_tile + Tile::kBlockMq
-                                              : seqlen;
-    const int active_k_tiles = (q_tile_end + Nk - 1) / Nk;
-
-    const __half* q_lds = lds + DqLdsLayout<Tile>::kQBase / sizeof(__half);
-    const __half* dout_lds =
-        lds + DqLdsLayout<Tile>::kDoutBase / sizeof(__half);
-    int filled_phase0 = 0;
-    int filled_phase1 = 0;
-    int qdo_filled_phase = 0;
-    dq_wait_qdo_filled<Bar>(qdo_filled_phase);
-
-    constexpr int SidecarRows = DqLdsLayout<Tile>::kSidecarRows;
-    const int sidecar_vec_base = local_row & ~3;
-    const int sidecar_vec_idx = local_row & 3;
-    const volatile float* sidecar = dq_sidecar_lds<Tile>(lds);
-    const float row_max = sidecar[sidecar_vec_base + sidecar_vec_idx];
-    const float row_sum =
-        sidecar[SidecarRows + sidecar_vec_base + sidecar_vec_idx];
-    const float row_delta =
-        sidecar[2 * SidecarRows + sidecar_vec_base + sidecar_vec_idx];
-
-    ins::F16x8 q_reg[KBlocks];
-    ins::F16x8 dout_reg[KBlocks];
-#pragma unroll
-    for (int d_block = 0; d_block < KBlocks; ++d_block) {
-        const int lds_offset =
-            DqLdsLayout<Tile>::kQBlockOffset(m32_block, d_block) +
-            mhalf_offset;
-        ins::ds_read_matrix_32x16_trans(q_lds, lds_offset,
-                                        q_reg[d_block].f16x8);
-        ins::ds_read_matrix_32x16_trans(dout_lds, lds_offset,
-                                        dout_reg[d_block].f16x8);
-    }
-    ins::wait_lgkm(0);
-    dq_arrive_qdo_latched<Bar>();
-
-    ins::F32x4 dq_reg[8];
-#pragma unroll
-    for (int d_idx = 0; d_idx < 8; ++d_idx) {
-        dq_zero_f32x4(dq_reg[d_idx]);
-    }
-    ins::F32x4 mmac_zero;
-    dq_zero_f32x4(mmac_zero);
 
     for (int kt = 0; kt < active_k_tiles; ++kt) {
         const int page = kt & 1;
-        dq_wait_page_filled<Bar>(page, filled_phase0, filled_phase1);
+        if constexpr (UsePageBarriers) {
+            dq_wait_page_filled<Bar>(page, filled_phase0, filled_phase1);
+        }
         const int k_base_tile = kt * Nk;
         const bool boundary_k_tile = (kt + 1 == active_k_tiles);
         const __half* k_lds =
@@ -611,8 +571,81 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
             dq_update_from_ds_pair<Tile>(
                 lds, page, n_tile, ds_vec0, ds_vec1, dq_reg);
         }
-        dq_arrive_page_used<Bar>(page);
+        if constexpr (UsePageBarriers) {
+            dq_arrive_page_used<Bar>(page);
+        }
     }
+}
+
+template <typename Tile, typename Bar, int ConsumerGroup>
+__device__ __forceinline__ void dq_consumer_full3gemm_role(
+    __half* __restrict__ lds,
+    float* __restrict__ dq_out,
+    int q_base_tile,
+    int seqlen,
+    int bh,
+    int diag_store,
+    float softmax_scale,
+    float softmax_scale_log2,
+    int wave_local) {
+    constexpr int Dim = Tile::kHeadDim;
+    constexpr int Nk = Tile::kBlockNk;
+    constexpr int KBlocks = Dim / 32;
+    const int lane = static_cast<int>(threadIdx.x % 64);
+    const int lane_mq = lane % 16;
+    const int local_m16 = ConsumerGroup * 4 + wave_local;
+    const int m32_block = local_m16 / 2;
+    const int mhalf_offset = (local_m16 & 1) == 0 ? 0 : 1024;
+    const int local_row = local_m16 * 16 + lane_mq;
+    const int q_tile_end =
+        q_base_tile + Tile::kBlockMq < seqlen ? q_base_tile + Tile::kBlockMq
+                                              : seqlen;
+    const int active_k_tiles = (q_tile_end + Nk - 1) / Nk;
+
+    const __half* q_lds = lds + DqLdsLayout<Tile>::kQBase / sizeof(__half);
+    const __half* dout_lds =
+        lds + DqLdsLayout<Tile>::kDoutBase / sizeof(__half);
+    int filled_phase0 = 0;
+    int filled_phase1 = 0;
+    int qdo_filled_phase = 0;
+    dq_wait_qdo_filled<Bar>(qdo_filled_phase);
+
+    constexpr int SidecarRows = DqLdsLayout<Tile>::kSidecarRows;
+    const int sidecar_vec_base = local_row & ~3;
+    const int sidecar_vec_idx = local_row & 3;
+    const volatile float* sidecar = dq_sidecar_lds<Tile>(lds);
+    const float row_max = sidecar[sidecar_vec_base + sidecar_vec_idx];
+    const float row_sum =
+        sidecar[SidecarRows + sidecar_vec_base + sidecar_vec_idx];
+    const float row_delta =
+        sidecar[2 * SidecarRows + sidecar_vec_base + sidecar_vec_idx];
+
+    ins::F16x8 q_reg[KBlocks];
+    ins::F16x8 dout_reg[KBlocks];
+#pragma unroll
+    for (int d_block = 0; d_block < KBlocks; ++d_block) {
+        const int lds_offset =
+            DqLdsLayout<Tile>::kQBlockOffset(m32_block, d_block) +
+            mhalf_offset;
+        ins::ds_read_matrix_32x16_trans(q_lds, lds_offset,
+                                        q_reg[d_block].f16x8);
+        ins::ds_read_matrix_32x16_trans(dout_lds, lds_offset,
+                                        dout_reg[d_block].f16x8);
+    }
+    ins::wait_lgkm(0);
+    dq_arrive_qdo_latched<Bar>();
+
+    ins::F32x4 dq_reg[8];
+#pragma unroll
+    for (int d_idx = 0; d_idx < 8; ++d_idx) {
+        dq_zero_f32x4(dq_reg[d_idx]);
+    }
+    ins::F32x4 mmac_zero;
+    dq_zero_f32x4(mmac_zero);
+    dq_compute_pages_from_latched<Tile, Bar, true>(
+        lds, q_base_tile, local_m16, row_max, row_sum, row_delta,
+        q_reg, dout_reg, softmax_scale, softmax_scale_log2, active_k_tiles,
+        filled_phase0, filled_phase1, mmac_zero, dq_reg);
 
     if (diag_store == 0) {
         dq_store_m16_full_d_to_global<Tile>(

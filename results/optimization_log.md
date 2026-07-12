@@ -1,5 +1,39 @@
 # Optimization Log
 
+## 2026-07-12 dQ Latched Compute Helper Refactor
+
+- Hypothesis:
+  short-causal optimization needs a way to reuse the exact same
+  score+dP/softmax/dS/dQ math without copying the whole consumer loop.  Extract
+  a helper that starts after Q/dO/sidecar are latched and consumes K/V pages,
+  keeping canonical barriers unchanged.
+- Source change:
+  added `dq_compute_pages_from_latched<Tile, Bar, UsePageBarriers>`.  The
+  existing consumer calls it with `UsePageBarriers=true`.  `mmac_zero` remains
+  in the outer consumer scope; an intermediate build that zeroed inside the
+  n-tile loop raised VALU and was fixed before acceptance.
+- Static/resource:
+  build, dQ source gate, and metadata gate PASS.  Consumer branch windows
+  improved `159/216 -> 158/216`; metadata stayed `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS.
+- PMD stats:
+  first H1/S1024 run after the zero fix:
+  `simTicks=29,289,260`, MMAC active `32.8632%`, `MMOP=50,688`,
+  `VALU=57,968`, `SCA=54,172`, `LDS=26,352`,
+  `coissue=10,970/9,686`, `ldsBankConflict=0`.
+  Repeat:
+  `simTicks=29,216,460`, MMAC active `32.6674%`,
+  `coissue=11,820/10,450`.
+- Evidence:
+  first root `/tmp/dq_refactor_151548`;
+  repeat root `/tmp/dq_refactor_repeat_151642`.
+- Decision:
+  `ACCEPT_MICRO_CODE_GOVERNANCE`.  Keep the helper extraction because it lowers
+  instruction counts and branch live range while preserving correctness.  It is
+  a staging step for short-causal fast path, not the final 40% active solution.
+
 ## 2026-07-12 dQ Setprio Reverse M16 Retest
 
 - Hypothesis:
