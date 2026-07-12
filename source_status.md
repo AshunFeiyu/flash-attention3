@@ -6427,3 +6427,44 @@ Status: `REJECT_FULLPERF_REGRESSION`, source restored to C74.
   reject.  The ownership-lifetime argument is correct, but the added guard and
   control edge are not free.  Source is restored to canonical unconditional
   `dq_arrive_page_used(page)`.
+
+## 2026-07-12 dQ causal boundary-mask fast path
+
+Status: `ACCEPT_PERF_WITH_XCU_BLOCKER`; this is the current canonical dQ
+source.
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `89_DQ_CausalBoundary`.
+- Source change:
+  the dS loop now distinguishes the final causal boundary K tile from
+  full-valid K tiles.  The boundary path keeps the original `krow <= qrow`
+  mask; the full-valid path omits the valid compare/multiply.  Tile shape,
+  16-wave topology, Q/dO latch, K/V page ownership, LDS layout, and MMOP count
+  are unchanged.
+- Static/resource:
+  dQ gate PASS and symbol metadata PASS.  Branch windows are
+  `8/40,167/216,167/216,9/40`; metadata is `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- Main H1/S1024 stats:
+  `simTicks=32,597,110 -> 30,523,220`;
+  MMAC active `31.6674% -> 32.8290%`;
+  VALU `89,216 -> 71,136`;
+  SCA `40,732 -> 46,380`;
+  `MMOP=55,296`, `ldsBankConflict=0`.
+- qtile split:
+  qtile0 regresses `+6.52%`, but qtile1..7 improve
+  `-2.87%`, `-4.70%`, `-6.69%`, `-8.14%`, `-7.77%`, `-8.97%`, `-11.28%`.
+  Late qtiles reach MMAC active `40.69%`, `41.74%`, and `42.79%`.
+- Profiler limitation:
+  helper fullperf with `HSA_TOOLS_LIB` aborts before dispatch in
+  `libhsakmt` buffer-overflow handling.  TT/Perf without `HSA_TOOLS_LIB`
+  completes with `simTicks=31,014,165` and MMAC active `32.7989%`, but the
+  generated `.perf` is not xcu-parseable (`Invalid SQTT Token Type`).
+- Next:
+  continue from this accepted baseline.  The next optimization should target
+  early causal-tile fixed overhead/control or find a codegen/toolchain path
+  that keeps this mask win while restoring helper `.perf`/xcu evidence.

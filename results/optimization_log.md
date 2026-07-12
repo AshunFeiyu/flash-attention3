@@ -11010,3 +11010,47 @@ Conclusion:
   guard/control cost and scheduling change erase the removed tail-arrive cost.
   Source restored to C74.  Do not retry PageUsed tail pruning unless it can be
   made compile-time/static without adding a hot control edge.
+
+## 2026-07-12 dQ causal boundary-mask fast path accepted
+
+- Hypothesis:
+  canonical dQ currently computes the causal `krow <= qrow` mask for every
+  active K tile.  Because canonical dQ is restricted to causal equal-S shapes,
+  all K tiles before `active_k_tiles - 1` are fully valid for a q tile.  Only
+  the final boundary K tile needs per-element causal masking.
+- Source:
+  in the dS loop, split the dS conversion into a boundary path that keeps the
+  existing per-element valid multiply and a full-valid path that omits the
+  valid compare/multiply.  No tile, PageFilled/PageUsed, LDS layout, MMOP, or
+  output ownership change.
+- Static/resource:
+  dQ gate PASS and symbol metadata PASS.  Consumer branch windows increase
+  from `159/216` to `167/216`; metadata remains `private=0`, `sgpr=65`,
+  `vgpr=128`, with no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`.
+- Metrics:
+  H1/S1024 stats improves versus C74:
+  `simTicks=32,597,110 -> 30,523,220`, MMAC active
+  `31.6674% -> 32.8290%`, VALU `89,216 -> 71,136`, with SCA rising
+  `40,732 -> 46,380`, `MMOP=55,296`, and `ldsBankConflict=0`.
+  TT/Perf without `HSA_TOOLS_LIB` also supports the direction:
+  `simTicks=31,014,165`, MMAC active `32.7989%`.
+- qtile split evidence:
+  the causal cost model is confirmed.  qtile0 has no full-valid K tile and
+  regresses `+6.52%`, while later tiles improve more as full-valid tiles grow:
+  qtile1 `-2.87%`, qtile2 `-4.70%`, qtile3 `-6.69%`, qtile4 `-8.14%`,
+  qtile5 `-7.77%`, qtile6 `-8.97%`, qtile7 `-11.28%`.  Late-tile MMAC active
+  reaches `39.46%`, `40.69%`, `41.74%`, and `42.79%` for qtile4..7.
+- Profiler blocker:
+  helper fullperf with `HSA_TOOLS_LIB` aborts before dispatch in
+  `libhsakmt` with a buffer-overflow backtrace.  The no-helper trace run
+  completes but its `.perf` fails xcu with `Invalid SQTT Token Type`.
+  This is recorded as an evidence limitation, not a correctness failure.
+- Decision:
+  `ACCEPT_PERF_WITH_XCU_BLOCKER`.  Keep this as the new canonical dQ baseline.
+  It is the first dQ change in this segment with a >5% same-shape stats win and
+  qtile-split evidence matching the algorithmic hypothesis.  Next work should
+  target early causal-tile fixed overhead/control and restore usable xcu
+  evidence for the new codegen.
