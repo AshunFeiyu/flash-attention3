@@ -1,5 +1,49 @@
 # Optimization Log
 
+## 2026-07-12 dKV Half-Filled Token Merge
+
+- Hypothesis:
+  current dKV spends too much control time on half-page ownership.  Previous
+  merged-used-token work proved that merging `QUsed` and `DoutUsed` delays
+  independent release and regresses ticks.  Try the narrower lifetime change:
+  merge only the `QHalfFilled`/`DoutHalfFilled` readiness into one 8-wave
+  filled token per half, while keeping `QUsed` and `DoutUsed` separate.
+- Source change:
+  producer0 and producer1 now both `seq/arrive` `Q0Filled/Q1Filled` after
+  publishing their Q or dO half.  Consumers wait `Q0Filled/Q1Filled` once and
+  no longer wait `Dout0Filled/Dout1Filled`.  `Dout0Used/Dout1Used` remain
+  unchanged, so producers still cannot overwrite dO before consumers release
+  it.
+- Static/resource:
+  build, dKV gate, and metadata gate PASS.  Branch windows
+  `14/16,221/240,221/240,8/16`; metadata `private=0`, `sgpr=97`,
+  `vgpr=128`, no spill/scratch.  ASM counts:
+  `ds_read_matrix=550`, `v_mmac=1028`, `ds_read_b32=0`,
+  `ds_bpermute=0`.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS, no NaN/Inf, `ldsBankConflict=0`.
+- PMD stats:
+  first H1/S1024:
+  `simTicks=46,323,550`, MMAC active `33.2633%`, `MMOP=131,072`,
+  `VALU=168,384`, `SCA=111,944`, `coissue=37,284/25,932`.
+  Repeat:
+  `simTicks=46,698,470`, MMAC active `33.3278%`,
+  `coissue=37,057/25,788`, `waitLgkm=51,337.75`,
+  `barrier=139,802.92`.
+- Evidence:
+  `/zys/shaobo_runs/dkv_half_filled_merge_20260712_160653`;
+  repeat
+  `/zys/shaobo_runs/dkv_half_filled_merge_repeat_20260712_160817`.
+  Fullperf/xcu blocked by two pre-dispatch PMD/libhsakmt startup aborts:
+  `/zys/shaobo_runs/dkv_half_filled_merge_fullperf_20260712_160937`
+  and
+  `/zys/shaobo_runs/dkv_half_filled_merge_fullperf_retry_20260712_161104`.
+- Decision:
+  `OBSERVE_STATS_REPEAT_WIN_FULLPERF_PMD_STARTUP_BLOCKED`.  This is a clean
+  micro-lifetime improvement, not the structural dKV answer.  Next dKV work
+  should use xcu when fullperf is stable and keep targeting ABarrier ownership
+  bubbles plus useful MMAC per ownership epoch.
+
 ## 2026-07-12 dQ Latched Compute Helper Refactor
 
 - Hypothesis:

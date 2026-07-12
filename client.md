@@ -37,6 +37,14 @@ evidence are required before any performance claim.
 - Current accepted dKV source is `dkv_q_used_release_before_softmax`:
   `Mq=128,Nk=128,D=128,16 waves`, with Q/dO half-page ownership and sidecar
   staged in LDS by the producer.
+- Latest observed dKV candidate:
+  `dkv_half_filled_merge` keeps `QUsed`/`DoutUsed` independent but merges only
+  the Q/dO half-filled readiness tokens.  H1/S128 and H1/S1024 correctness
+  pass with no spill/scratch and `ldsBankConflict=0`; repeat H1/S1024 is
+  `simTicks=46,698,470`, MMAC active `33.3278%`, `SCA=111,944`, versus prior
+  best `46,716,670` ticks and `SCA=114,520`.  Treat it as
+  `OBSERVE_STATS_REPEAT_WIN_FULLPERF_PMD_STARTUP_BLOCKED` until fullperf/xcu
+  captures prove whether the ABarrier ownership bubble actually moved.
 - Fixed-env H1/S1024 full perf:
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_033115_dkv_qused_before_softmax_h1s1024_sqc7_fullperf`,
   `simTicks=46,716,670`, `kernel_ticks=43,103,060`,

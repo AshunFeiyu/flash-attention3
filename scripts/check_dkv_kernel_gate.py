@@ -74,20 +74,20 @@ def main() -> int:
             failures, "missing_resident_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*8\)",
             failures, "missing_resident_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ0Filled,\s*4\)",
-            failures, "missing_q0_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ0Filled,\s*8\)",
+            failures, "missing_q0_combined_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kQ0Used,\s*8\)",
             failures, "missing_q0_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kDout0Filled,\s*4\)",
-            failures, "missing_dout0_filled_count")
+    forbid(perf_source, r"s_abarrier_init\(Bar::kDout0Filled,",
+           failures, "dout0_filled_should_share_q0_filled")
     require(perf_source, r"s_abarrier_init\(Bar::kDout0Used,\s*8\)",
             failures, "missing_dout0_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ1Filled,\s*4\)",
-            failures, "missing_q1_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ1Filled,\s*8\)",
+            failures, "missing_q1_combined_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kQ1Used,\s*8\)",
             failures, "missing_q1_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kDout1Filled,\s*4\)",
-            failures, "missing_dout1_filled_count")
+    forbid(perf_source, r"s_abarrier_init\(Bar::kDout1Filled,",
+           failures, "dout1_filled_should_share_q1_filled")
     require(perf_source, r"s_abarrier_init\(Bar::kDout1Used,\s*8\)",
             failures, "missing_dout1_used_count")
     require(perf_source, r"publish_mq_half_tile<Tile,\s*0>", failures,

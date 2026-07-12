@@ -1,5 +1,52 @@
 # Source Status
 
+## 2026-07-12 dKV Half-Filled Token Merge Observed
+
+Status: `OBSERVE_STATS_REPEAT_WIN_FULLPERF_PMD_STARTUP_BLOCKED`.
+
+- Motivation:
+  dKV best xcu evidence remained dominated by ABarrier ownership bubbles.
+  Previous `QUsed/DoutUsed -> RawHalfUsed` merging reduced SCA but regressed
+  ticks by delaying independent Q and dO page release.  This experiment keeps
+  `QUsed` and `DoutUsed` independent, but merges only the half-filled
+  readiness: both Q and dO producers arrive the same `Q{0,1}Filled` token
+  with count 8, and consumers wait that token once per half.
+- Static/resource:
+  build, dKV source gate, and metadata gate PASS.  Branch windows are
+  `14/16,221/240,221/240,8/16`; metadata is `private=0`, `sgpr=97`,
+  `vgpr=128`, no SGPR/VGPR spill.  ASM keeps the matrixized path:
+  `ds_read_matrix=550`, `v_mmac=1028`, `ds_read_b32=0`,
+  `ds_bpermute=0`, `s_trap=0`.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS; `ldsBankConflict=0`.
+- Metrics:
+  first H1/S1024 stats:
+  `simTicks=46,323,550`, MMAC active `33.2633%`, `MMOP=131,072`,
+  `VALU=168,384`, `SCA=111,944`, `LDS=79,360`, `VMEM=4,352`,
+  `coissue=37,284/25,932`, `waitLgkm=52,908.75`,
+  `barrier=140,675.42`.
+  Repeat:
+  `simTicks=46,698,470`, MMAC active `33.3278%`, same instruction counts,
+  `coissue=37,057/25,788`, `waitLgkm=51,337.75`,
+  `barrier=139,802.92`.
+  Compared with prior best `46,716,670` ticks, this is a very small repeat
+  win and lowers SCA `114,520 -> 111,944`.
+- Evidence:
+  first root `/zys/shaobo_runs/dkv_half_filled_merge_20260712_160653`;
+  repeat root
+  `/zys/shaobo_runs/dkv_half_filled_merge_repeat_20260712_160817`.
+  Fullperf/xcu attempts
+  `/zys/shaobo_runs/dkv_half_filled_merge_fullperf_20260712_160937`
+  and
+  `/zys/shaobo_runs/dkv_half_filled_merge_fullperf_retry_20260712_161104`
+  both aborted before dispatch with the known PMD/libhsakmt
+  `buffer overflow detected` startup issue.
+- Decision:
+  keep as an observed dKV candidate, but do not call it a structural solution.
+  It trims one readiness wait class without hurting correctness/resources; xcu
+  is still needed to prove whether the dominant ownership bubble actually
+  moved.
+
 ## 2026-07-12 dQ Latch Helper Extract Rejected
 
 Status: `REJECT_TICKS_REGRESSION_SOURCE_RESTORED`.
