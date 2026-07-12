@@ -1,5 +1,37 @@
 # Source Status
 
+## 2026-07-12 dQ VUsed Early-Release Rejected
+
+Status: `REJECT_PROTOCOL_LONGRUN_SOURCE_RESTORED`.
+
+- Motivation:
+  C74 producer1 loads V but waits on the shared `PageUsed` token until dQ
+  finishes using K, even though V is mathematically dead after
+  `dP = dO @ V^T`.  This candidate tried to add `Page0VUsed/Page1VUsed`
+  tokens so the V producer could reuse the V half-page earlier while the
+  consumers continued softmax/dS and `dQ = dS @ K`.
+- Code:
+  temporary only.  Added two VUsed ABarrier tokens, made consumers arrive
+  VUsed after the dP MMAC region, and made the V producer wait VUsed instead
+  of PageUsed for `kt > 1`.  K producer, shared K/V double pages, tile shape,
+  and math were otherwise unchanged.
+- Gates:
+  static/resource PASS with branch windows `8/40,166/216,166/216,9/40`.
+  Metadata stayed clean: `private=0`, `sgpr=65`, `vgpr=128`, no
+  spill/scratch.  H1/S128 correctness PASS.
+- Runtime:
+  H1/S1024 did not complete in the normal PMD smoke window and was
+  interrupted; leftover `fa3_bwd_dq_clean` processes were killed.  Source and
+  remote mirror were restored to C74.
+- Decision:
+  reject.  In the current interleaved `n_tile` mainloop, V is still needed for
+  later `n_tile` dP computations in the same K/V page.  Arriving VUsed after
+  one `n_tile` is semantically too early, while arriving after all `n_tile`
+  would be almost the same point as PageUsed because dQ is interleaved per
+  `n_tile`.  Real V early-release would require a different schedule that
+  computes all dP for the page before dQ, plus storage/register budget for
+  qk/dp/dS; do not retry it as a token-only tweak.
+
 ## 2026-07-12 dQ WG-Local K/V Duplicate Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

@@ -10962,3 +10962,25 @@ Conclusion:
   shared K/V reuse and double-buffer prefetch.  Preserve shared K/V pages in
   the next canonical route and attack ownership by larger useful work per
   epoch or a real dS dependency-graph change.
+
+## 2026-07-12 dQ VUsed early-release rejected
+
+- Hypothesis:
+  V is only needed for `dP = dO @ V^T`, while K is still needed later for
+  `dQ = dS @ K`.  Add separate VUsed tokens so the V producer can overwrite
+  the V half-page after consumers finish dP, rather than waiting for the
+  shared PageUsed token after dQ.
+- Result:
+  temporary source passed build/static/resource gates with branch windows
+  `8/40,166/216,166/216,9/40`, metadata `private=0`, `sgpr=65`,
+  `vgpr=128`, and no spill/scratch.  H1/S128 correctness PASS.  H1/S1024 did
+  not complete in the normal PMD smoke window and was interrupted; leftover
+  dQ processes were killed.  Source restored to C74.
+- Decision:
+  `REJECT_PROTOCOL_LONGRUN`.  The current mainloop interleaves
+  `score/dP -> softmax/dS -> dQ` per `n_tile`; V is still needed by later
+  `n_tile` dP computations in the same page.  A token-only VUsed arrive inside
+  the `n_tile` loop is too early.  A correct early-release schedule would need
+  to compute all page dP before dQ, which requires a new resource plan for
+  qk/dp/dS storage or recomputation.  Do not retry VUsed as a small token
+  patch.
