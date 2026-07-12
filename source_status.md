@@ -6468,3 +6468,36 @@ source.
   continue from this accepted baseline.  The next optimization should target
   early causal-tile fixed overhead/control or find a codegen/toolchain path
   that keeps this mask win while restoring helper `.perf`/xcu evidence.
+
+## 2026-07-12 dQ branch-hoist helper
+
+Status: `REJECT_STATS_OBSERVE_XCU`; source restored to the accepted
+boundary-mask canonical path.
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`,
+  sheet `90_DQ_BranchHoist`.
+- Source experiment:
+  temporarily extracted one n_tile read/MMAC/dS/dQ brick into
+  `dq_process_n_tile<Boundary>` and moved the boundary/full-valid decision to
+  the `kt` layer.
+- Static/resource:
+  dQ gate PASS and symbol metadata PASS, but consumer branch windows rose to
+  `191/216` from the accepted `167/216`.  Metadata stayed `private=0`,
+  `sgpr=65`, `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS.
+- PMD stats:
+  H1/S1024 stats regressed versus the accepted boundary-mask baseline:
+  `simTicks=30,523,220 -> 30,761,640`.  MMAC active increased
+  `32.8290% -> 33.1734%`, but elapsed ticks failed the promotion gate.
+- xcu:
+  helper fullperf worked for this codegen and produced
+  `/zys/shaobo_runs/dq_branch_hoist_fullperf_20260712_125000/dq_correctness_20260712_100638/m5out/0/0/2787063_fa3_bwd_dq_clean.perf`.
+  xcu outputs are under
+  `/zys/shaobo_runs/dq_branch_hoist_fullperf_20260712_125000/xcu_outputs/branch_hoist_d0`.
+  Top bottlenecks are ABarrier ownership (`22.19%`), tail sync
+  (`17.88%`), BPS/vbcnt wait (`8.32%`), and matrix-read issue gaps (`3.01%`).
+- Decision:
+  reject as canonical, keep as evidence.  Readability/modularity and higher
+  active share do not justify slower same-shape ticks.

@@ -11054,3 +11054,30 @@ Conclusion:
   qtile-split evidence matching the algorithmic hypothesis.  Next work should
   target early causal-tile fixed overhead/control and restore usable xcu
   evidence for the new codegen.
+
+## 2026-07-12 dQ branch-hoist helper rejected, xcu observed
+
+- Hypothesis:
+  move the boundary/full-valid decision from inside every `n_tile` to the `kt`
+  layer and encapsulate one read/MMAC/dS/dQ brick as
+  `dq_process_n_tile<Boundary>`.  This should reduce repeated control while
+  preserving the causal boundary-mask VALU savings.
+- Result:
+  static gates and correctness passed, but the consumer window rose sharply to
+  `191/216` from the accepted `167/216`.  Metadata still had no spill/scratch.
+- Metrics:
+  H1/S1024 stats regressed versus the accepted boundary-mask baseline:
+  `simTicks=30,523,220 -> 30,761,640`.  MMAC active improved
+  `32.8290% -> 33.1734%`, SCA dropped `46,380 -> 42,860`, but VALU rose
+  `71,136 -> 73,600` and the elapsed tick gate failed.
+- xcu evidence:
+  unlike the accepted boundary-mask codegen, branch-hoist restored helper
+  fullperf/xcu.  Fullperf completed with `simTicks=30,603,300` and MMAC active
+  `33.3594%`; xcu duration was `59,252` with `222,784` instruction issues.
+  Top bubbles: `s_abarrier_try_wait -> s_xor_b32` `22.19%`,
+  tail `s_barrier -> s_cbranch_vccnz` `17.88%`, `s_waitcnt_vbcnt` `8.32%`,
+  and `lds_matrix -> immed` `3.01%`.
+- Decision:
+  `REJECT_STATS_OBSERVE_XCU`.  Source restored to the accepted boundary-mask
+  canonical code.  Keep the xcu output as bottleneck evidence, but do not
+  promote a readability/helper refactor that regresses same-shape ticks.
