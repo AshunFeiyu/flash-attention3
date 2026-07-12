@@ -106,6 +106,10 @@ def main() -> int:
             "missing_q_tile_stream_loop")
     require(perf_source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
             "missing_all_done_wait")
+    require(perf_source,
+            r"__syncthreads\(\);\s*if\s*\(\s*wave_id\s*==\s*0\s*\)"
+            r"\s*\{[\s\S]{0,900}s_abarrier_inv\(Bar::kResidentFilled\)",
+            failures, "missing_wave0_terminal_invalidate")
     require(source, r"matrix_load_32x32_b16_bps_lds", failures,
             "missing_mls_bps_helper")
     require(source, r"ds_read_matrix_trans_pair", failures,

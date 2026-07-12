@@ -45,6 +45,15 @@ evidence are required before any performance claim.
   best `46,716,670` ticks and `SCA=114,520`.  Treat it as
   `OBSERVE_STATS_REPEAT_WIN_FULLPERF_PMD_STARTUP_BLOCKED` until fullperf/xcu
   captures prove whether the ABarrier ownership bubble actually moved.
+- Current accepted dKV micro cleanup:
+  `dkv_wave0_terminal_invalidate` keeps the `AllDone` role-exit token but
+  makes terminal ABarrier invalidation wave0-only.  Removing `AllDone`
+  entirely caused metadata spill (`private_segment=244`, `sgpr_spill=2`,
+  `vgpr_spill=60`), so `AllDone` remains required.  The accepted cleanup
+  passes H1/S128/H1/S1024 correctness/resources and repeats H1/S1024 at
+  `46,682,090` ticks, `SCA=111,248`, `coissue=37,013/25,997`,
+  `ldsBankConflict=0`.  It is only a tail-control win; mainloop ABarrier/page
+  ownership remains the dKV bottleneck.
 - Fixed-env H1/S1024 full perf:
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260709_033115_dkv_qused_before_softmax_h1s1024_sqc7_fullperf`,
   `simTicks=46,716,670`, `kernel_ticks=43,103,060`,
@@ -102,6 +111,12 @@ evidence are required before any performance claim.
   `dq_latch_qdo_sidecar` extraction was rejected and removed: it still passed
   H1/S128/H1/S1024 and resource gates but regressed H1/S1024 to
   `29,466,255` ticks with unchanged instruction counts.
+- 2026-07-12 latest rejected dQ probe:
+  `dq_setprio_narrow_dqmmac` moved `s_setprio 2` in `dq_update_from_ds_pair`
+  after K-normal matrix reads.  Correctness/resources passed, but H1/S1024
+  regressed to `29,979,040` ticks.  Source has been restored locally and
+  remotely.  Keep the current dQ priority island covering read/wait/MMAC until
+  xcu evidence says otherwise.
 - 2026-07-12 `.53` recert:
   jump host `.53` recovered and remote `/zys/shaobo/fa3_bwd_wasp_clean` was
   resynced from local canonical commit `a351fc3`.  Build/gates pass with

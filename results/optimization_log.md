@@ -1,5 +1,66 @@
 # Optimization Log
 
+## 2026-07-12 dKV Terminal Invalidate
+
+- Result:
+  `ACCEPT_MICRO_CANONICAL` for wave0-only terminal invalidate, after rejecting
+  the stronger no-`AllDone` variant at static gate.
+- Design basis:
+  The dKV algorithm DAG, `Mq=128/Nk=128/D=128` tile, Q/dO half-page ownership,
+  resident K/V, score+dP, softmax/dS, dV/dK MMAC islands, and output ownership
+  are unchanged.  The only promoted change is terminal ABarrier cleanup:
+  keep `AllDone` as the WDRA role-exit convergence token, then let wave0
+  invalidate the ABarriers instead of all waves issuing the same invalidates.
+- Static/resource:
+  deleting `AllDone` entirely failed metadata with
+  `private_segment_fixed_size=244`, `sgpr_spill_count=2`,
+  `vgpr_spill_count=60`; this proves `AllDone` is currently a live-range/codegen
+  stabilizer, not only a semantic wait.  The wave0-only invalidate variant
+  passes dKV gate and symbol metadata with branch windows
+  `14/16,221/240,221/240,8/16`, `private=0`, `sgpr=99`, `vgpr=128`, no spill.
+- Correctness/perf:
+  H1/S128 and H1/S1024 causal correctness pass under `GPU_CHIP=sb`,
+  `GPU_ARGS=['--SQCIPfLines=7']`.  H1/S1024 first/repeat:
+  `46,594,275` / `46,682,090` ticks; `MMOP=131,072`,
+  `VALU=168,384`, `SCA=111,248`, `LDS=79,360`, `VMEM=4,352`,
+  `coissue=37,013/25,997`, `waitLgkm=52,429.0`, `barrier=140,274.67`,
+  `ldsBankConflict=0`.  Prior half-merge repeat was `46,698,470` ticks and
+  `SCA=111,944`.
+- Evidence:
+  first `/zys/shaobo_runs/dkv_wave0_inv_20260712_205804`;
+  repeat `/zys/shaobo_runs/dkv_wave0_inv_repeat_20260712_210159`.
+- Lesson:
+  keep terminal `AllDone` in dKV until a WDRA-exit proof removes spill, but
+  wave0-only invalidate is a valid tiny cleanup.  This is not the 40% active
+  structural solution; mainloop ownership/wait remains the bottleneck.
+
+## 2026-07-12 dQ Setprio Narrowing Probe
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Design basis:
+  dQ `dq_update_from_ds_pair` had `s_setprio 2` before K-normal
+  `ds_read_matrix` reads.  The probe moved it after those reads, so the
+  priority island covered only wait/MMAC instead of read/wait/MMAC.  Formula,
+  `Mq=128/Nk=128`, startup Q/dO/sidecar latch, K/V pages, ABarrier tokens,
+  and store ownership were unchanged.
+- Gates:
+  build, dQ gate, and metadata gate pass: `8/40,158/216,158/216,9/40`,
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch.  H1/S128 and
+  H1/S1024 correctness pass; `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 regresses to `29,979,040` ticks with `MMOP=50,688`,
+  `VALU=57,968`, `SCA=54,172`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=10,578/9,194`, `waitLgkm=16,638.5`, `barrier=58,052.75`.
+  Current canonical dQ remains the restored setprio/latched-compute route.
+- Evidence:
+  `/zys/shaobo_runs/dq_setprio_narrow_dqmmac_20260712_210421`.
+- Lesson:
+  for this dQ dS@K island, high priority across the K-normal read/wait/MMAC
+  window appears better than a narrower MMAC-only priority island.  Do not
+  retry setprio narrowing without SQTT evidence that the read priority is
+  hurting a peer wave.
+
 ## 2026-07-12 dKV Full-Tile Filled Probe
 
 - Hypothesis:

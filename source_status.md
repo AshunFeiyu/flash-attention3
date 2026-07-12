@@ -1,5 +1,58 @@
 # Source Status
 
+## 2026-07-12 dKV Wave0 Terminal Invalidate Accepted
+
+Status: `ACCEPT_MICRO_CANONICAL`.
+
+- Design:
+  dKV formula DAG, `Mq=128,Nk=128,D=128`, K/V resident load, Q/dO half-page
+  producer ownership, sidecar LDS staging, score/dP, softmax/dS, dV/dK MMAC,
+  and output ownership are unchanged.  The promoted patch only changes terminal
+  cleanup: keep `AllDone`, but let wave0 invalidate the ABarriers after the
+  existing role-exit wait and CTA barrier.
+- Rejected stronger variant:
+  removing `AllDone` entirely passed the source gate but failed metadata with
+  `private_segment_fixed_size=244`, `sgpr_spill_count=2`,
+  `vgpr_spill_count=60`.  Treat `AllDone` as a current WDRA/codegen live-range
+  stabilizer.
+- Gates:
+  build, dKV gate, and metadata gate PASS; branch windows
+  `14/16,221/240,221/240,8/16`; `private=0`, `sgpr=99`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 causal correctness PASS.
+- Metrics:
+  H1/S1024 first/repeat `46,594,275` / `46,682,090` ticks,
+  `MMOP=131,072`, `VALU=168,384`, `SCA=111,248`, `LDS=79,360`,
+  `VMEM=4,352`, repeat coissue `37,013/25,997`, `waitLgkm=52,429.0`,
+  `barrier=140,274.67`, `ldsBankConflict=0`.
+- Evidence:
+  first `/zys/shaobo_runs/dkv_wave0_inv_20260712_205804`;
+  repeat `/zys/shaobo_runs/dkv_wave0_inv_repeat_20260712_210159`.
+- Decision:
+  keep as a tiny terminal-control cleanup.  It is not a structural pipeline
+  fix; next dKV work still needs mainloop ownership/SQTT evidence.
+
+## 2026-07-12 dQ Setprio Narrowing Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Design:
+  moved `ins::raise_priority_2()` in `dq_update_from_ds_pair` from before
+  K-normal `ds_read_matrix` to after the reads.  No formula, tile, LDS,
+  ABarrier, or store ownership change.
+- Gates:
+  build, dQ gate, and metadata gate PASS with branch windows
+  `8/40,158/216,158/216,9/40`, `private=0`, `sgpr=65`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 correctness PASS.
+- Metrics:
+  H1/S1024 `simTicks=29,979,040`, `MMOP=50,688`, `VALU=57,968`,
+  `SCA=54,172`, `LDS=26,352`, `VMEM=1,408`, `coissue=10,578/9,194`,
+  `waitLgkm=16,638.5`, `barrier=58,052.75`, `ldsBankConflict=0`.
+- Evidence:
+  `/zys/shaobo_runs/dq_setprio_narrow_dqmmac_20260712_210421`.
+- Decision:
+  source restored locally and remotely; dQ gate recertified.  Keep priority
+  over read/wait/MMAC for the dS@K helper unless xcu proves otherwise.
+
 ## 2026-07-12 dKV Full-Tile Filled Probe Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

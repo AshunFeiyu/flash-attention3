@@ -1977,17 +1977,19 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
     int done_phase = 0;
     ins::abarrier_try_wait<false>(Bar::kAllDone, done_phase);
     __syncthreads();
-    __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
-    if constexpr (Tile::kOverlayRawOnResidentKv) {
-        __builtin_hcu_s_abarrier_inv(Bar::kResidentUsed);
+    if (wave_id == 0) {
+        __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
+        if constexpr (Tile::kOverlayRawOnResidentKv) {
+            __builtin_hcu_s_abarrier_inv(Bar::kResidentUsed);
+        }
+        __builtin_hcu_s_abarrier_inv(Bar::kQ0Filled);
+        __builtin_hcu_s_abarrier_inv(Bar::kQ0Used);
+        __builtin_hcu_s_abarrier_inv(Bar::kDout0Used);
+        __builtin_hcu_s_abarrier_inv(Bar::kQ1Filled);
+        __builtin_hcu_s_abarrier_inv(Bar::kQ1Used);
+        __builtin_hcu_s_abarrier_inv(Bar::kDout1Used);
+        __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
     }
-    __builtin_hcu_s_abarrier_inv(Bar::kQ0Filled);
-    __builtin_hcu_s_abarrier_inv(Bar::kQ0Used);
-    __builtin_hcu_s_abarrier_inv(Bar::kDout0Used);
-    __builtin_hcu_s_abarrier_inv(Bar::kQ1Filled);
-    __builtin_hcu_s_abarrier_inv(Bar::kQ1Used);
-    __builtin_hcu_s_abarrier_inv(Bar::kDout1Used);
-    __builtin_hcu_s_abarrier_inv(Bar::kAllDone);
     __syncthreads();
 #else
     (void)dout;
