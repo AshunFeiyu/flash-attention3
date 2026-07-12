@@ -1,5 +1,29 @@
 # Source Status
 
+## 2026-07-12 dQ Contract Cleanup Pending Remote Build
+
+Status: `CLEANUP_PENDING_REMOTE_BUILD_CANONICAL_UNCHANGED`.
+
+- Motivation:
+  keep the clean repo honest: the active dQ contract should describe only the
+  canonical performance path, while rejected or exploratory native dS
+  source-slot work remains isolated as focused probes.
+- Source:
+  moved `DqNativeDsRingTileD128`, `NativeDsRingDqTile`,
+  `DqNativeDsRingBarrierLedger`, and `NativeDsSlotMap` out of
+  `include/dq_contract.h` into `probes/dq_probe_contract.h`.  Updated the
+  source-slot probe files to include the probe-local contract.  Removed the
+  unused `kDqPathNativeDsRingPrototype` constant from the active contract.
+- Local gate:
+  `python3 scripts/check_dq_kernel_gate.py --source src/dq_kernel.cpp
+  --contract include/dq_contract.h --asm /tmp/nonexistent_dq_cleanup.asm`
+  PASS.  `rg` confirms the native dS ring/source-slot contract now only
+  appears under `probes/`, not in `include/`, `src/`, or `scripts/`.
+- Pending:
+  remote build/asm metadata/correctness/PMD recert is pending because the
+  current liuchang/new-perf jump route is timing out.  This cleanup is intended
+  to be codegen-neutral for `src/dq_kernel.cpp`.
+
 ## 2026-07-12 dQ VUsed Early-Release Rejected
 
 Status: `REJECT_PROTOCOL_LONGRUN_SOURCE_RESTORED`.

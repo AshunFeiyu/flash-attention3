@@ -1,7 +1,7 @@
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
 
-#include "dq_contract.h"
+#include "dq_probe_contract.h"
 #include "shaobo_instr.h"
 
 #include <algorithm>

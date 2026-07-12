@@ -1,5 +1,25 @@
 # Optimization Log
 
+## 2026-07-12 dQ Contract Cleanup
+
+Decision: `CLEANUP_PENDING_REMOTE_BUILD_CANONICAL_UNCHANGED`
+
+Moved native dS ring/source-slot probe-only contracts out of the active dQ
+contract header:
+
+- Removed `kDqPathNativeDsRingPrototype`,
+  `DqNativeDsRingTileD128`, `NativeDsRingDqTile`,
+  `DqNativeDsRingBarrierLedger`, and `NativeDsSlotMap` from
+  `include/dq_contract.h`.
+- Added `probes/dq_probe_contract.h` and updated source-slot/dS-ring probes to
+  include it.
+- Canonical `src/dq_kernel.cpp` was not changed.
+
+Local source gate without asm input passes.  Remote build/asm/PMD recert is
+pending jump-host recovery; this cleanup should not affect generated kernel
+code because it only moves unused probe declarations out of the active
+contract.
+
 ## 2026-07-12 dQ Exact Active K-Tiles
 
 Decision: `REJECT_STATS_TICKS_REGRESSION`

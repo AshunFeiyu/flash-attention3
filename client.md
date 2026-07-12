@@ -77,6 +77,13 @@ evidence are required before any performance claim.
 
 ## Current dQ Override
 
+- 2026-07-12 cleanup:
+  active `include/dq_contract.h` now only carries the canonical dQ contract
+  (`ActiveDqTile`, `DqBarrierLedger`, and optimization targets).  Native dS
+  ring/source-slot structs were moved to `probes/dq_probe_contract.h`, so the
+  performance route has no leftover wrong-layout/prototype path constants.
+  Local source gate passes with no asm input; remote build/asm/PMD recert is
+  pending current jump-host recovery.
 - Current canonical source has moved from the earlier 12-wave dS-worker route
   to a 16-wave full-3GEMM dQ route.  Do not describe the current dQ kernel as
   12-wave: the active source uses `__launch_bounds__(1024, 1)` and
