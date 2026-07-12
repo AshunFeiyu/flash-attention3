@@ -1,5 +1,33 @@
 # Optimization Log
 
+## 2026-07-12 dKV Full-Tile Filled Probe
+
+- Hypothesis:
+  dKV may pay too much for half-level Filled waits.  Try a full Mq128 Filled
+  token by making all Q/dO half publishes arrive `Q0Filled` count 16 and
+  removing the consumer wait on `Q1Filled`, while preserving half-level
+  `QUsed`/`DoutUsed` release.
+- Source experiment:
+  temporary only.  `Q1Filled` hot-path arrives/waits were bypassed; `Q0Filled`
+  init count changed to 16.  Used lifetime and matrix math were unchanged.
+- Static/resource:
+  build, dKV gate, and metadata gate PASS.  Metadata stayed legal and SGPR
+  dropped `97 -> 96`: `private=0`, `vgpr=128`, no spill/scratch.
+- Correctness:
+  H1/S128 and H1/S1024 causal PASS; `ldsBankConflict=0`.
+- PMD stats:
+  H1/S1024 `simTicks=47,544,770`, MMAC active `31.6659%`,
+  `MMOP=131,072`, `VALU=170,180`, `SCA=110,280`,
+  `coissue=40,053/28,128`, `waitLgkm=53,209.75`,
+  `barrier=161,363.67`.
+- Evidence:
+  `/zys/shaobo_runs/dkv_full_tile_filled_probe_20260712_162909`.
+- Decision:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.  The full-tile wait removes
+  an ABarrier wait class but destroys useful half-page overlap.  Keep
+  half-level Filled readiness; future work should preserve half0/half1
+  conveyor while reducing wait exposure or increasing useful MMAC per epoch.
+
 ## 2026-07-12 dKV Producer1 Filled-Seq Prune Probe
 
 - Hypothesis:

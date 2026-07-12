@@ -1,5 +1,34 @@
 # Source Status
 
+## 2026-07-12 dKV Full-Tile Filled Probe Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Motivation:
+  test whether waiting once for a full Mq128 Q/dO tile is better than waiting
+  separately for half0 and half1.  The candidate reused `Q0Filled` as a
+  count-16 full-tile readiness token and removed the consumer wait on
+  `Q1Filled`, while leaving QUsed/DoutUsed half releases unchanged.
+- Gates:
+  temporary source passed build, dKV gate, and metadata gate:
+  branch windows `14/16,221/240,221/240,8/16`; `private=0`, `sgpr=96`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 causal correctness
+  PASS; `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 produced `simTicks=47,544,770`, MMAC active `31.6659%`,
+  `MMOP=131,072`, `VALU=170,180`, `SCA=110,280`,
+  `coissue=40,053/28,128`, `waitLgkm=53,209.75`,
+  `barrier=161,363.67`.  Despite lower SCA and one fewer consumer wait,
+  ticks and MMAC active regress sharply versus half-filled merge repeat
+  `46,698,470` / `33.3278%`.
+- Evidence:
+  `/zys/shaobo_runs/dkv_full_tile_filled_probe_20260712_162909`.
+- Decision:
+  reject and restore source.  The half-page conveyor is doing useful work:
+  half0 can compute while half1 is still arriving.  Do not flatten dKV
+  readiness to full-tile Filled unless a future design adds enough other
+  useful work to cover the lost overlap.
+
 ## 2026-07-12 dKV Producer1 Filled-Seq Prune Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
