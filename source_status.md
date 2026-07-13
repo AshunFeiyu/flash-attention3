@@ -7366,3 +7366,16 @@ dKV ReleasePage read/wait merge, 2026-07-12:
   early dO-half release is part of the current ownership conveyor.  Reducing
   one wait can still lose if it delays producer reuse.  Keep current early
   release unless a new design preserves release timing while hiding wait.
+
+dKV Q-first ReleasePage order, 2026-07-13:
+
+- Tried and rejected after H1/S1024 repeat.  The candidate kept the same two
+  waits and all math/tile/MMAC paths, but released Q half before dO half.
+- H1/S128 and H1/S1024 correctness passed with no spill/scratch and
+  `ldsBankConflict=0`.  First H1/S1024 was near neutral at `46,620,665`
+  ticks; repeat regressed to `47,115,250` ticks, with `waitLgkm=52,673.0`
+  and `barrier=142,705.75`.
+- The source was restored locally and remotely; remote dKV gate passes again.
+- Lesson:
+  the current dKV conveyor is dO-release sensitive.  Releasing Q first does
+  not solve the ownership bubble and should not be retried as a local reorder.

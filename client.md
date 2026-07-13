@@ -1978,3 +1978,20 @@ dKV ReleasePage read/wait merge, 2026-07-12:
   in dKV, producer reuse timing can dominate local wait-count reductions.
   Optimize ownership conveyor timing, not just the number of `s_waitcnt`
   instructions.
+
+dKV Q-first ReleasePage order, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.  Swapping ReleasePage to
+  release Q half before dO half did not improve the ownership conveyor.
+- Evidence:
+  static/resource gates and H1/S128/H1/S1024 correctness passed.  First
+  H1/S1024 was near neutral at `46.621M` ticks, but repeat regressed to
+  `47.115M`; `waitLgkm` and `barrier` were worse than accepted baseline.
+- Restore:
+  source is back to canonical dO-first ReleasePage order; remote dKV gate
+  passes.
+- Lesson:
+  dKV's current Mq128 conveyor is more sensitive to early dO release than Q
+  release.  Avoid more local Q/dO release-order swaps; the next meaningful
+  dKV attempt should change useful overlap or ownership epoch shape.

@@ -12142,3 +12142,35 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   reject and restore source.  The early dO-half release appears to matter
   more than removing one wait in this ownership conveyor.  Do not promote
   wait-count reductions unless same-shape ticks also drop.
+
+## 2026-07-13 dKV Q-First Release Order
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Design basis:
+  the previous wait-merge experiment showed that delaying dO-half release can
+  lose despite better local wait/coissue counters.  This candidate tested the
+  opposite ownership hypothesis directly: keep two waits and all math/tile/MMAC
+  unchanged, but read Q sources first, release Q half first, then read dO
+  sources and release dO half.  This isolates whether the PageUsed bubble is
+  primarily Q-producer pressure rather than dO-producer pressure.
+- Gates:
+  static/source/metadata PASS with `private=0`, `sgpr=99`, `vgpr=128`, no
+  spill/scratch.  Consumer branch windows rose from `221/240` to `222/240` but
+  stayed inside the WDRA target.  H1/S128 and H1/S1024 correctness PASS,
+  `ldsBankConflict=0`.
+- Metrics:
+  first H1/S1024 run was near neutral but not better:
+  `46,620,665` ticks, `MMAC active=33.522%`, `waitLgkm=53,079.75`,
+  `barrier=140,952.25`, `coissue=35,202/24,772`.  Repeat regressed clearly:
+  `47,115,250` ticks, `MMAC active=33.353%`, `waitLgkm=52,673.0`,
+  `barrier=142,705.75`, `coissue=34,414/24,316`.
+- Decision:
+  reject and restore source.  Q-first release does not relieve the dominant
+  ownership bubble; it worsens wait/barrier and repeat ticks.  Current dKV is
+  more sensitive to early dO release than early Q release.
+- Workbook:
+  updated
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`
+  with sheet `107_DKV_QFirstReject`; backup saved as
+  `fa3_bwd_dkv_fwdstyle_tile_design_20260703.backup_before_107_qfirst_reject_20260713_0010.xlsx`.
