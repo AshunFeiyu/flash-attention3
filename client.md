@@ -2324,3 +2324,17 @@ dKV terminal ebarrier cleanup probe, 2026-07-13:
   H1/S2048 improves only noise-level `83757310 -> 83736835`.  dKV remains
   dominated by mainloop raw-page ownership/PageUsed pressure, not just the
   terminal CTA barrier.
+
+dKV Q/dO readiness split design draft, 2026-07-13:
+
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx`,
+  sheet `113_DKV_QDoutSplit`.
+- Intent:
+  next non-local dKV candidate should split score and dP readiness instead of
+  keeping Q and dO tied to one combined Filled epoch.  Q half readiness would
+  allow score to begin before dO half readiness; dP waits on dO separately.
+- Guardrails:
+  no duplicate GEMM, no extra LDS pages, no spill/scratch, no ordinary
+  `ds_read_b32` matrix path, and any extra ABarrier token cost must reduce
+  PageUsed wait enough to beat cleanup baseline.

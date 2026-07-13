@@ -7773,3 +7773,23 @@ dKV terminal ebarrier cleanup probe, 2026-07-13:
 - Decision:
   dKV source and gate were restored and recertified.  Keep targeting mainloop
   raw-page ownership lifetime rather than terminal barrier instruction shape.
+
+dKV Q/dO readiness split design draft, 2026-07-13:
+
+- Status:
+  `DESIGN_DRAFT_WORKBOOK_ONLY`.
+- Artifact:
+  shared workbook
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx`,
+  sheet `113_DKV_QDoutSplit`; backup
+  `fa3_bwd_wasp_clean_design_20260701.codex_backup_20260713_qdoutsplit.xlsx`.
+- Design thesis:
+  current dKV waits for a combined Q+dO Filled epoch before the consumer starts
+  score+dP.  xcu/stats suggest the mainloop bottleneck is raw PageUsed
+  ownership, so the next constructive design is to let Q readiness trigger
+  score first and dO readiness trigger dP later, preserving the five core dKV
+  GEMM islands and avoiding duplicate score/dP.
+- Implementation preconditions:
+  prove score-only/dP-only helper split does not spill, keep LDS bytes
+  unchanged, and reject immediately if extra Filled-token SCA/barrier cost
+  outweighs any PageUsed wait reduction.
