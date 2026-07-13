@@ -2021,3 +2021,23 @@ dQ normal-K first-use wait loosen, 2026-07-13:
 - Lesson:
   this normal-K read wait is a hard first-use boundary for `dS @ K`; future
   wait work must hide it with independent work, not delete it.
+
+dQ K-normal prefetch before softmax, 2026-07-13:
+
+- Result:
+  `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Evidence:
+  moving the K-normal read before softmax/dS kept correctness and resources
+  clean.  Stats-only repeat was a tiny local improvement (`28.152M` ticks,
+  `waitLgkm=14,782.75`), but helper fullperf regressed to `28.783M` ticks
+  versus accepted boundary split `27.985M`.
+- XCU:
+  top bubbles stayed ownership/control dominated:
+  `s_abarrier_try_wait -> s_xor_b32` `22.73%`,
+  `s_barrier -> s_cbranch_vccnz` `15.11%`; `lds_matrix` was only `3.31%`.
+- Restore:
+  source is back to canonical boundary K-tile split and remote dQ gate passes.
+- Lesson:
+  do not keep chasing K-normal read placement in isolation.  The next useful
+  dQ move should reduce PageUsed/control exposure or add recurring useful work
+  per ownership epoch.

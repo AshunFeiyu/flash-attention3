@@ -7407,3 +7407,23 @@ dQ normal-K first-use wait loosen, 2026-07-13:
   the `dS @ K` normal-K first-use wait is a real data-readiness boundary.
   Do not remove or loosen it without inserting proven independent work before
   first use.
+
+dQ K-normal prefetch before softmax, 2026-07-13:
+
+- Tried and rejected after helper fullperf/xcu.  The candidate preserved
+  `wait_lgkm(4)` before first `dS @ K` MMAC use, but moved the K-normal
+  `ds_read_matrix` earlier so softmax/dS VALU could cover part of LDS latency.
+- H1/S128 and H1/S1024 correctness passed with no spill/scratch and
+  `ldsBankConflict=0`; metadata stayed `private=0`, `sgpr=65`, `vgpr=128`.
+  Stats-only repeat was slightly better at `28,152,215` ticks, but helper
+  fullperf regressed to `28,783,300` ticks versus accepted boundary split
+  `27,984,775`.
+- XCU:
+  `/zys/shaobo_runs/dq_knorm_prefetch_fullperf_20260713/xcu_outputs`.
+  The top bubbles stayed `s_abarrier_try_wait -> s_xor_b32` and
+  `s_barrier -> s_cbranch_vccnz`; `lds_matrix` was not the dominant row.
+- Source is restored locally and remotely; remote dQ gate passes again.
+- Lesson:
+  local matrix-read prefetch can reduce wait counters without reducing elapsed
+  time.  Next dQ work needs to attack PageUsed/control ownership or increase
+  useful work per ownership epoch, not move the same K-normal read again.

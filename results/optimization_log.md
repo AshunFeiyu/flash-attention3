@@ -12231,3 +12231,44 @@ Status: `REJECT_CORRECTNESS_FAIL_SOURCE_RESTORED`
   MMAC is a real normal-K readiness boundary.  Future dQ wait tuning must put
   useful independent work between read and first use, not simply loosen this
   wait to `lgkmcnt(8)`.
+
+## 2026-07-13 dQ K-Normal Prefetch Before Softmax
+
+Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Design basis:
+  preserve the hard `wait_lgkm(4)` boundary discovered above, but move the
+  normal-K `ds_read_matrix` for `dS @ K` before softmax/dS VALU.  The intended
+  overlap was to let softmax/dS hide part of the K-normal LDS latency without
+  deleting the readiness wait.  Formula DAG, `Mq=128,Nk=128,D=128`, Q/dO
+  latch, K/V `PageFilled/PageUsed` ownership, ABarrier lifecycle, MMAC count,
+  and native matrix path stayed unchanged.
+- Gates:
+  build, dQ source gate, and metadata gate passed with `private=0`, `sgpr=65`,
+  `vgpr=128`, no spill/scratch.  Branch windows stayed
+  `8/40`, `159/216`, `159/216`, `9/40`.  H1/S128 and H1/S1024 correctness
+  passed, `ldsBankConflict=0`.
+- Metrics:
+  stats-only repeat looked slightly positive:
+  `28,152,215` ticks, `waitLgkm=14,782.75`, `barrier=48,272.25`,
+  `MMAC active=33.529%`.  Helper fullperf did not confirm it:
+  `28,783,300` ticks versus accepted boundary-split fullperf
+  `27,984,775`; `MMAC active=33.294%`, `waitLgkm=14,883`,
+  `barrier=49,323.75`.
+- XCU:
+  `/zys/shaobo_runs/dq_knorm_prefetch_fullperf_20260713/xcu_outputs`.
+  The top bubbles remained ownership/control dominated:
+  `s_abarrier_try_wait -> s_xor_b32` `22.73%`,
+  `s_barrier -> s_cbranch_vccnz` `15.11%`,
+  `s_cmp_lg_u32 -> s_waitcnt_vbcnt` `7.69%`.
+  `lds_matrix` was only `3.31%` in the hot instruction table.
+- Decision:
+  reject and restore source.  Moving reads earlier can improve local wait
+  counters, but it does not address the current dQ elapsed-time limiter.  Do
+  not continue small K-normal read-placement tweaks until the PageUsed/control
+  ownership problem is structurally changed.
+- Workbook:
+  updated
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`
+  with sheet `109_DQ_KNormPrefetchPlan`; backup saved as
+  `fa3_bwd_dq_design_20260706.backup_before_109_knorm_prefetch_result_20260713.xlsx`.
