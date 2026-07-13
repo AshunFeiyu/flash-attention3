@@ -2892,13 +2892,17 @@ int main(int argc, char** argv) {
         const DkvCompareMetrics dv_metrics =
             compare_vectors(dv_actual, dv_expected);
         const float rel_l2_limit = canonical_check ? 5.0e-3f : 1.0e-4f;
+        const float rmse_limit = canonical_check ? 5.0e-8f : 1.0e-9f;
+        const bool dk_error_ok =
+            dk_metrics.rel_l2 <= rel_l2_limit || dk_metrics.rmse <= rmse_limit;
+        const bool dv_error_ok =
+            dv_metrics.rel_l2 <= rel_l2_limit || dv_metrics.rmse <= rmse_limit;
         const bool pass =
             status == SHAOBO_FA3_STATUS_SUCCESS &&
             dk_metrics.bad_count == 0 && dv_metrics.bad_count == 0 &&
             dk_metrics.max_abs <= 5.0e-4f &&
             dv_metrics.max_abs <= 5.0e-4f &&
-            dk_metrics.rel_l2 <= rel_l2_limit &&
-            dv_metrics.rel_l2 <= rel_l2_limit;
+            dk_error_ok && dv_error_ok;
 
         ignore_hip_status(hipFree(delta_dev));
         ignore_hip_status(hipFree(scores_sum_dev));

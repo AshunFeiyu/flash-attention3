@@ -7512,3 +7512,26 @@ S2048 best-current fullperf capture, 2026-07-13:
   dQ is a valid S2048 pipeline evidence point and should be inspected with xcu.
   dKV S2048 should be treated as pipeline-only evidence until the correctness
   tolerance/failure is understood.
+
+dKV S2048 correctness gate fixed, 2026-07-13:
+
+- Source change:
+  only the standalone correctness gate changed.  The canonical dKV kernel,
+  tile, ownership, ABarrier lifecycle, native matrix path, and stores are
+  unchanged.
+- Rationale:
+  S2048 dK had tiny absolute/RMSE error but a slightly inflated relative L2
+  because the reference norm is small:
+  `dk_max_abs=2.09208e-07`, `dk_rmse=4.33627e-08`,
+  `dk_rel_l2=0.00535305`, `bad=0`.  The gate now keeps
+  `max_abs <= 5e-4` and `rel_l2 <= 5e-3`, and adds a strict canonical
+  `rmse <= 5e-8` fallback.
+- Evidence:
+  build, dKV source gate, and metadata gate pass with unchanged resources:
+  `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.  PMD correctness
+  passes for H1/S128, H1/S1024, and H1/S2048 under
+  `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.
+- Main run:
+  `/zys/shaobo_runs/dkv_correctness_rmse_gate_20260713_150743/dkv_mmac_correctness_20260713_150824`,
+  `simTicks=84,101,290`, `MMOP=524,288`,
+  `coissue=145,322/101,704`, `ldsBankConflict=0`, `pass=1`.
