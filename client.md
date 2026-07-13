@@ -2041,3 +2041,25 @@ dQ K-normal prefetch before softmax, 2026-07-13:
   do not keep chasing K-normal read placement in isolation.  The next useful
   dQ move should reduce PageUsed/control exposure or add recurring useful work
   per ownership epoch.
+
+dQ producer source descriptor lookahead, 2026-07-13:
+
+- Result:
+  `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Evidence:
+  precomputing K/V MLS source descriptors before `QDoLatched/PageUsed` waits
+  kept semantics clean and correctness passed.  Resources stayed clean
+  temporarily at `sgpr=66`, no spill/scratch, but stats were unstable:
+  `27.970M` first, `28.538M` repeat.
+- Fullperf/xcu:
+  helper fullperf was `28.134M` ticks, slower than accepted boundary split
+  `27.985M`.  xcu still showed ownership/control dominance:
+  `s_abarrier_try_wait -> s_xor_b32` `22.19%`,
+  `s_barrier -> s_cbranch_vccnz` `15.35%`, and
+  `s_cmp_lg_u32 -> s_waitcnt_vbcnt` `7.86%`.
+- Restore:
+  source is back to canonical boundary split; remote dQ gate passes with
+  `sgpr=65`.
+- Lesson:
+  producer "useful work" has to be materially useful, not just address
+  descriptor setup.  This closes the lightweight producer-lookahead route.

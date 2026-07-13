@@ -7427,3 +7427,26 @@ dQ K-normal prefetch before softmax, 2026-07-13:
   local matrix-read prefetch can reduce wait counters without reducing elapsed
   time.  Next dQ work needs to attack PageUsed/control ownership or increase
   useful work per ownership epoch, not move the same K-normal read again.
+
+dQ producer source descriptor lookahead, 2026-07-13:
+
+- Tried and rejected after helper fullperf/xcu.  The candidate precomputed
+  K/V `matrix_load` source descriptors before `QDoLatched/PageUsed` waits and
+  still issued MLS only after the waits, so LDS ownership semantics and
+  consumer math were unchanged.
+- Temporary source passed static/resource gates with `private=0`, `sgpr=66`,
+  `vgpr=128`, no spill/scratch; H1/S128 and H1/S1024 correctness passed and
+  `ldsBankConflict=0`.  Stats-only was unstable (`27,969,760` first,
+  `28,537,600` repeat), and helper fullperf regressed to `28,134,015` ticks
+  versus accepted dQ boundary split `27,984,775`.
+- XCU:
+  `/zys/shaobo_runs/dq_producer_src_lookahead_fullperf_20260713/xcu_outputs`.
+  The top rows remained PageUsed/control shaped:
+  `s_abarrier_try_wait -> s_xor_b32`, `s_barrier -> s_cbranch_vccnz`, and
+  `s_cmp_lg_u32 -> s_waitcnt_vbcnt`.
+- Source is restored locally and remotely; remote dQ gate passes again with
+  `sgpr=65`.
+- Lesson:
+  filling producer wait with source-address setup is not enough.  Future dQ
+  producer work must be larger recurring useful work or a changed ownership
+  epoch, not just descriptor lookahead.

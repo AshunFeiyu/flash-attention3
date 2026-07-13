@@ -12272,3 +12272,44 @@ Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`
   `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`
   with sheet `109_DQ_KNormPrefetchPlan`; backup saved as
   `fa3_bwd_dq_design_20260706.backup_before_109_knorm_prefetch_result_20260713.xlsx`.
+
+## 2026-07-13 dQ Producer Source Descriptor Lookahead
+
+Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Design basis:
+  address the thin producer/PageUsed evidence without touching consumer math.
+  The candidate precomputed the K/V `matrix_load` source descriptors before
+  `QDoLatched`/`PageUsed` waits, then issued the same MLS after the wait.
+  Formula DAG, `Mq=128,Nk=128,D=128`, Q/dO+sidecar latch, K/V
+  `PageFilled/PageUsed` ownership, consumer MMAC islands, store ownership, and
+  native MLS/BPS + `ds_read_matrix` + MMAC path stayed unchanged.
+- Gates:
+  temporary source built and passed dQ source and metadata gates with
+  `private=0`, `sgpr=66`, `vgpr=128`, no spill/scratch.  H1/S128 and
+  H1/S1024 correctness passed, `ldsBankConflict=0`.
+- Metrics:
+  stats-only was unstable.  First H1/S1024 was `27,969,760` ticks with
+  `MMAC active=33.543%`; repeat regressed to `28,537,600` ticks with
+  `MMAC active=33.168%`.  Helper fullperf regressed to `28,134,015` ticks
+  versus accepted boundary-split fullperf `27,984,775`.
+  Instruction totals were unchanged: `MMOP=50,688`, `VALU=68,144`,
+  `SCA=41,644`, `LDS=26,352`, `VMEM=1,408`.
+- XCU:
+  `/zys/shaobo_runs/dq_producer_src_lookahead_fullperf_20260713/xcu_outputs`.
+  Top bubbles remained ownership/control:
+  `s_abarrier_try_wait -> s_xor_b32` `22.19%`,
+  `s_barrier -> s_cbranch_vccnz` `15.35%`,
+  `s_cmp_lg_u32 -> s_waitcnt_vbcnt` `7.86%`.
+  `matrix_load_32x32_b16` latency rose to `70,616`.
+- Decision:
+  reject and restore source.  Precomputing producer descriptors is too small:
+  it does not reduce the consumer-visible ownership/control limiter and may
+  slightly worsen matrix-load scheduling.  Future dQ producer work must be
+  larger useful work or a different ownership epoch, not only source-address
+  lookahead.
+- Workbook:
+  updated
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`
+  with sheet `110_DQ_ProducerSrcLookahead`; backup saved as
+  `fa3_bwd_dq_design_20260706.backup_before_110_producer_src_lookahead_result_20260713.xlsx`.
