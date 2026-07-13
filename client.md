@@ -2184,3 +2184,20 @@ dKV canonical code cleanup, 2026-07-13:
   `/zys/shaobo_runs/dkv_cleanup_refactor_20260713_154322`.
   S2048 stats: `simTicks=83,757,310`, `kernel_ticks=80,143,700`,
   `MMOP=524,288`, `coissue=147,765/103,966`, `ldsBankConflict=0`.
+
+dKV Q-only LDS double-buffer test, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- What changed:
+  Q/sidecar got two LDS pages, dO stayed single-page; K/V resident still
+  overlays the raw region after latch.  Main matrix path remained MLS/BPS +
+  `ds_read_matrix` + MMAC.
+- Evidence:
+  static/resource/correctness passed (`private=0`, `sgpr=80`, `vgpr=128`,
+  no spill/scratch, `ldsBankConflict=0`).  H1/S1024 regressed from cleanup
+  baseline `46.376M` simTicks to `49.101M`; SCA increased `111k -> 150k` and
+  barrier increased `138.9k -> 146.8k`.
+- Decision:
+  do not keep this code.  More LDS pages alone are not a dKV fix unless they
+  remove an ownership epoch or hide a measured wait.

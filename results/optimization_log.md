@@ -12478,3 +12478,39 @@ Status: `ACCEPT_REFACTOR_NO_PERF_CLAIM`
   accept as code-health cleanup.  This should reduce future drift and make the
   actual pipeline easier to reason about, but it is not a promoted performance
   optimization without same-run fullperf/xcu evidence.
+
+## 2026-07-13 dKV Q-Only LDS Double Buffer
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Hypothesis:
+  Q is used by both the score GEMM and dK GEMM, so giving Q and sidecar two LDS
+  pages while keeping dO single-page might let producer0 prefetch the next Q
+  tile earlier without exceeding 128KB LDS.
+- Change tested:
+  Q pages `2`, dO page `1`, sidecar pages `2`; K/V resident still overlays the
+  raw region after latch.  Planned LDS rose from about `65.5KiB` to about
+  `99KiB`.  Matrix path stayed native MLS/BPS + `ds_read_matrix` + MMAC; no
+  `ds_read_b32`, bpermute, gather, or wrong-layout workaround was added.
+- Gates:
+  remote build, dKV source gate, and metadata gate passed.  Metadata stayed
+  no spill/scratch: `private=0`, `sgpr=80`, `vgpr=128`,
+  `sgpr_spill=0`, `vgpr_spill=0`; consumer branch windows were `212/240`.
+  H1/S128 and H1/S1024 correctness both passed, `ldsBankConflict=0`.
+- H1/S1024 comparison:
+  cleanup baseline
+  `/zys/shaobo_runs/dkv_cleanup_refactor_20260713_154322/dkv_mmac_correctness_20260713_154328`
+  had `simTicks=46,376,330`, `kernel_ticks=42,762,720`,
+  `VALU=168,384`, `SCA=111,248`, `coissue=36,736/25,779`,
+  `waitLgkm=51,319.2`, `barrier=138,920`.
+  Q-only double buffer
+  `/zys/shaobo_runs/dkv_qonly_db_20260713_173207/dkv_mmac_correctness_20260713_173215`
+  had `simTicks=49,100,870`, `kernel_ticks=45,487,260`,
+  `VALU=173,058`, `SCA=150,224`, `coissue=33,170/23,449`,
+  `waitLgkm=52,602.5`, `barrier=146,760`.
+- Decision:
+  reject and restore source.  The extra page/token ledger increases SCA and
+  barrier cost enough to make same-shape ticks about `5.9%` worse.  This
+  confirms that more buffering is not automatically useful for dKV; future Q
+  lifetime work must either remove an ownership epoch or hide a measured wait,
+  not merely add another LDS page.

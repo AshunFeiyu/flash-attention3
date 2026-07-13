@@ -7566,3 +7566,24 @@ dKV canonical code cleanup, 2026-07-13:
 - Decision:
   accept as code-health cleanup.  Do not treat the small tick movement as an
   optimization claim without a same-run fullperf/xcu comparison.
+
+dKV Q-only LDS double-buffer test, 2026-07-13:
+
+- Status:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Tested:
+  Q and sidecar used two LDS pages while dO stayed single-page.  K/V resident
+  still overlaid the raw region after latch.  Planned LDS was about `99KiB`,
+  under the `128KiB` budget, and the main matrix path stayed MLS/BPS +
+  `ds_read_matrix` + MMAC.
+- Gates:
+  build, dKV gate, and metadata gate passed with no spill/scratch
+  (`private=0`, `sgpr=80`, `vgpr=128`); H1/S128 and H1/S1024 correctness
+  passed; `ldsBankConflict=0`.
+- Result:
+  H1/S1024 regressed from cleanup baseline `simTicks=46,376,330` to
+  `49,100,870` (`kernel_ticks=42,762,720 -> 45,487,260`).  SCA rose
+  `111,248 -> 150,224` and barrier rose `138,920 -> 146,760`.
+- Conclusion:
+  adding a Q page does not relieve the measured critical path enough to pay for
+  the extra ABarrier/SCA bookkeeping.  Keep canonical single-Q-page source.
