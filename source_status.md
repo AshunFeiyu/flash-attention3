@@ -7657,3 +7657,22 @@ dKV causal full-invalid tile skip exploration, 2026-07-13:
   lowers instruction counters but hurts dense MMAC/packet cadence enough to
   lose elapsed ticks.  Do not reintroduce local causal skip without redesigning
   producer/consumer timing or changing tile scale.
+
+dKV single-producer 12-wave test, 2026-07-13:
+
+- Result:
+  `REJECT_STATIC_SGPR_SPILL_SOURCE_RESTORED`.
+- What changed:
+  temporarily collapsed the two producer groups into waves0-3.  The combined
+  producer published K/V resident data and Q/dO/sidecar half pages; waves4-7
+  and waves8-11 remained the two symmetric consumer groups.  Filled-token
+  counts were reduced to 4, while QUsed/DoutUsed stayed split at 8.
+- Evidence:
+  12-wave code compiled only after raising the producer WDRA window from 16 to
+  24.  The resulting kernel failed metadata with `sgpr_count=100` and
+  `sgpr_spill_count=6` despite no private segment and no VGPR spill.  Small
+  SGPR shrink attempts did not clear the spill.
+- Decision:
+  source restored before PMD.  This is a structural negative result: producer
+  thinness is real, but collapsing K/V/Q/dO/sidecar into one producer branch
+  violates the no-spill contract in the current code shape.

@@ -12621,3 +12621,35 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   triangular no-op tiles in this shape.  Future causal-skip work must be paired
   with a new producer/consumer cadence or larger tile shape, not added as a
   local branch inside the existing conveyor.
+
+## 2026-07-13 dKV Single-Producer 12-Wave Experiment
+
+Status: `REJECT_STATIC_SGPR_SPILL_SOURCE_RESTORED`
+
+- Hypothesis:
+  xcu on the canonical 16-wave dKV path shows thin producer waves and large
+  ABarrier ownership bubbles.  Test whether replacing the two producer groups
+  with one producer group and keeping the two symmetric consumer groups can
+  reduce wasted producer slots while preserving the half-page Q/dO conveyor.
+- Change tested:
+  temporary `12`-wave CTA.  Waves0-3 loaded K, V, Q, dO, and sidecar; waves4-7
+  and waves8-11 remained consumer groups over different `Nk16` output rows.
+  `Q0/Q1Filled` and `ResidentFilled` counts dropped from `8` to `4`;
+  `QUsed` and `DoutUsed` stayed split at count `8` to preserve early release.
+  Formula DAG, tile `Mq=128,Nk=128,D=128`, output ownership, sidecar LDS path,
+  and native MLS/BPS + `ds_read_matrix` + MMAC hot path were unchanged.
+- Gate result:
+  first build failed because producer actual VGPR was `17` while the old
+  producer window was `16`, and `16+240+240` does not satisfy the compiler's
+  branch-average VGPR granularity for three WDRA branches.  Raising producer
+  window to `24` fixed that compile constraint, but metadata then failed with
+  `private=0`, `sgpr_count=100`, `sgpr_spill_count=6`, `vgpr_count=168`,
+  `vgpr_spill_count=0`.  Removing unused consumer `causal` plumbing and
+  shrinking producer sidecar/q-base parameters did not remove the SGPR spill.
+- Decision:
+  reject before PMD correctness/perf and restore source.  The single-producer
+  topology is not a free fix for producer thinness: combining K/V/Q/dO/sidecar
+  into one WDRA branch increases scalar pressure enough to spill.  Future
+  producer-thinness work should keep no-spill as a hard gate and either reduce
+  producer scalar state first or change useful work per ownership epoch without
+  collapsing both producer roles.

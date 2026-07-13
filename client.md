@@ -2249,3 +2249,14 @@ dKV causal full-invalid tile skip test, 2026-07-13:
 - Decision:
   source restored.  This local skip damages the current conveyor cadence; use
   a larger pipeline redesign before trying causal tile skip again.
+
+dKV single-producer 12-wave test, 2026-07-13:
+
+- Result:
+  `REJECT_STATIC_SGPR_SPILL_SOURCE_RESTORED`.
+- Lesson:
+  producer thinness is real, but collapsing both producer roles into one
+  12-wave producer branch is not viable in the current code shape.  It needs
+  producer VGPR 24 and still spills SGPR (`sgpr_count=100`,
+  `sgpr_spill_count=6`).  Do not retry this topology until scalar live ranges
+  are reduced or the ownership epoch is redesigned.
