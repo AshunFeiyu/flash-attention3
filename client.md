@@ -2338,3 +2338,19 @@ dKV Q/dO readiness split design draft, 2026-07-13:
   no duplicate GEMM, no extra LDS pages, no spill/scratch, no ordinary
   `ds_read_b32` matrix path, and any extra ABarrier token cost must reduce
   PageUsed wait enough to beat cleanup baseline.
+
+7-GEMM canonical checkpoint, 2026-07-13:
+
+- Status:
+  `VALIDATED_CHECKPOINT` at commit `c76dab7` before the evidence-only commit.
+- Evidence:
+  rebuilt canonical dKV and dQ on liuchang `zys1`; both source and metadata
+  gates pass.  dKV reports `private=0, sgpr=99, vgpr=128`, dQ reports
+  `private=0, sgpr=65, vgpr=128`; both have zero SGPR/VGPR spill and scratch.
+  H1/S128/D128 causal correctness passes for both kernels under
+  `GPU_CHIP=sb` and `GPU_ARGS=['--SQCIPfLines=7']`.
+- Run root:
+  `/zys/shaobo_runs/checkpoint_7gemm_20260713_224759`.
+- Governance:
+  preserve this state on branch `shaobo/7gemm-canonical-checkpoint-20260713`;
+  the new 5-GEMM implementation must live on a separate branch/worktree.

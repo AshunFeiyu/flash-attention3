@@ -7793,3 +7793,22 @@ dKV Q/dO readiness split design draft, 2026-07-13:
   prove score-only/dP-only helper split does not spill, keep LDS bytes
   unchanged, and reject immediately if extra Filled-token SCA/barrier cost
   outweighs any PageUsed wait reduction.
+
+7-GEMM canonical checkpoint, 2026-07-13:
+
+- Status:
+  `VALIDATED_CHECKPOINT`.
+- Source state:
+  canonical dKV/dQ sources are unchanged from the accepted code at `c76dab7`;
+  no experimental phase or wrong-layout path is active.
+- Static evidence:
+  dKV `private=0, sgpr=99, vgpr=128`; dQ
+  `private=0, sgpr=65, vgpr=128`; both have no spill/scratch and pass their
+  source plus symbol-metadata gates.
+- Correctness evidence:
+  H1/S128/D128 causal dKV and dQ pass under `GPU_CHIP=sb` and
+  `GPU_ARGS=['--SQCIPfLines=7']`; run root
+  `/zys/shaobo_runs/checkpoint_7gemm_20260713_224759`.
+- Branching rule:
+  freeze this state as `shaobo/7gemm-canonical-checkpoint-20260713`; conduct
+  the 5-GEMM rewrite only on its dedicated branch/worktree.
