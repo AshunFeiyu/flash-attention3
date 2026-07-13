@@ -2163,3 +2163,24 @@ dKV S2048 correctness gate fixed, 2026-07-13:
   `/zys/shaobo_runs/dkv_correctness_rmse_gate_20260713_150743/dkv_mmac_correctness_20260713_150824`,
   `simTicks=84,101,290`, `MMOP=524,288`, `coissue=145,322/101,704`,
   `ldsBankConflict=0`, `pass=1`.
+
+dKV canonical code cleanup, 2026-07-13:
+
+- Result:
+  `ACCEPT_REFACTOR_NO_PERF_CLAIM`.
+- Changed:
+  removed dead Mq64/dynamic dKV helpers and fallback branches, removed the
+  unused `EarlyReleasePage` template parameter, and made `ActiveDkvTile` a
+  fixed Mq128/raw-buffer1 contract instead of a tunable template alias.
+- Invariant preserved:
+  no formula, tile, ownership, ABarrier lifecycle, release order, or native
+  MLS/BPS + `ds_read_matrix` + MMAC path change.
+- Evidence:
+  `src/dkv_kernel.cpp` shrank from 2933 to 2272 lines.  Remote build and dKV
+  gate pass; metadata remains no spill/scratch (`private=0`, `sgpr=99`,
+  `vgpr=128`).  H1/S128, H1/S1024, and H1/S2048 PMD correctness all pass
+  under `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.
+- Run:
+  `/zys/shaobo_runs/dkv_cleanup_refactor_20260713_154322`.
+  S2048 stats: `simTicks=83,757,310`, `kernel_ticks=80,143,700`,
+  `MMOP=524,288`, `coissue=147,765/103,966`, `ldsBankConflict=0`.

@@ -62,7 +62,7 @@ def main() -> int:
             "missing_consumer0_branch")
     require(perf_source, r"wave_id\s*<\s*12", failures,
             "missing_consumer1_branch")
-    require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*1,\s*true>",
+    require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*1>",
             failures, "missing_consumer1_branch")
     require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVgprs\)",
             failures,
@@ -126,11 +126,12 @@ def main() -> int:
             "missing_reference_path_contract")
     require(contract, r"kDkvPathCanonicalDkv", failures,
             "missing_canonical_path_contract")
-    require(contract, r"template\s*<\s*int\s+BlockMq,\s*int\s+RawBuffers\b",
-            failures, "missing_blockmq_rawbuffer_template_contract")
-    require(contract,
-            r"using\s+ActiveDkvTile\s*=\s*DkvTileD128MqNk128<128,\s*1>",
-            failures, "missing_active_mq128_r1_tile_contract")
+    require(contract, r"struct\s+ActiveDkvTile", failures,
+            "missing_active_tile_contract")
+    require(contract, r"kBlockMq\s*=\s*128", failures,
+            "missing_active_mq128_contract")
+    require(contract, r"kRawBuffers\s*=\s*1", failures,
+            "missing_active_rawbuffer1_contract")
     require(source, r"softmax_ds_owner16_causal_exact_tile_ctx", failures,
             "missing_causal_exact_tile_helper")
     require(contract, r"kOverlayRawOnResidentKv", failures,

@@ -12443,3 +12443,38 @@ Status: `ACCEPT_CORRECTNESS_GATE_FIXED`
   previous S2048 dKV fullperf can be read as pipeline evidence after this gate
   fix, but any new code-level performance claim still needs a fresh fullperf
   and xcu evidence.
+
+## 2026-07-13 dKV Canonical Code Cleanup
+
+Status: `ACCEPT_REFACTOR_NO_PERF_CLAIM`
+
+- Design basis:
+  the clean repo should have one canonical dKV route, not a stack of historical
+  template variants.  The active route is fixed at `Mq=128,Nk=128,D=128`,
+  raw-buffer1, 16-wave CTA, two producer groups and two symmetric consumer
+  groups.  Therefore Mq64/dynamic helper paths and an unused consumer template
+  parameter were live-code noise rather than tunables.
+- Change:
+  converted `ActiveDkvTile` from `DkvTileD128MqNk128<128,1>` to a fixed
+  contract, removed dead full-page producer helpers, old whole-page Q/dO
+  barrier helpers, dynamic score/softmax/dV/dK helpers, Mq64 fallback
+  branches, and the unused `EarlyReleasePage` template argument.
+- Invariants:
+  formula DAG, output ownership, Q/dO/K/V LDS lifecycle, ABarrier release
+  order, MMAC count, and native MLS/BPS + `ds_read_matrix` + MMAC path are
+  unchanged.
+- Gates:
+  remote build, dKV source gate, and symbol metadata gate pass with
+  `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.  Branch windows:
+  `14/16`, `221/240`, `221/240`, `8/16`.
+- Correctness/stats:
+  H1/S128, H1/S1024, and H1/S2048 PMD correctness pass under
+  `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.  Run root:
+  `/zys/shaobo_runs/dkv_cleanup_refactor_20260713_154322`.
+  S2048 stats: `simTicks=83,757,310`, `kernel_ticks=80,143,700`,
+  `MMOP=524,288`, `VALU=657,024`, `SCA=402,464`,
+  `coissue=147,765/103,966`, `ldsBankConflict=0`.
+- Decision:
+  accept as code-health cleanup.  This should reduce future drift and make the
+  actual pipeline easier to reason about, but it is not a promoted performance
+  optimization without same-run fullperf/xcu evidence.

@@ -7,10 +7,9 @@ namespace shaobo::fa3::bwd::dkv {
 inline constexpr int kDkvPathReferenceCorrectness = 1;
 inline constexpr int kDkvPathCanonicalDkv = 5;
 
-template <int BlockMq, int RawBuffers = 2>
-struct DkvTileD128MqNk128 {
+struct ActiveDkvTile {
     static constexpr int kHeadDim = 128;
-    static constexpr int kBlockMq = BlockMq;
+    static constexpr int kBlockMq = 128;
     static constexpr int kNkPerConsumerWave = 16;
     static constexpr int kConsumerGroups = 2;
     static constexpr int kWavesPerConsumerGroup = 4;
@@ -41,7 +40,7 @@ struct DkvTileD128MqNk128 {
     static constexpr int kHalfBytes = 2;
     static constexpr int kKvBytes =
         2 * kResidentNk * kHeadDim * kHalfBytes;
-    static constexpr int kRawBuffers = RawBuffers;
+    static constexpr int kRawBuffers = 1;
     static constexpr int kRawBytes =
         kRawBuffers * 2 * kBlockMq * kHeadDim * kHalfBytes;
     static constexpr int kSidecarRows = kBlockMq;
@@ -73,8 +72,6 @@ struct DkvTileD128MqNk128 {
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
                   "dKV clean LDS plan must fit 128KB");
 };
-
-using ActiveDkvTile = DkvTileD128MqNk128<128, 1>;
 
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
