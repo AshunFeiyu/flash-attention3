@@ -12682,3 +12682,38 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   bubble; trimming them perturbs scheduling enough to lose elapsed ticks.
   Future dKV work must reduce or amortize ABarrier/page lifetime rather than
   simply remove full-tile boundary branches.
+
+## 2026-07-13 S2048 SQTT Reanalysis And Terminal/half-order Probes
+
+Status: `OBSERVE_WITH_TWO_REJECTED_PROBES_SOURCE_RESTORED`
+
+- SQTT observation:
+  S2048 dQ best-current fullperf has `MMAC active=39.4932%`.  xcu detail shows
+  `s_abarrier_try_wait -> s_xor_b32` as the largest cumulative bubble
+  (`33.55%`) and terminal `s_barrier -> s_cbranch_vccnz` as the largest single
+  top-window bubble.  Exported window
+  `/zys/shaobo_runs/s2048_best_xcu_reanalysis_20260713/dq_abarrier_window`
+  is `99.98%` bubble for the selected wave, while the SIMD window still has
+  `12.66%` MMAC from peer waves.
+- SQTT observation:
+  S2048 dKV best-current fullperf has `MMAC active=36.2127%`.  xcu detail shows
+  terminal `AllDone` and mainloop raw-page ownership both matter:
+  `s_abarrier_try_wait s0,10 -> s_waitcnt` reaches a 12k-cycle tail gap, while
+  top500 mainloop rows include `Q1Used(bar7)`, `Dout1Used(bar9)`, and
+  `Q0Used(bar3)` waits.  Exported window
+  `/zys/shaobo_runs/s2048_best_xcu_reanalysis_20260713/dkv_abarrier_wait_window`
+  is `96.32%` bubble with only `0.85%` MMAC in the selected SIMD.
+- Probe 1:
+  dQ final `__syncthreads()+abarrier_inv` removal was tested to attack the
+  terminal bubble.  Static gates passed and SGPR dropped `65 -> 63`, but H1/S128
+  PMD aborted with `vgpr80 is not init or has been freed`.
+- Probe 2:
+  dKV half1-first producer/consumer scheduling was tested to target top
+  `Q1/Dout1 Used` waits.  Correctness passed through H1/S2048 with no resource
+  change, but H1/S1024 regressed `46376330 -> 46685730` and H1/S2048 regressed
+  `83757310 -> 83922475`.
+- Decision:
+  both probes are rejected and source restored.  The next constructive route is
+  not local terminal deletion or half-order swapping; it must either shorten the
+  raw Q/dO page lifetime, increase useful work per ownership epoch, or redesign
+  producer work so waits are covered by real peer MMAC/softmax work.

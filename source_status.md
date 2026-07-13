@@ -7695,3 +7695,40 @@ dKV full-tile guard prune, 2026-07-13:
   source restored and remote dKV gate recertified.  This is an instruction
   count trap: removing non-critical control does not reduce the ownership
   bottleneck and can disturb the current conveyor.
+
+dQ terminal cleanup removal, 2026-07-13:
+
+- Result:
+  `REJECT_PMD_VGPR_TRACKING_ABORT_SOURCE_RESTORED`.
+- What changed:
+  temporarily removed the final dQ `__syncthreads()` and six ABarrier
+  invalidations after xcu showed terminal `s_barrier -> s_cbranch_vccnz` as a
+  large S2048 bubble.  Tile, formula DAG, Q/dO latch, K/V page ownership, and
+  MMAC path were unchanged.
+- Evidence:
+  static/source/metadata gates passed with `private=0`, `sgpr=63`,
+  `vgpr=128`, no spill/scratch, but H1/S128 PMD aborted before correctness:
+  `panic condition !regInit[regIdx] occurred: cu0 simd2 vgpr80 is not init or
+  has been freed`.
+- Decision:
+  source restored and remote dQ gate recertified.  Terminal convergence appears
+  to be part of the safe WDRA/PMD cleanup contract for this code shape.
+
+dKV half1-first scheduling, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- What changed:
+  temporarily changed both dKV producers and consumers from half0->half1 to
+  half1->half0 order.  Formula, `Mq=128,Nk=128,D=128`, MMAC count, output
+  ownership, ABarrier families, and native matrix path were unchanged.
+- Evidence:
+  static/source/metadata gates passed with unchanged branch windows
+  `14/16,221/240,221/240,8/16`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+  H1/S128, H1/S1024, and H1/S2048 correctness passed.  H1/S1024 regressed
+  `46376330 -> 46685730`; H1/S2048 regressed `83757310 -> 83922475`.
+  `ldsBankConflict=0`; S2048 `MMAC_active=36.1920%`.
+- Decision:
+  source restored and remote dKV gate recertified.  The top `Q1/Dout1 Used`
+  wait is not solved by swapping half order; the lifetime of the single raw
+  page must be shortened or amortized.

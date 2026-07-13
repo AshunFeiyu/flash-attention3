@@ -2271,3 +2271,23 @@ dKV full-tile guard prune, 2026-07-13:
   reduced H1/S1024 `VALU/SCA`, but `simTicks` regressed and coissue fell.
   Treat dKV's current problem as ownership cadence / wait placement, not as a
   simple hot-path branch-count problem.
+
+dQ terminal cleanup removal, 2026-07-13:
+
+- Result:
+  `REJECT_PMD_VGPR_TRACKING_ABORT_SOURCE_RESTORED`.
+- Lesson:
+  S2048 xcu shows a large terminal `s_barrier -> s_cbranch` bubble, but simply
+  removing the final `__syncthreads()+abarrier_inv` is not legal in the current
+  WDRA/PMD path.  H1/S128 aborts with `vgpr80 is not init or has been freed`.
+  Keep terminal convergence until a two-phase safe cleanup protocol is proved.
+
+dKV half1-first scheduling, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Lesson:
+  S2048 xcu top mainloop waits include `Q1Used/Dout1Used`, so half1-first was
+  tested for producers and consumers.  It passes H1/S128/S1024/S2048 and keeps
+  resources unchanged, but S1024 and S2048 ticks regress.  Reordering halves
+  shifts ownership pressure; it does not shorten raw-page lifetime.
