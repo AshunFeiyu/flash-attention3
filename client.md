@@ -2312,3 +2312,15 @@ dQ terminal ebarrier cleanup, 2026-07-13:
 - Decision:
   keep the one-line ebarrier cleanup as a small accepted dQ improvement; xcu
   confirmation remains pending until fullperf capture is stable again.
+
+dKV terminal ebarrier cleanup probe, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Lesson:
+  the dQ terminal ebarrier cleanup does not transfer cleanly to dKV.  Replacing
+  the post-`AllDone` `__syncthreads()` with `s_ebarrier_sync(0)` preserves
+  correctness/resources, but H1/S1024 regresses `46376330 -> 46599735`, while
+  H1/S2048 improves only noise-level `83757310 -> 83736835`.  dKV remains
+  dominated by mainloop raw-page ownership/PageUsed pressure, not just the
+  terminal CTA barrier.

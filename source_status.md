@@ -7754,3 +7754,22 @@ dQ terminal ebarrier cleanup, 2026-07-13:
   fullperf/xcu for this candidate is pending because the helper run
   `/zys/shaobo_runs/dq_terminal_ebarrier_s2048_fullperf_20260713_214204`
   aborted before kernel dispatch with a `libhsakmt` buffer overflow.
+
+dKV terminal ebarrier cleanup probe, 2026-07-13:
+
+- Status:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Change tested:
+  temporarily changed only the dKV terminal post-`AllDone` convergence from
+  `__syncthreads()` to `__builtin_hcu_s_ebarrier_sync(0)`.  The `AllDone`
+  ABarrier arrive/wait and wave0 terminal invalidation stayed intact.
+- Evidence:
+  after extending the static checker locally for this probe, build/source/
+  metadata gates passed with unchanged branch windows `14/16,221/240,221/240,8/16`,
+  `private=0`, `sgpr=99`, `vgpr=128`, and no spill/scratch.  H1/S128/S1024/S2048
+  correctness passed, `ldsBankConflict=0`.  H1/S1024 regressed
+  `simTicks 46376330 -> 46599735`; H1/S2048 changed only
+  `83757310 -> 83736835`, not enough to promote.
+- Decision:
+  dKV source and gate were restored and recertified.  Keep targeting mainloop
+  raw-page ownership lifetime rather than terminal barrier instruction shape.

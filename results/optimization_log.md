@@ -12748,3 +12748,30 @@ Status: `ACCEPT_STATS_XCU_PENDING`
   aborts before dispatch with the known `libhsakmt` buffer-overflow startup
   issue.  Do not claim SQTT confirmation until a stable fullperf capture is
   available.
+
+## 2026-07-13 dKV Terminal EBarrier Cleanup Probe
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Hypothesis:
+  dQ benefited from replacing the final generic CTA barrier with
+  `s_ebarrier_sync(0)`.  dKV has an analogous terminal sequence after
+  `AllDone`, so the same convergence instruction might reduce the tail bubble
+  without touching the mainloop or ABarrier ledger.
+- Change tested:
+  only the post-`AllDone` `__syncthreads()` in `src/dkv_kernel.cpp` was
+  replaced by `__builtin_hcu_s_ebarrier_sync(0)`.  `AllDone` arrive/wait,
+  wave0 invalidations, Mq128/Nk128/D128 tile, release order, and native
+  matrix path were unchanged.
+- Gate/result:
+  correctness passed H1/S128/H1/S1024/H1/S2048; static/metadata gates passed
+  with unchanged `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch, and
+  `ldsBankConflict=0`.
+- Perf:
+  H1/S1024 regressed `simTicks 46376330 -> 46599735`; H1/S2048 changed
+  `83757310 -> 83736835`, which is only `0.02%` and does not compensate for the
+  S1024 regression.  MMAC active stayed essentially flat/lower.
+- Decision:
+  reject and restore source/gate.  dKV's dominant issue is not the terminal
+  CTA barrier shape; it is the raw Q/dO page ownership cadence and PageUsed
+  waits visible in xcu.
