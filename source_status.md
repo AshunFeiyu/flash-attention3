@@ -7489,3 +7489,26 @@ dKV branchless causal mask attempt, 2026-07-13:
   removing the exec branch by safe predication is not free.  It raises scalar
   pressure beyond the current dKV margin and should not be retried as a local
   softmax/dS patch before reducing SGPR live ranges.
+
+S2048 best-current fullperf capture, 2026-07-13:
+
+- Captured current canonical dKV and dQ under
+  `B=1,H=1,S=2048,D=128,causal=true,GPU_CHIP=sb,GPU_ARGS=['--SQCIPfLines=7']`
+  with full `TT/Perf` flags.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260713_141915_best_s2048_sqc7_fullperf`.
+- dQ passed correctness and resource gates:
+  `simTicks=48,776,910`, `MMAC active=39.4932%`,
+  `coissue=65,544/58,202`, `waitLgkm=44,136.5`,
+  `barrier=125,063.25`, `ldsBankConflict=0`, `dq_rel_l2=0.00475324`,
+  perf `dq/dq_s2048_H1_SQ7_correctness_pass.perf`.
+- dKV resource/perf capture completed but correctness did not pass:
+  `simTicks=84,338,800`, `MMAC active=36.2127%`,
+  `coissue=147,942/104,294`, `waitLgkm=192,823.5`,
+  `barrier=467,887.75`, `ldsBankConflict=0`,
+  `dk_rel_l2=0.00535305`, `dv_rel_l2=0.000360253`, `bad=0`, `pass=0`,
+  perf `dkv/dkv_s2048_H1_SQ7_correctness_fail.perf`.
+- Status:
+  dQ is a valid S2048 pipeline evidence point and should be inspected with xcu.
+  dKV S2048 should be treated as pipeline-only evidence until the correctness
+  tolerance/failure is understood.

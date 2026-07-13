@@ -12374,3 +12374,35 @@ Status: `REJECT_STATIC_SGPR_SPILL_SOURCE_RESTORED`
   much SGPR in the current consumer.  Future causal-control work must first
   reduce scalar live ranges or redesign the helper; do not retry this as a
   one-block local replacement.
+
+## 2026-07-13 S2048 Best-Current Fullperf Capture
+
+Status: `DQ_PASS_OBSERVE_DKV_CORRECTNESS_FAIL_OBSERVE`
+
+- Shape/env:
+  `B=1,H=1,S=2048,D=128,causal=true,fp16`,
+  `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`,
+  `GPU_DFLAGS=['StatLog','SQAbar','SQEbar','MMUCheck','TT','Perf']`.
+- Gates:
+  before capture, dKV and dQ source/metadata gates passed.  dKV metadata:
+  `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.  dQ metadata:
+  `private=0`, `sgpr=65`, `vgpr=128`, no spill/scratch.
+- Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260713_141915_best_s2048_sqc7_fullperf`.
+- dQ metrics:
+  correctness `pass=1`, `dq_rel_l2=0.00475324`, `bad=0`,
+  `simTicks=48,776,910`, `MMAC active=39.4932%`,
+  `coissue=65,544/58,202`, `waitLgkm=44,136.5`,
+  `barrier=125,063.25`, `ldsBankConflict=0`.
+  Helper perf is `dq/dq_s2048_H1_SQ7_correctness_pass.perf`.
+- dKV metrics:
+  fullperf generated but correctness `pass=0`, with
+  `dk_rel_l2=0.00535305`, `dv_rel_l2=0.000360253`, `bad=0`.
+  Performance counters: `simTicks=84,338,800`, `MMAC active=36.2127%`,
+  `coissue=147,942/104,294`, `waitLgkm=192,823.5`,
+  `barrier=467,887.75`, `ldsBankConflict=0`.
+  Helper perf is `dkv/dkv_s2048_H1_SQ7_correctness_fail.perf`.
+- Decision:
+  use dQ as valid S2048 pipeline evidence; it is close to the 40% quick goal.
+  Use dKV only for Wavefronts/ownership inspection until the S2048 correctness
+  gap is understood or corrected.

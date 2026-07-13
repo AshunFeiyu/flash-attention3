@@ -2115,3 +2115,28 @@ dKV branchless causal mask attempt, 2026-07-13:
   spill.  Do not retry causal-mask predication locally until SGPR pressure is
   first reduced or the softmax/dS helper is redesigned with a smaller scalar
   live range.
+
+S2048 best-current fullperf capture, 2026-07-13:
+
+- Shape/env:
+  `B=1,H=1,S=2048,D=128,causal=true,GPU_CHIP=sb,GPU_ARGS=['--SQCIPfLines=7']`,
+  `GPU_DFLAGS=['StatLog','SQAbar','SQEbar','MMUCheck','TT','Perf']`.
+- Shared archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260713_141915_best_s2048_sqc7_fullperf`.
+- dQ:
+  `PASS_OBSERVE`, perf `dq/dq_s2048_H1_SQ7_correctness_pass.perf`,
+  `simTicks=48,776,910`, `MMAC active=39.4932%`,
+  `coissue=65,544/58,202`, `waitLgkm=44,136.5`,
+  `barrier=125,063.25`, `ldsBankConflict=0`, `dq_rel_l2=0.00475324`.
+- dKV:
+  `OBSERVE_CORRECTNESS_FAIL`, perf
+  `dkv/dkv_s2048_H1_SQ7_correctness_fail.perf`,
+  `simTicks=84,338,800`, `MMAC active=36.2127%`,
+  `coissue=147,942/104,294`, `waitLgkm=192,823.5`,
+  `barrier=467,887.75`, `ldsBankConflict=0`, but correctness `pass=0`
+  (`dk_rel_l2=0.00535305`, `dv_rel_l2=0.000360253`, `bad=0`).
+- Interpretation:
+  dQ is now essentially at the 40% quick target on S2048 and is the better
+  candidate for xcu bottleneck reading.  dKV's S2048 perf is useful for
+  Wavefronts/ownership inspection only; it is not an accepted performance
+  point until the S2048 tolerance/correctness gap is explained or fixed.
