@@ -12586,3 +12586,38 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   `kernel_ticks` versus the cleanup stats baseline
   (`42,762,720 -> 43,068,480`).  Do not collapse Q/dO used tokens in this
   topology unless a larger redesign preserves dO producer lookahead.
+
+## 2026-07-13 dKV Causal Full-Invalid Tile Skip Exploration
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Hypothesis:
+  for causal dKV, a fixed `k_tile` has no contribution from any full
+  `q_tile < k_tile`.  The canonical kernel was still computing those tiles and
+  masking the result elementwise.  Skipping full-invalid tiles should reduce
+  consumer MMAC/VALU and packet ownership work.
+- Implementation attempts:
+  1. A full first-valid-tile rewrite skipped all invalid q tiles and made the
+     first valid tile initialize accumulators.  It either spilled
+     (`private=196`, `sgpr_spill=20`, `vgpr_spill=96`) or triggered a clang
+     frontend crash depending on code shape, so it was rejected before PMD.
+  2. A conservative consumer-only skip kept q_tile0 as the initializer, skipped
+     consumer work for q_tile `1..first_valid-1`, but still let producers
+     publish those packets.  It passed correctness/resources but regressed:
+     `kernel_ticks=43,590,365`, `MMOP=88,064`, `VALU=136,800`,
+     `SCA=100,624`, `waitLgkm=36,666.5`, `barrier=129,484`.
+  3. A packet-skip version also skipped producer publication for
+     q_tile `1..first_valid-1`.  It passed correctness/resources:
+     `private=0`, `sgpr=100`, `vgpr=128`, no spill/scratch,
+     `ldsBankConflict=0`.  H1/S1024 stats were
+     `simTicks=46,982,845`, `kernel_ticks=43,369,235`, `MMOP=88,064`,
+     `VALU=131,666`, `SCA=85,522`, `VMEM=3,008`, `LDS=53,740`,
+     `coissue=27,374/18,349`, `waitLgkm=37,977`, `barrier=109,037`.
+- Decision:
+  reject and restore source.  The packet-skip version dramatically reduced
+  instruction counts and barrier counters, but same-shape H1/S1024 ticks still
+  regressed versus the cleanup baseline (`42,762,720 -> 43,369,235`).  Current
+  WASP timing appears to prefer dense MMAC/packet cadence over removing these
+  triangular no-op tiles in this shape.  Future causal-skip work must be paired
+  with a new producer/consumer cadence or larger tile shape, not added as a
+  local branch inside the existing conveyor.

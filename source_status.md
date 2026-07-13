@@ -7636,3 +7636,24 @@ dKV combined Q/dO used-token attempt, 2026-07-13:
   increased wait/barrier and regressed versus cleanup baseline
   `kernel_ticks=42,762,720`.  Keep QUsed and DoutUsed split unless a larger
   design preserves dO lookahead.
+
+dKV causal full-invalid tile skip exploration, 2026-07-13:
+
+- Status:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Tested:
+  causal `q_tile < k_tile` has no contribution.  Three code shapes were tried:
+  full first-valid initialization, consumer-only skip, and producer+consumer
+  packet skip while keeping q_tile0 as the accumulator initializer.
+- Evidence:
+  full first-valid initialization failed resource/codegen gates.  Consumer-only
+  skip passed but was slower.  Packet skip passed correctness/resources with
+  no spill/scratch and `ldsBankConflict=0`; H1/S1024 reduced MMOP
+  `131,072 -> 88,064`, SCA `111,248 -> 85,522`, barrier
+  `138,920 -> 109,037`, and VMEM/LDS counts, but still regressed
+  `kernel_ticks=42,762,720 -> 43,369,235`.
+- Conclusion:
+  source restored.  In the current conveyor, removing triangular no-op tiles
+  lowers instruction counters but hurts dense MMAC/packet cadence enough to
+  lose elapsed ticks.  Do not reintroduce local causal skip without redesigning
+  producer/consumer timing or changing tile scale.

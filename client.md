@@ -2233,3 +2233,19 @@ dKV combined Q/dO used-token test, 2026-07-13:
 - Decision:
   source/gate restored.  The current split QUsed/DoutUsed design is still
   better because it lets dO producer look ahead.
+
+dKV causal full-invalid tile skip test, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- What changed:
+  tried skipping causal full-invalid `q_tile < k_tile` work.  The only
+  resource-clean variant skipped producer publication and consumer work for
+  q_tile `1..first_valid-1`, while keeping q_tile0 to initialize accumulators.
+- Evidence:
+  H1/S1024 correctness/resources passed and counters dropped sharply
+  (`MMOP 131k -> 88k`, `barrier 139k -> 109k`), but ticks regressed
+  `42.76M -> 43.37M`.
+- Decision:
+  source restored.  This local skip damages the current conveyor cadence; use
+  a larger pipeline redesign before trying causal tile skip again.
