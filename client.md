@@ -2260,3 +2260,14 @@ dKV single-producer 12-wave test, 2026-07-13:
   producer VGPR 24 and still spills SGPR (`sgpr_count=100`,
   `sgpr_spill_count=6`).  Do not retry this topology until scalar live ranges
   are reduced or the ownership epoch is redesigned.
+
+dKV full-tile guard prune, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Lesson:
+  deleting canonical-valid boundary guards can reduce static work without
+  improving the pipeline.  This probe lowered producer VGPR `14 -> 13` and
+  reduced H1/S1024 `VALU/SCA`, but `simTicks` regressed and coissue fell.
+  Treat dKV's current problem as ownership cadence / wait placement, not as a
+  simple hot-path branch-count problem.

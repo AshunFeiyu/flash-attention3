@@ -7676,3 +7676,22 @@ dKV single-producer 12-wave test, 2026-07-13:
   source restored before PMD.  This is a structural negative result: producer
   thinness is real, but collapsing K/V/Q/dO/sidecar into one producer branch
   violates the no-spill contract in the current code shape.
+
+dKV full-tile guard prune, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- What changed:
+  temporarily removed canonical full-tile boundary guards from sidecar publish
+  and dK/dV store, plus unused consumer `causal/seqlen` parameters.  The
+  matrix path, tile, ABarrier ownership, release order, and output ownership
+  were unchanged.
+- Evidence:
+  static gates and H1/S128/H1/S1024 correctness passed, and producer VGPR
+  window dropped `14 -> 13`, but H1/S1024 regressed to
+  `simTicks=46920055` versus cleanup baseline `46376330`.  VALU/SCA counts
+  fell, but wait/coissue/ticks worsened.
+- Decision:
+  source restored and remote dKV gate recertified.  This is an instruction
+  count trap: removing non-critical control does not reduce the ownership
+  bottleneck and can disturb the current conveyor.

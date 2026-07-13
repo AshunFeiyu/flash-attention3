@@ -12653,3 +12653,32 @@ Status: `REJECT_STATIC_SGPR_SPILL_SOURCE_RESTORED`
   producer-thinness work should keep no-spill as a hard gate and either reduce
   producer scalar state first or change useful work per ownership epoch without
   collapsing both producer roles.
+
+## 2026-07-13 dKV Full-Tile Guard Prune
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Hypothesis:
+  canonical dKV already requires `S % Mq == 0` and `S % Nk == 0`, so the
+  sidecar `q_row < seqlen` guard, store `krow >= seqlen` guard, and unused
+  `causal/seqlen` consumer plumbing should be redundant for the hot path.  If
+  xcu's control rows include these guards, removing them might reduce SCA/VALU
+  without touching ownership or matrix instructions.
+- Change tested:
+  temporary source removed those guards and consumer parameters only.  Formula
+  DAG, `Mq=128,Nk=128,D=128`, half-filled/used ABarrier lifecycle, sidecar LDS,
+  and MLS/BPS + `ds_read_matrix` + MMAC path were unchanged.
+- Gate result:
+  build/source/metadata gates passed with `private=0`, `sgpr=99`, `vgpr=128`,
+  no spill/scratch; producer branch VGPR dropped `14 -> 13`.  H1/S128 and
+  H1/S1024 correctness passed.
+- Perf result:
+  H1/S1024 reduced instruction counts (`VALU 168384 -> 167808`,
+  `SCA 111248 -> 109328`) but regressed `simTicks 46376330 -> 46920055`.
+  `waitLgkm` rose `51319.25 -> 52652.5`, barrier stayed flat/slightly worse,
+  and coissue success fell `36736 -> 34820`.
+- Decision:
+  reject and restore source.  These guards are not the critical ownership
+  bubble; trimming them perturbs scheduling enough to lose elapsed ticks.
+  Future dKV work must reduce or amortize ABarrier/page lifetime rather than
+  simply remove full-tile boundary branches.
