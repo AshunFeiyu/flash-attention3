@@ -2291,3 +2291,24 @@ dKV half1-first scheduling, 2026-07-13:
   tested for producers and consumers.  It passes H1/S128/S1024/S2048 and keeps
   resources unchanged, but S1024 and S2048 ticks regress.  Reordering halves
   shifts ownership pressure; it does not shorten raw-page lifetime.
+
+dQ terminal ebarrier cleanup, 2026-07-13:
+
+- Result:
+  `ACCEPT_STATS_XCU_PENDING`.
+- What changed:
+  kept the terminal wave0 ABarrier invalidation protocol, but replaced the
+  final CTA-wide `__syncthreads()` with `__builtin_hcu_s_ebarrier_sync(0)`.
+  Formula DAG, Mq128/Nk128/D128 tile, Q/dO latch, K/V page ownership, native
+  MLS/BPS + `ds_read_matrix` + MMAC path, and output ownership are unchanged.
+- Evidence:
+  static/source/metadata gates pass with `private=0`, `sgpr=65`, `vgpr=128`,
+  no spill/scratch, and unchanged branch windows `8/40,159/216,159/216,9/40`.
+  H1/S128, H1/S1024, and H1/S2048 correctness pass.  Same-build stats-only A/B
+  improves S1024 `simTicks 28235935 -> 28219100` and S2048
+  `49165025 -> 47892390`; S2048 barrier drops `122772.0 -> 119620.75` and
+  MMAC active rises `39.5672% -> 39.7276%`.  A helper fullperf attempt aborted
+  before dispatch in `libhsakmt` with the known buffer-overflow startup issue.
+- Decision:
+  keep the one-line ebarrier cleanup as a small accepted dQ improvement; xcu
+  confirmation remains pending until fullperf capture is stable again.

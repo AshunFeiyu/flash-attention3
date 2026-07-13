@@ -7732,3 +7732,25 @@ dKV half1-first scheduling, 2026-07-13:
   source restored and remote dKV gate recertified.  The top `Q1/Dout1 Used`
   wait is not solved by swapping half order; the lifetime of the single raw
   page must be shortened or amortized.
+
+dQ terminal ebarrier cleanup, 2026-07-13:
+
+- Status:
+  `ACCEPT_STATS_XCU_PENDING`.
+- Change:
+  terminal convergence in `src/dq_kernel.cpp` now uses
+  `__builtin_hcu_s_ebarrier_sync(0)` before wave0 invalidates page ABarriers,
+  instead of a generic `__syncthreads()`.  The earlier rejected experiment that
+  removed the terminal convergence and invalidations remains rejected; this
+  accepted change preserves the cleanup protocol.
+- Evidence:
+  build/source/metadata gates pass with `private=0`, `sgpr=65`, `vgpr=128`,
+  no spill/scratch, no LDS bank conflict, and unchanged branch windows.
+  Correctness passes H1/S128/H1/S1024/H1/S2048.  Same-build stats-only A/B:
+  S1024 `simTicks 28235935 -> 28219100`, `barrier 48221.25 -> 47837.50`;
+  S2048 `simTicks 49165025 -> 47892390`, `barrier 122772.0 -> 119620.75`,
+  `MMAC_active 39.5672% -> 39.7276%`.
+- Caveat:
+  fullperf/xcu for this candidate is pending because the helper run
+  `/zys/shaobo_runs/dq_terminal_ebarrier_s2048_fullperf_20260713_214204`
+  aborted before kernel dispatch with a `libhsakmt` buffer overflow.

@@ -12717,3 +12717,34 @@ Status: `OBSERVE_WITH_TWO_REJECTED_PROBES_SOURCE_RESTORED`
   not local terminal deletion or half-order swapping; it must either shorten the
   raw Q/dO page lifetime, increase useful work per ownership epoch, or redesign
   producer work so waits are covered by real peer MMAC/softmax work.
+
+## 2026-07-13 dQ Terminal EBarrier Cleanup
+
+Status: `ACCEPT_STATS_XCU_PENDING`
+
+- Hypothesis:
+  S2048 xcu showed a large terminal `s_barrier -> s_cbranch_vccnz` bubble in
+  dQ.  Removing terminal convergence entirely is unsafe, but replacing the
+  generic CTA barrier with Shaobo `s_ebarrier_sync(0)` might reduce the tail
+  barrier cost while preserving the wave0 ABarrier invalidation protocol.
+- Change:
+  `src/dq_kernel.cpp` keeps all six terminal `s_abarrier_inv` calls under
+  `wave_id == 0`, but changes the preceding `__syncthreads()` to
+  `__builtin_hcu_s_ebarrier_sync(0)`.  Formula, tiling, output ownership, and
+  native matrix path are unchanged.
+- Gate result:
+  build/source/metadata gates pass with branch windows
+  `8/40,159/216,159/216,9/40`, `private=0`, `sgpr=65`, `vgpr=128`, and no
+  spill/scratch.  H1/S128, H1/S1024, and H1/S2048 correctness pass;
+  `ldsBankConflict=0`.
+- Perf result:
+  same-build stats-only A/B improves S1024 `simTicks 28235935 -> 28219100`
+  and S2048 `49165025 -> 47892390`.  S2048 barrier counter improves
+  `122772.0 -> 119620.75`, wait improves `45153.5 -> 44580.0`, and MMAC active
+  improves `39.5672% -> 39.7276%`.
+- Caveat:
+  helper fullperf/xcu capture for the accepted candidate is pending:
+  `/zys/shaobo_runs/dq_terminal_ebarrier_s2048_fullperf_20260713_214204`
+  aborts before dispatch with the known `libhsakmt` buffer-overflow startup
+  issue.  Do not claim SQTT confirmation until a stable fullperf capture is
+  available.

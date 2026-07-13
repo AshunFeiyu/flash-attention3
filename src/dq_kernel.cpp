@@ -881,7 +881,7 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
         }
     }
 
-    __syncthreads();
+    __builtin_hcu_s_ebarrier_sync(0);
     if (wave_id == 0) {
         __builtin_hcu_s_abarrier_inv(Bar::kPage0Filled);
         __builtin_hcu_s_abarrier_inv(Bar::kPage0Used);
