@@ -12313,3 +12313,38 @@ Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`
   `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`
   with sheet `110_DQ_ProducerSrcLookahead`; backup saved as
   `fa3_bwd_dq_design_20260706.backup_before_110_producer_src_lookahead_result_20260713.xlsx`.
+
+## 2026-07-13 dKV Score/dP Read16 Island
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Design basis:
+  xcu on current canonical dKV showed consumer-side
+  `ds_read_matrix_trans_format -> s_waitcnt` and
+  `ds_read_matrix_format -> s_waitcnt` gaps, with heavy consumer waves at only
+  about 15% MMAC+VALU coissue.  The candidate preserved formula DAG,
+  `Mq=128,Nk=128,D=128`, Q/dO/K/V ownership, ABarrier lifecycle, release order,
+  MMAC count, and native matrix path.  It only changed score/dP scheduling from
+  two `8 ds_read_matrix + wait + 16 MMAC` islands to one
+  `16 ds_read_matrix + wait + 32 MMAC` island.
+- Gates:
+  build, dKV source gate, and symbol metadata gate passed unchanged:
+  `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch; branch windows stayed
+  `14/16`, `221/240`, `221/240`, `8/16`.  H1/S128 and H1/S1024 correctness
+  passed and `ldsBankConflict=0`.
+- Metrics:
+  H1/S1024 stats regressed against same-day canonical:
+  `simTicks 46,807,215 -> 47,020,155`; MMAC active
+  `33.587% -> 33.371%`; `waitLgkm 51,991.0 -> 53,146.5`;
+  `barrier 137,734.75 -> 139,299.0`; coissue changed
+  `35,182/24,450 -> 35,898/24,916`.
+- Decision:
+  reject and restore source.  The larger read island raises coissue slightly
+  but worsens ticks, wait, and barrier counters.  In this topology, keeping all
+  four D-block source fragments live until one wait is more expensive than the
+  removed wait boundary.
+- Lesson:
+  do not increase `ds_read_matrix` island size mechanically.  For dKV
+  score/dP, the current 8-read/16-MMAC island is the better local balance; a
+  future attempt needs an ownership/pipeline redesign that also reduces
+  PageUsed/control exposure.

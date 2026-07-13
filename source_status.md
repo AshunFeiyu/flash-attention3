@@ -7450,3 +7450,25 @@ dQ producer source descriptor lookahead, 2026-07-13:
   filling producer wait with source-address setup is not enough.  Future dQ
   producer work must be larger recurring useful work or a changed ownership
   epoch, not just descriptor lookahead.
+
+dKV score/dP read16 island, 2026-07-13:
+
+- Tried and rejected after H1/S1024 stats.  The candidate preserved dKV math,
+  tile, Q/dO/K/V ownership, ABarrier lifecycle, release order, and native
+  MLS/BPS + `ds_read_matrix` + MMAC path, but enlarged the score/dP read island
+  from two `8 ds_read_matrix + wait + 16 MMAC` islands to one
+  `16 ds_read_matrix + wait + 32 MMAC` island.
+- Static/source/metadata gates passed unchanged: `private=0`, `sgpr=99`,
+  `vgpr=128`, no spill/scratch, consumer branch windows `221/240`.  H1/S128
+  and H1/S1024 correctness passed and `ldsBankConflict=0`.
+- H1/S1024 regressed against current canonical rebaseline:
+  `simTicks 46,807,215 -> 47,020,155`; `MMAC active 33.587% -> 33.371%`;
+  `waitLgkm 51,991.0 -> 53,146.5`; `barrier 137,734.75 -> 139,299.0`;
+  coissue rose slightly to `35,898/24,916` but did not translate into elapsed
+  improvement.
+- Source is restored locally and remotely to the canonical 8-read score/dP
+  island.
+- Lesson:
+  increasing matrix-read island size can regress when it extends fragment live
+  ranges and delays readiness.  Do not push score/dP to a 16-read island in
+  the current dKV topology without a larger ownership/pipeline redesign.

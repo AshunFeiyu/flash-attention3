@@ -2063,3 +2063,33 @@ dQ producer source descriptor lookahead, 2026-07-13:
 - Lesson:
   producer "useful work" has to be materially useful, not just address
   descriptor setup.  This closes the lightweight producer-lookahead route.
+
+dKV score/dP read16 island, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Design basis:
+  current xcu for canonical dKV shows consumer-side
+  `ds_read_matrix_trans_format -> s_waitcnt` and
+  `ds_read_matrix_format -> s_waitcnt` gaps, plus only about 15% useful
+  MMAC+VALU coissue on heavy consumer waves.  The candidate kept formula DAG,
+  `Mq=128,Nk=128,D=128`, Q/dO/K/V ownership, ABarrier lifecycle, MMAC count,
+  release order, and native matrix path unchanged, but changed score/dP from
+  two `8 ds_read_matrix + wait + 16 MMAC` islands to one
+  `16 ds_read_matrix + wait + 32 MMAC` island.
+- Evidence:
+  static/resource gates passed unchanged with `private=0`, `sgpr=99`,
+  `vgpr=128`, no spill/scratch, and consumer branches `221/240`.  H1/S128 and
+  H1/S1024 correctness passed with `ldsBankConflict=0`.
+  H1/S1024 regressed versus the same-day canonical stats:
+  `46,807,215 -> 47,020,155` ticks.  MMAC active fell
+  `33.587% -> 33.371%`, `waitLgkm` rose `51,991.0 -> 53,146.5`, and
+  `barrier` rose `137,734.75 -> 139,299.0`.
+- Restore:
+  source is back to canonical 8-read score/dP island locally and remotely.
+- Lesson:
+  larger `ds_read_matrix` islands are not free.  In this dKV consumer,
+  holding all four D-block Q/dO fragments live until one wait lengthens the
+  readiness/control path enough to lose ticks.  Keep the current 8-read/16-MMAC
+  score/dP island unless a future design also reduces ownership pressure or
+  creates useful peer-wave overlap.
