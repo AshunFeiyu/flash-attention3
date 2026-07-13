@@ -2217,3 +2217,19 @@ dKV Q-read wait-hide test, 2026-07-13:
 - Decision:
   source restored.  The next dKV optimization should target ownership epoch
   count or useful work per ABarrier token, not simply move Q waits later.
+
+dKV combined Q/dO used-token test, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- What changed:
+  temporarily collapsed dO reuse onto `QUsed`, removing separate
+  `Dout0Used/Dout1Used` token use.
+- Evidence:
+  correctness/resources stayed clean.  H1/S1024 SCA dropped slightly
+  `111,248 -> 110,192`, but `waitLgkm` rose `51,319.2 -> 52,805.8`,
+  barrier rose `138,920 -> 142,271`, and `kernel_ticks` regressed
+  `42.76M -> 43.07M` versus cleanup baseline.
+- Decision:
+  source/gate restored.  The current split QUsed/DoutUsed design is still
+  better because it lets dO producer look ahead.

@@ -7616,3 +7616,23 @@ dKV Q-read wait-hide attempt, 2026-07-13:
   source restored.  The edit reduces local wait but delays ownership release,
   raising ABarrier cost and worsening ticks.  Future dKV work should remove or
   amortize an ownership epoch, not just move `QUsed` later.
+
+dKV combined Q/dO used-token attempt, 2026-07-13:
+
+- Status:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Tested:
+  dO producer waited on `QUsed` instead of `DoutUsed`, consumer removed the
+  early `DoutUsed` arrive, and `Dout0Used/Dout1Used` initialization was
+  temporarily removed.  This preserved formula, tile, LDS layout, and native
+  matrix path while reducing one ownership token family.
+- Evidence:
+  updated gate and metadata passed with no spill/scratch; H1/S128 and
+  H1/S1024 correctness passed; `ldsBankConflict=0`.  H1/S1024:
+  `kernel_ticks=43,068,480`, `SCA=110,192`, `waitLgkm=52,805.8`,
+  `barrier=142,271`.
+- Conclusion:
+  source/gate restored.  SCA fell slightly, but delaying dO producer reuse
+  increased wait/barrier and regressed versus cleanup baseline
+  `kernel_ticks=42,762,720`.  Keep QUsed and DoutUsed split unless a larger
+  design preserves dO lookahead.

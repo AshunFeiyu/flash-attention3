@@ -12553,3 +12553,36 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   cleanup stats baseline.  This is a useful negative result: for this dKV
   topology, Q-read wait hiding must not postpone page ownership release unless
   the design also removes or amortizes an ABarrier epoch.
+
+## 2026-07-13 dKV Combined Q/dO Used Token Attempt
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Hypothesis:
+  Q and dO already share the half-filled token, but they use separate
+  `QUsed` and `DoutUsed` tokens.  Combining dO producer reuse onto `QUsed`
+  should remove one used-token ownership epoch per half tile and reduce SCA /
+  ABarrier bookkeeping.
+- Change tested:
+  `producer_vdout_loop` waited on `QUsed` instead of `DoutUsed`, consumer
+  removed the early `DoutUsed` arrive, and the kernel skipped `Dout0Used` /
+  `Dout1Used` init/invalidate.  Formula DAG, tile, LDS layout, matrix path,
+  and store path were unchanged.  The source gate was temporarily extended to
+  recognize this combined ownership invariant.
+- Gates:
+  build, updated dKV gate, and metadata gate passed with unchanged resources:
+  `private=0`, `sgpr=99`, `vgpr=128`, `sgpr_spill=0`, `vgpr_spill=0`;
+  branch windows remained `14/16`, `221/240`, `221/240`, `8/16`.
+  H1/S128 and H1/S1024 correctness both passed; `ldsBankConflict=0`.
+- H1/S1024 result:
+  run `/zys/shaobo_runs/dkv_combined_used_20260713_193247`.
+  Candidate stats were `simTicks=46,682,090`,
+  `kernel_ticks=43,068,480`, `MMOP=131,072`, `VALU=168,384`,
+  `SCA=110,192`, `coissue=36,957/25,922`, `waitLgkm=52,805.8`,
+  `barrier=142,271`, `ldsBankConflict=0`.
+- Decision:
+  reject and restore source/gate.  SCA decreased slightly, but losing dO's
+  early release increased wait/barrier cost and still regressed
+  `kernel_ticks` versus the cleanup stats baseline
+  (`42,762,720 -> 43,068,480`).  Do not collapse Q/dO used tokens in this
+  topology unless a larger redesign preserves dO producer lookahead.
