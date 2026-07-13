@@ -12514,3 +12514,42 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   confirms that more buffering is not automatically useful for dKV; future Q
   lifetime work must either remove an ownership epoch or hide a measured wait,
   not merely add another LDS page.
+
+## 2026-07-13 dKV Q-Read Wait-Hide Attempt
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Baseline evidence:
+  fresh canonical fullperf at
+  `/zys/shaobo_runs/dkv_fresh_canonical_fullperf_20260713_191537`
+  passed correctness and resource gates.  H1/S1024 stats:
+  `simTicks=46,807,215`, `kernel_ticks=43,193,605`, `MMOP=131,072`,
+  `VALU=168,384`, `SCA=111,248`, `coissue=35,182/24,450`,
+  `waitLgkm=51,991`, `barrier=137,735`, `ldsBankConflict=0`.
+  xcu detail showed top issue gaps:
+  `s_abarrier_try_wait -> s_xor_b32` about `35.97%`,
+  `s_abarrier_try_wait -> s_waitcnt` about `8.39%`, and
+  `ds_read_matrix -> s_waitcnt` about `6.74%` combined.
+- Hypothesis:
+  issue Q source `ds_read_matrix` before softmax/dS, then delay
+  `wait_lgkm(0)` and `QUsed` until immediately before dV/dK MMAC.  This should
+  hide Q-read latency under useful softmax/dS work without adding LDS pages or
+  ABarrier tokens.
+- Gates:
+  build, dKV source gate, and metadata gate passed.  Metadata stayed
+  `private=0`, `sgpr=99`, `vgpr=128`, `sgpr_spill=0`, `vgpr_spill=0`;
+  branch windows remained `14/16`, `221/240`, `221/240`, `8/16`.
+  H1/S128 and H1/S1024 correctness both passed; `ldsBankConflict=0`.
+- H1/S1024 result:
+  run `/zys/shaobo_runs/dkv_qread_wait_hide_20260713_192254`.
+  Candidate stats were `simTicks=47,191,690`,
+  `kernel_ticks=43,578,080`, `MMOP=131,072`, `VALU=168,384`,
+  `SCA=111,248`, `coissue=35,891/25,121`, `waitLgkm=47,791.8`,
+  `barrier=141,132`, `ldsBankConflict=0`.
+- Decision:
+  reject and restore source.  The edit did reduce `waitLgkm` by about `8%`,
+  but delaying `QUsed` raised barrier/ownership cost and worsened same-shape
+  ticks by about `0.9%` versus fresh fullperf and about `1.9%` versus the
+  cleanup stats baseline.  This is a useful negative result: for this dKV
+  topology, Q-read wait hiding must not postpone page ownership release unless
+  the design also removes or amortizes an ABarrier epoch.

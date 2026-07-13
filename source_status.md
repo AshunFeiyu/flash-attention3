@@ -7587,3 +7587,32 @@ dKV Q-only LDS double-buffer test, 2026-07-13:
 - Conclusion:
   adding a Q page does not relieve the measured critical path enough to pay for
   the extra ABarrier/SCA bookkeeping.  Keep canonical single-Q-page source.
+
+dKV Q-read wait-hide attempt, 2026-07-13:
+
+- Status:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Baseline:
+  fresh canonical fullperf
+  `/zys/shaobo_runs/dkv_fresh_canonical_fullperf_20260713_191537`
+  had H1/S1024 `kernel_ticks=43,193,605`, `waitLgkm=51,991`,
+  `barrier=137,735`, `ldsBankConflict=0`.  xcu top issue gaps were still
+  dominated by `s_abarrier_try_wait -> s_xor_b32`, with
+  `ds_read_matrix -> s_waitcnt` as a secondary measured target.
+- Tested:
+  issue Q source `ds_read_matrix` before softmax/dS, then wait and publish
+  `QUsed` immediately before dV/dK MMAC.  This changed only scheduling inside
+  the ReleasePage path; no math, tile, LDS size, token count, or matrix path
+  changed.
+- Gates:
+  build/source/metadata pass, no spill/scratch (`private=0`, `sgpr=99`,
+  `vgpr=128`), H1/S128 and H1/S1024 correctness pass, `ldsBankConflict=0`.
+- Result:
+  H1/S1024 candidate
+  `/zys/shaobo_runs/dkv_qread_wait_hide_20260713_192254/dkv_mmac_correctness_20260713_192302`
+  had `kernel_ticks=43,578,080`, `waitLgkm=47,791.8`,
+  `barrier=141,132`, `coissue=35,891/25,121`.
+- Conclusion:
+  source restored.  The edit reduces local wait but delays ownership release,
+  raising ABarrier cost and worsening ticks.  Future dKV work should remove or
+  amortize an ownership epoch, not just move `QUsed` later.

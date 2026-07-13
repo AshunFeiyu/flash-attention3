@@ -2201,3 +2201,19 @@ dKV Q-only LDS double-buffer test, 2026-07-13:
 - Decision:
   do not keep this code.  More LDS pages alone are not a dKV fix unless they
   remove an ownership epoch or hide a measured wait.
+
+dKV Q-read wait-hide test, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- What changed:
+  temporarily issued Q source reads before softmax/dS and delayed
+  `wait_lgkm(0)+QUsed` until just before dV/dK MMAC.
+- Evidence:
+  H1/S128 and H1/S1024 correctness passed; no spill/scratch; no LDS bank
+  conflict.  H1/S1024 `waitLgkm` improved `51,991 -> 47,791.8`, but barrier
+  increased `137,735 -> 141,132` and `kernel_ticks` regressed
+  `43.19M -> 43.58M` versus fresh fullperf.
+- Decision:
+  source restored.  The next dKV optimization should target ownership epoch
+  count or useful work per ABarrier token, not simply move Q waits later.
