@@ -7379,3 +7379,18 @@ dKV Q-first ReleasePage order, 2026-07-13:
 - Lesson:
   the current dKV conveyor is dO-release sensitive.  Releasing Q first does
   not solve the ownership bubble and should not be retried as a local reorder.
+
+dQ sidecar Vec4 LDS reads, 2026-07-13:
+
+- Tried and rejected after H1/S1024 repeat.  The candidate changed only
+  consumer sidecar reads from scalar `volatile float` loads to `Vec4F32` LDS
+  loads plus lane subselect.  Formula, tile, ownership, ABarrier lifecycle,
+  and MMAC islands were unchanged.
+- H1/S128 and H1/S1024 correctness passed with no spill/scratch and
+  `ldsBankConflict=0`.  First H1/S1024 was `28,317,835` ticks; repeat was
+  `28,587,195` ticks, both worse than accepted dQ boundary split.
+- The source was restored locally and remotely; remote dQ gate passes again.
+- Lesson:
+  the dKV sidecar-Vec4 pattern does not transfer directly to current dQ.
+  dQ's near-term limiter remains PageUsed/control exposure rather than scalar
+  sidecar LDS read granularity.

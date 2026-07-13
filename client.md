@@ -1995,3 +1995,18 @@ dKV Q-first ReleasePage order, 2026-07-13:
   dKV's current Mq128 conveyor is more sensitive to early dO release than Q
   release.  Avoid more local Q/dO release-order swaps; the next meaningful
   dKV attempt should change useful overlap or ownership epoch shape.
+
+dQ sidecar Vec4 LDS reads, 2026-07-13:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Evidence:
+  static/resource gates and H1/S128/H1/S1024 correctness passed.  First
+  H1/S1024 was `28.318M` ticks; repeat was `28.587M`, worse than the accepted
+  dQ boundary split path.  Instruction totals were unchanged
+  (`MMOP=50,688`, `VALU=68,144`, `SCA=41,644`, `LDS=26,352`).
+- Restore:
+  source is back to canonical scalar sidecar reads; remote dQ gate passes.
+- Lesson:
+  dKV's sidecar-Vec4 trick does not improve current dQ.  Keep focus on
+  PageUsed/control exposure or larger useful MMAC islands.

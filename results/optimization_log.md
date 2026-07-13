@@ -12174,3 +12174,36 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dkv_fwdstyle_tile_design_20260703.xlsx`
   with sheet `107_DKV_QFirstReject`; backup saved as
   `fa3_bwd_dkv_fwdstyle_tile_design_20260703.backup_before_107_qfirst_reject_20260713_0010.xlsx`.
+
+## 2026-07-13 dQ Sidecar Vec4 LDS Reads
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Design basis:
+  reuse the dKV sidecar-Vec4 lesson in the smallest dQ form.  The candidate
+  kept the formula DAG, `Mq=128,Nk=128,D=128`, Q/dO latch, K/V page ownership,
+  ABarrier lifecycle, and MMAC islands unchanged.  Only consumer startup
+  sidecar reads changed from three scalar LDS reads to three `Vec4F32` LDS
+  reads plus lane subselect.
+- Gates:
+  static/source/metadata PASS with `private=0`, `sgpr=65`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 correctness PASS,
+  `ldsBankConflict=0`.
+- Metrics:
+  first H1/S1024 stats: `simTicks=28,317,835`, `MMOP=50,688`,
+  `VALU=68,144`, `SCA=41,644`, `LDS=26,352`, `VMEM=1,408`,
+  `coissue=14,839/13,066`, `waitLgkm=16,576`, `barrier=47,869`.
+  Repeat H1/S1024 stats regressed further: `simTicks=28,587,195`,
+  `coissue=15,276/13,504`, `waitLgkm=16,380.25`, `barrier=47,529.25`.
+- Decision:
+  reject and restore source.  This edit lowers neither instruction totals nor
+  target ticks, even though barrier counters are slightly lower.  dQ sidecar
+  granularity is not the current limiter; the next dQ work should target
+  PageUsed/control exposure or a larger useful MMAC island.
+- Workbook:
+  updated
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_dq_design_20260706.xlsx`
+  with sheet `108_DQ_SidecarVec4Plan`; backup saved as
+  `fa3_bwd_dq_design_20260706.backup_before_108_sidecar_vec4_result_20260713.xlsx`.
+  The sheet now contains the actual correctness/resource metrics and the
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED` decision.
