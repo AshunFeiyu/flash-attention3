@@ -2093,3 +2093,25 @@ dKV score/dP read16 island, 2026-07-13:
   readiness/control path enough to lose ticks.  Keep the current 8-read/16-MMAC
   score/dP island unless a future design also reduces ownership pressure or
   creates useful peer-wave overlap.
+
+dKV branchless causal mask attempt, 2026-07-13:
+
+- Result:
+  `REJECT_STATIC_SGPR_SPILL_SOURCE_RESTORED`.
+- Design basis:
+  xcu maps part of the dKV softmax/dS cost to causal exec-mask control inside
+  `softmax_ds_owner16_causal_exact_tile_ctx`.  The candidate did not change
+  tile, formula DAG, ownership, ABarrier lifecycle, release order, or MMAC
+  path.  It only replaced the per-element `if (owner_krow <= qrow)` with a
+  predicated select that masks the score to `row_max_log2` before `exp2f`, so
+  invalid future-K lanes still produce `P=0,dS=0` without `inf*0` risk.
+- Evidence:
+  source gate passed, but metadata failed before PMD:
+  `sgpr_count=100`, `sgpr_spill_count=16`, `vgpr=128`,
+  `private_segment=0`.  After restore, the remote canonical dKV gate passes
+  again with `sgpr=99`, `sgpr_spill=0`, `vgpr=128`.
+- Lesson:
+  in current dKV, branchless safe masking increases scalar pressure enough to
+  spill.  Do not retry causal-mask predication locally until SGPR pressure is
+  first reduced or the softmax/dS helper is redesigned with a smaller scalar
+  live range.

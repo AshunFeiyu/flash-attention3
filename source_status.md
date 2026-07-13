@@ -7472,3 +7472,20 @@ dKV score/dP read16 island, 2026-07-13:
   increasing matrix-read island size can regress when it extends fragment live
   ranges and delays readiness.  Do not push score/dP to a 16-read island in
   the current dKV topology without a larger ownership/pipeline redesign.
+
+dKV branchless causal mask attempt, 2026-07-13:
+
+- Tried and rejected at static metadata.  The candidate changed only
+  `softmax_ds_owner16_causal_exact_tile_ctx`: replace the per-lane
+  `if (owner_krow <= qrow)` with safe predication, masking invalid scores to
+  `row_max_log2` before `exp2f` and multiplying the final `P/dS` by `0/1`.
+- Source gate passed, but symbol metadata failed:
+  `private=0`, `sgpr=100`, `sgpr_spill_count=16`, `vgpr=128`,
+  `vgpr_spill_count=0`.
+- Source was restored locally and remotely.  Remote dKV recertification passed
+  with canonical metadata `private=0`, `sgpr=99`, `sgpr_spill_count=0`,
+  `vgpr=128`.
+- Lesson:
+  removing the exec branch by safe predication is not free.  It raises scalar
+  pressure beyond the current dKV margin and should not be retried as a local
+  softmax/dS patch before reducing SGPR live ranges.

@@ -12348,3 +12348,29 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   score/dP, the current 8-read/16-MMAC island is the better local balance; a
   future attempt needs an ownership/pipeline redesign that also reduces
   PageUsed/control exposure.
+
+## 2026-07-13 dKV Branchless Causal Mask Attempt
+
+Status: `REJECT_STATIC_SGPR_SPILL_SOURCE_RESTORED`
+
+- Design basis:
+  current dKV xcu maps part of the softmax/dS loop to causal control around
+  `softmax_ds_owner16_causal_exact_tile_ctx`.  The candidate preserved the
+  formula DAG, `Mq=128,Nk=128,D=128`, Q/dO/K/V ownership, ABarrier lifecycle,
+  release order, MMAC count, and native matrix path.  It only replaced the
+  per-element `if (owner_krow <= qrow)` with safe predication: invalid scores
+  are selected to `row_max_log2` before `exp2f`, and final `P/dS` are
+  multiplied by `0/1`.
+- Gates:
+  dKV source gate passed.  Symbol metadata failed before correctness or PMD:
+  `private=0`, `sgpr=100`, `sgpr_spill_count=16`, `vgpr=128`,
+  `vgpr_spill_count=0`.
+- Restore:
+  source was restored locally and remotely.  Remote dKV gate and metadata
+  recertified the canonical path with `private=0`, `sgpr=99`,
+  `sgpr_spill_count=0`, `vgpr=128`.
+- Decision:
+  reject.  The predicated mask removes an obvious branch shape but costs too
+  much SGPR in the current consumer.  Future causal-control work must first
+  reduce scalar live ranges or redesign the helper; do not retry this as a
+  one-block local replacement.
