@@ -12207,3 +12207,27 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   `fa3_bwd_dq_design_20260706.backup_before_108_sidecar_vec4_result_20260713.xlsx`.
   The sheet now contains the actual correctness/resource metrics and the
   `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED` decision.
+
+## 2026-07-13 dQ Normal-K First-Use Wait Loosen
+
+Status: `REJECT_CORRECTNESS_FAIL_SOURCE_RESTORED`
+
+- Design basis:
+  test whether the `dS @ K` normal-K read island can tolerate a looser
+  first-use wait.  The candidate changed only
+  `dq_update_from_ds_pair` from `wait_lgkm(4)` to `wait_lgkm(8)` after reading
+  all normal-K fragments.  Formula, tile, Q/dO latch, K/V PageFilled/PageUsed
+  ownership, ABarrier lifecycle, and MMAC count were unchanged.
+- Gates:
+  build, dQ source gate, and metadata gate passed with `private=0`,
+  `sgpr=65`, `vgpr=128`, no spill/scratch.  Branch windows stayed
+  `8/40`, `159/216`, `159/216`, `9/40`.
+- Correctness:
+  H1/S128 failed before any S1024 perf run.  PMD completed but numerical
+  comparison returned NaNs: `dq_rel_l2=52554.9`, `actual_nonfinite=2368`,
+  `bad_rows=128`.
+- Decision:
+  reject and restore source.  The `wait_lgkm(4)` before the first `dS @ K`
+  MMAC is a real normal-K readiness boundary.  Future dQ wait tuning must put
+  useful independent work between read and first use, not simply loosen this
+  wait to `lgkmcnt(8)`.

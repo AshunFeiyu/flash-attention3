@@ -7394,3 +7394,16 @@ dQ sidecar Vec4 LDS reads, 2026-07-13:
   the dKV sidecar-Vec4 pattern does not transfer directly to current dQ.
   dQ's near-term limiter remains PageUsed/control exposure rather than scalar
   sidecar LDS read granularity.
+
+dQ normal-K first-use wait loosen, 2026-07-13:
+
+- Tried and rejected immediately on H1/S128 correctness.  The candidate changed
+  only `dq_update_from_ds_pair` normal-K readiness from `wait_lgkm(4)` to
+  `wait_lgkm(8)`.
+- Static/resource gates passed unchanged, but correctness failed with NaNs
+  (`actual_nonfinite=2368`, `bad_rows=128`).
+- Source is restored locally and remotely; remote dQ gate passes again.
+- Lesson:
+  the `dS @ K` normal-K first-use wait is a real data-readiness boundary.
+  Do not remove or loosen it without inserting proven independent work before
+  first use.

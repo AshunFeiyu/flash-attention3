@@ -2010,3 +2010,14 @@ dQ sidecar Vec4 LDS reads, 2026-07-13:
 - Lesson:
   dKV's sidecar-Vec4 trick does not improve current dQ.  Keep focus on
   PageUsed/control exposure or larger useful MMAC islands.
+
+dQ normal-K first-use wait loosen, 2026-07-13:
+
+- Result:
+  `REJECT_CORRECTNESS_FAIL_SOURCE_RESTORED`.
+- Evidence:
+  changing `dq_update_from_ds_pair` from `wait_lgkm(4)` to `wait_lgkm(8)`
+  kept static resources clean but failed H1/S128 with NaNs.
+- Lesson:
+  this normal-K read wait is a hard first-use boundary for `dS @ K`; future
+  wait work must hide it with independent work, not delete it.
