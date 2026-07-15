@@ -59,6 +59,124 @@ Within this source range, MMAC accounts for 44.38% of the exported latency
 sum, waits 26.80%, and LDS reads 16.62%. These Source sums are attribution
 evidence, not elapsed time or MMAC-active share.
 
+## Instruction grammar and regularity
+
+The reference is regular at the instruction-stream level, not only in the
+Wavefronts visualization. Its eight compute epochs alternate between two
+nearly fixed templates:
+
+```text
+Template A:
+  16 x ds_read_b128
+  1 x s_waitcnt lgkmcnt(0)
+  1 x MMAC, s_setprio 1, 63 x MMAC, s_setprio 0
+  1 x coarse barrier
+
+Template B:
+  8 x ds_read_b128
+  4 x buffer_load_dwordx4 for a future operand
+  8 x ds_read_b128
+  5 x scalar address/loop instructions
+  1 x s_waitcnt lgkmcnt(0)
+  1 x MMAC, s_setprio 1, 63 x MMAC, s_setprio 0
+  1 x coarse barrier
+```
+
+All eight semantic MMAC islands contain exactly 64 MMAC instructions. The 128
+LDS reads form four runs of 16 and eight runs of 8; no MMAC or LDS-read run is
+a singleton. The four global loads in Template B are useful prefetch work, not
+arbitrary instructions inserted into the MMAC body. The five scalar
+instructions update the next global address and loop predicate before the
+first-use wait.
+
+The latest generated seven-GEMM dKV assembly has a sharply different static
+shape. This comparison uses the generated kernel assembly only; it does not
+equate static instruction counts with dynamic runtime:
+
+| Structural metric | FP8 GEMM reference | Current dKV assembly |
+| --- | ---: | ---: |
+| MMAC instructions | 512 | 512 |
+| MMAC runs | 8 semantic islands | 112 strict runs |
+| Mean MMACs per run | 64 | 4.57 |
+| Singleton MMAC runs | 0 | 62 / 112 (55.4%) |
+| Matrix/LDS read instructions | 128 | 288 |
+| Matrix/LDS read runs | 12 | 176 |
+| Mean reads per run | 10.67 | 1.64 |
+| Singleton read runs | 0 | 134 / 176 (76.1%) |
+
+A representative dKV score/dP region starts with a read bundle and wait, but
+then becomes `MMAC -> scalar LDS-address setup -> several MMAC -> one or two
+matrix reads -> MMAC`. This matches the irregular pattern seen in Wavefronts.
+The compiler is not acting randomly: each standalone matrix-read helper
+materializes a separate scalar LDS address, and the scheduler moves those
+address operations and future reads between MMACs to hide local latency. The
+source exposes many small scheduling units, so the compiler produces a locally
+plausible but globally fragmented stream.
+
+The important distinction is that reference Template B also interleaves work,
+but only at a deliberate macro boundary: `8 reads / 4 useful loads / 8 reads`.
+It does not alternate one read with one or two MMACs throughout the compute
+body.
+
+## What to reuse
+
+1. Define source-level packet helpers whose generated unit is a complete
+   instruction block: precompute LDS addresses, issue 8 or 16 matrix reads,
+   wait once at first use, then execute a fixed MMAC block.
+2. Keep address calculation and loop predicates outside the MMAC body. Prefer
+   a shared base plus immediate offsets over one SGPR materialization per read.
+3. Use `s_setprio` to bracket a real MMAC island, rather than a broad helper
+   whose body still contains reads, address setup, and waits.
+4. Interleave only useful future work at a stable boundary. For dKV this can be
+   the next Q/dO packet or independent sidecar preparation, not arbitrary
+   instruction-by-instruction mixing.
+5. Let peer waves provide coissue: one consumer should expose a sufficiently
+   long MMAC island while the other consumer performs softmax/dS or packet
+   preparation. Fine-grained read/MMAC alternation inside both consumers makes
+   them converge on the same dependency rhythm.
+6. Add an assembly regularity gate. The first practical dKV target is at least
+   `8 matrix reads -> at most one first-use wait -> 16 or more MMACs`, with no
+   address SALU, barrier, or unrelated VALU inside the MMAC block. SQTT, ticks,
+   and correctness still decide whether a larger island is beneficial.
+
+The reusable checker is `scripts/analyze_asm_islands.py`. The current assembly
+is expected to fail the proposed structural target:
+
+```bash
+scripts/analyze_asm_islands.py \
+  --asm build/fa3_bwd_wasp_clean.asm \
+  --symbol fa3_bwd_dkv_kernel \
+  --min-mean-mmac 16 \
+  --max-singleton-mmac-pct 10 \
+  --max-singleton-read-pct 10
+```
+
+This is initially an analysis gate, not a promotion gate. It may be tightened
+only after a correctness-passing version demonstrates that the regular shape
+also lowers same-shape ticks and improves SQTT MMAC active.
+
+## What not to copy
+
+1. The reference uses `ds_read_b128`, not Shaobo's normal/transpose
+   `ds_read_matrix` pair. Its exact read instruction and layout are not a dKV
+   implementation template.
+2. Its coarse `s_barrier` works for a regular GEMM epoch. Replacing dKV
+   ABarrier ownership with CTA barriers would serialize independent Q/dO
+   generations and consumers.
+3. Its single `lgkmcnt(0)` still creates a hard read-to-MMAC dependency. The
+   cost is amortized by 64 MMACs; dKV must verify the same tradeoff rather than
+   copying the wait count blindly.
+4. It initializes 128 accumulator VGPRs with 128 `v_mov` instructions. That is
+   tolerated by the long steady loop, not an initialization pattern to adopt.
+5. Direct consumer global prefetch is useful in this GEMM, but sidecar or
+   transposed-source loads in dKV may require producer ownership and LDS
+   visibility. The destination and dependency chain matter more than matching
+   the opcode count.
+6. Visual regularity alone is not success. A perfectly regular stream can
+   still have poor occupancy, cache behavior, coissue, or correctness. The
+   regularity gate is explanatory evidence, subordinate to same-shape ticks and
+   SQTT MMAC-active results.
+
 ## Zero initialization
 
 `0x003acaa0..0x003acc9c` contains 128 consecutive `v_mov_b32_e32 vN, 0`
