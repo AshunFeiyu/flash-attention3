@@ -2447,3 +2447,56 @@ dKV score/dP macro-block with sidecar prefetch, 2026-07-15:
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260715_173207_dkv_score_dp_sidecar_macro_reject_h1s1024_sqc7_fullperf`.
   Remote source/build were then restored to canonical accepted ping-pong and
   passed metadata plus H1/S1024 correctness again.
+
+dKV three-slot M64 runtime ring, 2026-07-15:
+
+- Result:
+  `REJECT_STATS_CONTROL_REGRESSION_BRANCH_PRESERVED` on isolated branch
+  `exp/dkv-three-half-slot-ring`.
+- What worked:
+  the LDS budget is sound (`100,608B`), sidecar lifetime is protected through
+  softmax/dS, H1/S128 and H1/S1024 correctness pass, bank conflict is zero,
+  and resources improve to `sgpr=51, vgpr=128` without spill/scratch.
+- What failed:
+  dynamic `%3` slot selection and three-way Filled/Used dispatch nearly double
+  SCA and branch-fetch wait.  H1/S1024 kernel ticks regress `+9.08%` and MMAC
+  active falls `34.1944% -> 31.8028%` even though MMOP/LDS/VMEM work is
+  unchanged.
+- Governance and next step:
+  do not merge this branch.  Canonical stays at `3db4f38`.  A successor must
+  be a fixed slot0/1/2 super-epoch generated at compile time, preserving the
+  accepted operand ping-pong and immediate-offset matrix reads while removing
+  runtime slot switches.
+
+dKV three-slot K/Q-static hybrid, 2026-07-15:
+
+- Result:
+  `REJECT_STATS_RING_OVERHEAD_BRANCH_PRESERVED` on
+  `exp/dkv-three-slot-super-epoch`.
+- Resource lesson:
+  full slot0/1/2 consumer expansion spills.  Staticizing only K/Q/sidecar and
+  retaining one V/dO plus consumer body passes with asymmetric WDRA windows
+  `24/240/240/8`, global `vgpr=128`, and no private/spill/scratch.
+- Performance lesson:
+  producer staticization improves the all-runtime ring, but the three-slot
+  topology remains slower than canonical by `7.24%` and lowers MMAC active to
+  `32.00%`.  Extra ring capacity does not repay its recurrent slot control and
+  ABarrier lifetime cost.
+- Next design:
+  restore the accepted single-page topology.  Use the consumer's remaining
+  branch window for a group1-only two-pair score/dP lookahead: group0 keeps
+  pair-at-a-time, while group1 prepares two pairs before softmax/dV/dK.  This
+  seeks real MMAC/VALU coissue with no empty delay and no additional barrier.
+
+dKV native P/dS handoff, 2026-07-15:
+
+- The missing native contract is now proven on PMD:
+  `natural P/dS F16x8 -> ds_write_matrix m32x16 alt0 ->
+  ds_read_matrix_trans mt16x32 alt0 -> dV/dK MMAC` is exact and bank-free.
+- Do not use the old source-slot rearrangement, ordinary LDS gather, or lane
+  permute in the canonical dKV path.  The earlier failure was a reader-shape
+  error, not an architecture limitation.
+- The next canonical experiment is the workbook-reviewed single-slot
+  two-stage conveyor.  One P/dS packet is 32KB; total steady LDS is 99,840B.
+  Consumer-G releases the slot after the matrix read retires, before its
+  dV/dK MMAC, so Consumer-S can publish packet t+1 during MMAC(t).

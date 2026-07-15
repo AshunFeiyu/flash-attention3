@@ -8003,3 +8003,21 @@ dKV score/dP macro-block with sidecar prefetch, 2026-07-15:
   rebuilt ASM SHA256 `1e4f0b92c7d7efc8b93168a78bcbbdb9629de06318165b858d684802c7852db8`;
   branch windows `14/16,221/240,221/240,8/16`, metadata gate PASS, and
   H1/S1024 correctness PASS.
+
+## 2026-07-15 dKV Native P/dS Handoff Gate
+
+- Status: `ACCEPT_INSTRUCTION_GATE_CANONICAL_UNCHANGED`.
+- Focused source: `probes/dkv_pds_handoff_operand_probe.cpp`.
+- HCU-supported sweep covered four legal f16 matrix writers and five legal
+  normal/transpose readers.  The exact native chain
+  `ds_write_matrix m32x16 alt0 -> ds_read_matrix_trans mt16x32 alt0 -> MMAC`
+  preserves arbitrary natural P/dS fragments for both downstream dV and dK:
+  `errors=0`, `max_abs=0`.
+- The successful probe has `private=0`, `sgpr=21`, `vgpr=35`, no spill or
+  scratch, and `ldsBankConflict=0`.  Normal m32x16 and mt32x16 readers are
+  negative controls; the old source-slot schedule remains evidence-only.
+- This removes the native-layout blocker for a two-stage dKV conveyor.  The
+  approved design is one 32KB P/dS slot: Consumer-S writes one M32xNk128
+  packet; Consumer-G reads it into VGPR, arrives `PdsUsed` before dV/dK MMAC,
+  and thereby overlaps the next P/dS publication with the current MMAC island.
+  Workbook: `dKV_2Stage_PDS` in the shared design workbook.

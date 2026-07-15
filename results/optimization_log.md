@@ -12976,3 +12976,103 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260715_173207_dkv_score_dp_sidecar_macro_reject_h1s1024_sqc7_fullperf`.
   The earlier stats-only `+14.54%` result is retained as variance evidence;
   fullperf `+1.95%` is the authoritative trace-backed comparison.
+
+## 2026-07-15 dKV Three-Slot M64 Runtime Ring
+
+Status: `REJECT_STATS_CONTROL_REGRESSION_BRANCH_PRESERVED`
+
+- Hypothesis:
+  three independent M64 Q/dO+sidecar slots could let producers publish two
+  packets ahead while consumers process the current packet, reducing the
+  dominant single-page ownership bubble without changing the four-GEMM DAG.
+- Change tested:
+  K/V remain resident and are latched by consumers.  Their LDS is then reused
+  as three 32KB Q+dO slots plus three sidecar slots, totaling `100,608B`.
+  Producers and consumers select `packet % 3`; every slot has one Filled and
+  one Used ABarrier.  The accepted score/dP operand ping-pong and immediate
+  LDS offsets remain intact.
+- Gate result:
+  H1/S128 and H1/S1024 causal correctness pass.  Metadata improves to
+  `private=0, sgpr=51, vgpr=128`, with no spill/scratch.  MMOP, LDS, VMEM, and
+  bank conflict remain `131,072`, `79,360`, `4,352`, and zero.
+- Performance result:
+  versus accepted immediate-offset fullperf, H1/S1024 kernel ticks regress
+  `42,335,020 -> 46,178,860` (`+9.08%`), while MMAC active falls
+  `34.1944% -> 31.8028%`.  SCA almost doubles `110,288 -> 216,560`,
+  branch-taken instruction-fetch wait rises `311,813 -> 692,460`, coissue
+  falls `40,755/29,120 -> 33,622/24,764`, and barrier rises slightly.
+- Decision:
+  reject from canonical and preserve the implementation only on
+  `exp/dkv-three-half-slot-ring`.  The ring capacity is valid; the runtime
+  modulo and three-way ABarrier dispatch are not.  The next structural test
+  must start at accepted `3db4f38` and compile-time-unroll slot0/1/2 in a
+  fixed three-packet super-epoch so the generated loop has no runtime slot
+  switch.
+
+## 2026-07-15 dKV Three-Slot K/Q-Static Hybrid
+
+Status: `REJECT_STATS_RING_OVERHEAD_BRANCH_PRESERVED`
+
+- Full compile-time expansion first removed all runtime slot switches but
+  duplicated the consumer body three times and failed the resource gate with
+  `private=32`, `sgpr_spill=26`, `vgpr_spill=7`.
+- The viable hybrid compile-time-expands only the heavy K/Q/sidecar producer.
+  The thin V/dO producer and both consumers retain one runtime packet body.
+  Asymmetric WDRA windows `24/240/240/8` make the 16-wave average exactly 128
+  VGPR and pass metadata with `private=0, sgpr=63, vgpr=128`, no spill/scratch.
+- H1/S128 and H1/S1024 correctness pass, `ldsBankConflict=0`, and dynamic
+  MMOP/LDS/VMEM remain unchanged.  Against the all-runtime ring, SCA falls
+  `216,560 -> 182,544` and ticks improve `46,178,860 -> 45,399,900`.
+- It still loses to canonical immediate-offset: ticks regress `+7.24%`, MMAC
+  active falls `34.1944% -> 31.9996%`, SCA remains `65.5%` higher, branch-fetch
+  wait remains `83.5%` higher, and barrier rises `10.8%`.
+- Decision:
+  reject the three-slot topology, not merely this implementation.  Return to
+  the accepted single-page topology.  The next structural candidate should
+  spend the consumer VGPR headroom on a two-pair lookahead in only one consumer
+  group, creating real peer MMAC/softmax overlap without new ABarrier tokens.
+
+## 2026-07-15 dKV Consumer1 Two-Pair Lookahead
+
+Status: `REJECT_STATS_WAIT_REGRESSION_BRANCH_PRESERVED`
+
+- Hypothesis:
+  keep the accepted single-page LDS/ABarrier topology, but let consumer1
+  prepare score+dP for two adjacent M32 pairs before finishing either pair.
+  Consumer0 remains pair-at-a-time, so peer MMAC should overlap consumer1
+  softmax/dS without artificial delay.
+- Gates:
+  H1/S128 and H1/S1024 causal correctness pass.  Branch windows remain
+  `14/16,221/240,221/240,8/16`; metadata remains `private=0, sgpr=99,
+  vgpr=128`, with no spill/scratch and `ldsBankConflict=0`.
+- Performance:
+  H1/S1024 kernel ticks regress `42,335,020 -> 43,877,925` (`+3.64%`) and
+  MMAC active falls `34.1944% -> 33.5680%`.  waitLgkm rises
+  `46,460.5 -> 54,268.75`, barrier rises `129,157.2 -> 139,483.25`, and
+  coissue falls `40,755/29,120 -> 32,708/23,935`.  MMOP is unchanged at
+  `131,072`; ASM has 116 MMAC runs with mean length 8.83 and maximum 32.
+- Decision:
+  reject from canonical and preserve only on
+  `exp/dkv-consumer-lookahead-stagger`.  Source-level useful-work staggering
+  is insufficient while both pairs retain the same Q/dO ownership epoch.
+  The next structural candidate must reduce recurrent ownership handshakes
+  without adding runtime slot selection or extending score/dP liveness.
+
+## 2026-07-15 dKV Native P/dS Matrix Handoff
+
+Status: `ACCEPT_INSTRUCTION_GATE`
+
+- The initial natural-fragment sweep used an invalid `alt=2` combination for
+  f16 m32x16.  HCU tests show that the supported alt2 encoding is builtin
+  argument `1`, while the missing reader shape is mt16x32.
+- A corrected four-writer by five-reader PMD sweep found the exact contract:
+  `ds_write_matrix_format_f16(...,16,2,1,0,0)` followed by
+  `ds_read_matrix_trans_format_f16(...,16,1,2,0)` and dV/dK MMAC.
+  All four writer t/alt variants pass with that reader; the canonical t0/alt0
+  writer is retained because it is the simplest documented form.
+- Result: P and dS downstream MMAC comparison is bit-exact
+  (`errors=0`, `max_abs=0`), bank conflict zero, private/spill/scratch zero.
+  Run: `/zys/shaobo_runs/dkv_pds_handoff_hcu_sweep_20260715`.
+- Decision: promote this only as an instruction/layout gate.  The canonical
+  dKV performance source stays untouched until the single-slot two-stage
+  resource and ABarrier ledger is implemented and passes static correctness.
