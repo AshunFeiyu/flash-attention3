@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
+cd "${repo_dir}"
 
 source scripts/env.sh
 
@@ -23,7 +24,7 @@ case_script="${case_dir}/run_case.sh"
 cat > "${case_script}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-cd /zys/shaobo/fa3_bwd_wasp_clean
+cd ${repo_dir}
 export B="\${B:-1}"
 export H="\${H:-1}"
 export S="\${S:-1024}"
