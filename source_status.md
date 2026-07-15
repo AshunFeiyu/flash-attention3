@@ -1,5 +1,25 @@
 # Source Status
 
+## 2026-07-15 Current Canonical dKV After Immediate-Offset Promotion
+
+Status: `ACCEPT_MICRO_FULLPERF_XCU`.
+
+- Canonical dKV keeps the 16-wave `Mq=128,Nk=128,D=128` topology, resident
+  K/V, Q/dO half-page ownership, LDS sidecar, and accepted score/dP operand
+  ping-pong.  The only promoted change replaces four separately materialized
+  LDS addresses with one base plus four instruction immediate offsets.
+- Gates pass: branch windows `14/16,221/240,221/240,8/16`, `private=0`,
+  `sgpr=99`, `vgpr=128`, no spill/scratch; H1/S128 and H1/S1024 correctness
+  pass and `ldsBankConflict=0`.
+- Fullperf kernel ticks improve `42,564,340 -> 42,335,020`; MMAC active rises
+  `33.7716% -> 34.1944%`; waitLgkm falls 3.15%, barrier falls 3.94%, and
+  coissue success rises 10.1%.
+- XCU still attributes 35.21% to the main ABarrier ownership window.  The next
+  source change must be the workbook-designed three-slot Q/dO half-tile ring,
+  not another address/read-order micro patch.
+- Evidence:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260715_193455_dkv_score_dp_imm4_accept_h1s1024_sqc7_fullperf`.
+
 ## 2026-07-12 Current Dual-Kernel Status After XCU Reprofile
 
 Status: `OBSERVE_PROFILE`; source unchanged.

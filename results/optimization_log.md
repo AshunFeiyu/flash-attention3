@@ -1,5 +1,48 @@
 # Optimization Log
 
+## 2026-07-15 dKV Score/dP Immediate LDS Offsets Accepted
+
+- Status:
+  `ACCEPT_MICRO_FULLPERF_XCU`.
+- Change:
+  preserve the accepted score/dP operand ping-pong, but issue each four-read
+  transpose packet from one SGPR LDS base with four compile-time immediate
+  offsets.  Formula, tile, wave roles, VGPR sets, ABarrier ownership, and
+  output ownership are unchanged.
+- Gates:
+  build/static/metadata pass with branch windows `14/16,221/240,221/240,8/16`,
+  `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024
+  correctness pass; `ldsBankConflict=0`.
+- Performance:
+  same-reference fullperf kernel ticks improve `42,564,340 -> 42,335,020`
+  (`-0.54%`).  MMAC active rises `33.7716% -> 34.1944%`, waitLgkm falls
+  `47,974.25 -> 46,460.50`, barrier falls `134,449.25 -> 129,157.25`, and
+  coissue success rises `37,010 -> 40,755`.
+- XCU explanation:
+  dispatch duration falls `93,548 -> 93,044`, instruction issues fall by
+  `972`, and the hot transpose matrix-read contribution falls roughly 22%.
+  The dominant ownership bubble still consumes 35.21%, so this closes the
+  scalar-address cleanup and does not justify more micro tuning in that area.
+- Evidence:
+  remote `/zys/shaobo_runs/dkv_score_dp_imm4_fullperf_20260715`; archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260715_193455_dkv_score_dp_imm4_accept_h1s1024_sqc7_fullperf`.
+
+## Next Structural Hypothesis: Three-Slot Q/dO Half-Tile Ring
+
+- Keep `Mq=128,Nk=128,D=128`, 16 waves, resident K/V, no repeated score/dP,
+  and the accepted operand ping-pong.
+- After consumers latch resident K/V, reuse LDS for three `M64` Q/dO slots.
+  Each slot costs `32KB` plus `768B` sidecar; three slots cost `100,608B`,
+  leaving `30,464B` under the 128KB LDS limit.
+- Producer waves0-3 publish Q+sidecar and waves12-15 publish dO.  Both producer
+  groups arrive one per-slot Filled token.  Both symmetric consumer groups
+  consume the slot and arrive one combined Used token only after the final
+  normal Q/dO reads.
+- The intended ownership reduction is three handshakes per half packet
+  (`Filled + QUsed + dOUsed`) to two (`Filled + Used`), with one additional
+  packet of prefetch distance.  The tradeoff is losing dO's early release;
+  only SQTT/ticks can decide whether the deeper ring compensates.
+
 ## 2026-07-15 dKV Score/dP Operand Ping-Pong Accepted
 
 - Status:

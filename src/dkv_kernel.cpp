@@ -578,24 +578,32 @@ __device__ __forceinline__ void read_score_dp_owner16_dblock(
                   "score/dP reads two adjacent M16 blocks");
     static_assert(DBlock >= 0 && DBlock < 4,
                   "score/dP DBlock must be in D128");
+    static_assert(Layout::kRawPages == 1,
+                  "immediate score/dP reads require one canonical raw page");
+    (void)page;
 
-    const int q_off0 =
+    constexpr int kQOff0 =
         Layout::kQBase +
-        raw_page_block_offset_m<Tile>(page, MBlockBase + 0, DBlock);
-    const int q_off1 =
+        ((MBlockBase + 0) * Layout::kDBlocksPerMqTile + DBlock) *
+            Layout::kRawBlockBytes;
+    constexpr int kQOff1 =
         Layout::kQBase +
-        raw_page_block_offset_m<Tile>(page, MBlockBase + 1, DBlock);
-    const int dout_off0 =
+        ((MBlockBase + 1) * Layout::kDBlocksPerMqTile + DBlock) *
+            Layout::kRawBlockBytes;
+    constexpr int kDoutOff0 =
         Layout::kDoutBase +
-        raw_page_block_offset_m<Tile>(page, MBlockBase + 0, DBlock);
-    const int dout_off1 =
+        ((MBlockBase + 0) * Layout::kDBlocksPerMqTile + DBlock) *
+            Layout::kRawBlockBytes;
+    constexpr int kDoutOff1 =
         Layout::kDoutBase +
-        raw_page_block_offset_m<Tile>(page, MBlockBase + 1, DBlock);
+        ((MBlockBase + 1) * Layout::kDBlocksPerMqTile + DBlock) *
+            Layout::kRawBlockBytes;
 
-    ins::ds_read_matrix_32x16_trans(lds, q_off0, q0.f16x8);
-    ins::ds_read_matrix_32x16_trans(lds, q_off1, q1.f16x8);
-    ins::ds_read_matrix_32x16_trans(lds, dout_off0, dout0.f16x8);
-    ins::ds_read_matrix_32x16_trans(lds, dout_off1, dout1.f16x8);
+    ins::ds_read_matrix_32x16_trans_imm4<
+        kQOff0,
+        kQOff1,
+        kDoutOff0,
+        kDoutOff1>(lds, q0.f16x8, q1.f16x8, dout0.f16x8, dout1.f16x8);
 }
 
 template <int DBlock>

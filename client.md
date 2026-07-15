@@ -34,13 +34,18 @@ evidence are required before any performance claim.
 
 ## Current dKV State
 
-- Latest accepted micro-optimization is score/dP operand-register ping-pong.
-  It reuses the existing two D-block source register sets, overlaps D2/D3
-  matrix reads with D1/D2 MMAC, and keeps consumer windows `221/240` with no
-  spill/scratch.  H1/S1024 fullperf improves `42,622,580 -> 42,564,340`,
-  MMAC active rises `33.4610% -> 33.7716%`, and XCU reports
-  `MMAC -> s_waitcnt` bubble duration down 62.29%.  Next, test consolidation
-  of the added split wait; do not disturb ownership or tile topology.
+- Latest accepted micro-optimization keeps score/dP operand-register
+  ping-pong and uses one SGPR LDS base plus four immediate offsets per
+  transpose-read packet.  It keeps consumer windows `221/240` with no
+  spill/scratch.  H1/S1024 fullperf improves `42,564,340 -> 42,335,020`,
+  MMAC active rises `33.7716% -> 34.1944%`, waitLgkm falls 3.15%, barrier
+  falls 3.94%, and coissue success rises 10.1%.  XCU still assigns 35.21% to
+  the main ABarrier ownership bubble.
+- Next structural target is a three-slot Q/dO half-tile ring after K/V are
+  latched by consumers: three `M64` Q+dO+sidecar slots use `100,608B` LDS and
+  reduce per-half ownership from `Filled + QUsed + dOUsed` to
+  `Filled + Used`.  Keep the accepted score/dP ping-pong and test whether one
+  extra packet of prefetch distance outweighs loss of dO early release.
 - 2026-07-15 regular-island Stage A is rejected and source is restored.  An
   eight-read score/dP island improved stats-only ticks 1.62% and raised MMAC
   active about 0.65 percentage points, but same-build fullperf regressed
