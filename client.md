@@ -34,13 +34,21 @@ evidence are required before any performance claim.
 
 ## Current dKV State
 
+- Latest accepted micro-optimization is score/dP operand-register ping-pong.
+  It reuses the existing two D-block source register sets, overlaps D2/D3
+  matrix reads with D1/D2 MMAC, and keeps consumer windows `221/240` with no
+  spill/scratch.  H1/S1024 fullperf improves `42,622,580 -> 42,564,340`,
+  MMAC active rises `33.4610% -> 33.7716%`, and XCU reports
+  `MMAC -> s_waitcnt` bubble duration down 62.29%.  Next, test consolidation
+  of the added split wait; do not disturb ownership or tile topology.
 - 2026-07-15 regular-island Stage A is rejected and source is restored.  An
   eight-read score/dP island improved stats-only ticks 1.62% and raised MMAC
   active about 0.65 percentage points, but same-build fullperf regressed
   `42,622,580 -> 42,677,635`.  XCU showed `MMAC -> s_waitcnt` bubble duration
   rising 47.4%: the larger read block still waited immediately at first use.
   The next valid hypothesis is operand-register ping-pong, with next-group
-  reads overlapped by current-group MMAC; do not reapply read-only grouping.
+  reads overlapped by current-group MMAC; this successor is now accepted.
+  Do not reapply read-only grouping.
 - Current accepted dKV source is `dkv_q_used_release_before_softmax`:
   `Mq=128,Nk=128,D=128,16 waves`, with Q/dO half-page ownership and sidecar
   staged in LDS by the producer.

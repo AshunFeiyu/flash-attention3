@@ -666,16 +666,20 @@ __device__ __forceinline__ void score_dp_mmac_owner16(
     ins::wait_lgkm(0);
     score_dp_mmac_owner16_dblock<0>(
         kv_regs, q0_d0, q1_d0, dout0_d0, dout1_d0, zero, score, dp);
+
+    // Reuse the consumed D0 register set for D2.  D1 MMAC hides the D2 read;
+    // D2 MMAC then hides the D3 read in the other register set.
+    read_score_dp_owner16_dblock<Tile, MBlockBase, 2>(
+        lds, page, q0_d0, q1_d0, dout0_d0, dout1_d0);
     score_dp_mmac_owner16_dblock<1>(
         kv_regs, q0_d1, q1_d1, dout0_d1, dout1_d1, zero, score, dp);
 
-    read_score_dp_owner16_dblock<Tile, MBlockBase, 2>(
-        lds, page, q0_d0, q1_d0, dout0_d0, dout1_d0);
     read_score_dp_owner16_dblock<Tile, MBlockBase, 3>(
         lds, page, q0_d1, q1_d1, dout0_d1, dout1_d1);
-    ins::wait_lgkm(0);
+    ins::wait_lgkm(4);
     score_dp_mmac_owner16_dblock<2>(
         kv_regs, q0_d0, q1_d0, dout0_d0, dout1_d0, zero, score, dp);
+    ins::wait_lgkm(0);
     score_dp_mmac_owner16_dblock<3>(
         kv_regs, q0_d1, q1_d1, dout0_d1, dout1_d1, zero, score, dp);
     ins::lower_priority();

@@ -1,5 +1,33 @@
 # Optimization Log
 
+## 2026-07-15 dKV Score/dP Operand Ping-Pong Accepted
+
+- Status:
+  `ACCEPT_MICRO_FULLPERF_XCU`.
+- Change:
+  retain the existing two score/dP operand register sets and reuse them as a
+  D-block ping-pong: `read D0/D1 -> wait0 -> MMAC D0 -> read D2 -> MMAC D1
+  -> read D3 -> wait4 -> MMAC D2 -> wait0 -> MMAC D3`.  No extra VGPR, LDS,
+  ABarrier, formula, or output-ownership change was introduced.
+- Gates:
+  build/static/metadata pass with unchanged consumer windows `221/240`,
+  `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.  H1/S128 and
+  H1/S1024 correctness pass; `ldsBankConflict=0`.
+- Performance:
+  same-build stats-only ticks improve `42,824,145 -> 42,138,005` (`-1.60%`).
+  Same-build helper fullperf also improves `42,622,580 -> 42,564,340`
+  (`-0.137%`); MMAC active rises `33.4610% -> 33.7716%`, waitLgkm falls
+  `51,651 -> 47,974.25`, and barrier falls `138,200 -> 134,449.25`.
+- XCU explanation:
+  dispatch duration falls `93,676 -> 93,548`; `MMAC -> s_waitcnt` bubble
+  duration falls 62.29%, the main ownership bubble falls 1.87%, and
+  `MMAC -> MMAC` falls 1.06%.  The added split readiness point raises
+  `s_waitcnt` hits by 2,048, so the next experiment should test whether one
+  wait can be consolidated without restoring the hard dependency.
+- Evidence:
+  candidate `/zys/shaobo_runs/dkv_score_dp_operand_pingpong_fullperf`;
+  baseline `/zys/shaobo_runs/dkv_regular_islands_baseline_fullperf`.
+
 ## 2026-07-15 dKV Eight-Read Score/dP Island Rejected
 
 - Status:

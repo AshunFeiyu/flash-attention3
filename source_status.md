@@ -7857,3 +7857,42 @@ dKV regular instruction-island Stage A, 2026-07-15:
   reject and restore canonical source.  The next read-island experiment must
   double-buffer operand registers so current-group MMAC covers next-group
   matrix reads; it must not retain this read-then-immediate-wait schedule.
+
+dKV score/dP operand-register ping-pong, 2026-07-15:
+
+- Status:
+  `ACCEPT_MICRO_FULLPERF_XCU`.
+- Branch/base:
+  `exp/7gemm-dkv-regular-islands` after rejected Stage A was restored and
+  recorded at `328a49c`.
+- Design:
+  use the existing D0/D1 source register sets as a two-slot ping-pong.  After
+  D0 consumes slot A, issue D2 into A while D1 MMAC uses slot B; then issue D3
+  into B, wait at `lgkmcnt(4)` for D2, execute D2 MMAC while D3 remains in
+  flight, and use `lgkmcnt(0)` only before D3.  Formula DAG, Mq128/Nk128/D128,
+  16-wave roles, LDS bytes, ABarrier lifecycle, and output ownership are
+  unchanged.
+- Gates:
+  build/static/metadata pass with branch windows `14/16,221/240,221/240,8/16`,
+  `private=0`, `sgpr=99`, `vgpr=128`, and no spill/scratch.  H1/S128 and
+  H1/S1024 correctness pass; `ldsBankConflict=0`.
+- Performance:
+  stats-only kernel ticks improve `42,824,145 -> 42,138,005` (`-1.60%`).
+  Required same-build helper fullperf improves `42,622,580 -> 42,564,340`
+  (`-0.137%`); MMAC active improves `33.4610% -> 33.7716%`, waitLgkm falls
+  `51,651 -> 47,974.25`, barrier falls `138,200 -> 134,449.25`, and coissue
+  success/fail changes `37,903/26,701 -> 37,010/25,234`.
+- XCU:
+  dispatch duration improves `93,676 -> 93,548`.  Bubble duration changes:
+  `MMAC -> s_waitcnt -62.29%`, `ABarrier wait -> s_xor -1.87%`,
+  `MMAC -> MMAC -1.06%`, matrix-trans-read to wait `-0.43%`; normal matrix
+  read to wait rises `1.34%`.  The schedule adds 2,048 `s_waitcnt` hits, which
+  is now the next isolated cost.
+- Evidence:
+  candidate `/zys/shaobo_runs/dkv_score_dp_operand_pingpong_fullperf` with
+  xcu CSV under `xcu/csv`; same-run baseline
+  `/zys/shaobo_runs/dkv_regular_islands_baseline_fullperf`.
+- Decision:
+  accept as a small, mechanism-backed optimization.  The successor may only
+  test wait consolidation around D2/D3; no topology or ownership change should
+  be mixed into that experiment.
