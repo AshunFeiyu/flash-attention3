@@ -12879,14 +12879,14 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   static/metadata gates pass with `private=0`, `sgpr=99`, `vgpr=128`, no
   spill/scratch.  H1/S128 and H1/S1024 correctness pass; bank conflict zero.
 - ASM/perf result:
-  matrix-read maximum rises `8 -> 16`, with eight 16-read runs, but MMAC runs
-  worsen `156 -> 172` and mean length falls `6.56 -> 5.95`.  H1/S1024 ticks
+  matrix-read runs fall `262 -> 254` and maximum rises `8 -> 16`, while MMAC
+  remains `172` runs with mean length `5.95`.  H1/S1024 ticks
   regress `42,138,005 -> 42,802,760` (`+1.58%`); MMAC active falls
   `33.9414% -> 33.8642%`.  Candidate counters are waitLgkm `45,988.25`,
   barrier `133,943.5`, coissue `38,783/26,915`, `MMOP=131,072`,
   `VALU=168,396`, `SCA=111,248`, `LDS=79,360`, `VMEM=4,352`.
 - Decision:
   reject without fullperf and restore canonical source.  The experiment proves
-  that read-side wait can fall while total ticks rise when compiler scheduling
-  fragments the MMAC island.  A retry requires explicit ASM preservation;
-  otherwise move to the dominant ABarrier ownership bubble.
+  that read-side regularity and wait can improve without changing the MMAC
+  shape or reducing total ticks.  A retry must make read and MMAC one generated
+  macro-block; otherwise move to the dominant ABarrier ownership bubble.

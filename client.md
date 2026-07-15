@@ -2401,13 +2401,13 @@ dKV release-page normal-read pipeline, 2026-07-15:
   `lgkmcnt(0)` to release Q.  The intent was to replace two serialized
   read/wait islands while preserving split ownership.
 - Evidence:
-  correctness/resources/bank gates pass.  Read islands gain eight 16-read
-  runs and waitLgkm improves, but barrier rises and compiler scheduling fragments
-  MMAC runs (`mean 6.56 -> 5.95`).  H1/S1024 ticks regress
+  correctness/resources/bank gates pass.  Read runs fall `262 -> 254`, the
+  maximum read run rises `8 -> 16`, and waitLgkm improves.  The MMAC shape is
+  unchanged at `172` runs and mean `5.95`; barrier rises.  H1/S1024 ticks regress
   `42,138,005 -> 42,802,760` (`+1.58%`) and MMAC active falls slightly
   `33.9414% -> 33.8642%`.
 - Lesson:
-  release-read batching is directionally useful for LDS wait and ABarrier
-  exposure, but it is not independently promotable when the generated MMAC
-  islands degrade.  Restore canonical source; any retry must explicitly
-  preserve the MMAC island in ASM rather than adding another scheduling hint.
+  release-read batching improves static read regularity but does not improve
+  the MMAC island or elapsed time by itself.  Restore canonical source; any
+  retry must combine a complete read packet with a preserved MMAC macro-block
+  rather than changing read placement alone.

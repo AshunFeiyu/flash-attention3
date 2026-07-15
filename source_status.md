@@ -7935,8 +7935,8 @@ dKV release-page normal-read pipeline, 2026-07-15:
   native matrix path were unchanged.
 - Gates/ASM:
   H1/S128/H1/S1024 correctness pass; `private=0, sgpr=99, vgpr=128`, no
-  spill/scratch, bank zero.  Matrix-read maximum rises `8 -> 16`, but MMAC
-  mean run length falls `6.56 -> 5.95` and MMAC runs rise `156 -> 172`.
+  spill/scratch, bank zero.  Matrix-read runs fall `262 -> 254` and maximum
+  rises `8 -> 16`; MMAC remains `172` runs with mean length `5.95`.
 - Performance:
   H1/S1024 ticks regress `42,138,005 -> 42,802,760` (`+1.58%`); MMAC active
   changes `33.9414% -> 33.8642%`.  WaitLgkm improves
@@ -7944,6 +7944,6 @@ dKV release-page normal-read pipeline, 2026-07-15:
   `132,820.25 -> 133,943.5`; candidate
   coissue is `38,783/26,915`.
 - Decision:
-  reject before fullperf and restore `ab18b89`.  Read batching alone changes
-  compiler MMAC scheduling enough to lose elapsed time; the next candidate
-  needs a generated-ASM contract for the MMAC island, not merely larger reads.
+  reject before fullperf and restore `ab18b89`.  Read-side regularity alone
+  does not change the MMAC shape or lower elapsed time; the next candidate
+  needs one generated-ASM contract spanning both read and MMAC macro-blocks.
