@@ -2369,3 +2369,24 @@ dKV Q/dO readiness split design draft, 2026-07-13:
 - Governance:
   preserve this state on branch `shaobo/7gemm-canonical-checkpoint-20260713`;
   the new 5-GEMM implementation must live on a separate branch/worktree.
+
+dKV score/dP wait consolidation, 2026-07-15:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- What changed:
+  retained the accepted two-slot operand ping-pong, but replaced the staged
+  `lgkmcnt(4) -> D2 MMAC -> lgkmcnt(0) -> D3 MMAC` sequence with one
+  `lgkmcnt(0)` before both D2 and D3.
+- Evidence:
+  static gates and H1/S128/H1/S1024 correctness pass with unchanged
+  `private=0, sgpr=99, vgpr=128`, no spill/scratch, and bank conflict zero.
+  H1/S1024 ticks regress `42,138,005 -> 42,769,545` (`+1.50%`), MMAC active
+  falls `33.9414% -> 33.5032%`, and waitLgkm rises
+  `46,911.75 -> 52,444.25`.
+- Lesson:
+  the intermediate `lgkmcnt(4)` is useful scheduling, not redundant control.
+  It lets D2 execute while D3 remains in flight.  Removing the extra static
+  wait instruction exposes a larger first-use dependency stall.  Keep the
+  accepted ping-pong schedule and target another operand family or ownership
+  bubble next.

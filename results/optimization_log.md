@@ -12829,3 +12829,33 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   reject and restore source/gate.  dKV's dominant issue is not the terminal
   CTA barrier shape; it is the raw Q/dO page ownership cadence and PageUsed
   waits visible in xcu.
+
+## 2026-07-15 dKV Score/dP Wait Consolidation
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Hypothesis:
+  the accepted score/dP operand ping-pong adds 2,048 static `s_waitcnt` hits.
+  Consolidating the D2/D3 waits might keep the read overlap while removing
+  scalar wait/control pressure.
+- Change tested:
+  replaced only `lgkmcnt(4) -> D2 MMAC -> lgkmcnt(0) -> D3 MMAC` with
+  `lgkmcnt(0) -> D2 MMAC -> D3 MMAC`.  No algorithm, tile, role, ownership,
+  LDS, ABarrier, sidecar, store, or API change.
+- Gate result:
+  build/source/metadata gates pass with branch windows
+  `14/16,221/240,221/240,8/16`, `private=0`, `sgpr=99`, `vgpr=128`, and no
+  spill/scratch.  H1/S128 and H1/S1024 causal correctness pass;
+  `ldsBankConflict=0`.
+- Perf result:
+  versus accepted ping-pong stats, H1/S1024 kernel ticks regress
+  `42,138,005 -> 42,769,545` (`+1.50%`), MMAC active falls
+  `33.9414% -> 33.5032%`, and waitLgkm rises
+  `46,911.75 -> 52,444.25`.  Candidate counts are `MMOP=131,072`,
+  `VALU=168,396`, `SCA=111,248`, `LDS=79,360`, `VMEM=4,352`, barrier
+  `138,358.75`, and coissue `36,468/25,386`.
+- Decision:
+  reject without fullperf and restore `ab18b89`.  Static wait count is not the
+  optimization target by itself: the staged `lgkmcnt(4)` preserves useful D2
+  MMAC overlap while D3 data remains in flight.  Next work must pipeline a
+  different operand family or reduce the larger ABarrier ownership bubble.

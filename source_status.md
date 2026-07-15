@@ -7896,3 +7896,26 @@ dKV score/dP operand-register ping-pong, 2026-07-15:
   accept as a small, mechanism-backed optimization.  The successor may only
   test wait consolidation around D2/D3; no topology or ownership change should
   be mixed into that experiment.
+
+dKV score/dP wait consolidation, 2026-07-15:
+
+- Status:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Change:
+  tested only one scheduling delta on top of commit `ab18b89`: replace
+  `wait_lgkm(4), D2 MMAC, wait_lgkm(0), D3 MMAC` with one `wait_lgkm(0)`
+  followed by D2 and D3 MMAC.  Formula, tile, 16-wave roles, LDS, ABarrier,
+  output ownership, and native matrix path were unchanged.
+- Gates:
+  branch windows remain `14/16,221/240,221/240,8/16`; metadata remains
+  `private=0, sgpr=99, vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024
+  correctness pass; `ldsBankConflict=0`.
+- Performance:
+  H1/S1024 stats-only kernel ticks regress from the accepted ping-pong result
+  `42,138,005` to `42,769,545` (`+1.50%`).  MMAC active falls
+  `33.9414% -> 33.5032%`; waitLgkm rises `46,911.75 -> 52,444.25`; barrier is
+  `138,358.75`; coissue success/fail is `36,468/25,386`.
+- Decision:
+  reject before fullperf because stats already reverses both elapsed ticks and
+  pipeline quality.  Source is restored exactly to `ab18b89`; the staged
+  `lgkmcnt(4)` is required to overlap D3 readiness with D2 MMAC.
