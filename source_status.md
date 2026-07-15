@@ -8021,3 +8021,20 @@ dKV score/dP macro-block with sidecar prefetch, 2026-07-15:
   packet; Consumer-G reads it into VGPR, arrives `PdsUsed` before dV/dK MMAC,
   and thereby overlaps the next P/dS publication with the current MMAC island.
   Workbook: `dKV_2Stage_PDS` in the shared design workbook.
+
+## 2026-07-16 dKV Two-Stage P/dS WDRA/PMD Blocker
+
+- Status: `REJECT_MAINLINE_PMD_WDRA_TRACKING`; canonical source restored to
+  `best-dkv-h1s1024-20260715-imm4` content and recertified.
+- `probes/dkv_pds_cross_wave_probe.cpp` passes eight ABarrier generations and
+  both LDS bases (`0`, `67584`) at low register pressure. With 128 live FP32
+  accumulator VGPRs, the same native handoff reaches reader outputs
+  `v131:v138` and PMD aborts on `read vgpr202 before writing`.
+- Main-kernel natural P/dS publication likewise becomes non-finite or reads
+  preinitialized zero. This is a high-VGPR WDRA model-tracking blocker, not a
+  failure of the proven matrix layout contract.
+- Canonical H1/S1024 restore remains correct, bank-conflict free, and records
+  `41,151,565` stats-only kernel ticks.
+- Next structural experiment is workbook sheet `113_ConsumerSelfPrefetch`:
+  consumers publish group-local Q/dO double pages, eliminating the CTA-wide
+  Q/dO ownership wait while preserving one score/dP computation.

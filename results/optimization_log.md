@@ -13076,3 +13076,17 @@ Status: `ACCEPT_INSTRUCTION_GATE`
 - Decision: promote this only as an instruction/layout gate.  The canonical
   dKV performance source stays untouched until the single-slot two-stage
   resource and ABarrier ledger is implemented and passes static correctness.
+
+## 2026-07-16 Two-Stage P/dS High-VGPR Audit
+
+Status: `REJECT_MAINLINE_PMD_WDRA_TRACKING`
+
+- Low-pressure cross-wave handoff passes eight generations at LDS bases `0`
+  and `67584`, proving the writer/reader/barrier address contract.
+- A high-pressure reader with 128 live FP32 accumulator VGPRs fails in PMD at
+  `read vgpr202 before writing`; its matrix destination is `v131:v138`.
+- Preinitializing the main-kernel reader produces finite zero instead of the
+  LDS payload, so no workaround is stacked into the performance kernel.
+- New hypothesis: each consumer group self-prefetches M32 Q/dO double pages.
+  This trades 2x Q/dO global bytes for removal of the dominant CTA-wide page
+  ownership ABarrier and enables useful group0/group1 phasing.

@@ -2500,3 +2500,15 @@ dKV native P/dS handoff, 2026-07-15:
   two-stage conveyor.  One P/dS packet is 32KB; total steady LDS is 99,840B.
   Consumer-G releases the slot after the matrix read retires, before its
   dV/dK MMAC, so Consumer-S can publish packet t+1 during MMAC(t).
+
+dKV direction update, 2026-07-16:
+
+- Native P/dS layout is valid, but the high-VGPR cross-wave path is blocked by
+  PMD WDRA tracking (`read vgpr202 before writing`). Canonical source is
+  restored instead of carrying a model workaround.
+- Active design is workbook sheet `113_ConsumerSelfPrefetch`: producer waves
+  load resident K/V once; each consumer group publishes and consumes its own
+  Q/dO M32 double pages. Group0 prefetches before its current MMAC island and
+  group1 after it, creating real-work phase offset without empty delay.
+- Promotion order remains correctness/resource/bank gates, then ticks, then
+  MMAC active. The first structural milestone is 40%; final target is 60%.
