@@ -12915,3 +12915,21 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   macro removes useful D-block latency overlap; visual regularity cannot replace
   a dependency-aware schedule.  Next isolate address SALU without moving reads,
   or attack the measured bar3/bar7/bar9 ownership stalls.
+
+### Fullperf follow-up
+
+- A trace-backed H1/S1024 rerun captured the rejected candidate before remote
+  canonical restoration.  Candidate kernel ticks are `43,393,805` versus
+  accepted `42,564,340` (`+1.95%`); MMAC active is `33.35%` versus `33.77%`.
+- `waitLgkm` rises `47,974.25 -> 59,638.8` (`+24.31%`), barrier rises `2.92%`,
+  and coissue success falls exactly `10%`.  XCU duration similarly regresses
+  `93,548 -> 95,368`.
+- XCU still reports ownership as dominant:
+  `s_abarrier_try_wait -> s_xor_b32` is `36.21%`, followed by terminal
+  `s_abarrier_try_wait -> s_waitcnt` at `8.34%`.  The long read/MMAC grammar
+  lowers raw matrix-read latency but exposes first-use waits and loses useful
+  peer MMAC/read overlap.
+- Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260715_173207_dkv_score_dp_sidecar_macro_reject_h1s1024_sqc7_fullperf`.
+  The earlier stats-only `+14.54%` result is retained as variance evidence;
+  fullperf `+1.95%` is the authoritative trace-backed comparison.

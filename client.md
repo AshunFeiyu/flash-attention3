@@ -2432,3 +2432,13 @@ dKV score/dP macro-block with sidecar prefetch, 2026-07-15:
   first-use LDS waits and removes the accepted operand ping-pong.  Reference
   regularity is not independently promotable; preserve useful read/MMAC
   overlap and target address SALU plus ABarrier ownership bubbles instead.
+
+- Fullperf follow-up:
+  the archived trace confirms rejection with lower variance: candidate
+  `43,393,805` versus accepted `42,564,340` ticks (`+1.95%`), MMAC active
+  `33.35%` versus `33.77%`, wait `+24.31%`, barrier `+2.92%`, and coissue
+  success `-10%`.  The candidate perf, source, ASM, stats, xcu detail, and
+  checksums are under
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260715_173207_dkv_score_dp_sidecar_macro_reject_h1s1024_sqc7_fullperf`.
+  Remote source/build were then restored to canonical accepted ping-pong and
+  passed metadata plus H1/S1024 correctness again.

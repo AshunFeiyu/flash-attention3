@@ -7970,3 +7970,16 @@ dKV score/dP macro-block with sidecar prefetch, 2026-07-15:
   target by itself.  The accepted ping-pong hides LDS first-use latency; future
   work should preserve it while hoisting address SALU or reducing recurrent
   `Q0Used/Q1Used/dO1Used` ownership bubbles.
+
+- Fullperf follow-up:
+  the rejected source was captured before restoration.  It remains slower than
+  accepted ping-pong: `43,393,805` versus `42,564,340` kernel ticks (`+1.95%`),
+  with MMAC active `33.35%` versus `33.77%`, `waitLgkm +24.31%`, barrier
+  `+2.92%`, and coissue success `-10%`.  XCU identifies the same ownership
+  bubble plus more exposed first-use wait.  Archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/20260715_173207_dkv_score_dp_sidecar_macro_reject_h1s1024_sqc7_fullperf`.
+- Canonical state after capture:
+  remote source restored to SHA256 `18c3dcb67fb3ff4dce98e9739fb0ef13ce6a3b903e24733843970cef0ed02d34`;
+  rebuilt ASM SHA256 `1e4f0b92c7d7efc8b93168a78bcbbdb9629de06318165b858d684802c7852db8`;
+  branch windows `14/16,221/240,221/240,8/16`, metadata gate PASS, and
+  H1/S1024 correctness PASS.
