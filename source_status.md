@@ -7919,3 +7919,31 @@ dKV score/dP wait consolidation, 2026-07-15:
   reject before fullperf because stats already reverses both elapsed ticks and
   pipeline quality.  Source is restored exactly to `ab18b89`; the staged
   `lgkmcnt(4)` is required to overlap D3 readiness with D2 MMAC.
+
+dKV release-page normal-read pipeline, 2026-07-15:
+
+- Status:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Design/evidence basis:
+  accepted SQTT reports `ds_read_matrix_format -> s_waitcnt` 2,944 times and
+  433,868 cycles.  The release-page path serialized `dO8 -> wait0/release`
+  and `Q8 -> wait0/release`, while the non-release path already uses staged
+  operand-read overlap.
+- Change:
+  release-page only: `dO8 + Q8 -> wait8/release dO -> wait0/release Q`.
+  Formula, tile, 16-wave roles, registers, token counts, output ownership, and
+  native matrix path were unchanged.
+- Gates/ASM:
+  H1/S128/H1/S1024 correctness pass; `private=0, sgpr=99, vgpr=128`, no
+  spill/scratch, bank zero.  Matrix-read maximum rises `8 -> 16`, but MMAC
+  mean run length falls `6.56 -> 5.95` and MMAC runs rise `156 -> 172`.
+- Performance:
+  H1/S1024 ticks regress `42,138,005 -> 42,802,760` (`+1.58%`); MMAC active
+  changes `33.9414% -> 33.8642%`.  WaitLgkm improves
+  `46,911.75 -> 45,988.25`, but barrier regresses
+  `132,820.25 -> 133,943.5`; candidate
+  coissue is `38,783/26,915`.
+- Decision:
+  reject before fullperf and restore `ab18b89`.  Read batching alone changes
+  compiler MMAC scheduling enough to lose elapsed time; the next candidate
+  needs a generated-ASM contract for the MMAC island, not merely larger reads.

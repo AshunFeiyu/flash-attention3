@@ -12859,3 +12859,34 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   optimization target by itself: the staged `lgkmcnt(4)` preserves useful D2
   MMAC overlap while D3 data remains in flight.  Next work must pipeline a
   different operand family or reduce the larger ABarrier ownership bubble.
+
+## 2026-07-15 dKV Release-Page Normal-Read Pipeline
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Hypothesis:
+  accepted fullperf/xcu has 2,944 `ds_read_matrix_format -> s_waitcnt` gaps
+  totaling 433,868 cycles.  Release-page mpairs serialize two eight-read
+  normal-source groups.  Issuing Q behind dO and using `lgkmcnt(8)` should
+  overlap LDS readiness while preserving dO-before-Q ownership release.
+- Change tested:
+  release-page path only changed from
+  `dO8 -> wait0/release -> Q8 -> wait0/release` to
+  `dO8 + Q8 -> wait8/release -> wait0/release`.  The change adds no source
+  registers and does not alter formula, tile, wave roles, token counts, LDS,
+  output ownership, or API.
+- Gate result:
+  static/metadata gates pass with `private=0`, `sgpr=99`, `vgpr=128`, no
+  spill/scratch.  H1/S128 and H1/S1024 correctness pass; bank conflict zero.
+- ASM/perf result:
+  matrix-read maximum rises `8 -> 16`, with eight 16-read runs, but MMAC runs
+  worsen `156 -> 172` and mean length falls `6.56 -> 5.95`.  H1/S1024 ticks
+  regress `42,138,005 -> 42,802,760` (`+1.58%`); MMAC active falls
+  `33.9414% -> 33.8642%`.  Candidate counters are waitLgkm `45,988.25`,
+  barrier `133,943.5`, coissue `38,783/26,915`, `MMOP=131,072`,
+  `VALU=168,396`, `SCA=111,248`, `LDS=79,360`, `VMEM=4,352`.
+- Decision:
+  reject without fullperf and restore canonical source.  The experiment proves
+  that read-side wait can fall while total ticks rise when compiler scheduling
+  fragments the MMAC island.  A retry requires explicit ASM preservation;
+  otherwise move to the dominant ABarrier ownership bubble.
