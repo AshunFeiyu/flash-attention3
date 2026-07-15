@@ -7812,3 +7812,48 @@ dKV Q/dO readiness split design draft, 2026-07-13:
 - Branching rule:
   freeze this state as `shaobo/7gemm-canonical-checkpoint-20260713`; conduct
   the 5-GEMM rewrite only on its dedicated branch/worktree.
+
+dKV regular instruction-island Stage A, 2026-07-15:
+
+- Status:
+  `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Branch/base:
+  `exp/7gemm-dkv-regular-islands` from immutable tag
+  `shaobo-fa3-bwd-7gemm-best-known-20260715` (`bf5c7b3`).
+- Design evidence:
+  shared workbook `fa3_bwd_wasp_clean_design_20260701.xlsx`, sheets
+  `7G_RI_DAG`, `7G_RI_Budget`, `7G_RI_Pipeline`, and `7G_RI_Gates`.
+- Change:
+  only the score+dP source-read helper was changed.  Two adjacent D blocks
+  issue one fixed eight-instruction transpose matrix-read island over Q and dO,
+  followed by the existing first-use wait and 16 score+dP MMACs.  Formula,
+  tile, 16-wave roles, LDS ownership, ABarrier lifecycle, and output ownership
+  remained unchanged.
+- Gates:
+  build, static gate, and metadata passed with `private=0`, `sgpr=99`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 causal correctness
+  passed; `ldsBankConflict=0`.
+- ASM evidence:
+  MMAC runs improved from `156` to `90` and mean run length from `6.56` to
+  `11.38`; matrix-read runs improved from `260` to `194`.  The compiler also
+  moved the next read group before the final MMAC of the current group.
+- Performance:
+  same-build stats-only improved `kernel_ticks 42,824,145 -> 42,129,360`
+  (`-1.62%`) and MMAC active `33.4618% -> 34.1123%`.  However, the required
+  helper fullperf A/B regressed `42,622,580 -> 42,677,635` (`+0.13%`), despite
+  MMAC active increasing `33.4610% -> 34.0969%`.
+- XCU explanation:
+  dispatch duration regressed `93,676 -> 93,800`.  The dominant
+  `s_abarrier_try_wait -> s_xor_b32` bubble improved `3,908,344 -> 3,821,560`,
+  but `MMAC -> s_waitcnt` worsened `192,780 -> 284,194` (`+47.4%`) and
+  `MMAC -> MMAC` worsened `897,628 -> 953,492` (`+6.22%`).  Grouping reads
+  without overlapping their latency with useful MMAC merely moved the stall
+  to first use.
+- Evidence:
+  candidate `/zys/shaobo_runs/dkv_regular_islands_stageA_fullperf`; baseline
+  `/zys/shaobo_runs/dkv_regular_islands_baseline_fullperf`; xcu CSV lives in
+  each root's `xcu_stageA/csv` or `xcu_baseline/csv` directory.
+- Decision:
+  reject and restore canonical source.  The next read-island experiment must
+  double-buffer operand registers so current-group MMAC covers next-group
+  matrix reads; it must not retain this read-then-immediate-wait schedule.

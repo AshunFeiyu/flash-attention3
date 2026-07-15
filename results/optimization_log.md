@@ -1,5 +1,31 @@
 # Optimization Log
 
+## 2026-07-15 dKV Eight-Read Score/dP Island Rejected
+
+- Status:
+  `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Hypothesis:
+  replace four independent score/dP source-read calls with one fixed eight
+  `ds_read_matrix_trans_format` island for two D32 slices, without changing
+  formula, tile, roles, ownership, barriers, or MMAC count.
+- Gates:
+  build/static/metadata pass with `private=0`, `sgpr=99`, `vgpr=128`, no
+  spill/scratch; H1/S128 and H1/S1024 correctness pass and
+  `ldsBankConflict=0`.
+- Result:
+  ASM regularity improved substantially and stats-only ticks improved 1.62%,
+  but same-build helper fullperf regressed `42,622,580 -> 42,677,635` ticks.
+  XCU explains the disagreement: the main ownership bubble fell 2.22%, while
+  `MMAC -> s_waitcnt` bubble duration rose 47.4% and `MMAC -> MMAC` rose 6.22%.
+- Decision:
+  grouping reads is not sufficient when first-use wait remains immediate.
+  Restore source.  A successor must read the next operand group into a second
+  register set while the current group executes MMAC, then wait only at the
+  next group's first use.
+- Evidence:
+  candidate `/zys/shaobo_runs/dkv_regular_islands_stageA_fullperf`; baseline
+  `/zys/shaobo_runs/dkv_regular_islands_baseline_fullperf`.
+
 ## 2026-07-12 dKV/dQ Fullperf XCU Reprofile
 
 - Status:
