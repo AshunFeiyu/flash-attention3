@@ -7947,3 +7947,26 @@ dKV release-page normal-read pipeline, 2026-07-15:
   reject before fullperf and restore `ab18b89`.  Read-side regularity alone
   does not change the MMAC shape or lower elapsed time; the next candidate
   needs one generated-ASM contract spanning both read and MMAC macro-blocks.
+
+dKV score/dP macro-block with sidecar prefetch, 2026-07-15:
+
+- Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- Design:
+  two fixed `8 trans reads -> useful sidecar prefetch -> wait -> 16 MMAC`
+  epochs replaced the accepted D-block operand ping-pong.  No formula, tile,
+  role, LDS, token, API, or ownership change.
+- Gates:
+  branch windows `14/16,219/240,219/240,8/16`; metadata `private=0`,
+  `sgpr=99`, `vgpr=128`, no spill/scratch.  H1/S128/H1/S1024 correctness pass
+  and `ldsBankConflict=0`.
+- ASM:
+  MMAC runs `172 -> 68`, mean `5.95 -> 15.06`, singleton share
+  `30.23% -> 14.71%`; matrix-read runs `262 -> 230`, maximum remains 8.
+- Performance:
+  H1/S1024 kernel ticks `42,138,005 -> 48,264,580` (`+14.54%`), with
+  coissue `33,682/25,565` and unchanged `MMOP=131,072`.
+- Decision:
+  reject before fullperf.  Static regularity is explanatory evidence, not a
+  target by itself.  The accepted ping-pong hides LDS first-use latency; future
+  work should preserve it while hoisting address SALU or reducing recurrent
+  `Q0Used/Q1Used/dO1Used` ownership bubbles.

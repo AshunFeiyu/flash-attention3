@@ -2411,3 +2411,24 @@ dKV release-page normal-read pipeline, 2026-07-15:
   the MMAC island or elapsed time by itself.  Restore canonical source; any
   retry must combine a complete read packet with a preserved MMAC macro-block
   rather than changing read placement alone.
+
+dKV score/dP macro-block with sidecar prefetch, 2026-07-15:
+
+- Result:
+  `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+- What changed:
+  copied the reference GEMM Template-B idea into score/dP: two groups of eight
+  transpose matrix reads, independent sidecar max/inv-sum prefetch before each
+  first-use wait, and two 16-MMAC blocks.  Formula, tile, roles, ABarrier, LDS,
+  and output ownership were unchanged.
+- Evidence:
+  H1/S128 and H1/S1024 correctness pass; bank conflict zero.  Consumer branch
+  use falls `221 -> 219` within the 240 window; metadata remains
+  `private=0, sgpr=99, vgpr=128`, no spill/scratch.  Static MMAC runs improve
+  `172 -> 68`, mean length `5.95 -> 15.06`, with 48 runs of length 16.
+- Performance and lesson:
+  H1/S1024 kernel ticks regress `42,138,005 -> 48,264,580` (`+14.54%`).
+  Coissue success/fail is `33,682/25,565`.  The long island exposes both
+  first-use LDS waits and removes the accepted operand ping-pong.  Reference
+  regularity is not independently promotable; preserve useful read/MMAC
+  overlap and target address SALU plus ABarrier ownership bubbles instead.

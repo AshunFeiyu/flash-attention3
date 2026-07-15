@@ -12890,3 +12890,28 @@ Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
   that read-side regularity and wait can improve without changing the MMAC
   shape or reducing total ticks.  A retry must make read and MMAC one generated
   macro-block; otherwise move to the dominant ABarrier ownership bubble.
+
+## 2026-07-15 dKV Score/dP Macro-Block With Sidecar Prefetch
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Hypothesis:
+  adapt reference GEMM Template B without pure wait exposure by placing useful
+  sidecar max/inv-sum prefetch between each eight-read packet and first-use
+  wait, followed by a 16-MMAC block.
+- Gate result:
+  branch windows `14/16,219/240,219/240,8/16`; `private=0`, `sgpr=99`,
+  `vgpr=128`, no spill/scratch.  H1/S128 and H1/S1024 correctness pass; bank
+  conflict zero.
+- Structural result:
+  MMAC runs improve `172 -> 68`, mean `5.95 -> 15.06`, singleton share
+  `30.23% -> 14.71%`; matrix-read runs improve `262 -> 230`.  This proves the
+  requested regular instruction grammar is achievable within the WDRA budget.
+- Performance result:
+  H1/S1024 kernel ticks regress `42,138,005 -> 48,264,580` (`+14.54%`),
+  coissue is `33,682/25,565`, and MMOP remains `131,072`.
+- Decision:
+  reject before fullperf and restore canonical ping-pong.  The source-level
+  macro removes useful D-block latency overlap; visual regularity cannot replace
+  a dependency-aware schedule.  Next isolate address SALU without moving reads,
+  or attack the measured bar3/bar7/bar9 ownership stalls.
