@@ -13383,3 +13383,52 @@ Status: `ACCEPT_MICRO_SCHEDULING`
   `/zys/shaobo_runs/o32readyprio_fullperf_repeat/`
   `dkv_mmac_correctness_20260717_033504`; XCU outputs under the first fullperf
   case's `xcu_first`, `xcu_steady_w1`, and `xcu_steady_w2` directories.
+
+## 2026-07-17 dKV Owner32 Merged Q/dO Used Token Rejected
+
+Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`
+
+- Workbook sheet `131_DKV_MergedRawUsed` observed that owner32 releases Q and
+  dO consecutively after the same `lgkmcnt(0)`. The focused candidate merged
+  the two Used tokens per half, reducing the ledger from nine to seven IDs and
+  consumer Used arrivals from four to two per q-tile. Math, tile, matrix reads,
+  MMAC, LDS, and producer wait count were unchanged.
+- Static/resource admission passes: roles `14/239/239/8`, metadata
+  `private=0`, `sgpr=56`, `vgpr=128`, no spill/scratch, 128KB LDS, and the
+  canonical native matrix path remains intact.
+- H1/S256 and detached H1/S1024 complete with dK/dV correctness PASS and
+  bank0. The two earlier foreground S1024 commands were terminated by the
+  command transport near 20 seconds; their partial stats are invalid and are
+  not kernel protocol failures.
+- Same-method detached stats initially look positive: candidate ticks improve
+  `69,942,145 -> 69,389,320` (`-0.79%`) and SCA falls exactly
+  `36,408 -> 35,896` (`-512`), while MMOP/VALU/LDS/VMEM remain exact.
+- Fullperf rejects the change. Candidate ticks are `70,155,995`, versus the
+  two accepted ready-only-priority runs `69,230,070/69,053,530`
+  (`+1.34%/+1.60%`). MMAC active is effectively flat at `39.9607%`, so fewer
+  arrivals did not shorten the critical path.
+- XCU confirms why: `s_abarrier_try_wait -> s_xor_b32` still owns `41.84%` of
+  issue-gap duration, MMAC-to-MMAC is `10.17%`, and
+  `s_abarrier_try_wait -> s_waitcnt` is `9.15%`. The removed Used arrivals
+  were bookkeeping work, not the producer-to-consumer Filled readiness bubble.
+- Decision: reject and restore source/binary to ready-only priority commit
+  `28c8ab9`. Do not retry Q/dO Used-token merging. The next structural target
+  is earlier Q/dO Filled readiness through useful work, without another buffer
+  layer or token alias.
+- Evidence: S256 `/zys/shaobo_runs/o32mergedrawused_s256/`
+  `dkv_mmac_correctness_20260717_041555`; candidate detached stats
+  `/zys/shaobo_runs/o32merged_detached_20260717/`
+  `dkv_mmac_correctness_20260717_044041`; same-method baseline
+  `/zys/shaobo_runs/o32baseline_detached_20260717/`
+  `dkv_mmac_correctness_20260717_044607`; candidate fullperf/XCU
+  `/zys/shaobo_runs/o32merged_fullperf_detached_20260717/`
+  `dkv_mmac_correctness_20260717_045353`.
+
+### PMD long-run execution rule
+
+- Foreground SSH commands that run longer than about 20 seconds can be killed
+  by the command transport while PMD is still healthy. Never classify a
+  truncated foreground log as a kernel hang or ABarrier failure.
+- Launch S1024/fullperf through detached `docker exec -d`, redirect the driver
+  log, write an explicit `exit_code`, poll that file, and require both
+  `exit_code=0` and the harness `status=success` line before using stats.

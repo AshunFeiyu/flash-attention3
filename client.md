@@ -2657,3 +2657,47 @@ dKV owner32 ready-only priority result, 2026-07-17:
   `dkv_mmac_correctness_20260717_032017` plus the repeat under
   `/zys/shaobo_runs/o32readyprio_fullperf_repeat/`
   `dkv_mmac_correctness_20260717_033504`.
+
+dKV owner32 merged Q/dO Used result, 2026-07-17:
+
+- Rejected by fullperf, not correctness. Current owner32 releases Q and dO at
+  the same source point; merging their Used tokens is legal in the tested
+  path and removes exactly `512` SCA instructions at H1/S1024.
+- Static resources remain healthy (`14/239/239/8`, private0, SGPR/VGPR spill0,
+  128KB LDS), and H1/S256 plus detached H1/S1024 correctness pass with bank0.
+- Same-method stats improve `0.79%`, but candidate fullperf is
+  `70,155,995` ticks versus accepted `69,230,070/69,053,530`, a
+  `1.34%-1.60%` regression. MMAC active is effectively flat at `39.9607%`.
+  XCU ownership remains `41.84%`, proving the removed arrivals are not the
+  critical Q/dO Filled wait.
+- Restore and keep ready-only priority commit `28c8ab9`, with separate QUsed
+  and DoutUsed tokens. Do not retry Used-token merging; it simplifies control
+  but does not improve fullperf elapsed time.
+- The dominant next target is consumer `Q/dO Filled` readiness. Any redesign
+  must make the next packet available earlier through useful producer/consumer
+  work while preserving exact four-GEMM work and the native MLS/BPS +
+  `ds_read_matrix` + MMAC path.
+- Two foreground S1024 runs were transport-truncated near 20 seconds. For PMD
+  S1024/fullperf, launch detached, persist `driver.log` and `exit_code`, and
+  require both `exit_code=0` and harness `status=success` before judging the
+  kernel. Evidence is in workbook sheet `131_DKV_MergedRawUsed` and
+  `/zys/shaobo_runs/o32merged_fullperf_detached_20260717/`.
+
+Skill Candidate: detached PMD long-run evidence
+
+- Trigger / 适用场景: PMD S1024/fullperf through SSH or an execution wrapper
+  that may return before CPU simulation completes.
+- Rule / 可复用规则: launch the container command detached, persist
+  `driver.log` and an explicit `exit_code`, poll completion, and accept evidence
+  only when `exit_code=0` and the harness emits `status=success`.
+- Evidence / 证据: foreground runs `041642/042205` were transport-truncated;
+  detached candidate `044041`, baseline `044607`, and fullperf `045353` all
+  completed correctly and disproved the apparent protocol failure.
+- Boundary / 适用边界: applies to long CPU-simulated PMD runs; a real PMD
+  panic, nonzero persisted exit code, or completed correctness failure remains
+  a kernel/environment failure and must not be hidden by detached execution.
+- Counterexample / 反例或不适用情况: tiny S128/S256 smoke that completes
+  inside the command window can remain foreground for fast feedback.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-current-runbook.md` during the next serialized
+  skill-consolidation pass.

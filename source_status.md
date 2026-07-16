@@ -8302,3 +8302,37 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   of XCU issue-gap duration. The next top-level design must address the shared
   Q/dO packet lifetime or ownership boundary while preserving exact four-GEMM
   work and native matrix paths.
+
+## 2026-07-17 Owner32 Merged Q/dO Used Result
+
+- Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
+- A focused candidate merged QUsed and DoutUsed per half because current
+  owner32 releases both immediately after the same source-read wait. The
+  ledger fell `9 -> 7` IDs and each consumer emitted one Used arrival instead
+  of two per half; formula DAG, tile, role ownership, LDS, reads, waits, and
+  MMAC stayed fixed.
+- Build/resource gates pass unchanged: `14/239/239/8`, private0, `sgpr=56`,
+  `vgpr=128`, no spill/scratch, 128KB LDS. H1/S256 and detached H1/S1024
+  correctness pass with bank0 and exact work counters.
+- Same-method stats show a small `69,942,145 -> 69,389,320` (`-0.79%`) tick
+  improvement and exact SCA reduction `36,408 -> 35,896`. Fullperf reverses
+  the result: candidate `70,155,995` ticks versus accepted
+  `69,230,070/69,053,530` (`+1.34%/+1.60%`). MMAC active is flat at
+  `39.9607%`.
+- XCU still attributes `41.84%` of issue-gap duration to
+  `s_abarrier_try_wait -> s_xor_b32`; removing Used arrivals does not reduce
+  the Q/dO Filled readiness critical path. This is a performance rejection,
+  not an ABarrier protocol or correctness failure.
+- Local and remote canonical source plus binary are restored to commit
+  `28c8ab9`. Keep separate QUsed/DoutUsed ledgers because merging does not buy
+  elapsed time. Next target consumer Q/dO Filled readiness through useful work;
+  do not retry token merging or Q-only buffering.
+- Workbook sheet: `131_DKV_MergedRawUsed`.
+
+## PMD Long-Run Transport Rule
+
+- Two earlier H1/S1024 foreground runs were cut off by the command transport at
+  about 20 seconds and produced partial logs. They are invalid evidence, not
+  kernel hangs.
+- S1024/fullperf must run detached with a persisted driver log and `exit_code`;
+  require `exit_code=0` plus harness `status=success` before parsing stats.
