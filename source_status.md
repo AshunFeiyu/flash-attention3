@@ -8081,3 +8081,24 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   now contains `125_DKV_4Role_PDS`. Main-kernel edits remain held until a
   64-live-FP32-accumulator native cross-wave P/dS probe passes with no PMD
   panic, spill, scratch, private segment, or LDS bank conflict.
+
+## 2026-07-16 Four-Role 64-Accumulator P/dS Gate
+
+- Status: `ACCEPT_INSTRUCTION_RESOURCE_GATE_MAIN_KERNEL_UNCHANGED`.
+- The existing cross-wave probe is parameterized rather than duplicated.
+  Split mode has four explicit WDRA branches: idle/startup `16`, P/dS writer
+  `176`, dV reader `160`, and dK reader `160`; each reader keeps exactly 64
+  FP32 accumulator VGPRs live.
+- Compiler report is `1/16,22/176,73/160,73/160`. Symbol metadata is
+  `private=0, sgpr=28, vgpr=128, sgpr_spill=0, vgpr_spill=0`; ASM has four
+  `s_set_vgpr_size`, native matrix write/read, and no `s_trap`.
+- PMD run `/zys/shaobo/runs/dkv_pds_split64_probe_20260716_190637` passes two
+  eight-generation ABarrier cases at LDS bases `0` and `67584`, each with
+  `mismatches=0`, `pass=1`, and aggregate `ldsBankConflict=0`.
+- PMD emits one nonfatal `read vgpr194 before writing` warning only in the
+  first writer-readback reference dispatch. The actual cross-wave dispatches
+  complete without a repeated warning or panic. Keep this as a model-tracking
+  boundary and reject any main-kernel panic/nonfinite result.
+- Reproducer: `scripts/run_dkv_pds_split64_probe.sh`. Next admissible code is
+  a single-packet four-role kernel skeleton; double buffering remains held
+  until single-packet dK/dV correctness and resource gates pass.

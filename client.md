@@ -2552,3 +2552,8 @@ dKV ABarrier tomography result and four-role successor, 2026-07-16:
   only; waves12-15 accumulate dK only. Splitting the old 128-accumulator
   Consumer-G into two 64-accumulator roles is the prerequisite for retrying
   the proven native P/dS matrix handoff.
+- That prerequisite now passes in the isolated split-output probe. The
+  compiler recognizes four explicit WDRA branches with used/available VGPR
+  `1/16,22/176,73/160,73/160`; metadata is private0/spill0/scratch0. Both
+  ABarrier runs (LDS base 0 and 67,584) complete eight generations with zero
+  mismatch and bank0. Use `scripts/run_dkv_pds_split64_probe.sh` to reproduce.

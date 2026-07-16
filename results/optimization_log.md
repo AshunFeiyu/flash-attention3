@@ -13134,3 +13134,24 @@ Status: `OBSERVE_DIAGNOSTIC_COMPLETE_DESIGN_ACCEPTED_PROBE_PENDING`
   static ABarrier ids 0-14, and per-SIMD WDRA windows
   `16+176+160+160=512`. These figures are gates, not proof. The next change is
   an isolated 64-accumulator cross-wave probe; canonical source stays frozen.
+
+## 2026-07-16 dKV Split-Output 64-Accumulator P/dS Probe
+
+Status: `ACCEPT_INSTRUCTION_RESOURCE_GATE`
+
+- The first source form placed both output readers in one range branch. The
+  compiler collapsed them into one WDRA role and rejected branch averaging.
+  The corrected form uses four explicit role branches and keeps all lane and
+  reader setup branch-local.
+- Final compiler windows are `1/16,22/176,73/160,73/160`. Metadata passes with
+  `private=0`, `sgpr=28`, `vgpr=128`, no SGPR/VGPR spill, no scratch, and no
+  trap. This validates the workbook's per-SIMD `16+176+160+160=512` ledger.
+- Both native handoff cases pass eight ABarrier generations at LDS bases 0
+  and 67,584 with `mismatches=0`; bank conflict is zero. The old fatal
+  `vgpr202` path is avoided by giving dV and dK separate 64-accumulator roles.
+- A single nonfatal `vgpr194` init warning is confined to the reference
+  writer-readback dispatch; the true cross-wave cases complete and are exact.
+  This does not promote the main topology by itself.
+- Decision: commit the focused gate and reproducer. Next implement only a
+  single M32 packet with one raw/P/dS page and real dK/dV outputs. Do not add
+  the two-page conveyor until that canonical-math slice passes.
