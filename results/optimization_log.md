@@ -13283,3 +13283,34 @@ Status: `REJECT_STATS_DIVERGENCE_SOURCE_RESTORED`
   Next structural work is split-lifetime useful staggering.
 - Evidence:
   `/zys/shaobo_runs/cprune1024/dkv_mmac_correctness_20260717_004248`.
+
+## 2026-07-17 dKV Owner32 Topological Stagger Rejected
+
+Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`
+
+- Workbook sheets `127_DKV_Owner32_TopoStagger` and
+  `128_DKV_CompactTopoStagger` tested useful C0/C1 phase offset without empty
+  delay, duplicate score/dP, LDS growth, or ABarrier changes.
+- Splitting dV and dK into separate islands failed the resource gate. The best
+  symmetric window still had `private=228B` and `vgpr_spill=58`; asymmetric
+  `248/240` worsened that draft to `private=264B`, `vgpr_spill=95`.
+- Restoring the proven joint dV+dK island reduced the generated roles to
+  `14/247/235/8`. Reallocating the fixed per-SIMD WDRA budget to
+  `16/248/240/8` passed metadata with `private=0`, no SGPR/VGPR spill, and
+  retained 128KB LDS.
+- H1/S256 causal nevertheless failed exact dK/dV validation:
+  `dk_max_abs=1.30859`, `dv_max_abs=0.643585`. Replacing the partial
+  `lgkmcnt(1/3)` waits with conservative `lgkmcnt(0)` reproduced identical
+  errors, so readiness countdown was not the cause. The failed run still had
+  `MMOP=8192` and `ldsBankConflict=0`; performance is not comparable because
+  correctness failed.
+- Decision: remove the uncommitted split score/dP/P/dS implementation and
+  restore commit `f999500` through branch head `1ffb7fc`. Do not split the
+  proven score+dP fragment chain in main source until a focused equivalence
+  probe proves its source/accumulator ABI. The next mainline stagger must keep
+  fused score+dP and use whole-island scheduling or priority asymmetry.
+- Evidence: static builds `/zys/shaobo/runs/o32stg_build7`,
+  `/zys/shaobo/runs/o32compact_build2`, and
+  `/zys/shaobo/runs/o32compact_build3`; smoke
+  `/zys/shaobo_runs/o32compact_wait0_s256_20260717/`
+  `dkv_mmac_correctness_20260717_022441`.

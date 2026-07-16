@@ -8232,3 +8232,27 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   ownership waiting. Source is restored to branchless causal masking.
 - Evidence:
   `/zys/shaobo_runs/cprune1024/dkv_mmac_correctness_20260717_004248`.
+
+## 2026-07-17 Owner32 Useful-Stagger Admission Result
+
+- Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`.
+- Sheet127's separate dV/dK islands are closed by metadata: the least-bad
+  `244/244` build still reports `private=228B`, `vgpr_spill=58`.
+- Sheet128's compact joint-output revision passes the resource gate after a
+  legal per-SIMD window rebalance to `16/248/240/8`: generated role use is
+  `14/247/235/8`, `private=0`, SGPR/VGPR spill0, LDS=131072B.
+- H1/S256 causal correctness fails with dK/dV maximum absolute errors
+  `1.30859/0.643585`. A second build with all split-phase matrix reads guarded
+  by `lgkmcnt(0)` produces the same errors, while bank conflict remains zero.
+  This rejects the split score/dP fragment chain; it does not implicate the
+  joint output helper, ABarrier topology, or partial-wait tuning.
+- Local and remote canonical source are restored to branch head `1ffb7fc`,
+  whose performance source is `f999500`. Any future score/dP separation first
+  requires a focused fragment-equivalence probe. Mainline scheduling work may
+  stagger only the already-correct fused score+dP, softmax+dS, and joint
+  dV+dK islands.
+- Workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx`,
+  sheets 127-128. Failed smoke:
+  `/zys/shaobo_runs/o32compact_wait0_s256_20260717/`
+  `dkv_mmac_correctness_20260717_022441`.

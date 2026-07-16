@@ -2605,3 +2605,18 @@ dKV Nk256 / owner32 design, 2026-07-16:
   nearly doubles SCA, increases ownership wait exposure, regresses ticks
   `10.8%`, and lowers MMAC active `39.97% -> 37.39%`. Keep branchless causal
   masking and next split score/P/dV/dP/dS/dK lifetimes for useful stagger.
+
+dKV owner32 stagger correction, 2026-07-17:
+
+- Do not follow the previous instruction to split score/P/dV/dP/dS/dK in the
+  canonical source. Separate dV/dK islands spill, while the compact revision
+  with joint output passes resources but fails H1/S256 dK/dV correctness.
+- Conservative `lgkmcnt(0)` at every split-phase first use reproduces the same
+  mismatch, so adding waits is not a repair. The failed fragment schedule is
+  removed locally and remotely; branch head `1ffb7fc` again contains the
+  correct `f999500` owner32 source.
+- Preserve these three proven macro-islands as indivisible mainline units:
+  fused score+dP MMAC, fused softmax+dS VALU, and joint dV+dK MMAC. The next
+  workbook hypothesis may use asymmetric `s_setprio` or whole-island issue
+  policy to let one consumer advance into VALU while its peer remains in MMAC,
+  but may not add empty delay or alter fragment ownership.
