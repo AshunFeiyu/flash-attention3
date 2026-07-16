@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+repo_dir="$(cd "$(dirname "$0")/.." && pwd -P)"
+cd "${repo_dir}"
 
 source scripts/env.sh
 
@@ -30,7 +31,7 @@ case_script="${case_dir}/run_case.sh"
 cat > "${case_script}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-cd /zys/shaobo/fa3_bwd_wasp_clean
+cd ${repo_dir}
 export HSA_TOOLS_LIB="${HSA_TOOLS_LIB:-}"
 export B="\${B:-1}"
 export H="\${H:-1}"
@@ -40,7 +41,9 @@ export CAUSAL="\${CAUSAL:-1}"
 export CANONICAL_DQ="\${CANONICAL_DQ:-0}"
 export DQ_DIAG_STORE="\${DQ_DIAG_STORE:-0}"
 export DQ_TILES_PER_DISPATCH="\${DQ_TILES_PER_DISPATCH:-0}"
-./${DQ_BIN} --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL} --canonical=\${CANONICAL_DQ} --diag-store=\${DQ_DIAG_STORE} --tiles-per-dispatch=\${DQ_TILES_PER_DISPATCH}
+echo "PMD_BINARY=${repo_dir}/${DQ_BIN}"
+sha256sum "${repo_dir}/${DQ_BIN}"
+exec "${repo_dir}/${DQ_BIN}" --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL} --canonical=\${CANONICAL_DQ} --diag-store=\${DQ_DIAG_STORE} --tiles-per-dispatch=\${DQ_TILES_PER_DISPATCH}
 EOF
 chmod +x "${case_script}"
 
