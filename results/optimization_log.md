@@ -13205,3 +13205,32 @@ Status: `ACCEPT_RESTORE_VALIDATION`
 - This verifies cleanup only. PMD variance means it is not promoted over the
   immutable `42,335,020`/`34.1944%` fullperf baseline without a same-build
   candidate comparison.
+
+## 2026-07-16 dKV Nk256 Owner32 Top-Level Design
+
+Status: `DESIGN_READY_STATIC_ADMISSION_PENDING`
+
+- SQTT evidence fixes the target: LDS-read/MMAC is `0.603` versus FWD `0.252`,
+  WAIT/MMAC is `0.325` versus `0.064`, and peer-vector overlap is `40.8%`
+  versus `60.25%`. Producer-side Used waits are already legally early and are
+  substantially hidden, so the new design increases reuse instead of deleting
+  barriers.
+- Draft W12 owner32 was rejected during stress because it leaves only one
+  heavy consumer per SIMD. Revision keeps W16 and expands CTA ownership to
+  Nk256, retaining two heavy consumer waves per SIMD.
+- A true M16/N32 microtile keeps the same 512 score elements and 64 MMAC as the
+  current M32/N16 microtile, but halves Q/dO matrix reads by sharing them across
+  two N16 output blocks. Eight microtiles yield 512 MMAC per consumer packet.
+- Whole-head modeled bytes fall `5,865,472 -> 3,719,168` (`-36.59%`): K/V and
+  output stores stay constant, Q/dO and sidecar repetition halve. Per-CTA token
+  ledger is unchanged while CTA K tiles fall 8 to 4, halving ownership epochs
+  per head.
+- VGPR stress ledger: dV64 + dK64 + K32 + V32 = 192 long-lived. Score phase is
+  projected 236, softmax phase 240, output phase 220. The projection has zero
+  softmax slack; compiler metadata, not arithmetic, decides admission.
+- LDS is a lifetime overlay, not an additive allocation: K/V startup uses
+  exactly 128KB; after ResidentUsed, Q+dO+sidecar uses 67,072B. Sidecar must be
+  placed in released K/V space and cannot be published before ResidentUsed.
+- Implementation boundary: one canonical kernel on
+  `exp/dkv-nk256-owner32-m16`; no runtime phase, no duplicated owner16 body,
+  no duplicate score/dP, no source-layout page, and no permute/gather path.

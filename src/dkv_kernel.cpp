@@ -3,7 +3,6 @@
 
 #include "shaobo_fa3_api.h"
 #include "dkv_contract.h"
-#include "dkv_barrier_tomography.h"
 #include "shaobo_instr.h"
 
 #include <algorithm>
@@ -18,7 +17,6 @@
 
 namespace dkv = shaobo::fa3::bwd::dkv;
 namespace ins = shaobo::fa3::bwd::dkv::instr;
-namespace bt = shaobo::fa3::bwd::dkv::barrier_tomography;
 
 namespace {
 
@@ -169,6 +167,11 @@ __device__ __forceinline__ const float* sidecar_page_ptr(
 }
 
 template <typename Wdra>
+__device__ __forceinline__ void wait_resident_used(int& phase) {
+    ins::abarrier_try_wait<true>(Wdra::kResidentUsed, phase);
+}
+
+template <typename Wdra>
 __device__ __forceinline__ void arrive_resident_used() {
     ins::abarrier_arrive_cnt<false>(Wdra::kResidentUsed, 1);
 }
@@ -244,21 +247,13 @@ __device__ __forceinline__ void arrive_q_half_filled() {
     }
 }
 
-template <typename Wdra, int Half, bool FirstTile>
+template <typename Wdra, int Half>
 __device__ __forceinline__ void wait_q_half_filled(int& phase) {
     static_assert(Half == 0 || Half == 1, "Q half must be 0 or 1");
     if constexpr (Half == 0) {
-        if constexpr (FirstTile) {
-            bt::wait_q0_filled_consumer_first<Wdra>(phase);
-        } else {
-            bt::wait_q0_filled_consumer_loop<Wdra>(phase);
-        }
+        ins::abarrier_try_wait<true>(Wdra::kQ0Filled, phase);
     } else {
-        if constexpr (FirstTile) {
-            bt::wait_q1_filled_consumer_first<Wdra>(phase);
-        } else {
-            bt::wait_q1_filled_consumer_loop<Wdra>(phase);
-        }
+        ins::abarrier_try_wait<true>(Wdra::kQ1Filled, phase);
     }
 }
 
@@ -266,9 +261,9 @@ template <typename Wdra, int Half>
 __device__ __forceinline__ void wait_q_half_used(int& phase) {
     static_assert(Half == 0 || Half == 1, "Q half must be 0 or 1");
     if constexpr (Half == 0) {
-        bt::wait_q0_used_kq_producer<Wdra>(phase);
+        ins::abarrier_try_wait<true>(Wdra::kQ0Used, phase);
     } else {
-        bt::wait_q1_used_kq_producer<Wdra>(phase);
+        ins::abarrier_try_wait<true>(Wdra::kQ1Used, phase);
     }
 }
 
@@ -316,9 +311,9 @@ template <typename Wdra, int Half>
 __device__ __forceinline__ void wait_dout_half_used(int& phase) {
     static_assert(Half == 0 || Half == 1, "dO half must be 0 or 1");
     if constexpr (Half == 0) {
-        bt::wait_dout0_used_vdout_producer<Wdra>(phase);
+        ins::abarrier_try_wait<true>(Wdra::kDout0Used, phase);
     } else {
-        bt::wait_dout1_used_vdout_producer<Wdra>(phase);
+        ins::abarrier_try_wait<true>(Wdra::kDout1Used, phase);
     }
 }
 
@@ -440,7 +435,7 @@ __device__ __forceinline__ void producer_kq_loop(
     ins::maybe_wait_bps_vbcnt_before_arrive();
     ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
     if constexpr (Tile::kOverlayRawOnResidentKv) {
-        bt::wait_resident_used_kq_producer<Wdra>(resident_used_phase);
+        wait_resident_used<Wdra>(resident_used_phase);
     }
 
 #pragma clang loop unroll(disable)
@@ -497,7 +492,7 @@ __device__ __forceinline__ void producer_vdout_loop(
     ins::maybe_wait_bps_vbcnt_before_arrive();
     ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
     if constexpr (Tile::kOverlayRawOnResidentKv) {
-        bt::wait_resident_used_vdout_producer<Wdra>(resident_used_phase);
+        wait_resident_used<Wdra>(resident_used_phase);
     }
 
 #pragma clang loop unroll(disable)
@@ -1156,7 +1151,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     ins::F32x4 dk_acc[8];
     Owner16KvRegs kv_regs;
 
-    bt::wait_resident_filled_consumer<Wdra>(resident_phase);
+    ins::abarrier_try_wait<true>(Wdra::kResidentFilled, resident_phase);
     latch_owner16_kv_regs<Tile>(lds, owner_nblock, kv_regs);
     if constexpr (Tile::kOverlayRawOnResidentKv) {
         arrive_resident_used<Wdra>();
@@ -1166,7 +1161,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
         constexpr int q_tile = 0;
         constexpr int page = 0;
         constexpr int q_tile_base = 0;
-        wait_q_half_filled<Wdra, 0, true>(q0_filled_phase);
+        wait_q_half_filled<Wdra, 0>(q0_filled_phase);
         consume_mq_mpair_owner16_causal_exact_tile<Tile,
                                                     Wdra,
                                                     0,
@@ -1182,7 +1177,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
                                                     0>(
             lds, q_tile_base + 32, owner_krow, lane_col_group, softmax_scale,
             softmax_scale_log2, page, kv_regs, dv_acc, dk_acc);
-        wait_q_half_filled<Wdra, 1, true>(q1_filled_phase);
+        wait_q_half_filled<Wdra, 1>(q1_filled_phase);
         consume_mq_mpair_owner16_causal_exact_tile<Tile,
                                                     Wdra,
                                                     4,
@@ -1204,7 +1199,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     for (int q_tile = 1; q_tile < q_tiles; ++q_tile) {
         const int page = raw_page_for_q_tile<Tile>(q_tile);
         const int q_tile_base = q_tile * Tile::kBlockMq;
-        wait_q_half_filled<Wdra, 0, false>(q0_filled_phase);
+        wait_q_half_filled<Wdra, 0>(q0_filled_phase);
         consume_mq_mpair_owner16_causal_exact_tile<Tile,
                                                     Wdra,
                                                     0,
@@ -1220,7 +1215,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
                                                     0>(
             lds, q_tile_base + 32, owner_krow, lane_col_group, softmax_scale,
             softmax_scale_log2, page, kv_regs, dv_acc, dk_acc);
-        wait_q_half_filled<Wdra, 1, false>(q1_filled_phase);
+        wait_q_half_filled<Wdra, 1>(q1_filled_phase);
         consume_mq_mpair_owner16_causal_exact_tile<Tile,
                                                     Wdra,
                                                     4,
@@ -1331,7 +1326,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
     }
 
     int done_phase = 0;
-    bt::wait_all_done<Bar>(done_phase);
+    ins::abarrier_try_wait<false>(Bar::kAllDone, done_phase);
     __syncthreads();
     if (wave_id == 0) {
         __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);

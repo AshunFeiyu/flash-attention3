@@ -14,9 +14,10 @@ Status: `ACCEPT_MICRO_FULLPERF_XCU`.
 - Fullperf kernel ticks improve `42,564,340 -> 42,335,020`; MMAC active rises
   `33.7716% -> 34.1944%`; waitLgkm falls 3.15%, barrier falls 3.94%, and
   coissue success rises 10.1%.
-- XCU still attributes 35.21% to the main ABarrier ownership window.  The next
-  source change must be the workbook-designed three-slot Q/dO half-tile ring,
-  not another address/read-order micro patch.
+- XCU still attributes 35.21% to the main ABarrier ownership window.  The
+  three-slot Q/dO ring was subsequently rejected because its control/fetch
+  debt outweighed its prefetch distance.  The active structural hypothesis is
+  the workbook-designed true `Nk256/owner32` consumer described below.
 - Evidence:
   `/Volumes/172.20.68.76/共享/shaobo/perf/20260715_193455_dkv_score_dp_imm4_accept_h1s1024_sqc7_fullperf`.
 
@@ -8166,3 +8167,25 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - This is a source-restoration certificate, not a new best claim. Resume
   performance work from the immutable `3db4f38` direct-register baseline and
   compare same-build candidates before promotion.
+
+## 2026-07-16 Nk256 Owner32 Design Freeze
+
+- Status: `DESIGN_READY_STATIC_ADMISSION_PENDING`.
+- Restored `src/dkv_kernel.cpp` byte-for-byte from immutable best `3db4f38`
+  before starting the new branch `exp/dkv-nk256-owner32-m16`; tomography stays
+  isolated as diagnostic infrastructure and is not in the canonical source.
+- Workbook `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx`
+  contains sheet `126_DKV_Nk256_Owner32`.
+- The design keeps 16 waves and two heavy consumer waves per SIMD. CTA
+  ownership expands `Nk128 -> Nk256`; each consumer owns Nk32 and uses M16
+  microtiles so one Q/dO normal/trans read set serves two N16 output blocks.
+- Exact work: 64 MMAC per M16 microtile, eight microtiles per consumer packet,
+  512 MMAC per consumer, 4096 per CTA packet. Whole-head MMOP is unchanged;
+  Q/dO, sidecar, and ownership epochs halve across the head.
+- Resource hard gate: consumer long-lived VGPR is 192 and projected peak is
+  240. Startup LDS is exactly 131,072B K/V; steady raw+sidecar is 67,072B after
+  ResidentUsed. Any spill/private/scratch, overwrite error, bank conflict, or
+  generated use above 240 rejects the design before performance testing.
+- This is not the rejected owner16x2 probe. Reusing owner16 helpers would
+  duplicate temporary families and repeat its 58-VGPR spill. Only a native
+  owner32 implementation with shared operand reads is admissible.

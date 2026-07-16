@@ -11,12 +11,13 @@ evidence are required before any performance claim.
 
 ## Current Environment
 
-- New-machine container: `shaobo_dev_8426` on `10.59.41.48`, reached through
-  `ssh -F work/ssh/shaobo_new_perf_config shaobo-new-perf-via-hedr`.
-- For a new Codex conversation, use the Mac-side SSH config at
-  `/Users/zhangyushun/Documents/Codex/2026-06-08/shaobo-hip-shaobo-demo/work/ssh/shaobo_new_perf_config`,
-  then run `docker exec -it shaobo_dev_8426 bash` and work from
-  `/zys/shaobo/fa3_bwd_wasp_clean`.
+- Active PMD host: `vega20`, reached through jump host `192.168.162.67` with
+  `ssh -F work/ssh/liuchang_common_config liuchang-common`.
+- Active container is `zys1`; the remote repository for this branch is
+  `/zys/shaobo/fa3_bwd_wasp_7gemm_tomography_20260716`.
+- The new-machine `shaobo_dev_8426` environment remains a deferred fallback
+  until its PMD/compiler compatibility is resolved; do not use it for baseline
+  comparisons.
 - Keep experiment output outside the clean repo under
   `/zys/shaobo_runs/<short_case_name>`; do not drop `m5out` folders or `.perf`
   files into the source tree.
@@ -41,11 +42,12 @@ evidence are required before any performance claim.
   MMAC active rises `33.7716% -> 34.1944%`, waitLgkm falls 3.15%, barrier
   falls 3.94%, and coissue success rises 10.1%.  XCU still assigns 35.21% to
   the main ABarrier ownership bubble.
-- Next structural target is a three-slot Q/dO half-tile ring after K/V are
-  latched by consumers: three `M64` Q+dO+sidecar slots use `100,608B` LDS and
-  reduce per-half ownership from `Filled + QUsed + dOUsed` to
-  `Filled + Used`.  Keep the accepted score/dP ping-pong and test whether one
-  extra packet of prefetch distance outweighs loss of dO early release.
+- The three-slot Q/dO ring is rejected: extra slot control and branch-fetch
+  debt outweighed its prefetch distance. The active structural hypothesis is
+  workbook sheet `126_DKV_Nk256_Owner32`: preserve 16 waves, expand the CTA
+  resident tile from `Nk128` to `Nk256`, and implement a true `M16 x N32`
+  consumer so each Q/dO normal/trans read feeds two N16 outputs. It must fit
+  the existing `240`-VGPR consumer window without composing two owner16 bodies.
 - 2026-07-15 regular-island Stage A is rejected and source is restored.  An
   eight-read score/dP island improved stats-only ticks 1.62% and raised MMAC
   active about 0.65 percentage points, but same-build fullperf regressed
@@ -2567,3 +2569,26 @@ dKV ABarrier tomography result and four-role successor, 2026-07-16:
   oracle rejects natural P/dS source ownership, so the four-role main path is
   not admissible. Use `scripts/run_dkv_pds_split64_probe.sh` only for isolated
   transport/layout evidence.
+
+dKV Nk256 / owner32 design, 2026-07-16:
+
+- Workbook sheet `126_DKV_Nk256_Owner32` supersedes the blocked four-role
+  performance path while keeping its native-layout constraints.
+- Tile is `Mq128,Nk256,D128`, 16 waves: waves0-3 K/Q/sidecar producer,
+  waves4-7 owner32 consumer0, waves8-11 owner32 consumer1, waves12-15 V/dO
+  producer. Each consumer uses `M16 x N32` microtiles and computes exactly
+  score, dP, dV, and dK once.
+- Per consumer packet work rises `256 -> 512` MMAC while the CTA work rises
+  `2048 -> 4096`; whole-head MMOP remains `131072`. K/V bytes and output stores
+  are unchanged overall, while repeated Q/dO and sidecar bytes halve because
+  K-tile count falls `8 -> 4` at S1024.
+- Long-lived consumer budget is `192` VGPR: dV64 + dK64 + K32 + V32. The
+  stressed peak is exactly `240`; any compiler branch use above 240 or any
+  private/spill/scratch rejects the route before PMD.
+- Startup K/V owns exactly 128KB LDS. Only after all consumers latch and arrive
+  ResidentUsed may raw Q/dO plus sidecar overlay it; steady LDS is 67,072B.
+  Existing token families and per-CTA arrival counts remain unchanged.
+- This differs from rejected `9bfcfa9`: that probe called two owner16 bodies
+  and spilled 58 VGPRs. The new implementation must share each Q/dO read and
+  reuse temporary slots across the two N16 outputs; no code stacking is
+  allowed.
