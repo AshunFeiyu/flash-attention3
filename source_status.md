@@ -8214,3 +8214,21 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   branchless softmax emits 16,384 `v_exp` versus about 8,320 in the baseline.
   Keep this checkpoint isolated until same-shape elapsed ticks and useful
   stagger improve.
+
+## 2026-07-17 Owner32 Causal Branch Pruning Rejected
+
+- Status: `REJECT_STATS_DIVERGENCE_SOURCE_RESTORED`.
+- The isolated change guarded each causal softmax element with `if
+  (valid_pair)` so invalid pairs could skip exp/dS work. Static gates and
+  H1/S256/H1/S1024 correctness pass; branch windows improve to `236/240`,
+  metadata remains private0/spill0/scratch0, and bank conflict remains zero.
+- H1/S1024 regresses `68,856,060 -> 76,303,500` ticks (`+10.82%`) and MMAC
+  active falls `39.9695% -> 37.3899%`. VALU falls only `200272 -> 192496`,
+  while SCA rises `36408 -> 69176` and barrier wait rises
+  `79755.25 -> 103359.75`.
+- A lane-varying diagonal predicate is not a cheap packet-level skip: mixed
+  waves still execute the valid arm under divergence while paying scalar
+  branch/exec-mask control. The slower consumer also exposes more producer
+  ownership waiting. Source is restored to branchless causal masking.
+- Evidence:
+  `/zys/shaobo_runs/cprune1024/dkv_mmac_correctness_20260717_004248`.

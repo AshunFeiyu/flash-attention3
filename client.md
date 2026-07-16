@@ -2600,7 +2600,8 @@ dKV Nk256 / owner32 design, 2026-07-16:
   but only four Nk256 CTAs. Normalizing for twice the work per active CU gives
   owner32 about `21.9%` higher per-CU throughput; classify it as `OBSERVE`, not
   canonical promotion.
-- XCU steady consumer waves show only `16.15%/16.34%` MMAC+VALU coissue and the
-  owner32 source executes `v_exp` 16,384 times versus about 8,320 in the causal
-  baseline. Next isolate causal invalid-pair pruning before attempting a
-  split-lifetime useful-work stagger.
+- XCU steady consumer waves show only `16.15%/16.34%` MMAC+VALU coissue.
+  Causal invalid-pair branching is rejected: it reduces VALU only `3.9%` but
+  nearly doubles SCA, increases ownership wait exposure, regresses ticks
+  `10.8%`, and lowers MMAC active `39.97% -> 37.39%`. Keep branchless causal
+  masking and next split score/P/dV/dP/dS/dK lifetimes for useful stagger.

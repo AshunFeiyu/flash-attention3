@@ -13262,3 +13262,24 @@ Status: `OBSERVE_PIPELINE_GAIN_H1_UNDERFILL`
   `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260716_234420`;
   fullperf and xcu
   `/zys/shaobo_runs/o32fp/dkv_mmac_correctness_20260716_235702`.
+
+## 2026-07-17 dKV Owner32 Causal Branch Pruning Rejected
+
+Status: `REJECT_STATS_DIVERGENCE_SOURCE_RESTORED`
+
+- Hypothesis: skip exp/dS for causal-invalid pairs using a short local branch,
+  without changing tile, MMAC count, LDS, ABarrier, or output ownership.
+- Gates pass and resource use improves from `239/240` to `236/240`; H1/S256
+  and H1/S1024 correctness pass with no spill/scratch and bank0.
+- Result: ticks regress `68,856,060 -> 76,303,500` (`+10.82%`) and MMAC active
+  falls `39.9695% -> 37.3899%`. VALU falls only `3.88%`, while SCA rises
+  `90.0%`, barrier wait rises `29.6%`, and coissue changes
+  `38544/31719 -> 43238/31952` without elapsed benefit.
+- Explanation: diagonal causal predicates vary by lane, so most waves execute
+  the valid arm under an exec mask and also pay branch/control serialization.
+  Reduced arithmetic is too small to repay the added SCA and ownership delay.
+- Decision: restore branchless masking. Do not retry per-element causal
+  branches; a future causal optimization must skip an entire uniform packet.
+  Next structural work is split-lifetime useful staggering.
+- Evidence:
+  `/zys/shaobo_runs/cprune1024/dkv_mmac_correctness_20260717_004248`.
