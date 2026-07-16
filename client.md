@@ -2582,13 +2582,25 @@ dKV Nk256 / owner32 design, 2026-07-16:
   `2048 -> 4096`; whole-head MMOP remains `131072`. K/V bytes and output stores
   are unchanged overall, while repeated Q/dO and sidecar bytes halve because
   K-tile count falls `8 -> 4` at S1024.
-- Long-lived consumer budget is `192` VGPR: dV64 + dK64 + K32 + V32. The
-  stressed peak is exactly `240`; any compiler branch use above 240 or any
-  private/spill/scratch rejects the route before PMD.
-- Startup K/V owns exactly 128KB LDS. Only after all consumers latch and arrive
-  ResidentUsed may raw Q/dO plus sidecar overlay it; steady LDS is 67,072B.
-  Existing token families and per-CTA arrival counts remain unchanged.
+- The admitted implementation keeps dV64 + dK64 + K32 + cached V-D0-8 = 168
+  long-lived VGPR. Generated consumer windows are `239/240`; metadata is
+  private0/spill0/scratch0. The remaining V-D1..D3 fragments stay in LDS.
+- Startup K/V and steady V-retained + raw Q/dO both use exactly 128KB LDS.
+  Sidecar aliases the cached V-D0 bytes only after every consumer has latched
+  that fragment. This ordering fixes the initial dK mismatch without adding
+  LDS or a gather/permute path.
 - This differs from rejected `9bfcfa9`: that probe called two owner16 bodies
   and spilled 58 VGPRs. The new implementation must share each Q/dO read and
   reuse temporary slots across the two N16 outputs; no code stacking is
   allowed.
+- Commit `fd54347` passes static gates, H1/S256 and H1/S1024 correctness, and
+  bank0. H1/S1024 fullperf records `69,435,275` kernel ticks and `39.9317%`
+  MMAC active. The immutable Nk128 baseline remains the elapsed-time best at
+  `42,335,020` ticks and `34.1944%` active because H1 launches eight Nk128 CTAs
+  but only four Nk256 CTAs. Normalizing for twice the work per active CU gives
+  owner32 about `21.9%` higher per-CU throughput; classify it as `OBSERVE`, not
+  canonical promotion.
+- XCU steady consumer waves show only `16.15%/16.34%` MMAC+VALU coissue and the
+  owner32 source executes `v_exp` 16,384 times versus about 8,320 in the causal
+  baseline. Next isolate causal invalid-pair pruning before attempting a
+  split-lifetime useful-work stagger.

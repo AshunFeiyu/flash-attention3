@@ -13234,3 +13234,31 @@ Status: `DESIGN_READY_STATIC_ADMISSION_PENDING`
 - Implementation boundary: one canonical kernel on
   `exp/dkv-nk256-owner32-m16`; no runtime phase, no duplicated owner16 body,
   no duplicate score/dP, no source-layout page, and no permute/gather path.
+
+## 2026-07-16 dKV Nk256 Owner32 Architecture Checkpoint
+
+Status: `OBSERVE_PIPELINE_GAIN_H1_UNDERFILL`
+
+- Implemented one native M16/N32 body rather than composing owner16 helpers.
+  Each consumer owns Nk32, computes score/dP once, and accumulates dV/dK for
+  both N16 halves. Whole-head MMOP remains exactly 131,072.
+- The all-K/V VGPR draft spilled 58 VGPRs. The admitted revision retains K32
+  and V-D0 in VGPR, leaves V-D1..D3 in LDS, overlays raw Q/dO on released K,
+  and overlays sidecar on cached V-D0. This keeps LDS at 128KB and generated
+  consumer windows at `239/240` with no private segment or spill.
+- H1/S256 and H1/S1024 causal correctness pass with bank0. Fullperf records
+  `69,435,275` kernel ticks, `39.9317%` MMAC active, `55.1980%` MMOP runtime
+  share, and coissue `37915/31225`.
+- The immutable Nk128 baseline remains faster on H1 because it exposes eight
+  CTAs instead of four. XCU duration `152608` versus `93044`, normalized by
+  two times more work per active CU, indicates about `21.9%` per-CU throughput
+  gain. This validates the reuse architecture but not canonical promotion.
+- XCU identifies the next concrete debt: steady consumer MMAC+VALU coissue is
+  only `16.15%/16.34%`, and branchless causal softmax doubles `v_exp` work
+  (`16384` versus about `8320`). Test causal branch pruning as one isolated
+  hypothesis before changing lifetimes or consumer order.
+- Evidence: static artifact
+  `/zys/shaobo/runs/dkv_owner32_vd0cache_static_20260716`; correctness
+  `/zys/shaobo_runs/fa3_bwd_wasp_clean/dkv_mmac_correctness_20260716_234420`;
+  fullperf and xcu
+  `/zys/shaobo_runs/o32fp/dkv_mmac_correctness_20260716_235702`.

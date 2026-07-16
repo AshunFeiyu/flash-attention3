@@ -8189,3 +8189,28 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - This is not the rejected owner16x2 probe. Reusing owner16 helpers would
   duplicate temporary families and repeat its 58-VGPR spill. Only a native
   owner32 implementation with shared operand reads is admissible.
+
+## 2026-07-16 Nk256 Owner32 Architecture Checkpoint
+
+- Status: `OBSERVE_PIPELINE_GAIN_H1_UNDERFILL` at commit `fd54347`.
+- The native owner32 implementation passes branch/resource gates with windows
+  `14/16,239/240,239/240,8/16`, `private=0`, `sgpr=56`, `vgpr=128`, and no
+  spill/scratch. H1/S256 and H1/S1024 causal correctness pass; dK/dV maximum
+  absolute error at S1024 is `1.49356e-07/2.87902e-05`; bank conflict is zero.
+- The final residency scheme holds K32 plus V-D0 in VGPR and leaves V-D1..D3
+  in LDS. Raw Q/dO overlays released K, and sidecar overlays cached V-D0. Both
+  startup and steady LDS peaks are exactly 131,072 bytes.
+- H1/S1024 fullperf at
+  `/zys/shaobo_runs/o32fp/dkv_mmac_correctness_20260716_235702` records
+  `kernel_ticks=69435275`, `MMAC active=39.9317%`, `MMOP runtime share=55.1980%`,
+  `MMOP=131072`, `VALU=200272`, `SCA=36408`, `LDS=51776`, `VMEM=2304`, and
+  coissue `37915/31225`.
+- H1 has four Nk256 CTAs versus eight Nk128 baseline CTAs, so elapsed ticks are
+  not a promotion result. XCU dispatch duration is `152608` versus baseline
+  `93044`, while each active CU does twice the MMAC work; normalized per-CU
+  throughput improves about `21.9%`.
+- XCU steady windows show only `16.15%/16.34%` useful MMAC+VALU coissue. The
+  immediate next hypothesis is causal invalid-pair pruning: the current
+  branchless softmax emits 16,384 `v_exp` versus about 8,320 in the baseline.
+  Keep this checkpoint isolated until same-shape elapsed ticks and useful
+  stagger improve.
