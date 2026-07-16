@@ -8256,3 +8256,25 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   sheets 127-128. Failed smoke:
   `/zys/shaobo_runs/o32compact_wait0_s256_20260717/`
   `dkv_mmac_correctness_20260717_022441`.
+
+## 2026-07-17 Owner32 Whole-Island Priority Result
+
+- Status: `REJECT_STATS_OWNERSHIP_STALL_SOURCE_RESTORED`.
+- Sheet `129_DKV_PriorityIslandStagger` tested one compile-time scheduling
+  change only: C0 raised priority for fused Score+dP while C1 stayed at the
+  default priority. Four GEMMs, reads, LDS, WDRA windows, and ABarrier
+  ownership were unchanged.
+- Static and correctness gates pass: roles `14/239/239/8`, private0,
+  SGPR/VGPR spill0, scratch0, H1/S256 and H1/S1024 dK/dV PASS, and bank0.
+- H1/S1024 regresses `68,856,060 -> 72,421,440` ticks and MMAC active falls
+  `39.9695% -> 39.0068%`. Coissue success drops `32.1%`; barrier stall rises
+  `13.6%` despite identical instruction counts.
+- The ownership topology requires both consumer groups to arrive at the same
+  Q/dO Used boundary. Persistent priority asymmetry starves C1 and converts
+  C0's lead into a barrier wait. The failed source is removed locally and
+  remotely; canonical remains branch head `2a81cd1` with `f999500` performance
+  source.
+- Next evidence-backed experiment keeps C0/C1 symmetric and moves MMAC
+  priority elevation after the first operand-read wait. This addresses the
+  existing XCU `s_setprio -> 59-83 cycle s_waitcnt` interval without changing
+  mathematical order or ownership progress.

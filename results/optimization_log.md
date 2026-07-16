@@ -13314,3 +13314,35 @@ Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`
   `/zys/shaobo/runs/o32compact_build3`; smoke
   `/zys/shaobo_runs/o32compact_wait0_s256_20260717/`
   `dkv_mmac_correctness_20260717_022441`.
+
+## 2026-07-17 dKV Owner32 Priority Asymmetry Rejected
+
+Status: `REJECT_STATS_OWNERSHIP_STALL_SOURCE_RESTORED`
+
+- Workbook sheet `129_DKV_PriorityIslandStagger` preserved the exact fused
+  Score+dP, softmax+dS, and joint dV+dK islands. The only code change kept C0
+  Score+dP at priority 2 while C1 remained at priority 0; there was no runtime
+  branch, empty delay, extra read, GEMM, LDS byte, or ABarrier change.
+- Static admission exactly matched owner32: branch use `14/239/239/8`, metadata
+  `private=0`, `sgpr=56`, `vgpr=128`, no spill/scratch, and the kernel gate
+  retained 64 MMAC plus 22 native matrix reads per M16.
+- H1/S256 and H1/S1024 correctness pass, with H1/S1024 dK/dV maximum absolute
+  errors `1.49356e-7/2.87902e-5`; LDS bank conflict remains zero.
+- Same-shape stats reject the schedule: ticks regress
+  `68,856,060 -> 72,421,440` (`+5.18%`), MMAC active falls
+  `39.9695% -> 39.0068%`, coissue success falls `38,544 -> 26,155`, and
+  barrier stall rises `79,755.2 -> 90,573.5` (`+13.6%`). Instruction work is
+  identical, so this is a scheduling/ownership regression rather than a work
+  or resource change.
+- Interpretation: delaying one consumer does create phase distance, but both
+  consumers must arrive at the same Q/dO Used ownership boundary. C0 reaches
+  that boundary early and waits for starved C1, collapsing useful overlap into
+  barrier time. Do not use persistent consumer-group priority asymmetry with
+  this ownership topology.
+- Source is restored locally and remotely. Fullperf/XCU was skipped because
+  the stats gate already rejected both ticks and active share. Next test keeps
+  consumer progress symmetric and moves `s_setprio 2` after first-use operand
+  readiness, targeting the measured `s_setprio -> s_waitcnt` exposure directly.
+- Evidence: build `/zys/shaobo/runs/o32prio_build1`; runs
+  `/zys/shaobo_runs/o32prio_s256/dkv_mmac_correctness_20260717_025720` and
+  `/zys/shaobo_runs/o32prio_s1024/dkv_mmac_correctness_20260717_025753`.

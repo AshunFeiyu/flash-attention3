@@ -2620,3 +2620,19 @@ dKV owner32 stagger correction, 2026-07-17:
   workbook hypothesis may use asymmetric `s_setprio` or whole-island issue
   policy to let one consumer advance into VALU while its peer remains in MMAC,
   but may not add empty delay or alter fragment ownership.
+
+dKV owner32 priority scheduling result, 2026-07-17:
+
+- Persistent C0-high/C1-default priority is rejected even though resources,
+  correctness, work counts, and bank0 all pass. It regresses H1/S1024 ticks by
+  `5.18%`, lowers MMAC active by `0.96` percentage points, reduces coissue
+  success by `32.1%`, and increases barrier stall by `13.6%`.
+- Shared Q/dO ownership makes consumer progress a coupled constraint. A useful
+  stagger cannot simply starve one consumer: the leading consumer reaches the
+  common Used boundary and waits for its peer. Keep long-term group progress
+  symmetric unless ownership tokens are redesigned at workbook level.
+- Source is restored; see workbook sheet `129_DKV_PriorityIslandStagger` and
+  `/zys/shaobo_runs/o32prio_s1024/dkv_mmac_correctness_20260717_025753`.
+- Next experiment is symmetric ready-only priority: issue native matrix reads,
+  complete the first-use `lgkmcnt` wait, then raise priority only for the MMAC
+  island. Do not change the three proven macro-islands or ABarrier topology.
