@@ -10,7 +10,7 @@ inline constexpr int kDkvPathCanonicalDkv = 5;
 struct ActiveDkvTile {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = 128;
-    static constexpr int kNkPerConsumerWave = 16;
+    static constexpr int kNkPerConsumerWave = 32;
     static constexpr int kConsumerGroups = 2;
     static constexpr int kWavesPerConsumerGroup = 4;
     static constexpr int kConsumerWaves =
@@ -59,15 +59,19 @@ struct ActiveDkvTile {
     static constexpr bool kOverlayRawOnResidentKv =
         kKvBytes + kRawBytes + kSidecarBytes + kSourceLayoutBytes >
         kLdsBudgetBytes;
-    static constexpr int kOverlayRawKvBytes =
-        kRawBytes > kKvBytes ? kRawBytes : kKvBytes;
+    static constexpr int kSteadyRawBytes =
+        kRawBytes + kSidecarBytes + kSourceLayoutBytes;
     static constexpr int kPlannedLdsBytes =
-        kOverlayRawKvBytes + kSidecarBytes + kSourceLayoutBytes;
+        kOverlayRawOnResidentKv
+            ? (kSteadyRawBytes > kKvBytes ? kSteadyRawBytes : kKvBytes)
+            : kKvBytes + kSteadyRawBytes;
 
     static_assert(kBlockMq % 32 == 0,
                   "dKV clean tile consumes Mq in pairs of M16 blocks");
-    static_assert(kResidentNk == 128, "dKV clean lane expects Nk=128");
-    static_assert(kTotalMmacPerConsumer == 2 * kBlockMq,
+    static_assert(kResidentNk == 256, "dKV owner32 lane expects Nk=256");
+    static_assert(kKvBytes == kLdsBudgetBytes,
+                  "resident K/V startup epoch must occupy exactly 128KB");
+    static_assert(kTotalMmacPerConsumer == 4 * kBlockMq,
                   "dKV consumer MMAC count should scale with BlockMq");
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
                   "dKV clean LDS plan must fit 128KB");
@@ -78,21 +82,11 @@ struct DkvBarrierLedger {
     static constexpr int kResidentUsed = 1;
     static constexpr int kQ0Filled = 2;
     static constexpr int kQ0Used = 3;
-    static constexpr int kDout0Filled = 4;
-    static constexpr int kDout0Used = 5;
-    static constexpr int kQ1Filled = 6;
-    static constexpr int kQ1Used = 7;
-    static constexpr int kDout1Filled = 8;
-    static constexpr int kDout1Used = 9;
-    static constexpr int kAllDone = 10;
-    static constexpr int kRaw0Filled = kQ0Filled;
-    static constexpr int kRaw0Used = kQ0Used;
-    static constexpr int kRaw1Filled = kDout0Filled;
-    static constexpr int kRaw1Used = kDout0Used;
-    static constexpr int kQFilled = kQ0Filled;
-    static constexpr int kQUsed = kQ0Used;
-    static constexpr int kDoutFilled = kDout0Filled;
-    static constexpr int kDoutUsed = kDout0Used;
+    static constexpr int kDout0Used = 4;
+    static constexpr int kQ1Filled = 5;
+    static constexpr int kQ1Used = 6;
+    static constexpr int kDout1Used = 7;
+    static constexpr int kAllDone = 8;
 };
 
 struct OptimizationTargets {

@@ -6,13 +6,18 @@ cd "${repo_dir}"
 
 source scripts/env.sh
 
+BUILD_DIR="${BUILD_DIR:-build}"
+BIN="${BIN:-${BUILD_DIR}/fa3_bwd_wasp_clean}"
+ASM="${ASM:-${BUILD_DIR}/fa3_bwd_wasp_clean.asm}"
+
 if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
-  TARGET_GFX="${TARGET_GFX:-946}" BUILD_ASM="${BUILD_ASM:-1}" ./build.sh
+  TARGET_GFX="${TARGET_GFX:-946}" BUILD_ASM="${BUILD_ASM:-1}" \
+    BUILD_DIR="${BUILD_DIR}" BIN="${BIN}" ASM="${ASM}" ./build.sh
 fi
 
-python3 scripts/check_dkv_kernel_gate.py
+python3 scripts/check_dkv_kernel_gate.py --asm "${ASM}"
 python3 scripts/check_symbol_metadata_gate.py \
-  --asm build/fa3_bwd_wasp_clean.asm \
+  --asm "${ASM}" \
   --symbol-regex "fa3_bwd_dkv_kernel"
 
 case_id="dkv_mmac_correctness_$(date +%Y%m%d_%H%M%S)"
@@ -30,9 +35,9 @@ export H="\${H:-1}"
 export S="\${S:-128}"
 export D="\${D:-128}"
 export CAUSAL="\${CAUSAL:-1}"
-echo "PMD_BINARY=${repo_dir}/build/fa3_bwd_wasp_clean"
-sha256sum "${repo_dir}/build/fa3_bwd_wasp_clean"
-exec "${repo_dir}/build/fa3_bwd_wasp_clean" --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
+echo "PMD_BINARY=${BIN}"
+sha256sum "${BIN}"
+exec "${BIN}" --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
 EOF
 chmod +x "${case_script}"
 

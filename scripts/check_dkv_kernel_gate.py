@@ -22,15 +22,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", default="src/dkv_kernel.cpp")
     parser.add_argument("--contract", default="include/dkv_contract.h")
-    parser.add_argument(
-        "--tomography-header", default="include/dkv_barrier_tomography.h")
     parser.add_argument("--asm", default="build/fa3_bwd_wasp_clean.asm")
     args = parser.parse_args()
 
     source = Path(args.source).read_text(errors="ignore")
     perf_source = source
     contract = Path(args.contract).read_text(errors="ignore")
-    tomography = Path(args.tomography_header).read_text(errors="ignore")
     asm_path = Path(args.asm)
     asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
     failures: list[str] = []
@@ -47,10 +44,10 @@ def main() -> int:
             "missing_canonical_dkv_kernel")
     require(perf_source, r"consumer_dkv_mmac_loop", failures,
             "missing_dkv_mmac_consumer_loop")
-    require(perf_source, r"score_dp_mmac_owner16", failures,
-            "missing_owner16_score_dp_mmac")
-    require(perf_source, r"dv_dk_mmac_owner16", failures,
-            "missing_owner16_dv_dk_mmac")
+    require(perf_source, r"score_dp_mmac_owner32", failures,
+            "missing_owner32_score_dp_mmac")
+    require(perf_source, r"owner32_dv_dk_read_mmac", failures,
+            "missing_owner32_dv_dk_mmac")
     require(source, r"kDkvPathCanonicalDkv", failures,
             "missing_canonical_path")
     require(perf_source, r"hcu_wdra_waves_per_tg\(16\)", failures,
@@ -101,23 +98,16 @@ def main() -> int:
             failures, "missing_sidecar_half0_publisher")
     require(perf_source, r"publish_sidecar_half_tile_to_lds<Tile,\s*1>",
             failures, "missing_sidecar_half1_publisher")
-    require(perf_source, r"arrive_dout_half_used<Wdra,\s*ReleaseHalf>\(\)",
+    require(perf_source, r"arrive_dout_half_used<Wdra,\s*Half>\(\)",
             failures, "missing_dout_half_lifetime_release")
-    require(perf_source, r"arrive_q_half_used<Wdra,\s*ReleaseHalf>\(\)",
+    require(perf_source, r"arrive_q_half_used<Wdra,\s*Half>\(\)",
             failures, "missing_q_half_lifetime_release")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
-    require(perf_source, r"bt::wait_all_done<Bar>", failures,
+    require(perf_source,
+            r"abarrier_try_wait<false>\(Bar::kAllDone",
+            failures,
             "missing_all_done_wait")
-    require(tomography,
-            r"#define\s+SHAOBO_ABARRIER_TOMOGRAPHY\s+0",
-            failures, "tomography_must_default_off")
-    require(tomography, r"wait_resident_filled_consumer", failures,
-            "missing_resident_filled_tomography_site")
-    require(tomography, r"wait_q0_filled_consumer_loop", failures,
-            "missing_q0_filled_tomography_site")
-    require(tomography, r"wait_dout1_used_vdout_producer", failures,
-            "missing_dout1_used_tomography_site")
     require(perf_source,
             r"__syncthreads\(\);\s*if\s*\(\s*wave_id\s*==\s*0\s*\)"
             r"\s*\{[\s\S]{0,900}s_abarrier_inv\(Bar::kResidentFilled\)",
@@ -130,10 +120,6 @@ def main() -> int:
     require(source, r"raise_priority_2", failures, "missing_s_setprio_helper")
     require(contract, r"struct\s+DkvBarrierLedger", failures,
             "missing_barrier_ledger")
-    require(contract, r"kQFilled\s*=\s*kQ0Filled", failures,
-            "missing_q_barrier_alias")
-    require(contract, r"kDoutFilled\s*=\s*kDout0Filled", failures,
-            "missing_dout_barrier_alias")
     require(contract, r"kDkvPathReferenceCorrectness\s*=\s*1", failures,
             "missing_reference_path_contract")
     require(contract, r"kDkvPathCanonicalDkv", failures,
@@ -142,9 +128,13 @@ def main() -> int:
             "missing_active_tile_contract")
     require(contract, r"kBlockMq\s*=\s*128", failures,
             "missing_active_mq128_contract")
+    require(contract, r"kNkPerConsumerWave\s*=\s*32", failures,
+            "missing_owner32_contract")
+    require(contract, r"kResidentNk\s*=", failures,
+            "missing_resident_nk_contract")
     require(contract, r"kRawBuffers\s*=\s*1", failures,
             "missing_active_rawbuffer1_contract")
-    require(source, r"softmax_ds_owner16_causal_exact_tile_ctx", failures,
+    require(source, r"softmax_ds_owner32_causal_exact_tile", failures,
             "missing_causal_exact_tile_helper")
     require(contract, r"kOverlayRawOnResidentKv", failures,
             "missing_kv_raw_overlay_contract")
@@ -167,10 +157,18 @@ def main() -> int:
            r"kSourceFilled|kSourceUsed|wait_source_|arrive_source_|"
            r"kSource0Filled|kSource0Used|kSource1Filled|kSource1Used",
            failures, "source_layout_must_share_page_packet_token")
-    require(source + contract, r"kRaw1Filled", failures,
-            "missing_raw1_filled_token")
-    require(source + contract, r"kRaw1Used", failures,
-            "missing_raw1_used_token")
+    require(source, r"publish_resident_tile", failures,
+            "missing_nk256_resident_publisher")
+    require(source, r"latch_owner32_kv_regs", failures,
+            "missing_owner32_kv_latch")
+    require(source, r"store_dkv_owner32", failures,
+            "missing_owner32_store")
+    forbid(source, r"Owner16|owner16", failures,
+           "owner16_route_must_not_remain")
+    forbid(source, r"dkv_barrier_tomography", failures,
+           "canonical_source_must_not_include_tomography")
+    forbid(source, r"ds_read_b32|ds_bpermute|ds_permute", failures,
+           "non_native_matrix_workaround_in_main_source")
     forbid(source + contract,
            r"kDkvPathWasp|DkvSemanticMq64|"
            r"fa3_bwd_dkv_probe_kernel|fa3_bwd_dkv_mmac_kernel|"

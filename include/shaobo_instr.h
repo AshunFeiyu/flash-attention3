@@ -130,6 +130,38 @@ __device__ __forceinline__ void ds_read_matrix_32x16_normal(
 #endif
 }
 
+template <int LdsOffset0, int LdsOffset1, int LdsOffset2, int LdsOffset3>
+__device__ __forceinline__ void ds_read_matrix_32x16_normal_imm4(
+    const __half* lds,
+    Vec8F16& frag0,
+    Vec8F16& frag1,
+    Vec8F16& frag2,
+    Vec8F16& frag3) {
+    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 18) &&
+                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 18) &&
+                      LdsOffset2 >= 0 && LdsOffset2 < (1 << 18) &&
+                      LdsOffset3 >= 0 && LdsOffset3 < (1 << 18),
+                  "DS matrix-read immediate must fit the byte offset field");
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const int lds_addr = static_cast<int>(reinterpret_cast<size_t>(lds));
+    asm volatile(
+        "ds_read_matrix_format %0, %4 offset:%5 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_format %1, %4 offset:%6 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_format %2, %4 offset:%7 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_format %3, %4 offset:%8 element:0x2 row:0x2 col:0x1 alt:0x0\n"
+        : "=v"(frag0), "=v"(frag1), "=v"(frag2), "=v"(frag3)
+        : "s"(lds_addr), "n"(LdsOffset0), "n"(LdsOffset1),
+          "n"(LdsOffset2), "n"(LdsOffset3)
+        : "memory");
+#else
+    (void)lds;
+    frag0 = {};
+    frag1 = {};
+    frag2 = {};
+    frag3 = {};
+#endif
+}
+
 __device__ __forceinline__ void ds_read_matrix_32x16_trans(
     const __half* lds,
     int lds_offset,
@@ -146,6 +178,29 @@ __device__ __forceinline__ void ds_read_matrix_32x16_trans(
     (void)lds;
     (void)lds_offset;
     frag = {};
+#endif
+}
+
+template <int LdsOffset0, int LdsOffset1>
+__device__ __forceinline__ void ds_read_matrix_32x16_trans_imm2(
+    const __half* lds,
+    Vec8F16& frag0,
+    Vec8F16& frag1) {
+    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 18) &&
+                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 18),
+                  "DS matrix-read immediate must fit the byte offset field");
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const int lds_addr = static_cast<int>(reinterpret_cast<size_t>(lds));
+    asm volatile(
+        "ds_read_matrix_trans_format %0, %2 offset:%3 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %1, %2 offset:%4 element:0x2 row:0x2 col:0x1 alt:0x0\n"
+        : "=v"(frag0), "=v"(frag1)
+        : "s"(lds_addr), "n"(LdsOffset0), "n"(LdsOffset1)
+        : "memory");
+#else
+    (void)lds;
+    frag0 = {};
+    frag1 = {};
 #endif
 }
 
