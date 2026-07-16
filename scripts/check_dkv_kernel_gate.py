@@ -22,12 +22,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", default="src/dkv_kernel.cpp")
     parser.add_argument("--contract", default="include/dkv_contract.h")
+    parser.add_argument(
+        "--tomography-header", default="include/dkv_barrier_tomography.h")
     parser.add_argument("--asm", default="build/fa3_bwd_wasp_clean.asm")
     args = parser.parse_args()
 
     source = Path(args.source).read_text(errors="ignore")
     perf_source = source
     contract = Path(args.contract).read_text(errors="ignore")
+    tomography = Path(args.tomography_header).read_text(errors="ignore")
     asm_path = Path(args.asm)
     asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
     failures: list[str] = []
@@ -104,8 +107,17 @@ def main() -> int:
             failures, "missing_q_half_lifetime_release")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
-    require(perf_source, r"abarrier_try_wait<false>\(Bar::kAllDone", failures,
+    require(perf_source, r"bt::wait_all_done<Bar>", failures,
             "missing_all_done_wait")
+    require(tomography,
+            r"#define\s+SHAOBO_ABARRIER_TOMOGRAPHY\s+0",
+            failures, "tomography_must_default_off")
+    require(tomography, r"wait_resident_filled_consumer", failures,
+            "missing_resident_filled_tomography_site")
+    require(tomography, r"wait_q0_filled_consumer_loop", failures,
+            "missing_q0_filled_tomography_site")
+    require(tomography, r"wait_dout1_used_vdout_producer", failures,
+            "missing_dout1_used_tomography_site")
     require(perf_source,
             r"__syncthreads\(\);\s*if\s*\(\s*wave_id\s*==\s*0\s*\)"
             r"\s*\{[\s\S]{0,900}s_abarrier_inv\(Bar::kResidentFilled\)",

@@ -13090,3 +13090,21 @@ Status: `REJECT_MAINLINE_PMD_WDRA_TRACKING`
 - New hypothesis: each consumer group self-prefetches M32 Q/dO double pages.
   This trades 2x Q/dO global bytes for removal of the dominant CTA-wide page
   ownership ABarrier and enables useful group0/group1 phasing.
+
+## 2026-07-16 dKV ABarrier Token Tomography
+
+Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
+
+- Hypothesis: aggregate `s_abarrier_try_wait` statistics hide several
+  ownership edges; optimizing without assigning cycles to token/source/role
+  has repeatedly moved rather than removed the stall.
+- Change: add debug-line-only wait wrappers plus an exact ASM-equivalence gate.
+  The default canonical behavior remains unchanged.
+- Added a focused `s_abarrier_test_wait` phase probe. It is isolated from FA
+  math and does not authorize polling in the production mainloop.
+- Required evidence before implementation: control/tomography ASM identity,
+  control/tomography numerical identity, a per-token xcu issue-gap table, and
+  a latest-compiler rerun of the 128-FP32-live P/dS cross-wave probe.
+- Decision: no P/dS conveyor code yet. Implement it only if high-VGPR handoff
+  passes and tomography shows that replacing raw-page ownership can remove
+  enough exposed cycles to move the 34.19% baseline toward 40%.

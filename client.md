@@ -2512,3 +2512,25 @@ dKV direction update, 2026-07-16:
   group1 after it, creating real-work phase offset without empty delay.
 - Promotion order remains correctness/resource/bank gates, then ticks, then
   MMAC active. The first structural milestone is 40%; final target is 60%.
+
+dKV ABarrier token tomography preflight, 2026-07-16:
+
+- Branch `exp/dkv-pds-conveyor` starts from immutable best commit `3db4f38`
+  (`42,335,020` kernel ticks, `34.1944%` MMAC active, bank0, no spill).
+- `SHAOBO_ABARRIER_TOMOGRAPHY=1` gives every canonical dKV wait site a
+  distinct source line while preserving the exact
+  `sched_barrier -> s_abarrier_try_wait -> s_xor -> sched_barrier` sequence.
+  `scripts/check_dkv_barrier_tomography.py` must prove control/diagnostic ASM
+  identity before any SQTT result is accepted.
+- Token attribution must include role and source site. Q and dO producers
+  jointly arrive on `Q0Filled/Q1Filled` (ids 2/6); dO does not use independent
+  Filled ids 4/8 in the canonical loop. QUsed ids 3/7 and dOUsed ids 5/9
+  remain separate because their earliest legal release points differ.
+- `probes/abarrier_test_wait_semantics_probe.cpp` isolates phase-state
+  semantics. It samples phase0 twice before arrival, after arrival, after
+  `try_wait`, and phase1. This is an instruction probe, not permission to
+  replace blocking ownership waits in the canonical kernel.
+- Remote execution order: control/tomography ASM identity -> H1/S128 and
+  H1/S1024 equivalence -> one diagnostic fullperf/xcu capture -> aggregate
+  issue gaps by token/source/role. Only then choose which ownership edge to
+  redesign.

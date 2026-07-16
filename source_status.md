@@ -8038,3 +8038,24 @@ dKV score/dP macro-block with sidecar prefetch, 2026-07-15:
 - Next structural experiment is workbook sheet `113_ConsumerSelfPrefetch`:
   consumers publish group-local Q/dO double pages, eliminating the CTA-wide
   Q/dO ownership wait while preserving one score/dP computation.
+
+## 2026-07-16 ABarrier Token Tomography Preflight
+
+Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
+
+- Added opt-in source attribution in `include/dkv_barrier_tomography.h` and
+  routed canonical dKV wait sites through role-specific wrappers.
+- Default macro value is zero, so production behavior is unchanged.
+- Added an ASM equivalence gate that rejects instruction-count, opcode,
+  ABarrier operand, or normalized exact-stream drift between control and
+  tomography builds.
+- Canonical token interpretation was corrected: ids 2/6 are joint Q+dO
+  Filled epochs with eight arrivals; ids 4/8 are not initialized or consumed
+  as independent dO Filled tokens. Used epochs remain split (Q ids 3/7, dO
+  ids 5/9).
+- Added `probes/abarrier_test_wait_semantics_probe.cpp` to determine return
+  polarity, phase identity, and whether repeated `test_wait` is side-effect
+  free. No canonical wait is changed by this probe.
+- Pending remote evidence: control/tomography build identity, correctness
+  equivalence, H1/S1024 diagnostic SQTT, and latest-compiler high-VGPR P/dS
+  retry. No performance claim is made in this state.
