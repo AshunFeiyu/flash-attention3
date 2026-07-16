@@ -13108,3 +13108,29 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - Decision: no P/dS conveyor code yet. Implement it only if high-VGPR handoff
   passes and tomography shows that replacing raw-page ownership can remove
   enough exposed cycles to move the 34.19% baseline toward 40%.
+
+## 2026-07-16 dKV Tomography Completion and Four-Role Design Gate
+
+Status: `OBSERVE_DIAGNOSTIC_COMPLETE_DESIGN_ACCEPTED_PROBE_PENDING`
+
+- The tomography binary preserves the canonical instruction stream exactly.
+  H1/S1024 causal correctness passes and kernel ticks are `42,053,375`; this
+  diagnostic run is not promoted over the immutable `42,335,020` fullperf
+  baseline because PMD variance and debug-line mapping are involved.
+- Q/dO Used tokens dominate raw ABarrier duration (`72.62%` combined), but
+  the waits are producer-side and substantially overlap consumer MMAC.
+  Consumers already issue Used after the last legal matrix read. Removing or
+  advancing those barriers would be a correctness bug, not an optimization.
+- The structural gap versus FWD is operand readiness: BWD/FWD LDS-read per
+  MMAC is `0.603/0.252=2.39x`, WAIT per MMAC is `0.325/0.064=5.08x`, and
+  no-MMAC bins are `27.8%/13.9%=2.0x`. Actual MMAC-with-vector-peer overlap is
+  `40.8%` versus FWD `60.25%`.
+- The rejected old two-stage reader held 128 FP32 accumulator VGPRs. The new
+  `125_DKV_4Role_PDS` design preserves exactly four GEMMs but assigns score/dP
+  to one frontend group, dV to one 64-accumulator group, and dK to a second
+  64-accumulator group. Native P-before-dS publication supplies useful-work
+  phase offset without empty delay.
+- Resource draft: M32/Nk128/D128, 512 MMAC per CTA packet, steady LDS 66,304B,
+  static ABarrier ids 0-14, and per-SIMD WDRA windows
+  `16+176+160+160=512`. These figures are gates, not proof. The next change is
+  an isolated 64-accumulator cross-wave probe; canonical source stays frozen.

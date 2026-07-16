@@ -8059,3 +8059,25 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - Pending remote evidence: control/tomography build identity, correctness
   equivalence, H1/S1024 diagnostic SQTT, and latest-compiler high-VGPR P/dS
   retry. No performance claim is made in this state.
+
+## 2026-07-16 ABarrier Tomography and FWD-Normalized Result
+
+- Status: `OBSERVE_DIAGNOSTIC_COMPLETE_NEXT_64ACC_PROBE`.
+- Control/tomography ASM identity passes at 5,442 instructions and 17 waits.
+  H1/S128 and H1/S1024 causal correctness pass; diagnostic binary SHA256 is
+  `cc98a4cc4a28df2683fd0a36848f7fd4991fb65e6f1860317d3e7d0d82dfc898`.
+- Fullperf run:
+  `/zys/shaobo/runs/tomography_actual_fullperf_20260716/dkv_mmac_correctness_20260716_171105`.
+  `firstWaveStartTick=3,613,610`, `lastWaveEndTick=45,666,985`, therefore
+  `kernel_ticks=42,053,375`; MMOP=32,768, bank conflict=0, correctness PASS.
+- Token duration attribution: Q0Used 18.91%, Q1Used 18.40%, dO0Used 17.71%,
+  dO1Used 17.60%, combined 72.62%; AllDone 19.39%. Same-SIMD inspection shows
+  producer Used waits overlap substantial consumer MMAC, and source release
+  points are already the earliest legal post-read points.
+- BWD steady consumer pair has 40.8% MMAC instructions with vector-op peer,
+  27.8% no-MMAC bins, 0.603 LDS reads/MMAC, and about 0.325 WAIT/MMAC. FWD
+  steady pair has 60.25%, 13.9%, 0.252, and 0.064 respectively.
+- Workbook `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_wasp_clean_design_20260701.xlsx`
+  now contains `125_DKV_4Role_PDS`. Main-kernel edits remain held until a
+  64-live-FP32-accumulator native cross-wave P/dS probe passes with no PMD
+  panic, spill, scratch, private segment, or LDS bank conflict.

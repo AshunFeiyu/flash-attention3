@@ -2534,3 +2534,21 @@ dKV ABarrier token tomography preflight, 2026-07-16:
   H1/S1024 equivalence -> one diagnostic fullperf/xcu capture -> aggregate
   issue gaps by token/source/role. Only then choose which ownership edge to
   redesign.
+
+dKV ABarrier tomography result and four-role successor, 2026-07-16:
+
+- Control and tomography builds have an exact normalized ASM stream. The
+  diagnostic H1/S1024 causal run passes correctness and records `42,053,375`
+  kernel ticks; it is attribution evidence, not a new performance baseline.
+- The four recurrent Q/dO Used tokens account for `72.62%` of captured
+  ABarrier duration, but source plus same-SIMD SQTT show that these are mainly
+  producer waits hidden under consumer MMAC. Consumers already release Q/dO
+  after their last legal matrix read, so early-release deletion is forbidden.
+- Normalized steady-wave evidence is more decisive: BWD has `2.39x` FWD's
+  LDS-read/MMAC density, `5.08x` its WAIT/MMAC density, `27.8%` no-MMAC bins
+  versus `13.9%`, and `40.8%` MMAC-with-peer-vector versus FWD `60.25%`.
+- The next workbook-reviewed design is `125_DKV_4Role_PDS`: waves0-3 stream
+  raw operands; waves4-7 compute score/dP/P/dS once; waves8-11 accumulate dV
+  only; waves12-15 accumulate dK only. Splitting the old 128-accumulator
+  Consumer-G into two 64-accumulator roles is the prerequisite for retrying
+  the proven native P/dS matrix handoff.
