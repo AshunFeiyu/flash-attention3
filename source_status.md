@@ -8278,3 +8278,27 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   priority elevation after the first operand-read wait. This addresses the
   existing XCU `s_setprio -> 59-83 cycle s_waitcnt` interval without changing
   mathematical order or ownership progress.
+
+## 2026-07-17 Owner32 Ready-Only Priority Result
+
+- Status: `ACCEPT_MICRO_SCHEDULING`.
+- Canonical source now raises priority only after the first-use operand
+  `lgkmcnt(0)` in fused Score+dP and joint dV+dK. Both consumers remain
+  symmetric; no math, matrix read, wait, ABarrier, LDS, or ownership change is
+  present in the diff.
+- Gates pass: roles `14/239/239/8`, private0, SGPR/VGPR spill0, scratch0,
+  H1/S256 and H1/S1024 dK/dV PASS, exact MMOP/VALU/SCA/LDS/VMEM counts, and
+  `ldsBankConflict=0`.
+- Fullperf baseline `69,435,275` ticks improves twice with the same candidate
+  binary: `69,230,070` (`-0.30%`) and `69,053,530` (`-0.55%`). MMAC active is
+  `39.9469%/39.9590%` versus `39.9317%`; coissue success is
+  `38,488/38,633` versus `37,915`.
+- XCU proves the intended local schedule: `s_waitcnt` now precedes the high
+  priority transition. In the fixed steady window, `MMAC-vs-VALU` bins rise
+  `46 -> 55`, `MMAC-vs-MMAC` falls `48 -> 40`, and useful vector peers rise
+  `316 -> 390`.
+- Keep this two-line cleanup as canonical. Do not continue priority-only
+  tuning: aggregate `s_abarrier_try_wait` ownership gaps remain about `41.8%`
+  of XCU issue-gap duration. The next top-level design must address the shared
+  Q/dO packet lifetime or ownership boundary while preserving exact four-GEMM
+  work and native matrix paths.

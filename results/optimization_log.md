@@ -13346,3 +13346,40 @@ Status: `REJECT_STATS_OWNERSHIP_STALL_SOURCE_RESTORED`
 - Evidence: build `/zys/shaobo/runs/o32prio_build1`; runs
   `/zys/shaobo_runs/o32prio_s256/dkv_mmac_correctness_20260717_025720` and
   `/zys/shaobo_runs/o32prio_s1024/dkv_mmac_correctness_20260717_025753`.
+
+## 2026-07-17 dKV Owner32 Ready-Only Priority Accepted
+
+Status: `ACCEPT_MICRO_SCHEDULING`
+
+- Workbook sheet `130_DKV_ReadyOnlyPriority` tested one symmetric scheduling
+  cleanup: both consumers issue native matrix reads and complete the first-use
+  `lgkmcnt(0)` wait before raising MMAC priority. Math, reads, waits, ABarrier
+  IDs/counts, LDS bytes, ownership, and output stores are unchanged.
+- Static admission matches owner32 exactly: branch use `14/239/239/8`, metadata
+  `private=0`, `sgpr=56`, `vgpr=128`, no spill/scratch, 64 MMAC and 22 native
+  matrix reads per M16, with `ldsBankConflict=0`.
+- H1/S256 and H1/S1024 causal correctness pass. Stats-only H1/S1024 is
+  effectively flat (`68,856,060 -> 68,859,700`, `+0.005%`) while its MMAC
+  active proxy rises `39.9695% -> 40.0704%`.
+- Two same-binary fullperf runs reproduce a small elapsed improvement against
+  the fullperf baseline `69,435,275`: `69,230,070` (`-0.30%`) and
+  `69,053,530` (`-0.55%`). Fullperf MMAC active rises from `39.9317%` to
+  `39.9469%/39.9590%`; work counts remain exact and bank conflict stays zero.
+- XCU on the same `50000:70000`, `SE3/CU0/SIMD3` window explains the change.
+  The old `s_setprio -> 59-83 cycle -> s_waitcnt` exposure is replaced by
+  `s_waitcnt -> s_setprio -> MMAC`. Across 128-cycle bins, useful
+  `MMAC-vs-VALU` rises `46 -> 55`, `MMAC-vs-MMAC` falls `48 -> 40`, no-MMAC
+  bins fall `36 -> 34`, and MMAC instructions with a vector peer rise
+  `316 -> 390`.
+- Decision: keep and commit the two-line change. This is a repeatable micro
+  scheduling gain, not the architectural breakthrough. XCU still attributes
+  about `41.8%` of issue-gap duration to `s_abarrier_try_wait` ownership; the
+  next workbook hypothesis must shorten or overlap the shared Q/dO ownership
+  lifetime rather than stack more priority edits.
+- Evidence: build `/zys/shaobo/runs/o32readyprio_build1`; correctness/stats
+  `/zys/shaobo_runs/o32readyprio_s1024/dkv_mmac_correctness_20260717_031650`;
+  fullperf `/zys/shaobo_runs/o32readyprio_fullperf/`
+  `dkv_mmac_correctness_20260717_032017` and
+  `/zys/shaobo_runs/o32readyprio_fullperf_repeat/`
+  `dkv_mmac_correctness_20260717_033504`; XCU outputs under the first fullperf
+  case's `xcu_first`, `xcu_steady_w1`, and `xcu_steady_w2` directories.

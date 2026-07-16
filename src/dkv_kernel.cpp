@@ -573,7 +573,6 @@ __device__ __forceinline__ void score_dp_mmac_owner32(
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
 
-    ins::raise_priority_2();
     ins::F16x8 q_d0;
     ins::F16x8 dout_d0;
     ins::F16x8 v0_d0;
@@ -588,6 +587,7 @@ __device__ __forceinline__ void score_dp_mmac_owner32(
     read_score_dp_owner32_dblock<Tile, MBlockBase, 1>(
         lds, page, owner_nblock32, q_d1, dout_d1, v0_d1, v1_d1);
     ins::wait_lgkm(0);
+    ins::raise_priority_2();
     score_dp_mmac_owner32_dblock<0>(
         kv_regs, q_d0, dout_d0, v0_d0, v1_d0, zero, score, dp);
 
@@ -808,8 +808,8 @@ __device__ __forceinline__ void owner32_dv_dk_read_mmac(
     Owner32DvDkSources src;
     read_owner32_dv_dk_sources<Tile, 0, MBlockBase>(lds, page, src);
 
-    ins::raise_priority_2();
     ins::wait_lgkm(0);
+    ins::raise_priority_2();
     owner32_dv_dk_mmac_four_out<FirstAccum, 0>(
         p_frag, ds_frag, src, dv_acc, dk_acc, zero_f16);
 

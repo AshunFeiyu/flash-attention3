@@ -2636,3 +2636,24 @@ dKV owner32 priority scheduling result, 2026-07-17:
 - Next experiment is symmetric ready-only priority: issue native matrix reads,
   complete the first-use `lgkmcnt` wait, then raise priority only for the MMAC
   island. Do not change the three proven macro-islands or ABarrier topology.
+
+dKV owner32 ready-only priority result, 2026-07-17:
+
+- Accepted as a micro scheduling cleanup. In fused Score+dP and joint dV+dK,
+  both consumers now complete first-use `lgkmcnt(0)` before `s_setprio 2`.
+  This keeps consumer progress symmetric and does not change the formula DAG,
+  reads, waits, LDS, ABarrier topology, or ownership.
+- Static resources remain `14/239/239/8`, private0/spill0/scratch0, 128KB LDS,
+  and bank0. H1/S256 and H1/S1024 causal correctness pass.
+- Two fullperf runs improve the `69,435,275` baseline to `69,230,070` and
+  `69,053,530` ticks. XCU shows useful `MMAC-vs-VALU` bins rising `46 -> 55`
+  and MMAC-with-vector-peer events rising `316 -> 390`.
+- This is not the 60% MMAC-active solution: active only reaches about
+  `39.95%`, and `s_abarrier_try_wait` ownership remains the dominant XCU gap
+  at about `41.8%`. The next change must start from workbook-level shared Q/dO
+  lifetime/ownership design, not another priority tweak.
+- Evidence is in workbook sheet `130_DKV_ReadyOnlyPriority` and
+  `/zys/shaobo_runs/o32readyprio_fullperf/`
+  `dkv_mmac_correctness_20260717_032017` plus the repeat under
+  `/zys/shaobo_runs/o32readyprio_fullperf_repeat/`
+  `dkv_mmac_correctness_20260717_033504`.
