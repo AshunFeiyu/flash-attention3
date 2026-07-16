@@ -8336,3 +8336,21 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   kernel hangs.
 - S1024/fullperf must run detached with a persisted driver log and `exit_code`;
   require `exit_code=0` plus harness `status=success` before parsing stats.
+
+## 2026-07-17 Owner32 V/dO Publish Priority Result
+
+- Status:
+  `REJECT_FULLPERF_NOISE_AND_FILLED_WAIT_REGRESSION_SOURCE_RESTORED`.
+- A focused candidate raised only V/dO producer publish to priority1. All
+  static/resource/correctness gates pass unchanged: `14/239/239/8`, private0,
+  SGPR/VGPR spill0, scratch0, 128KB LDS, bank0, exact MMOP/VALU/LDS/VMEM.
+- Candidate fullperf ticks `69,103,580` are inside canonical repeat noise
+  `69,053,530-69,230,070`; MMAC active regresses
+  `39.9590% -> 39.8486%`.
+- XCU shows a last-arriver swap: V/dO advances, but K/Q is delayed enough that
+  the shared Filled token completes `72/44` cycles later in two generations.
+  Consumer0 Filled wait rises `1732/1528 -> 1888/1576` cycles.
+- The experiment helper/calls are removed. Local source is clean; remote
+  canonical binary is rebuilt with metadata `private=0`, `sgpr=56`,
+  `vgpr=128`, spill0. Keep commit `28c8ab9` behavior and workbook sheet
+  `132_DKV_VdoutPrio` as the negative evidence.

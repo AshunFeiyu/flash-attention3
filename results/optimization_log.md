@@ -13432,3 +13432,33 @@ Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`
 - Launch S1024/fullperf through detached `docker exec -d`, redirect the driver
   log, write an explicit `exit_code`, poll that file, and require both
   `exit_code=0` and the harness `status=success` line before using stats.
+
+## 2026-07-17 dKV Owner32 V/dO Publish Priority Rejected
+
+Status: `REJECT_FULLPERF_NOISE_AND_FILLED_WAIT_REGRESSION_SOURCE_RESTORED`
+
+- Workbook sheet `132_DKV_VdoutPrio` isolated one scheduling hypothesis from
+  the accepted ready-only-priority canonical. XCU showed V/dO Filled arriving
+  about `204` cycles after K/Q, so only the two useful V/dO publish windows
+  temporarily used `s_setprio 1`. Math, LDS, ABarrier IDs/counts, matrix reads,
+  MMAC islands, consumer priority, and stores were unchanged.
+- Static/resource gates and H1/S256 plus detached H1/S1024 correctness pass:
+  roles `14/239/239/8`, `private=0`, `sgpr=56`, `vgpr=128`, no spill/scratch,
+  128KB LDS, bank0, and exact `MMOP=131072`.
+- Stats-only candidate ticks are `68,832,400` versus the same-method canonical
+  `69,942,145`, but fullperf disproves promotion. Candidate ticks
+  `69,103,580` sit inside three canonical repeats
+  `69,053,530/69,094,480/69,230,070`; MMAC active falls
+  `39.9590% -> 39.8486%`.
+- XCU explains the neutral elapsed result. V/dO is pulled ahead, but K/Q is
+  delayed and becomes the new last arriver. Filled completion moves later by
+  `72/44` cycles in two consecutive generations, and consumer0's exposed
+  Filled waits grow `1732/1528 -> 1888/1576` cycles. This is last-arriver
+  exchange, not readiness reduction.
+- Decision: reject, remove the priority1 helper/calls, and rebuild canonical.
+  For a Filled token completed by multiple producers, optimize
+  `max(arrival_0, arrival_1, ...)`; unilateral priority is not useful unless it
+  reduces that maximum without stealing peer MMAC/producer issue slots.
+- Evidence: `/zys/shaobo_runs/o32vdoutprio_detached_20260717/`,
+  `/zys/shaobo_runs/o32vdoutprio_fullperf_detached_20260717/`, and local XCU
+  copy `work/o32vdoutprio_xcu_20260717/`.

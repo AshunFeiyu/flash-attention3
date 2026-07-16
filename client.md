@@ -2701,3 +2701,36 @@ Skill Candidate: detached PMD long-run evidence
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-current-runbook.md` during the next serialized
   skill-consolidation pass.
+
+dKV owner32 V/dO producer-priority result, 2026-07-17:
+
+- `s_setprio 1` around only V/dO publish is rejected. It passes correctness,
+  resource, bank, and work-count gates, but fullperf ticks are noise-flat and
+  MMAC active falls `39.9590% -> 39.8486%`.
+- XCU proves why: V/dO moves ahead, K/Q becomes the last arriver, whole-page
+  Filled completion is `72/44` cycles later, and consumer0 waits rise
+  `1732/1528 -> 1888/1576` cycles. Source and binary are restored to canonical.
+- Workbook sheet `132_DKV_VdoutPrio`; evidence under
+  `/zys/shaobo_runs/o32vdoutprio_fullperf_detached_20260717/`.
+
+Skill Candidate: multi-producer last-arriver optimization
+
+- Trigger / 适用场景: multiple producer wave groups contribute arrivals or
+  tracked transactions to one ABarrier Filled token.
+- Rule / 可复用规则: optimize the token completion time
+  `max(arrival_i)`, not one producer's local latency. A scheduling change is
+  useful only when it lowers the maximum and the waiting consumer's exposed
+  gap without stealing critical MMAC or peer-producer issue slots.
+- Evidence / 证据: owner32 priority1 moved V/dO ahead but delayed K/Q;
+  fullperf `69,103,580` remained in canonical noise, MMAC active fell, and two
+  Filled generations completed `72/44` cycles later. See workbook sheet 132
+  and XCU `w0/w1/w2/w3` CSV under the evidence path above.
+- Boundary / 适用边界: applies to shared completion tokens; independent
+  per-producer/per-consumer tokens may benefit from asymmetric scheduling if
+  they do not reconverge at a shared ownership boundary.
+- Counterexample / 反例或不适用情况: the accepted consumer ready-only
+  priority raises symmetric MMAC work only after operand readiness and does
+  not change which producer completes a Filled token.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` in the next serialized
+  skill-consolidation pass.
