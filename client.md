@@ -2734,3 +2734,37 @@ Skill Candidate: multi-producer last-arriver optimization
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` in the next serialized
   skill-consolidation pass.
+
+dKV owner32 consumer-group Filled stagger result, 2026-07-17:
+
+- Rejected after fullperf/XCU. Independent C0/C1 Filled tokens preserve exact
+  four-GEMM work and improve the sampled consumer stagger, but fullperf ticks
+  remain inside canonical noise and MMAC active falls to `39.8392%`.
+- The decisive measurement is role-summed wait: producer0/consumer0/
+  consumer1/producer1 ABarrier changes from `18034/4129/13/17710` to
+  `18158/3769/17/17942`; both sums equal `39,886`. The candidate moves wait
+  and adds `1,808` SCA instructions instead of shortening ownership.
+- Source is restored locally/remotely to ready-only-priority canonical.
+  Workbook sheet 133 and `work/o32groupfilled_fullperf_20260717/` retain the
+  negative evidence.
+
+Skill Candidate: detect ABarrier wait redistribution
+
+- Trigger / 适用场景: one shared data page is exposed through separate
+  consumer Filled tokens while producer publication and Used ownership still
+  reconverge.
+- Rule / 可复用规则: compare wait by every producer/consumer role and the
+  role-summed exposed wait. A local consumer reduction is not progress when
+  the same cycles move to producers or a shared reuse boundary.
+- Evidence / 证据: workbook sheet 133; fullperf `69,109,495`; MMAC active
+  `39.8392%`; C0 gains `360` ABarrier cycles while the two producers lose
+  `356` and C1 loses `4`, leaving the exact same `39,886` total.
+- Boundary / 适用边界: role-summed wait is a diagnostic, not a replacement
+  for ticks. A design with independent physical pages and Used lifetimes may
+  legitimately change the sum and critical path.
+- Counterexample / 反例或不适用情况: accepted ready-only priority changes
+  useful instruction scheduling without adding token families or moving
+  ownership waits between roles.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` in the next serialized
+  skill-consolidation pass.

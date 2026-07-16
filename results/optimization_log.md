@@ -13462,3 +13462,32 @@ Status: `REJECT_FULLPERF_NOISE_AND_FILLED_WAIT_REGRESSION_SOURCE_RESTORED`
 - Evidence: `/zys/shaobo_runs/o32vdoutprio_detached_20260717/`,
   `/zys/shaobo_runs/o32vdoutprio_fullperf_detached_20260717/`, and local XCU
   copy `work/o32vdoutprio_xcu_20260717/`.
+
+## 2026-07-17 dKV Owner32 Consumer-Group Filled Stagger Rejected
+
+Status: `REJECT_FULLPERF_WAIT_REDISTRIBUTION_SOURCE_RESTORED`
+
+- Workbook sheet `133_DKV_GroupFilledStagger` split only consumer readiness:
+  C0/C1 received independent half Filled tokens, while physical Q/dO pages and
+  QUsed/DoutUsed ownership remained shared. Bootstrap released C0 after half0
+  and used half1 publication as real work before releasing C1; math, tile,
+  matrix reads, four GEMMs, output ownership, and LDS bytes were unchanged.
+- Static/resource gates and H1/S256 plus detached H1/S1024 correctness pass:
+  roles `14/239/239/8`, private0, `sgpr=56`, `vgpr=128`, no spill/scratch,
+  128KB LDS, bank0, and exact `MMOP=131072`.
+- Stats-only is noise-positive (`69,942,145 -> 69,835,675`), but fullperf is
+  authoritative: candidate `69,109,495` sits inside canonical repeats
+  `69,053,530/69,094,480/69,230,070`; MMAC active falls
+  `39.9590% -> 39.8392%`, and SCA rises `36,408 -> 38,216`.
+- XCU shows a real but local consumer stagger: MMAC-vs-VALU bins rise
+  `55 -> 62`, no-MMAC bins fall `34 -> 29`, and C0 ABarrier falls
+  `4,129 -> 3,769`. It does not shorten ownership: producer0/producer1 rise
+  `18,034/17,710 -> 18,158/17,942`; the four-role ABarrier total is exactly
+  unchanged at `39,886` cycles.
+- Decision: reject. Splitting token identity moved wait from C0 to producers
+  and paid extra control work; it did not reduce `max(producer arrivals)` or
+  the CTA critical path. Candidate source is removed locally and remotely,
+  canonical is rebuilt and passes source/metadata gates.
+- Evidence: `/zys/shaobo_runs/o32groupfilled_detached_20260717_0650/`,
+  `/zys/shaobo_runs/o32groupfilled_fullperf_detached_20260717/`, local XCU
+  `work/o32groupfilled_fullperf_20260717/`, and workbook sheet 133.

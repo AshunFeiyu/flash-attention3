@@ -8354,3 +8354,17 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   canonical binary is rebuilt with metadata `private=0`, `sgpr=56`,
   `vgpr=128`, spill0. Keep commit `28c8ab9` behavior and workbook sheet
   `132_DKV_VdoutPrio` as the negative evidence.
+
+## 2026-07-17 Owner32 Consumer-Group Filled Stagger Result
+
+- Status: `REJECT_FULLPERF_WAIT_REDISTRIBUTION_SOURCE_RESTORED`.
+- Separate C0/C1 Filled tokens pass correctness and every resource gate, but
+  fullperf `69,109,495` is inside canonical noise and MMAC active regresses
+  `39.9590% -> 39.8392%`; SCA increases by `1,808`.
+- Fixed-window XCU proves wait relocation: C0 ABarrier improves by `360`
+  cycles, while producer0/producer1 together regress by `356` and C1 by `4`.
+  The four-role total remains exactly `39,886` cycles. Local coissue improves,
+  but no dispatch-level critical path is removed.
+- Failed code is removed. Local git source is clean; remote canonical rebuild
+  passes roles `14/239/239/8`, private0, SGPR56/VGPR128, spill0/scratch0.
+  Workbook sheet `133_DKV_GroupFilledStagger` is the governing evidence.
