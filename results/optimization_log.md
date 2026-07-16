@@ -13058,9 +13058,9 @@ Status: `REJECT_STATS_WAIT_REGRESSION_BRANCH_PRESERVED`
   The next structural candidate must reduce recurrent ownership handshakes
   without adding runtime slot selection or extending score/dP liveness.
 
-## 2026-07-15 dKV Native P/dS Matrix Handoff
+## 2026-07-15 dKV Native P/dS Matrix Handoff [RETRACTED]
 
-Status: `ACCEPT_INSTRUCTION_GATE`
+Status: `RETRACT_FALSE_POSITIVE_TRANSPORT_ONLY`
 
 - The initial natural-fragment sweep used an invalid `alt=2` combination for
   f16 m32x16.  HCU tests show that the supported alt2 encoding is builtin
@@ -13070,16 +13070,15 @@ Status: `ACCEPT_INSTRUCTION_GATE`
   `ds_read_matrix_trans_format_f16(...,16,1,2,0)` and dV/dK MMAC.
   All four writer t/alt variants pass with that reader; the canonical t0/alt0
   writer is retained because it is the simplest documented form.
-- Result: P and dS downstream MMAC comparison is bit-exact
-  (`errors=0`, `max_abs=0`), bank conflict zero, private/spill/scratch zero.
-  Run: `/zys/shaobo_runs/dkv_pds_handoff_hcu_sweep_20260715`.
-- Decision: promote this only as an instruction/layout gate.  The canonical
-  dKV performance source stays untouched until the single-slot two-stage
-  resource and ABarrier ledger is implemented and passes static correctness.
+- The old comparison was bit-exact only because its RHS did not distinguish
+  the writer permutation. It proves transport, bank0, and clean resources,
+  not natural-fragment semantic equivalence.
+- Decision: retain the run only as a transport/layout control. It cannot admit
+  a single-slot two-stage dKV pipeline.
 
-## 2026-07-16 Two-Stage P/dS High-VGPR Audit
+## 2026-07-16 Two-Stage P/dS High-VGPR Audit [SUPERSEDED]
 
-Status: `REJECT_MAINLINE_PMD_WDRA_TRACKING`
+Status: `SUPERSEDED_BY_SEMANTIC_SOURCE_SLOT_RECHECK`
 
 - Low-pressure cross-wave handoff passes eight generations at LDS bases `0`
   and `67584`, proving the writer/reader/barrier address contract.
@@ -13087,9 +13086,8 @@ Status: `REJECT_MAINLINE_PMD_WDRA_TRACKING`
   `read vgpr202 before writing`; its matrix destination is `v131:v138`.
 - Preinitializing the main-kernel reader produces finite zero instead of the
   LDS payload, so no workaround is stacked into the performance kernel.
-- New hypothesis: each consumer group self-prefetches M32 Q/dO double pages.
-  This trades 2x Q/dO global bytes for removal of the dominant CTA-wide page
-  ownership ABarrier and enables useful group0/group1 phasing.
+- The later split-output probe avoids this fatal and proves transport. The
+  final blocker is the f16 natural-fragment source ABI, not WDRA tracking.
 
 ## 2026-07-16 dKV ABarrier Token Tomography
 
@@ -13152,6 +13150,58 @@ Status: `ACCEPT_INSTRUCTION_RESOURCE_GATE`
 - A single nonfatal `vgpr194` init warning is confined to the reference
   writer-readback dispatch; the true cross-wave cases complete and are exact.
   This does not promote the main topology by itself.
-- Decision: commit the focused gate and reproducer. Next implement only a
-  single M32 packet with one raw/P/dS page and real dK/dV outputs. Do not add
-  the two-page conveyor until that canonical-math slice passes.
+- Decision: retain the focused gate and reproducer as transport evidence. A
+  semantic producer-fragment gate is still required before any main kernel.
+
+## 2026-07-16 dKV Four-Role P/dS Semantic Recheck
+
+Status: `REJECT_SOURCE_SLOT_ABI_MAIN_SOURCE_RESTORED`
+
+- Raw cross-wave readback, role-source identity, and writer-self-read versus
+  reader-cross-read MMAC all pass across eight generations and both LDS bases.
+  This clears ABarrier, WDRA role tracking, addressing, and output-store races.
+- The non-degenerate direct-natural versus roundtrip MMAC oracle fails roughly
+  64K outputs. Natural score/dP ownership is not the `ds_write_matrix` source
+  ownership expected by the downstream reader.
+- Writer `t=1`, legal f16 normal/trans readers, and four lane-local pack orders
+  do not repair the mismatch. Prior conversion1/2/4 and complete
+  operand-order/LIT/LTS sweeps close the f16 path. The f32 m16x16 matrix
+  writer/read path remains a focused no-permute candidate because it accepts
+  one natural `Vec4F32` MMAC accumulator directly.
+- The diagnostic main-kernel variant improves the size of the numerical error
+  but remains incorrect at H1/S128: `dk_max_abs=0.000490182`,
+  `dv_max_abs=0.0878637`, `pass=0`.
+- Decision: delete the uncommitted four-role main implementation. Preserve the
+  focused probe and evidence; resume from the direct-register P/dS canonical
+  path. No perf capture is valid for this rejected candidate.
+
+## 2026-07-16 dKV f32 Matrix-Writer Probe
+
+Status: `DEFER_PMD_UNIMPLEMENTED_F32_DS_MATRIX`
+
+- A minimal one-wave probe isolates the remaining no-permute candidate:
+  natural `Vec4F32` MMAC -> f32 m16x16 matrix write/read -> fp16 -> downstream
+  MMAC. It separately checks finite tag permutation and semantic MMAC output.
+- Static gates pass: `private=0`, `sgpr=18`, `vgpr=45`, no spill/scratch/trap;
+  ASM contains 4 f32 matrix writes, 8 f32 matrix reads, and 6 MMACs.
+- PMD reaches the kernel and aborts at the first f32 writer with
+  `Invalid opcode 0xd38b5007`, before reader or numerical evidence exists.
+- The deterministic runner reproduces this at
+  `/zys/shaobo/runs/dkv_pds_f32_roundtrip_probe_20260716_215919`, cleans all
+  detached PMD children, and requires `any_semantic_pair=1` once supported.
+- Decision: preserve the focused probe and classify the route as deferred, not
+  rejected. Do not place it in the canonical kernel until PMD implements the
+  opcode and the semantic pair passes.
+
+## 2026-07-16 dKV Canonical Restore Validation
+
+Status: `ACCEPT_RESTORE_VALIDATION`
+
+- Removed the rejected four-role main source and rebuilt the direct-register
+  canonical. Branch windows returned to `14/16,221/240,221/240,8/16`;
+  metadata is `private0/sgpr99/vgpr128/spill0/scratch0`.
+- H1/S128 and H1/S1024 causal correctness pass with bank0. H1/S1024 records
+  `kernel_ticks=41738060`, `MMOP=131072`, coissue `39577/28247`.
+- This verifies cleanup only. PMD variance means it is not promoted over the
+  immutable `42,335,020`/`34.1944%` fullperf baseline without a same-build
+  candidate comparison.

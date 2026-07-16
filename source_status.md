@@ -8004,35 +8004,33 @@ dKV score/dP macro-block with sidecar prefetch, 2026-07-15:
   branch windows `14/16,221/240,221/240,8/16`, metadata gate PASS, and
   H1/S1024 correctness PASS.
 
-## 2026-07-15 dKV Native P/dS Handoff Gate
+## 2026-07-15 dKV Native P/dS Handoff Gate [RETRACTED]
 
-- Status: `ACCEPT_INSTRUCTION_GATE_CANONICAL_UNCHANGED`.
+- Status: `RETRACT_FALSE_POSITIVE_TRANSPORT_ONLY`.
 - Focused source: `probes/dkv_pds_handoff_operand_probe.cpp`.
 - HCU-supported sweep covered four legal f16 matrix writers and five legal
-  normal/transpose readers.  The exact native chain
-  `ds_write_matrix m32x16 alt0 -> ds_read_matrix_trans mt16x32 alt0 -> MMAC`
-  preserves arbitrary natural P/dS fragments for both downstream dV and dK:
-  `errors=0`, `max_abs=0`.
+  normal/transpose readers. The original downstream MMAC oracle used a
+  degenerate RHS and only proved deterministic transport; it did not prove
+  that natural score/dP output has the writer's source-slot ownership.
 - The successful probe has `private=0`, `sgpr=21`, `vgpr=35`, no spill or
   scratch, and `ldsBankConflict=0`.  Normal m32x16 and mt32x16 readers are
   negative controls; the old source-slot schedule remains evidence-only.
-- This removes the native-layout blocker for a two-stage dKV conveyor.  The
-  approved design is one 32KB P/dS slot: Consumer-S writes one M32xNk128
-  packet; Consumer-G reads it into VGPR, arrives `PdsUsed` before dV/dK MMAC,
-  and thereby overlaps the next P/dS publication with the current MMAC island.
-  Workbook: `dKV_2Stage_PDS` in the shared design workbook.
+- This result must not admit a two-stage dKV conveyor. The native transport is
+  usable only after a non-degenerate semantic MMAC oracle proves the producer
+  fragment ABI.
 
-## 2026-07-16 dKV Two-Stage P/dS WDRA/PMD Blocker
+## 2026-07-16 dKV Two-Stage P/dS WDRA/PMD Blocker [SUPERSEDED]
 
-- Status: `REJECT_MAINLINE_PMD_WDRA_TRACKING`; canonical source restored to
+- Status: `SUPERSEDED_BY_SEMANTIC_SOURCE_SLOT_RECHECK`; canonical source restored to
   `best-dkv-h1s1024-20260715-imm4` content and recertified.
 - `probes/dkv_pds_cross_wave_probe.cpp` passes eight ABarrier generations and
   both LDS bases (`0`, `67584`) at low register pressure. With 128 live FP32
   accumulator VGPRs, the same native handoff reaches reader outputs
   `v131:v138` and PMD aborts on `read vgpr202 before writing`.
-- Main-kernel natural P/dS publication likewise becomes non-finite or reads
-  preinitialized zero. This is a high-VGPR WDRA model-tracking blocker, not a
-  failure of the proven matrix layout contract.
+- The later 64-accumulator probe removes the fatal and proves cross-role
+  transport. A hardened semantic oracle then shows that natural P/dS ownership
+  is wrong for the f16 writer. Do not retain the older PMD-tracking diagnosis
+  as the root cause.
 - Canonical H1/S1024 restore remains correct, bank-conflict free, and records
   `41,151,565` stats-only kernel ticks.
 - Next structural experiment is workbook sheet `113_ConsumerSelfPrefetch`:
@@ -8084,7 +8082,7 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 
 ## 2026-07-16 Four-Role 64-Accumulator P/dS Gate
 
-- Status: `ACCEPT_INSTRUCTION_RESOURCE_GATE_MAIN_KERNEL_UNCHANGED`.
+- Status: `ACCEPT_TRANSPORT_RESOURCE_GATE_REJECT_SEMANTIC_MAIN_UNCHANGED`.
 - The existing cross-wave probe is parameterized rather than duplicated.
   Split mode has four explicit WDRA branches: idle/startup `16`, P/dS writer
   `176`, dV reader `160`, and dK reader `160`; each reader keeps exactly 64
@@ -8099,6 +8097,72 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   first writer-readback reference dispatch. The actual cross-wave dispatches
   complete without a repeated warning or panic. Keep this as a model-tracking
   boundary and reject any main-kernel panic/nonfinite result.
-- Reproducer: `scripts/run_dkv_pds_split64_probe.sh`. Next admissible code is
-  a single-packet four-role kernel skeleton; double buffering remains held
-  until single-packet dK/dV correctness and resource gates pass.
+- Reproducer: `scripts/run_dkv_pds_split64_probe.sh`. This admits only the
+  WDRA/ABarrier transport topology, not natural P/dS math.
+
+## 2026-07-16 Four-Role P/dS Semantic Recheck
+
+- Status: `REJECT_SOURCE_SLOT_ABI_MAIN_SOURCE_RESTORED`.
+- The cross-wave probe now separates raw readback, role-source identity,
+  writer-self-read versus reader-cross-read MMAC, and direct-natural versus
+  matrix-roundtrip MMAC.
+- Transport controls pass at LDS bases `0` and `67584` across eight ABarrier
+  generations. The strongest control, writer self-read MMAC versus reader
+  cross-wave read MMAC, is exact in
+  `/zys/shaobo/runs/dkv_pds_split64_probe_20260716_203807`.
+- A non-degenerate direct-natural versus matrix-roundtrip MMAC oracle fails
+  roughly 64K half outputs per case. The pair is deterministic across roles,
+  but it permutes natural MMAC output ownership. The earlier `errors=0` result
+  was a false positive caused by its RHS.
+- Writer `t=1`, legal f16 normal/trans readers, and four lane-local pack orders
+  do not recover equivalence. Prior 5-GEMM evidence also rejects
+  conversion1/2/4 and every natural operand-order/LIT/LTS combination.
+  `ds_mpermute_b64` is outside the no-permute contract. One native candidate
+  remains unresolved: f32 `m16x16 ds_write/read_matrix`, which accepts the
+  natural `Vec4F32` accumulator directly. It must pass a minimal finite
+  source-map and downstream-MMAC probe before the four-role design is closed.
+- The temporary four-role H1/S128 main kernel remains incorrect. Its best
+  writer-t1/normal-reader diagnostic reports `dk_max_abs=0.000490182`,
+  `dv_max_abs=0.0878637`, `pass=0` at
+  `/zys/shaobo/runs/dkv_four_role_writer_t1_reader_normal_h1s128_20260716_210505`.
+- Decision: remove the uncommitted four-role performance path and return to
+  the accepted direct-register P/dS chain. A future split is admissible only
+  with a newly documented native source-slot producer; do not retry writer
+  flags, reader shapes, lane-local packs, or waits.
+
+## 2026-07-16 f32 Matrix-Writer Native Candidate
+
+- Status: `DEFER_PMD_UNIMPLEMENTED_F32_DS_MATRIX`.
+- HCU/compiler evidence exposes a shape-aligned no-permute route:
+  natural `Vec4F32` MMAC output -> f32 m16x16 matrix writer -> normal/trans f32
+  reader -> lane-local fp16 conversion -> downstream MMAC.
+- Added focused source `probes/dkv_pds_f32_roundtrip_probe.cpp`. Static gates
+  pass with `private=0`, `sgpr=18`, `vgpr=45`, no spill/scratch/trap; ASM has
+  four f32 matrix writes, eight f32 matrix reads, and six MMAC instructions.
+- PMD aborts on the first f32 writer before any read or numerical comparison:
+  `fatal: Invalid opcode encountered: 0xd38b5007`. Run:
+  `/zys/shaobo/runs/dkv_pds_f32_roundtrip_probe_20260716_215919`.
+- The runner now writes PMD output without a live `tee` pipe, terminates the
+  probe by its unique executable path, and exits cleanly with no orphan PMD
+  process. A future supported run additionally requires
+  `any_semantic_pair=1`; merely completing all four candidates cannot pass.
+- This does not reject the architecture pairing or its source ownership. It
+  means the current PMD cannot validate it. Keep the probe for a future PMD,
+  but do not connect an untestable f32 path to the FA kernel. Current PMD work
+  resumes from the correct direct-register P/dS canonical.
+
+## 2026-07-16 Canonical dKV Restore After Four-Role Rejection
+
+- Status: `ACCEPT_RESTORE_VALIDATION`.
+- The rejected four-role implementation was removed before rebuild. Canonical
+  WDRA windows are restored to `14/16,221/240,221/240,8/16`.
+- Static gates pass with `private=0`, `sgpr=99`, `vgpr=128`, no spill/scratch.
+  H1/S128 and H1/S1024 causal correctness both pass; aggregate
+  `MMOP=131072`, `ldsBankConflict=0`.
+- H1/S1024 restore run:
+  `/zys/shaobo/runs/canonical_restore_20260716/dkv_mmac_correctness_20260716_214238`.
+  `firstWaveStartTick=3613610`, `lastWaveEndTick=45351670`, therefore
+  `kernel_ticks=41738060`; coissue success/fail is `39577/28247`.
+- This is a source-restoration certificate, not a new best claim. Resume
+  performance work from the immutable `3db4f38` direct-register baseline and
+  compare same-build candidates before promotion.

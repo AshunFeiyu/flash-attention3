@@ -2488,24 +2488,31 @@ dKV three-slot K/Q-static hybrid, 2026-07-15:
   pair-at-a-time, while group1 prepares two pairs before softmax/dV/dK.  This
   seeks real MMAC/VALU coissue with no empty delay and no additional barrier.
 
-dKV native P/dS handoff, 2026-07-15:
+dKV native P/dS handoff correction, 2026-07-16:
 
-- The missing native contract is now proven on PMD:
-  `natural P/dS F16x8 -> ds_write_matrix m32x16 alt0 ->
-  ds_read_matrix_trans mt16x32 alt0 -> dV/dK MMAC` is exact and bank-free.
-- Do not use the old source-slot rearrangement, ordinary LDS gather, or lane
-  permute in the canonical dKV path.  The earlier failure was a reader-shape
-  error, not an architecture limitation.
-- The next canonical experiment is the workbook-reviewed single-slot
-  two-stage conveyor.  One P/dS packet is 32KB; total steady LDS is 99,840B.
-  Consumer-G releases the slot after the matrix read retires, before its
-  dV/dK MMAC, so Consumer-S can publish packet t+1 during MMAC(t).
+- The previous exact result is retracted as a semantic proof. Its degenerate
+  RHS proved only that `ds_write_matrix -> ds_read_matrix` transports a stable
+  permutation across WDRA roles.
+- A hardened RHS shows that natural score/dP output and the writer source-slot
+  ABI are different. Cross-role readback and cross-role MMAC controls pass,
+  while direct-natural versus roundtrip MMAC fails roughly 64K outputs.
+- Writer flags, f16 reader shapes, and four lane-local pack orders are
+  exhausted. Prior 5-GEMM evidence closes operand order, LIT/LTS, and
+  conversion1/2/4. `ds_mpermute_b64` is outside the canonical contract. The
+  only unresolved no-permute candidate is the f32 m16x16 matrix roundtrip;
+  test it with a small source-map/MMAC probe before closing the topology.
+- The uncommitted four-role kernel is removed. Canonical dKV keeps P/dS in the
+  same consumer and feeds dV/dK directly in registers.
+- A final no-permute candidate remains documented but deferred: f32 m16x16
+  matrix write/read accepts the natural `Vec4F32` MMAC output. The focused
+  probe compiles cleanly, but current PMD aborts at its first writer with
+  `Invalid opcode 0xd38b5007`; it cannot be used in the validated mainline.
 
 dKV direction update, 2026-07-16:
 
-- Native P/dS layout is valid, but the high-VGPR cross-wave path is blocked by
-  PMD WDRA tracking (`read vgpr202 before writing`). Canonical source is
-  restored instead of carrying a model workaround.
+- This intermediate diagnosis is superseded. Splitting dV/dK removes the
+  high-VGPR PMD fatal and proves cross-wave transport, but the hardened oracle
+  rejects natural f16 P/dS source ownership. Canonical source stays restored.
 - Active design is workbook sheet `113_ConsumerSelfPrefetch`: producer waves
   load resident K/V once; each consumer group publishes and consumes its own
   Q/dO M32 double pages. Group0 prefetches before its current MMAC island and
@@ -2552,8 +2559,11 @@ dKV ABarrier tomography result and four-role successor, 2026-07-16:
   only; waves12-15 accumulate dK only. Splitting the old 128-accumulator
   Consumer-G into two 64-accumulator roles is the prerequisite for retrying
   the proven native P/dS matrix handoff.
-- That prerequisite now passes in the isolated split-output probe. The
+- The WDRA/resource prerequisite passes in the isolated split-output probe. The
   compiler recognizes four explicit WDRA branches with used/available VGPR
   `1/16,22/176,73/160,73/160`; metadata is private0/spill0/scratch0. Both
   ABarrier runs (LDS base 0 and 67,584) complete eight generations with zero
-  mismatch and bank0. Use `scripts/run_dkv_pds_split64_probe.sh` to reproduce.
+  mismatch and bank0. This is transport evidence only: the hardened semantic
+  oracle rejects natural P/dS source ownership, so the four-role main path is
+  not admissible. Use `scripts/run_dkv_pds_split64_probe.sh` only for isolated
+  transport/layout evidence.
