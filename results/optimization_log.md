@@ -13597,3 +13597,27 @@ Status: `ACCEPT_PROBE`
   correctness, exact `MMOP=131072`, ticks below canonical and higher MMAC
   active; otherwise revert.
 - Evidence: `/zys/sb/probes/dkv_qready_score_split_probe_20260717_184750`.
+
+## 2026-07-17 dKV Q-Ready Score-First Integration Rejected
+
+Status: `REJECT_STATS_OWNERSHIP_REGRESSION_SOURCE_RESTORED`
+
+- Implemented the one admitted integration from workbook sheet 138. P0 emits
+  independent QFilled tokens, P1 emits dO Filled tokens, consumers run the
+  complete score island after Q readiness and wait dO only before dP.
+- The kernel passes all hard gates: H1/S256 and H1/S1024 dK/dV correctness,
+  exact `MMOP=131072`, bank0, roles `14/242/242/8`, private0, SGPR91,
+  VGPR128, no spills or scratch.
+- A fresh same-build canonical control removes PMD noise. Candidate versus
+  canonical: ticks `75,828,935` versus `68,752,320` (`+10.29%`), MMAC active
+  `36.7340%` versus `40.0907%`, barrier `103,893.25` versus `79,233`, total
+  wait `45,638` versus `39,830.082`, and waitLgkm `32,793.5` versus
+  `27,063.5`. MMOP runtime stays close (`242,041` versus `241,074`), so the
+  active-time expansion is ownership/control latency rather than useful work.
+- Decision: reject before fullperf/XCU. Preserve candidate commit `7618762`,
+  revert with `b3b3c3d`, rebuild canonical remotely, and close this topology.
+  Do not retry tensor readiness splitting unless the early useful-work island
+  can be shown to exceed the added barrier plus first-use wait budget.
+- Evidence: candidate
+  `/zys/sb/qrs1024/dkv_mmac_correctness_20260717_191627`; canonical
+  `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`; workbook sheet 138.

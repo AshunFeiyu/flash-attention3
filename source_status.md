@@ -8444,3 +8444,19 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   `/zys/sb/probes/dkv_qready_score_split_probe_20260717_184750`.
 - Main source is still canonical. Next admitted change is one tensor-separated
   readiness integration; no consumer-published packet code returns.
+
+## 2026-07-17 Q-Ready Score-First Integration Rejected
+
+- Status: `REJECT_STATS_OWNERSHIP_REGRESSION_SOURCE_RESTORED`.
+- Experiment commit `7618762` splits Q/dO Filled tokens and schedules all 16
+  score MMACs before the first dO wait. Revert `b3b3c3d` removes it from the
+  canonical source.
+- Static/resource result: roles `14/242/242/8` in `16/244/244/8`, private0,
+  SGPR91, VGPR128, no spill/scratch. H1/S256 and H1/S1024 dK/dV pass, runtime
+  work is exact `MMOP=131072`, and `ldsBankConflict=0`.
+- Same-build H1/S1024 stats: canonical `68,752,320` ticks and `40.0907%`
+  MMAC active; candidate `75,828,935` and `36.7340%`. Candidate barrier is
+  `103,893.25` versus `79,233`; total wait is `45,638` versus `39,830.082`.
+- Fullperf/XCU is skipped by the stats gate. Remote canonical is rebuilt and
+  certified at `/zys/sb/canoncert/dkv_mmac_correctness_20260717_192047` and
+  `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`.

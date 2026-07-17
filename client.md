@@ -2885,3 +2885,45 @@ Skill Candidate: keep consumer publication off the joint heavy-role critical pat
 - Evidence: `/zys/sb/probes/dkv_qready_score_split_probe_20260717_184750`.
   This closes the old layout uncertainty; integration must still prove the
   full owner32 resource ledger, dK/dV golden, exact MMOP, and elapsed gain.
+
+## 2026-07-17 Q-Ready Score-First Main-Kernel Result
+
+- Status: `REJECT_STATS_OWNERSHIP_REGRESSION_SOURCE_RESTORED`.
+- The integration is legal and exact: H1/S256 and H1/S1024 dK/dV pass, exact
+  `MMOP=131072`, `ldsBankConflict=0`, and private/spill/scratch0. Candidate
+  branch use is `14/242/242/8` inside `16/244/244/8`; SGPR91/VGPR128.
+- Same-build H1/S1024 control rejects the schedule. Canonical-to-candidate
+  kernel ticks are `68,752,320 -> 75,828,935` (`+10.29%`) and MMAC active is
+  `40.0907% -> 36.7340%`. Barrier rises `79,233 -> 103,893.25`, total wait
+  rises `39,830.082 -> 45,638`, and waitLgkm rises
+  `27,063.5 -> 32,793.5`.
+- The score island starts after Q readiness, but the two extra Filled tokens
+  and dO first-use wait remain exposed. A mathematically earlier DAG node is
+  not useful overlap when its ownership protocol lengthens the same critical
+  epoch more than the early island covers.
+- Candidate source is retained only in commit `7618762` and removed by revert
+  `b3b3c3d`. Remote canonical rebuild passes roles `14/239/239/8`, metadata
+  gates, H1/S256 and H1/S1024 correctness, exact work, and bank0.
+- Evidence: candidate
+  `/zys/sb/qrs1024/dkv_mmac_correctness_20260717_191627`, same-build control
+  `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`, workbook sheet 138.
+
+Skill Candidate: charge readiness splitting to the covered useful-work window
+
+- Trigger / 适用场景: one fused producer-ready token is split by tensor so a
+  consumer can start an earlier GEMM before all operands are ready.
+- Rule / 可复用规则: promote readiness splitting only when the measured early
+  useful-work window exceeds the added token sequencing, first-use wait, and
+  phase-state cost. Compare same-build barrier and total wait, not only the
+  earlier first MMAC timestamp.
+- Evidence / 证据: Q-ready score-first keeps exact four-GEMM work and passes
+  all hard gates, but adds `24,660.25` barrier cycles and `5,807.918` total
+  wait cycles; ticks regress `10.29%` and MMAC active loses `3.36` points.
+- Boundary / 适用边界: splitting remains promising when the early island is
+  substantially longer or the later tensor arrives without another consumer
+  wait. It is not ruled out for independent LDS pages with no reconvergence.
+- Counterexample / 反例或不适用情况: a shared token can be preferable when
+  both tensors complete close together and one wait amortizes their protocol.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` during a serialized
+  skill-consolidation pass.
