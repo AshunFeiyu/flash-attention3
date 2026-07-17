@@ -98,8 +98,9 @@ struct OptimizationTargets {
 };
 
 struct WdraResourceWindows {
-    static constexpr int kProducerVgprs = 16;
-    static constexpr int kConsumerVgprs = 240;
+    static constexpr int kProducerKqVgprs = 16;
+    static constexpr int kConsumerVgprs = 244;
+    static constexpr int kProducerVdoutVgprs = 8;
     static constexpr int kConsumerTargetVgprs = 200;
     static constexpr int kConsumerCeilingVgprs = 248;
 };

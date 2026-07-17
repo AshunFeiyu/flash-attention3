@@ -8529,3 +8529,18 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   exactly matches tag `best/dkv-owner32-40p09-20260717`; remote rebuild passes
   roles `14/239/239/8`, metadata gates, and H1/S256 dK/dV correctness at
   `/zys/sb/canonical_after_read8_reject/dkv_mmac_correctness_20260718_002545`.
+
+## 2026-07-18 Read8 Early-Used Release Rejected
+
+- Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_EXPERIMENT_BRANCH`.
+- The candidate issues all eight final Q/dO matrix reads, waits lgkm0, arrives
+  QUsed/DoutUsed, then executes MMAC16. It changes no math, LDS layout, token
+  count, or output ownership.
+- Roles `14/239/239/8` fit `16/244/244/8`; metadata is private0, SGPR56,
+  VGPR128, spill0/scratch0. H1/S256 and H1/S1024 pass with exact MMOP and bank0.
+- H1/S1024 is `73,276,840` ticks, `37.8104%` MMAC active,
+  `waitLgkm=27,795.2`, `barrier=99,844.5`, and coissue
+  `36,247/31,586`. It loses to canonical and to symmetric read8.
+- Earlier legal Used does not reduce next-generation readiness. Producer work
+  was already mostly hidden and now competes with the consumer window. Skip
+  fullperf/XCU and restore the owner32 canonical source.

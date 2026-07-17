@@ -3044,3 +3044,43 @@ Skill Candidate: bound larger operand islands by packet release latency
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` in a serialized
   consolidation pass.
+
+## 2026-07-18 Read8 Early-Used Release
+
+- Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_EXPERIMENT_BRANCH`.
+- Workbook sheet 142 proved the legal lifetime boundary and tested exactly
+  `read8(Q/dO) -> lgkm0 -> QUsed/DoutUsed arrive -> MMAC16`. After lgkm0 all
+  dV/dK RHS fragments are VGPR-resident, so the early overwrite is correct.
+- Static and correctness gates pass: roles `14/239/239/8` in windows
+  `16/244/244/8`, private0, SGPR56, VGPR128, spill/scratch0, S256/S1024 dK/dV
+  PASS, exact `MMOP=131072`, and bank0.
+- H1/S1024 rejects the route: canonical / symmetric read8 / early Used ticks
+  are `68,752,320 / 72,833,215 / 73,276,840`; MMAC active is
+  `40.0907% / 38.1220% / 37.8104%`. Early Used raises barrier from the
+  symmetric result `98,169.8 -> 99,844.5` and waitLgkm
+  `27,345.2 -> 27,795.2`.
+- The producer wait was mostly hidden, as canonical SQTT already indicated.
+  Waking producers eight MMAC earlier introduces MLS/BPS/LDS competition but
+  does not make the next Filled generation ready sooner. Legal earlier release
+  is therefore not equivalent to shorter critical-path ownership.
+- Skip fullperf/XCU by the stats gate. Preserve the experiment in git and
+  restore the owner32 canonical source.
+
+Skill Candidate: distinguish release time from next-generation readiness
+
+- Trigger / 适用场景: consumer can legally release an LDS page earlier after
+  latching all operands into registers.
+- Rule / 可复用规则: predict and measure the next Filled completion, not only
+  the Used arrival. Early release is useful only if producer work completes
+  inside otherwise idle slots and does not contend with the consumer's MMAC or
+  next LDS-read window.
+- Evidence / 证据: legal release moves eight MMAC earlier, but barrier grows
+  `1,674.7`, ticks regress another `443,625`, and MMAC active loses `0.3116`
+  points versus symmetric read8.
+- Boundary / 适用边界: early release can still win when producer latency is
+  exposed and the producer uses an independent memory/issue path.
+- Counterexample / 反例或不适用情况: canonical producer waits are largely
+  overlapped, so waking them earlier creates competition rather than coverage.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` in a serialized
+  consolidation pass.

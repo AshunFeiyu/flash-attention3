@@ -805,22 +805,20 @@ __device__ __forceinline__ void owner32_dv_dk_read_mmac(
         ins::zero_f16x8(zero_f16);
     }
 
-    Owner32DvDkSources src;
-    read_owner32_dv_dk_sources<Tile, 0, MBlockBase>(lds, page, src);
-
-    ins::wait_lgkm(0);
-    ins::raise_priority_2();
-    owner32_dv_dk_mmac_four_out<FirstAccum, 0>(
-        p_frag, ds_frag, src, dv_acc, dk_acc, zero_f16);
-
-    read_owner32_dv_dk_sources<Tile, 2, MBlockBase>(lds, page, src);
+    Owner32DvDkSources src0;
+    Owner32DvDkSources src1;
+    read_owner32_dv_dk_sources<Tile, 0, MBlockBase>(lds, page, src0);
+    read_owner32_dv_dk_sources<Tile, 2, MBlockBase>(lds, page, src1);
     ins::wait_lgkm(0);
     if constexpr (ReleaseHalf) {
         arrive_dout_half_used<Wdra, Half>();
         arrive_q_half_used<Wdra, Half>();
     }
+    ins::raise_priority_2();
+    owner32_dv_dk_mmac_four_out<FirstAccum, 0>(
+        p_frag, ds_frag, src0, dv_acc, dk_acc, zero_f16);
     owner32_dv_dk_mmac_four_out<FirstAccum, 4>(
-        p_frag, ds_frag, src, dv_acc, dk_acc, zero_f16);
+        p_frag, ds_frag, src1, dv_acc, dk_acc, zero_f16);
     ins::lower_priority();
 }
 
@@ -1067,7 +1065,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
     const int q_tiles = seqlen / Tile::kBlockMq;
 
     if (wave_id < 4) {
-        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerKqVgprs);
         const int lane = static_cast<int>(threadIdx.x % 64);
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
@@ -1096,7 +1094,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
             softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
-        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVdoutVgprs);
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         producer_vdout_loop<Tile, Bar>(

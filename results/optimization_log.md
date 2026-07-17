@@ -13735,3 +13735,27 @@ Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_SOURCE_RESTORED`
   `30d44d8`; restored canonical certification
   `/zys/sb/canonical_after_read8_reject/dkv_mmac_correctness_20260718_002545`;
   workbook sheet 141.
+
+## 2026-07-18 Read8 Early-Used Release Rejected
+
+Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_EXPERIMENT_BRANCH`
+
+- Workbook sheet 142 isolates packet lifetime from read batching. Both
+  consumers issue eight Q/dO reads, wait lgkm0, arrive QUsed/DoutUsed before
+  any dV/dK MMAC, then execute one MMAC16 island. This is the earliest legal
+  release because no later instruction reads Q/dO LDS.
+- Hard gates pass: roles `14/239/239/8` in `16/244/244/8`, private0, SGPR56,
+  VGPR128, spill/scratch0, S256/S1024 correctness PASS, exact MMOP, and bank0.
+- H1/S1024 candidate is `73,276,840` ticks and `37.8104%` MMAC active versus
+  canonical `68,752,320 / 40.0907%` and symmetric read8
+  `72,833,215 / 38.1220%`. Candidate barrier is `99,844.5`, waitLgkm
+  `27,795.2`, and coissue `36,247/31,586`.
+- Decision: reject before fullperf/XCU. The canonical producer waits are not
+  the dispatch critical path; earlier wakeup adds producer LDS/BPS contention
+  without completing the next Filled sooner. Commit the negative result and
+  restore canonical.
+- Evidence: S256
+  `/zys/sb/read8_early_used_s256/dkv_mmac_correctness_20260718_004827`;
+  S1024 `/zys/sb/read8_early_used_s1024/`
+  `dkv_mmac_correctness_20260718_005038`; baseline
+  `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`; workbook sheet 142.
