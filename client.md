@@ -11,6 +11,9 @@ evidence are required before any performance claim.
 
 ## Current Environment
 
+- PMD/compiler issue registry:
+  `docs/perf_model_pmd_compiler_issues.md`. Check it before attributing a PMD
+  panic, invalid opcode, WDRA register warning, or codegen regression.
 - Active PMD host: `vega20`, reached through jump host `192.168.162.67` with
   `ssh -F work/ssh/liuchang_common_config liuchang-common`.
 - Active container is `zys1`; the remote repository for this branch is
