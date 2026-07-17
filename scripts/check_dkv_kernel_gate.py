@@ -74,16 +74,24 @@ def main() -> int:
             failures, "missing_resident_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*8\)",
             failures, "missing_resident_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ0Filled,\s*8\)",
-            failures, "missing_q0_combined_filled_count")
+    require(perf_source, r"s_ebarrier_arrive_cnt\([\s\S]{0,160}?"
+            r"DkvEBarrierLedger::kQ0Filled",
+            failures, "missing_q0_ebarrier_filled_arrive")
+    require(perf_source, r"s_ebarrier_sync_cnt\([\s\S]{0,160}?"
+            r"DkvEBarrierLedger::kQ0Filled",
+            failures, "missing_q0_ebarrier_filled_wait")
     require(perf_source, r"s_abarrier_init\(Bar::kQ0Used,\s*8\)",
             failures, "missing_q0_used_count")
     forbid(perf_source, r"s_abarrier_init\(Bar::kDout0Filled,",
            failures, "dout0_filled_should_share_q0_filled")
     require(perf_source, r"s_abarrier_init\(Bar::kDout0Used,\s*8\)",
             failures, "missing_dout0_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ1Filled,\s*8\)",
-            failures, "missing_q1_combined_filled_count")
+    require(perf_source, r"s_ebarrier_arrive_cnt\([\s\S]{0,160}?"
+            r"DkvEBarrierLedger::kQ1Filled",
+            failures, "missing_q1_ebarrier_filled_arrive")
+    require(perf_source, r"s_ebarrier_sync_cnt\([\s\S]{0,160}?"
+            r"DkvEBarrierLedger::kQ1Filled",
+            failures, "missing_q1_ebarrier_filled_wait")
     require(perf_source, r"s_abarrier_init\(Bar::kQ1Used,\s*8\)",
             failures, "missing_q1_used_count")
     forbid(perf_source, r"s_abarrier_init\(Bar::kDout1Filled,",
@@ -120,6 +128,10 @@ def main() -> int:
     require(source, r"raise_priority_2", failures, "missing_s_setprio_helper")
     require(contract, r"struct\s+DkvBarrierLedger", failures,
             "missing_barrier_ledger")
+    require(contract, r"struct\s+DkvEBarrierLedger", failures,
+            "missing_ebarrier_ledger")
+    require(contract, r"kFilledParticipants\s*=\s*16", failures,
+            "missing_ebarrier_filled_participants")
     require(contract, r"kDkvPathReferenceCorrectness\s*=\s*1", failures,
             "missing_reference_path_contract")
     require(contract, r"kDkvPathCanonicalDkv", failures,
@@ -151,6 +163,8 @@ def main() -> int:
     forbid(source, r"kRawFilled|kRawUsed|kTransFilled|kTransUsed|"
            r"kKv0Filled|kKv0Used|kKv1Filled|kKv1Used",
            failures, "legacy_fragment_barrier_tokens")
+    forbid(source, r"seq_q_half_filled", failures,
+           "filled_handoff_must_not_use_abarrier_seq")
     forbid(source, r"kPacketAFilled|kPacketAUsed|kPacketBFilled|kPacketBUsed",
            failures, "single_packet_probe_barrier_tokens")
     forbid(source + contract,
@@ -183,6 +197,10 @@ def main() -> int:
     if asm:
         require(asm, r"s_set_vgpr_size", failures, "asm_missing_s_set_vgpr_size")
         require(asm, r"s_abarrier", failures, "asm_missing_s_abarrier")
+        require(asm, r"s_ebarrier_arrive", failures,
+                "asm_missing_s_ebarrier_arrive")
+        require(asm, r"s_ebarrier_sync", failures,
+                "asm_missing_s_ebarrier_sync")
         require(asm, r"matrix_load_32x32_b16.*bps.*lds", failures,
                 "asm_missing_matrix_load_bps_lds")
         require(asm, r"ds_read_matrix_.*format", failures,

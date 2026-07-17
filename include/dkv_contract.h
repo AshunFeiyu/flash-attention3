@@ -80,13 +80,18 @@ struct ActiveDkvTile {
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
     static constexpr int kResidentUsed = 1;
-    static constexpr int kQ0Filled = 2;
-    static constexpr int kQ0Used = 3;
-    static constexpr int kDout0Used = 4;
-    static constexpr int kQ1Filled = 5;
-    static constexpr int kQ1Used = 6;
-    static constexpr int kDout1Used = 7;
-    static constexpr int kAllDone = 8;
+    static constexpr int kQ0Used = 2;
+    static constexpr int kDout0Used = 3;
+    static constexpr int kQ1Used = 4;
+    static constexpr int kDout1Used = 5;
+    static constexpr int kAllDone = 6;
+};
+
+struct DkvEBarrierLedger {
+    static constexpr int kInit = 0;
+    static constexpr int kQ0Filled = 1;
+    static constexpr int kQ1Filled = 2;
+    static constexpr int kFilledParticipants = 16;
 };
 
 struct OptimizationTargets {
