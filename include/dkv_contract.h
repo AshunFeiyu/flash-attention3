@@ -10,6 +10,7 @@ inline constexpr int kDkvPathCanonicalDkv = 5;
 struct ActiveDkvTile {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = 128;
+    static constexpr int kRawPacketMq = 64;
     static constexpr int kNkPerConsumerWave = 32;
     static constexpr int kConsumerGroups = 2;
     static constexpr int kWavesPerConsumerGroup = 4;
@@ -40,10 +41,10 @@ struct ActiveDkvTile {
     static constexpr int kHalfBytes = 2;
     static constexpr int kKvBytes =
         2 * kResidentNk * kHeadDim * kHalfBytes;
-    static constexpr int kRawBuffers = 1;
+    static constexpr int kRawBuffers = 2;
     static constexpr int kRawBytes =
-        kRawBuffers * 2 * kBlockMq * kHeadDim * kHalfBytes;
-    static constexpr int kSidecarRows = kBlockMq;
+        kRawBuffers * 2 * kRawPacketMq * kHeadDim * kHalfBytes;
+    static constexpr int kSidecarRows = kRawPacketMq;
     static constexpr int kSidecarMaxLog2Base = 0;
     static constexpr int kSidecarInvSumBase =
         kSidecarMaxLog2Base + kSidecarRows;
@@ -68,6 +69,8 @@ struct ActiveDkvTile {
 
     static_assert(kBlockMq % 32 == 0,
                   "dKV clean tile consumes Mq in pairs of M16 blocks");
+    static_assert(kBlockMq == 2 * kRawPacketMq,
+                  "two M64 packets must preserve the canonical Mq128 tile");
     static_assert(kResidentNk == 256, "dKV owner32 lane expects Nk=256");
     static_assert(kKvBytes == kLdsBudgetBytes,
                   "resident K/V startup epoch must occupy exactly 128KB");
@@ -80,13 +83,11 @@ struct ActiveDkvTile {
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
     static constexpr int kResidentUsed = 1;
-    static constexpr int kQ0Filled = 2;
-    static constexpr int kQ0Used = 3;
-    static constexpr int kDout0Used = 4;
-    static constexpr int kQ1Filled = 5;
-    static constexpr int kQ1Used = 6;
-    static constexpr int kDout1Used = 7;
-    static constexpr int kAllDone = 8;
+    static constexpr int kSlot0Filled = 2;
+    static constexpr int kSlot0Used = 3;
+    static constexpr int kSlot1Filled = 4;
+    static constexpr int kSlot1Used = 5;
+    static constexpr int kAllDone = 6;
 };
 
 struct OptimizationTargets {
@@ -98,10 +99,14 @@ struct OptimizationTargets {
 };
 
 struct WdraResourceWindows {
-    static constexpr int kProducerVgprs = 16;
-    static constexpr int kConsumerVgprs = 240;
+    static constexpr int kProducerVgprs = 8;
+    static constexpr int kConsumer0Vgprs = 252;
+    static constexpr int kConsumer1Vgprs = 244;
     static constexpr int kConsumerTargetVgprs = 200;
-    static constexpr int kConsumerCeilingVgprs = 248;
+    static constexpr int kConsumerCeilingVgprs = 256;
+    static_assert(2 * kProducerVgprs + kConsumer0Vgprs + kConsumer1Vgprs ==
+                      512,
+                  "per-SIMD WDRA window ledger must equal 512 VGPRs");
 };
 
 }  // namespace shaobo::fa3::bwd::dkv
