@@ -2927,3 +2927,38 @@ Skill Candidate: charge readiness splitting to the covered useful-work window
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` during a serialized
   skill-consolidation pass.
+
+## 2026-07-17 Native EBarrier Filled Experiment
+
+- Status: `REJECT_STATS_EBARRIER_SYNC_REGRESSION_SOURCE_RESTORED`.
+- The focused EBarrier handoff probe is a valid reusable instruction test:
+  eight producer waves use `arrive_cnt(id,16)`, eight consumers use
+  `sync_cnt(id,16)`, 16 generations pass exactly, and ticks improve 34.8%.
+- The same primitive substitution in canonical owner32 dKV passes H1/S256 and
+  H1/S1024 correctness, exact MMOP, bank0, and resource gates, but regresses
+  kernel ticks 6.62% and lowers MMAC active by 2.35 points. Barrier cycles
+  increase by about 30% even though ABarrier seq/xor control is removed.
+- Candidate code is preserved in commit `b045492` and reverted by `a2b772c`;
+  the probe remains in `9f76bf1`. The active source is canonical again.
+- Evidence: workbook sheet `139_DKV_EBarrierFilled`, probe
+  `/zys/sb/probes/dkv_ebarrier_filled_20260717_200723`, candidate
+  `/zys/sb/ebf1024/dkv_mmac_correctness_20260717_201545`, and same-build
+  control `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`.
+
+Skill Candidate: distinguish rendezvous microbench wins from heavy-role wins
+
+- Trigger / 适用场景: replacing an ownership primitive after a focused
+  producer/consumer handoff benchmark shows a large speedup.
+- Rule / 可复用规则: require integration stats with the real WDRA windows and
+  long-lived accumulators. A faster rendezvous primitive is not a kernel win
+  if its consumer sync expands the active/barrier window of heavy roles.
+- Evidence / 证据: the EBarrier probe improves 34.8%, while canonical dKV
+  regresses 6.62%; MMOP runtime stays flat and barrier grows 30.0%.
+- Boundary / 适用边界: the probe remains authoritative for instruction
+  correctness and simple handoffs, but not for scheduler interaction inside
+  a high-VGPR consumer loop.
+- Counterexample / 反例或不适用情况: a thin consumer or a one-shot handoff
+  outside the steady MMAC loop may still benefit directly from EBarrier.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` during the next
+  serialized skill-consolidation pass.

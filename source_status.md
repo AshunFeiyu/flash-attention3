@@ -1,5 +1,28 @@
 # Source Status
 
+## 2026-07-17 Current Canonical After EBarrier Filled Rejection
+
+Status: `CANONICAL_RESTORED_EBARRIER_PROBE_RETAINED`.
+
+- Canonical dKV source is restored to the ready-only-priority owner32 path:
+  16 waves, `Mq=128,Nk=256,D=128`, resident K/V, two M64 Q/dO Filled
+  ABarrier epochs, independent Q/dO Used ownership, four exact GEMMs, and
+  native MLS/BPS + `ds_read_matrix` + MMAC matrix traffic.
+- The direct EBarrier Filled candidate is preserved only in commit `b045492`
+  and removed by `a2b772c`. The isolated correctness/performance probe remains
+  in commit `9f76bf1`.
+- Candidate hard gates pass, but same-build H1/S1024 performance does not:
+  `68,752,320 -> 73,301,410` ticks and `40.0907% -> 37.7371%` MMAC active;
+  barrier expands `79,233 -> 102,989.25`. Fullperf/XCU is intentionally
+  skipped by the stats gate.
+- Remote canonical rebuild reports roles `14/239/239/8`, private0, SGPR56,
+  VGPR128, spill/scratch0; H1/S256 dK/dV correctness and bank0 are certified
+  at `/zys/sb/ebrstr/dkv_mmac_correctness_20260717_202936`.
+- Workbook sheet `139_DKV_EBarrierFilled`, the ledger, and optimization log
+  retain the positive probe boundary and the negative mainline result. Do not
+  reintroduce EBarrier Filled handoff into canonical without a topology that
+  avoids heavy-consumer reconvergence.
+
 ## 2026-07-15 Current Canonical dKV After Immediate-Offset Promotion
 
 Status: `ACCEPT_MICRO_FULLPERF_XCU`.

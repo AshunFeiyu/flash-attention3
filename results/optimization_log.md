@@ -13621,3 +13621,39 @@ Status: `REJECT_STATS_OWNERSHIP_REGRESSION_SOURCE_RESTORED`
 - Evidence: candidate
   `/zys/sb/qrs1024/dkv_mmac_correctness_20260717_191627`; canonical
   `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`; workbook sheet 138.
+
+## 2026-07-17 dKV Native EBarrier Filled Handoff Rejected
+
+Status: `REJECT_STATS_EBARRIER_SYNC_REGRESSION_SOURCE_RESTORED`
+
+- Workbook sheet `139_DKV_EBarrierFilled` tested one primitive-level change:
+  replace the two Q/dO Filled ABarrier generations with native asymmetric
+  EBarrier handoff. Eight producer waves execute `arrive_cnt(id,16)` after
+  BPS/vbcnt and eight heavy consumers execute `sync_cnt(id,16)`. Four GEMMs,
+  owner32 output ownership, Used ABarriers, LDS layout, tile, and stores stay
+  unchanged.
+- The focused 16-generation probe passes exact data, bank0, private/spill/
+  scratch0 and no PMD panic. Its interval improves
+  `11,551,540 -> 7,532,980` ticks (`-34.8%`), proving the HCU grammar and LDS
+  visibility for this producer/consumer pattern.
+- Integrated static and correctness gates also pass: roles `14/239/239/8`,
+  private0, SGPR54, VGPR128, spill/scratch0, H1/S256 and H1/S1024 dK/dV
+  golden PASS, exact `MMOP=131072`, and `ldsBankConflict=0`.
+- Same-build H1/S1024 stats reject the route. Kernel ticks regress
+  `68,752,320 -> 73,301,410` (`+6.62%`), MMAC active falls
+  `40.0907% -> 37.7371%`, barrier rises `79,233 -> 102,989.25`, and
+  waitLgkm rises `27,063.5 -> 28,833`. MMOP runtime is essentially flat
+  (`241,074 -> 241,280.5`), so the loss is a longer active/control window,
+  not added mathematical work.
+- Decision: skip fullperf/XCU by the stats gate. Preserve the candidate in
+  commit `b045492`, remove it with revert `a2b772c`, and retain probe commit
+  `9f76bf1`. Direct EBarrier Filled replacement is closed for this owner32
+  topology; EBarrier remains valid for isolated asymmetric handoffs where its
+  sync does not reconverge eight high-VGPR consumers inside the critical loop.
+- Restored remote canonical rebuild passes source and metadata gates with
+  roles `14/239/239/8`, private0, SGPR56, VGPR128, spill/scratch0; H1/S256
+  correctness and bank0 pass at
+  `/zys/sb/ebrstr/dkv_mmac_correctness_20260717_202936`.
+- Evidence: probe `/zys/sb/probes/dkv_ebarrier_filled_20260717_200723`;
+  candidate `/zys/sb/ebf1024/dkv_mmac_correctness_20260717_201545`;
+  canonical `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`.
