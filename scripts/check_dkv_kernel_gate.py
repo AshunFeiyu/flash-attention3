@@ -52,10 +52,10 @@ def main() -> int:
             "missing_canonical_path")
     require(perf_source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_wdra16_attribute")
-    require(perf_source, r"producer_resident_tile", failures,
-            "missing_startup_resident_producer")
-    require(perf_source, r"publish_consumer_packet", failures,
-            "missing_consumer_packet_publisher")
+    require(perf_source, r"producer_kq_loop", failures,
+            "missing_16wave_kq_producer")
+    require(perf_source, r"producer_vdout_loop", failures,
+            "missing_16wave_vdout_producer")
     require(perf_source, r"wave_id\s*<\s*4", failures,
             "missing_producer_a_branch")
     require(perf_source, r"wave_id\s*<\s*8", failures,
@@ -67,30 +67,43 @@ def main() -> int:
     require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVgprs\)",
             failures,
             "missing_producer_vgpr_window")
-    require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumer0Vgprs\)",
-            failures, "missing_consumer0_vgpr_window")
-    require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumer1Vgprs\)",
-            failures, "missing_consumer1_vgpr_window")
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)",
+            failures,
+            "missing_consumer_vgpr_window")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentFilled,\s*8\)",
             failures, "missing_resident_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*8\)",
             failures, "missing_resident_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kSlot0Filled,\s*8\)",
-            failures, "missing_slot0_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kSlot0Used,\s*8\)",
-            failures, "missing_slot0_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kSlot1Filled,\s*8\)",
-            failures, "missing_slot1_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kSlot1Used,\s*8\)",
-            failures, "missing_slot1_used_count")
-    require(perf_source, r"publish_mq_packet<Tile,\s*Slot>", failures,
-            "missing_consumer_qdo_packet_publisher")
-    require(perf_source, r"publish_sidecar_packet_to_lds<Tile,\s*Slot>",
-            failures, "missing_consumer_sidecar_publisher")
-    require(perf_source, r"arrive_slot_used<Wdra,\s*Slot>\(\)",
-            failures, "missing_slot_lifetime_release")
-    require(perf_source, r"packet\s*<\s*q_packets", failures,
-            "missing_packet_stream_loop")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ0Filled,\s*8\)",
+            failures, "missing_q0_combined_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ0Used,\s*8\)",
+            failures, "missing_q0_used_count")
+    forbid(perf_source, r"s_abarrier_init\(Bar::kDout0Filled,",
+           failures, "dout0_filled_should_share_q0_filled")
+    require(perf_source, r"s_abarrier_init\(Bar::kDout0Used,\s*8\)",
+            failures, "missing_dout0_used_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ1Filled,\s*8\)",
+            failures, "missing_q1_combined_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ1Used,\s*8\)",
+            failures, "missing_q1_used_count")
+    forbid(perf_source, r"s_abarrier_init\(Bar::kDout1Filled,",
+           failures, "dout1_filled_should_share_q1_filled")
+    require(perf_source, r"s_abarrier_init\(Bar::kDout1Used,\s*8\)",
+            failures, "missing_dout1_used_count")
+    require(perf_source, r"publish_mq_half_tile<Tile,\s*0>", failures,
+            "missing_qdo_half0_publisher")
+    require(perf_source, r"publish_mq_half_tile<Tile,\s*1>", failures,
+            "missing_qdo_half1_publisher")
+    require(perf_source, r"publish_sidecar_half_tile_to_lds<Tile,\s*0>",
+            failures, "missing_sidecar_half0_publisher")
+    require(perf_source, r"publish_sidecar_half_tile_to_lds<Tile,\s*1>",
+            failures, "missing_sidecar_half1_publisher")
+    require(perf_source, r"arrive_dout_half_used<Wdra,\s*Half>\(\)",
+            failures, "missing_dout_half_lifetime_release")
+    require(perf_source, r"arrive_q_half_used<Wdra,\s*Half>\(\)",
+            failures, "missing_q_half_lifetime_release")
+    require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
+            "missing_q_tile_stream_loop")
     require(perf_source,
             r"abarrier_try_wait<false>\(Bar::kAllDone",
             failures,
@@ -119,10 +132,8 @@ def main() -> int:
             "missing_owner32_contract")
     require(contract, r"kResidentNk\s*=", failures,
             "missing_resident_nk_contract")
-    require(contract, r"kRawPacketMq\s*=\s*64", failures,
-            "missing_active_m64_packet_contract")
-    require(contract, r"kRawBuffers\s*=\s*2", failures,
-            "missing_active_rawbuffer2_contract")
+    require(contract, r"kRawBuffers\s*=\s*1", failures,
+            "missing_active_rawbuffer1_contract")
     require(source, r"softmax_ds_owner32_causal_exact_tile", failures,
             "missing_causal_exact_tile_helper")
     require(contract, r"kOverlayRawOnResidentKv", failures,
@@ -156,9 +167,6 @@ def main() -> int:
            "owner16_route_must_not_remain")
     forbid(source, r"dkv_barrier_tomography", failures,
            "canonical_source_must_not_include_tomography")
-    forbid(source, r"producer_kq_loop|producer_vdout_loop|"
-           r"kQ0Filled|kQ0Used|kDout0Used|kQ1Filled|kQ1Used|kDout1Used",
-           failures, "legacy_producer_owned_raw_conveyor")
     forbid(source, r"ds_read_b32|ds_bpermute|ds_permute", failures,
            "non_native_matrix_workaround_in_main_source")
     forbid(source + contract,
