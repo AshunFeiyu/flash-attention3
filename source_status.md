@@ -8532,7 +8532,7 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 
 ## 2026-07-18 Read8 Early-Used Release Rejected
 
-- Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_EXPERIMENT_BRANCH`.
+- Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_SOURCE_RESTORED`.
 - The candidate issues all eight final Q/dO matrix reads, waits lgkm0, arrives
   QUsed/DoutUsed, then executes MMAC16. It changes no math, LDS layout, token
   count, or output ownership.
@@ -8543,4 +8543,9 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   `36,247/31,586`. It loses to canonical and to symmetric read8.
 - Earlier legal Used does not reduce next-generation readiness. Producer work
   was already mostly hidden and now competes with the consumer window. Skip
-  fullperf/XCU and restore the owner32 canonical source.
+  fullperf/XCU; experiment commit `566921a` preserves the rejected source and
+  the active tree is restored to owner32 canonical. Static/metadata gates pass
+  at `14/239/239/8`, private0, SGPR56, VGPR128, spill/scratch0; H1/S256 dK/dV
+  correctness and bank0 are recertified at
+  `/zys/sb/canonical_after_early_used_reject/`
+  `dkv_mmac_correctness_20260718_010507`.

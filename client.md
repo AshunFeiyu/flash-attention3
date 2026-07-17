@@ -3047,7 +3047,7 @@ Skill Candidate: bound larger operand islands by packet release latency
 
 ## 2026-07-18 Read8 Early-Used Release
 
-- Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_EXPERIMENT_BRANCH`.
+- Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_SOURCE_RESTORED`.
 - Workbook sheet 142 proved the legal lifetime boundary and tested exactly
   `read8(Q/dO) -> lgkm0 -> QUsed/DoutUsed arrive -> MMAC16`. After lgkm0 all
   dV/dK RHS fragments are VGPR-resident, so the early overwrite is correct.
@@ -3063,8 +3063,11 @@ Skill Candidate: bound larger operand islands by packet release latency
   Waking producers eight MMAC earlier introduces MLS/BPS/LDS competition but
   does not make the next Filled generation ready sooner. Legal earlier release
   is therefore not equivalent to shorter critical-path ownership.
-- Skip fullperf/XCU by the stats gate. Preserve the experiment in git and
-  restore the owner32 canonical source.
+- Skip fullperf/XCU by the stats gate. Experiment commit `566921a` preserves
+  the negative evidence; the active source is restored to owner32 canonical
+  and recertified at
+  `/zys/sb/canonical_after_early_used_reject/`
+  `dkv_mmac_correctness_20260718_010507`.
 
 Skill Candidate: distinguish release time from next-generation readiness
 

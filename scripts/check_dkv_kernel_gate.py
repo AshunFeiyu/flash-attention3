@@ -64,12 +64,9 @@ def main() -> int:
             "missing_consumer1_branch")
     require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*1>",
             failures, "missing_consumer1_branch")
-    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerKqVgprs\)",
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVgprs\)",
             failures,
-            "missing_kq_producer_vgpr_window")
-    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVdoutVgprs\)",
-            failures,
-            "missing_vdout_producer_vgpr_window")
+            "missing_producer_vgpr_window")
     require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)",
             failures,
             "missing_consumer_vgpr_window")
@@ -105,19 +102,6 @@ def main() -> int:
             failures, "missing_dout_half_lifetime_release")
     require(perf_source, r"arrive_q_half_used<Wdra,\s*Half>\(\)",
             failures, "missing_q_half_lifetime_release")
-    require(
-        perf_source,
-        r"Owner32DvDkSources\s+src0;\s*Owner32DvDkSources\s+src1;"
-        r"[\s\S]{0,500}read_owner32_dv_dk_sources<Tile,\s*0,\s*MBlockBase>"
-        r"[\s\S]{0,260}read_owner32_dv_dk_sources<Tile,\s*2,\s*MBlockBase>"
-        r"[\s\S]{0,180}wait_lgkm\(0\)"
-        r"[\s\S]{0,260}arrive_dout_half_used<Wdra,\s*Half>\(\)"
-        r"[\s\S]{0,160}arrive_q_half_used<Wdra,\s*Half>\(\)"
-        r"[\s\S]{0,180}raise_priority_2\(\)"
-        r"[\s\S]{0,300}owner32_dv_dk_mmac_four_out<FirstAccum,\s*0>"
-        r"[\s\S]{0,300}owner32_dv_dk_mmac_four_out<FirstAccum,\s*4>",
-        failures,
-        "missing_read8_early_used_mmac16_schedule")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
     require(perf_source,
@@ -150,12 +134,6 @@ def main() -> int:
             "missing_resident_nk_contract")
     require(contract, r"kRawBuffers\s*=\s*1", failures,
             "missing_active_rawbuffer1_contract")
-    require(contract, r"kProducerKqVgprs\s*=\s*16", failures,
-            "missing_kq_producer_vgpr_contract")
-    require(contract, r"kConsumerVgprs\s*=\s*244", failures,
-            "missing_read8_consumer_vgpr_contract")
-    require(contract, r"kProducerVdoutVgprs\s*=\s*8", failures,
-            "missing_vdout_producer_vgpr_contract")
     require(source, r"softmax_ds_owner32_causal_exact_tile", failures,
             "missing_causal_exact_tile_helper")
     require(contract, r"kOverlayRawOnResidentKv", failures,

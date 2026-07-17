@@ -13738,7 +13738,7 @@ Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_SOURCE_RESTORED`
 
 ## 2026-07-18 Read8 Early-Used Release Rejected
 
-Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_EXPERIMENT_BRANCH`
+Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_SOURCE_RESTORED`
 
 - Workbook sheet 142 isolates packet lifetime from read batching. Both
   consumers issue eight Q/dO reads, wait lgkm0, arrive QUsed/DoutUsed before
@@ -13752,10 +13752,12 @@ Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_EXPERIMENT_BRANCH`
   `27,795.2`, and coissue `36,247/31,586`.
 - Decision: reject before fullperf/XCU. The canonical producer waits are not
   the dispatch critical path; earlier wakeup adds producer LDS/BPS contention
-  without completing the next Filled sooner. Commit the negative result and
-  restore canonical.
+  without completing the next Filled sooner. Experiment commit `566921a`
+  preserves the negative result; active source is restored to canonical.
 - Evidence: S256
   `/zys/sb/read8_early_used_s256/dkv_mmac_correctness_20260718_004827`;
   S1024 `/zys/sb/read8_early_used_s1024/`
   `dkv_mmac_correctness_20260718_005038`; baseline
-  `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`; workbook sheet 142.
+  `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`; restored canonical
+  `/zys/sb/canonical_after_early_used_reject/`
+  `dkv_mmac_correctness_20260718_010507`; workbook sheet 142.
