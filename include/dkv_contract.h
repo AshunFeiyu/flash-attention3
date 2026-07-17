@@ -81,12 +81,14 @@ struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
     static constexpr int kResidentUsed = 1;
     static constexpr int kQ0Filled = 2;
-    static constexpr int kQ0Used = 3;
-    static constexpr int kDout0Used = 4;
-    static constexpr int kQ1Filled = 5;
-    static constexpr int kQ1Used = 6;
-    static constexpr int kDout1Used = 7;
-    static constexpr int kAllDone = 8;
+    static constexpr int kDout0Filled = 3;
+    static constexpr int kQ0Used = 4;
+    static constexpr int kDout0Used = 5;
+    static constexpr int kQ1Filled = 6;
+    static constexpr int kDout1Filled = 7;
+    static constexpr int kQ1Used = 8;
+    static constexpr int kDout1Used = 9;
+    static constexpr int kAllDone = 10;
 };
 
 struct OptimizationTargets {
@@ -98,10 +100,14 @@ struct OptimizationTargets {
 };
 
 struct WdraResourceWindows {
-    static constexpr int kProducerVgprs = 16;
-    static constexpr int kConsumerVgprs = 240;
+    static constexpr int kProducer0Vgprs = 16;
+    static constexpr int kConsumerVgprs = 244;
+    static constexpr int kProducer1Vgprs = 8;
     static constexpr int kConsumerTargetVgprs = 200;
     static constexpr int kConsumerCeilingVgprs = 248;
+    static_assert(kProducer0Vgprs + 2 * kConsumerVgprs + kProducer1Vgprs ==
+                      512,
+                  "per-SIMD WDRA window ledger must equal 512 VGPRs");
 };
 
 }  // namespace shaobo::fa3::bwd::dkv

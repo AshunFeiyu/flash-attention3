@@ -44,8 +44,12 @@ def main() -> int:
             "missing_canonical_dkv_kernel")
     require(perf_source, r"consumer_dkv_mmac_loop", failures,
             "missing_dkv_mmac_consumer_loop")
-    require(perf_source, r"score_dp_mmac_owner32", failures,
-            "missing_owner32_score_dp_mmac")
+    require(perf_source, r"score_mmac_owner32", failures,
+            "missing_owner32_score_mmac")
+    require(perf_source, r"dp_mmac_owner32", failures,
+            "missing_owner32_dp_mmac")
+    require(perf_source, r"wait_dout_half_filled", failures,
+            "missing_dout_first_use_wait")
     require(perf_source, r"owner32_dv_dk_read_mmac", failures,
             "missing_owner32_dv_dk_mmac")
     require(source, r"kDkvPathCanonicalDkv", failures,
@@ -64,9 +68,12 @@ def main() -> int:
             "missing_consumer1_branch")
     require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*1>",
             failures, "missing_consumer1_branch")
-    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVgprs\)",
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducer0Vgprs\)",
             failures,
-            "missing_producer_vgpr_window")
+            "missing_producer0_vgpr_window")
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducer1Vgprs\)",
+            failures,
+            "missing_producer1_vgpr_window")
     require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)",
             failures,
             "missing_consumer_vgpr_window")
@@ -74,20 +81,20 @@ def main() -> int:
             failures, "missing_resident_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*8\)",
             failures, "missing_resident_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ0Filled,\s*8\)",
-            failures, "missing_q0_combined_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ0Filled,\s*4\)",
+            failures, "missing_q0_tensor_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kDout0Filled,\s*4\)",
+            failures, "missing_dout0_tensor_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kQ0Used,\s*8\)",
             failures, "missing_q0_used_count")
-    forbid(perf_source, r"s_abarrier_init\(Bar::kDout0Filled,",
-           failures, "dout0_filled_should_share_q0_filled")
     require(perf_source, r"s_abarrier_init\(Bar::kDout0Used,\s*8\)",
             failures, "missing_dout0_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ1Filled,\s*8\)",
-            failures, "missing_q1_combined_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kQ1Filled,\s*4\)",
+            failures, "missing_q1_tensor_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kDout1Filled,\s*4\)",
+            failures, "missing_dout1_tensor_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kQ1Used,\s*8\)",
             failures, "missing_q1_used_count")
-    forbid(perf_source, r"s_abarrier_init\(Bar::kDout1Filled,",
-           failures, "dout1_filled_should_share_q1_filled")
     require(perf_source, r"s_abarrier_init\(Bar::kDout1Used,\s*8\)",
             failures, "missing_dout1_used_count")
     require(perf_source, r"publish_mq_half_tile<Tile,\s*0>", failures,
