@@ -72,9 +72,8 @@ def main() -> int:
             failures, "missing_c1_canonical_vgpr_window")
     require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVdoutVgprs\)",
             failures, "missing_vdout_producer_vgpr_window")
-    require(perf_source, r"constexpr bool kBatchDvDkSources\s*=\s*"
-            r"ConsumerGroup\s*==\s*0", failures,
-            "missing_c0_only_dvdk_read8_schedule")
+    require(perf_source, r"constexpr bool kBatchDvDkSources\s*=\s*true",
+            failures, "missing_symmetric_dvdk_read8_schedule")
     require(perf_source,
             r"if constexpr \(BatchDvDkSources\)[\s\S]{0,500}"
             r"read_owner32_dv_dk_sources<Tile, 0, MBlockBase>"
@@ -147,10 +146,10 @@ def main() -> int:
             "missing_active_rawbuffer1_contract")
     require(contract, r"kProducerKqVgprs\s*=\s*16", failures,
             "missing_p0_16_vgpr_contract")
-    require(contract, r"kConsumer0Vgprs\s*=\s*248", failures,
-            "missing_c0_248_vgpr_contract")
-    require(contract, r"kConsumer1Vgprs\s*=\s*240", failures,
-            "missing_c1_240_vgpr_contract")
+    require(contract, r"kConsumer0Vgprs\s*=\s*244", failures,
+            "missing_c0_244_vgpr_contract")
+    require(contract, r"kConsumer1Vgprs\s*=\s*244", failures,
+            "missing_c1_244_vgpr_contract")
     require(contract, r"kProducerVdoutVgprs\s*=\s*8", failures,
             "missing_p1_8_vgpr_contract")
     require(source, r"softmax_ds_owner32_causal_exact_tile", failures,

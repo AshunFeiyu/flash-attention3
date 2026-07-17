@@ -998,7 +998,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     const int owner_k_base = k_base + owner_nblock32 * 32;
     const int owner_krow0 = owner_k_base + lane_n;
     const float softmax_scale_log2 = softmax_scale * kLog2E;
-    constexpr bool kBatchDvDkSources = ConsumerGroup == 0;
+    constexpr bool kBatchDvDkSources = true;
 
     ins::F32x4 dv_acc[16];
     ins::F32x4 dk_acc[16];

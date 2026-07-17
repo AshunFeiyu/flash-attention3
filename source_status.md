@@ -8509,3 +8509,21 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   packet lifetime forces the asymmetric consumers to reconverge.
 - Fullperf/XCU is skipped. One symmetric read8 stats discriminator is allowed
   before restoring the tagged canonical.
+
+## 2026-07-18 Symmetric Read8 Discriminator Rejected
+
+- Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_EXPERIMENT_BRANCH`.
+- Both consumers batch the two dV/dK source groups into read8/wait/MMAC16.
+  Static roles are `14/239/239/8` inside `16/244/244/8`; metadata is private0,
+  SGPR56, VGPR128, spill0/scratch0. H1/S256 and H1/S1024 dK/dV pass, MMOP is
+  exactly `131072`, and `ldsBankConflict=0`.
+- H1/S1024 regresses from canonical `68,752,320 / 40.0907%` to
+  `72,833,215 / 38.1220%` ticks/MMAC active. C0-only is intermediate at
+  `70,769,335 / 39.3111%`.
+- Symmetric waitLgkm is `27,345.2`, close to canonical `27,063.5`, but barrier
+  expands to `98,169.8` from `79,233`. The route is therefore limited by
+  delayed shared Q/dO page release, not merely asymmetric scheduling or local
+  first-use wait.
+- Fullperf/XCU is skipped by the stats gate. Workbook sheet 141 and the ledger
+  retain the negative evidence; the active source must return to tag
+  `best/dkv-owner32-40p09-20260717`.

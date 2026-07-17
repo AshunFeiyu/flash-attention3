@@ -3002,3 +3002,43 @@ Skill Candidate: distinguish rendezvous microbench wins from heavy-role wins
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` during the next
   serialized skill-consolidation pass.
+
+## 2026-07-18 Symmetric dV/dK Read8 Discriminator
+
+- Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_EXPERIMENT_BRANCH`.
+- Both consumers use `8 ds_read_matrix -> one wait -> 16 MMAC` for dV/dK.
+  The experiment preserves the four GEMMs, owner32 outputs, LDS layout,
+  ABarrier token count, exact `MMOP=131072`, and bank0.
+- Static and correctness gates pass: roles `14/239/239/8` in symmetric
+  windows `16/244/244/8`, private0, SGPR56, VGPR128, spill/scratch0, and both
+  H1/S256 and H1/S1024 dK/dV PASS.
+- H1/S1024 canonical / C0-only / symmetric results are:
+  - kernel ticks: `68,752,320 / 70,769,335 / 72,833,215`;
+  - MMAC active: `40.0907% / 39.3111% / 38.1220%`;
+  - waitLgkm: `27,063.5 / 28,632 / 27,345.2`;
+  - barrier: `79,233 / 92,030.2 / 98,169.8`.
+- Symmetry recovers some local lgkm wait but makes the shared ownership epoch
+  longer. This disproves the idea that the C0-only loss was caused primarily
+  by consumer asymmetry: batching dV/dK sources itself keeps both consumers
+  away from the shared Q/dO release point long enough to expand ABarrier time.
+- Skip fullperf/XCU by the stats gate. Preserve the negative result in git and
+  workbook sheet 141, then restore the tagged canonical source.
+
+Skill Candidate: bound larger operand islands by packet release latency
+
+- Trigger / 适用场景: matrix reads and MMACs are batched into a longer island
+  while both heavy consumers share an LDS packet lifetime.
+- Rule / 可复用规则: include delayed packet release in the island cost model.
+  A lower local lgkm wait is not a win when the longer consumer island delays
+  the shared Used/Filled reconvergence and increases dispatch barrier time.
+- Evidence / 证据: symmetric read8 lowers waitLgkm versus C0-only by
+  `1,286.8`, but raises barrier another `6,139.6`, regresses canonical ticks
+  by `5.94%`, and lowers MMAC active by `1.9687` percentage points.
+- Boundary / 适用边界: a longer island can still win with independent operand
+  pages or no release dependency on the peer consumer.
+- Counterexample / 反例或不适用情况: the accepted score/dP read8 island was
+  attached to a different lifetime and improved ticks; island size alone is
+  not the decision variable.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` in a serialized
+  consolidation pass.

@@ -13710,3 +13710,25 @@ Status: `REJECT_STATS_EXPERIMENT_BRANCH`
 - Next discriminator is symmetric read8 on both groups. It separates the cost
   of read batching from the cost of forced group asymmetry; it is not a new
   topology or phase stack.
+
+## 2026-07-18 Symmetric dV/dK Read8 Rejected
+
+Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_EXPERIMENT_BRANCH`
+
+- Both heavy consumers use the same read8/wait/MMAC16 schedule. The code keeps
+  one canonical kernel and changes only dV/dK operand-read scheduling.
+- Hard gates pass: roles `14/239/239/8` in `16/244/244/8`, private0, SGPR56,
+  VGPR128, spill/scratch0, H1/S256 and H1/S1024 correctness PASS, exact
+  `MMOP=131072`, and `ldsBankConflict=0`.
+- H1/S1024 canonical / asymmetric / symmetric results:
+  `68,752,320 / 70,769,335 / 72,833,215` kernel ticks and
+  `40.0907% / 39.3111% / 38.1220%` MMAC active. Symmetric coissue is
+  `36,485/31,631`, waitLgkm `27,345.2`, and barrier `98,169.8`.
+- Decision: reject before fullperf/XCU. Symmetry does not cure the route;
+  batching delays the shared Q/dO Used boundary. Restore the tagged canonical
+  and do not enlarge dV/dK read islands again without an independent page or a
+  packet-release lifetime change.
+- Evidence: S256
+  `/zys/sb/symread8_s256/dkv_mmac_correctness_20260718_001019`; S1024
+  `/zys/sb/symread8_s1024/dkv_mmac_correctness_20260718_001108`; baseline
+  `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`; workbook sheet 141.
