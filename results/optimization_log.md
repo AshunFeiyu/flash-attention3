@@ -13491,3 +13491,35 @@ Status: `REJECT_FULLPERF_WAIT_REDISTRIBUTION_SOURCE_RESTORED`
 - Evidence: `/zys/shaobo_runs/o32groupfilled_detached_20260717_0650/`,
   `/zys/shaobo_runs/o32groupfilled_fullperf_detached_20260717/`, local XCU
   `work/o32groupfilled_fullperf_20260717/`, and workbook sheet 133.
+
+## 2026-07-17 dKV Owner32 Joint Q+dO Payload Stripe Rejected
+
+Status: `REJECT_FULLPERF_TICKS_AND_COISSUE_REGRESSION_SOURCE_RESTORED`
+
+- Workbook sheet `134_DKV_JointPayloadStripe` tested the remaining runnable
+  producer-topology hypothesis. Both producer groups published equal Q+dO row
+  stripes plus 32 sidecar rows, while four GEMMs, consumer ownership, native
+  matrix reads, MMAC islands, LDS addresses, and output stores stayed fixed.
+- Static and correctness gates pass: roles `14/239/239/14`, private0,
+  `sgpr=60`, `vgpr=128`, no spill/scratch, 128KB LDS, bank0, exact
+  `MMOP=131072`, and dK/dV PASS at H1/S256 and H1/S1024.
+- Stats-only is misleadingly positive: same-method ticks move
+  `69,942,145 -> 69,378,400` (`-0.81%`). Authoritative fullperf rejects the
+  candidate: `69,053,530 -> 69,655,950` (`+0.87%`) and MMAC active falls
+  `39.9590% -> 39.7597%`.
+- XCU explains the loss. Producer ABarrier cycles rise
+  `18,034/17,710 -> 18,130/17,782`, consumer0 rises `4,129 -> 4,801`,
+  MMAC-vs-VALU bins fall `55 -> 47`, and MMAC-vs-MMAC bins rise `40 -> 44`.
+  Both producer groups now carry the slower dO path; balancing issued payload
+  does not reduce `max(readiness_i)`, and the joint Used boundary reconverges
+  both roles.
+- Decision: reject and restore ready-only-priority canonical. Do not retry
+  equal Q+dO striping. The evidence closes payload balancing, token
+  merge/split, unilateral priority, and consumer Filled-splitting as local
+  solutions to the 60% target.
+- Evidence: `/zys/shaobo_runs/o32joint_payload_s256/`,
+  `/zys/shaobo_runs/o32joint_payload_s1024/`,
+  `/zys/shaobo_runs/o32joint_payload_fullperf/`, XCU
+  `/zys/shaobo_runs/o32joint_payload_xcu_20260717/`, canonical restore smoke
+  `/zys/shaobo_runs/o32canonical_restore_after_joint_reject/`
+  `dkv_mmac_correctness_20260717_083510`, and workbook sheet 134.

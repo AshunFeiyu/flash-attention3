@@ -8368,3 +8368,21 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - Failed code is removed. Local git source is clean; remote canonical rebuild
   passes roles `14/239/239/8`, private0, SGPR56/VGPR128, spill0/scratch0.
   Workbook sheet `133_DKV_GroupFilledStagger` is the governing evidence.
+
+## 2026-07-17 Owner32 Joint Q+dO Payload Stripe Result
+
+- Status: `REJECT_FULLPERF_TICKS_AND_COISSUE_REGRESSION_SOURCE_RESTORED`.
+- Equal Q+dO producer stripes pass correctness and all resource gates, but
+  fullperf regresses `69,053,530 -> 69,655,950` ticks (`+0.87%`) and MMAC
+  active falls `39.9590% -> 39.7597%`.
+- XCU disproves the readiness hypothesis: producer ABarrier time increases on
+  both sides, consumer0 wait rises `672` cycles, MMAC-vs-VALU bins fall by
+  eight, and MMAC-vs-MMAC collisions rise by four. Equal payload count is not
+  equal readiness because both stripes inherit dO memory latency and still
+  reconverge at a joint Used lifetime.
+- Candidate source is removed locally and remotely. Keep the accepted
+  ready-only-priority behavior from `28c8ab9`; workbook sheet 134 and the
+  fullperf/XCU run roots retain the negative evidence. The restored remote
+  binary passes source/metadata gates and H1/S256 dK/dV correctness in
+  `/zys/shaobo_runs/o32canonical_restore_after_joint_reject/`
+  `dkv_mmac_correctness_20260717_083510`.

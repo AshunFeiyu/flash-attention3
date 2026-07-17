@@ -2768,3 +2768,35 @@ Skill Candidate: detect ABarrier wait redistribution
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` in the next serialized
   skill-consolidation pass.
+
+dKV owner32 joint Q+dO payload-stripe result, 2026-07-17:
+
+- Rejected after fullperf/XCU. Both producer groups issue equal Q+dO plus
+  sidecar payload and pass every correctness/resource gate, but fullperf ticks
+  regress `0.87%` and MMAC active falls to `39.7597%`.
+- The sampled role waits and consumer pairing both worsen. Balancing the
+  number of producer instructions does not balance readiness when both roles
+  now inherit the same slow dO path and reconverge at one Used lifetime.
+- Candidate source is removed; ready-only-priority canonical remains active.
+  Workbook sheet 134 and `/zys/shaobo_runs/o32joint_payload_*` retain evidence.
+
+Skill Candidate: distinguish producer payload balance from readiness balance
+
+- Trigger / 适用场景: multiple producer wave groups jointly complete one
+  ABarrier Filled token and a redesign attempts to equalize their load work.
+- Rule / 可复用规则: optimize measured completion time and
+  `max(readiness_i)`, not instruction count per producer. Account for tensor-
+  specific memory latency and the later Used reconvergence before predicting
+  overlap.
+- Evidence / 证据: workbook sheet 134; fullperf ticks
+  `69,053,530 -> 69,655,950`; active `39.9590% -> 39.7597%`; producer ABarrier
+  `18,034/17,710 -> 18,130/17,782`; MMAC-vs-VALU `55 -> 47`.
+- Boundary / 适用边界: applies when producers share a completion or reuse
+  boundary. Fully independent pages and token lifetimes may benefit from equal
+  payload if their measured completion times actually converge.
+- Counterexample / 反例或不适用情况: equal-cost on-chip producers with no
+  common slow tensor and no later reconvergence can use static instruction
+  balance as a reasonable first model, still subject to trace validation.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` in the next serialized
+  skill-consolidation pass.
