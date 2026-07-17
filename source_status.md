@@ -8483,3 +8483,18 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - Fullperf/XCU is skipped by the stats gate. Remote canonical is rebuilt and
   certified at `/zys/sb/canoncert/dkv_mmac_correctness_20260717_192047` and
   `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`.
+
+## 2026-07-17 M128 Page Ping-Pong Closed
+
+- Status: `REJECT_RESOURCE_SOURCE_RESTORED`.
+- Root cause of the partial-V candidate is confirmed: q1 dP reread V
+  dblocks1-3 from LDS after the two M128 raw pages had overwritten resident
+  K/V. q0 and dV were exact; page-base/immediate dual-view probing is exact
+  and bank0.
+- A one-page V-resident control restores correctness but regresses H1/S1024
+  to `77,781,340` ticks and about `38.5%` MMAC active.
+- Full K/V register latch reaches branch use `5/248/248/1` but metadata is
+  private108B/vgpr_spill108/ScratchSize108. It fails the no-spill gate and is
+  not executed in PMD.
+- Active source must remain the committed owner32 M64 two-slot canonical.
+  The M128 experiment is evidence only in workbook sheet 140 and the ledger.

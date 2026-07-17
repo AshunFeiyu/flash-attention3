@@ -13657,3 +13657,33 @@ Status: `REJECT_STATS_EBARRIER_SYNC_REGRESSION_SOURCE_RESTORED`
 - Evidence: probe `/zys/sb/probes/dkv_ebarrier_filled_20260717_200723`;
   candidate `/zys/sb/ebf1024/dkv_mmac_correctness_20260717_201545`;
   canonical `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`.
+
+## 2026-07-17 M128 Page Ping-Pong Resource Closure
+
+Status: `REJECT_RESOURCE_SOURCE_RESTORED`
+
+- The first two-page M128 candidate passed dV but failed dK only after q0.
+  Numerical decomposition and IT trace proved q0 exact, q1 P exact, and q1 dS
+  wrong. The root cause was not page addressing: consumers latched all K but
+  only V dblock0, then reread V dblocks1-3 after `ResidentUsed` allowed both
+  64KB raw pages to overwrite resident K/V.
+- The enhanced page-base plus 32KB-immediate MLS/DS probe is exact for normal,
+  transpose and sidecar views with `ldsBankConflict=0`. This closes scalar
+  base/immediate encoding as a cause.
+- A correct one-page control retains V in 64KB LDS and overlays only K. It
+  passes H1/S256 and H1/S1024 dK/dV, bank0 and exact MMOP. H1/S1024 takes
+  `77,781,340` ticks with about `38.5%` MMAC active versus canonical
+  `68,752,320` and `40.0907%`; losing the M64 two-slot conveyor costs about
+  13.1%, so the route is not promoted.
+- Full K/V latch makes two M128 raw pages semantically correct in principle,
+  but fails the real resource gate. Compiler branch usage is
+  `5/248/248/1`, while metadata reports `private_segment=108B`,
+  `vgpr_spill_count=108`, and `ScratchSize=108`. The 248 count is post-spill,
+  not proof of no spill.
+- Resource lower bound explains the failure: resident K+V consumes 64 VGPR
+  per consumer and long-lived fp32 dK+dV accumulators consume 128 VGPR. The
+  remaining 56 VGPR cannot hold score+dP, Q+dO fragments, P+dS, addressing,
+  and barrier state; the compiled route is short by about 27 VGPR slots.
+- Decision: do not run PMD performance with spill. Restore the committed
+  canonical source. Workbook sheet `140_DKV_M128PagePingPong` records the
+  corrected lifetime proof and resource rejection.

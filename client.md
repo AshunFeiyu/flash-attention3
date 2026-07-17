@@ -2870,6 +2870,35 @@ Skill Candidate: keep consumer publication off the joint heavy-role critical pat
   `shaobo/references/shaobo-dkv-optimization-methods.md` during the next
   serialized skill-consolidation pass.
 
+## 2026-07-17 M128 Page Ping-Pong Decision
+
+- `REJECT_RESOURCE_SOURCE_RESTORED`: two physical M128 Q+dO pages require all
+  K/V fragments to survive LDS overlay. Full K/V latch compiles at the WDRA
+  ceiling only by allocating 108B private scratch; do not confuse branch
+  `248/248` with a no-spill result.
+- The canonical M64 two-slot route remains active. Its H1/S1024 control is
+  `68,752,320` ticks and `40.0907%` MMAC active.
+- The page-base + 32KB immediate dual-view probe is accepted instruction
+  evidence. The failed main-kernel layout is not retained.
+
+Skill Candidate: count persistent operands before admitting page overlay
+
+- Trigger / 适用场景: an LDS double-buffer design overwrites resident operands
+  and proposes latching them in consumer VGPRs.
+- Rule / 可复用规则: budget persistent operands plus output accumulators before
+  coding. Treat compiler branch VGPR use as post-allocation evidence only;
+  metadata private/spill/scratch is the authoritative hard gate.
+- Evidence / 证据: K+V requires 64 VGPR and dK+dV accumulators require 128;
+  the M128 two-page integration reports branch 248 but still spills 108B.
+- Boundary / 适用边界: this rejection applies to owner32 with simultaneous
+  fp32 dK+dV accumulation. Smaller output ownership or phased accumulators
+  may change the ledger but must account for added traffic/recomputation.
+- Counterexample / 反例或不适用情况: the one-page route retains V in LDS and
+  passes no-spill correctness, but loses the desired two-page overlap.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` in the next serialized
+  skill consolidation; do not edit the public skill in this task.
+
 ## 2026-07-17 Q-Ready Score-First Equivalence Probe
 
 - Status: `ACCEPT_PROBE`; workbook sheet `138_DKV_QReadyScoreFirst` admits the
