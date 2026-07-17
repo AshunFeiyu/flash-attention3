@@ -3005,7 +3005,7 @@ Skill Candidate: distinguish rendezvous microbench wins from heavy-role wins
 
 ## 2026-07-18 Symmetric dV/dK Read8 Discriminator
 
-- Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_EXPERIMENT_BRANCH`.
+- Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_SOURCE_RESTORED`.
 - Both consumers use `8 ds_read_matrix -> one wait -> 16 MMAC` for dV/dK.
   The experiment preserves the four GEMMs, owner32 outputs, LDS layout,
   ABarrier token count, exact `MMOP=131072`, and bank0.
@@ -3021,8 +3021,10 @@ Skill Candidate: distinguish rendezvous microbench wins from heavy-role wins
   longer. This disproves the idea that the C0-only loss was caused primarily
   by consumer asymmetry: batching dV/dK sources itself keeps both consumers
   away from the shared Q/dO release point long enough to expand ABarrier time.
-- Skip fullperf/XCU by the stats gate. Preserve the negative result in git and
-  workbook sheet 141, then restore the tagged canonical source.
+- Skip fullperf/XCU by the stats gate. The negative result is preserved in
+  commit `30d44d8` and workbook sheet 141. The tagged canonical source is
+  restored and recertified at
+  `/zys/sb/canonical_after_read8_reject/dkv_mmac_correctness_20260718_002545`.
 
 Skill Candidate: bound larger operand islands by packet release latency
 

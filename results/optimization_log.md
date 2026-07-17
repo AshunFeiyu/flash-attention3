@@ -13713,7 +13713,7 @@ Status: `REJECT_STATS_EXPERIMENT_BRANCH`
 
 ## 2026-07-18 Symmetric dV/dK Read8 Rejected
 
-Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_EXPERIMENT_BRANCH`
+Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_SOURCE_RESTORED`
 
 - Both heavy consumers use the same read8/wait/MMAC16 schedule. The code keeps
   one canonical kernel and changes only dV/dK operand-read scheduling.
@@ -13731,4 +13731,7 @@ Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_EXPERIMENT_BRANCH`
 - Evidence: S256
   `/zys/sb/symread8_s256/dkv_mmac_correctness_20260718_001019`; S1024
   `/zys/sb/symread8_s1024/dkv_mmac_correctness_20260718_001108`; baseline
-  `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`; workbook sheet 141.
+  `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`; experiment commit
+  `30d44d8`; restored canonical certification
+  `/zys/sb/canonical_after_read8_reject/dkv_mmac_correctness_20260718_002545`;
+  workbook sheet 141.

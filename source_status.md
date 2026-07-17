@@ -8512,7 +8512,7 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 
 ## 2026-07-18 Symmetric Read8 Discriminator Rejected
 
-- Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_EXPERIMENT_BRANCH`.
+- Status: `REJECT_STATS_BATCHING_OWNERSHIP_REGRESSION_SOURCE_RESTORED`.
 - Both consumers batch the two dV/dK source groups into read8/wait/MMAC16.
   Static roles are `14/239/239/8` inside `16/244/244/8`; metadata is private0,
   SGPR56, VGPR128, spill0/scratch0. H1/S256 and H1/S1024 dK/dV pass, MMOP is
@@ -8525,5 +8525,7 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   delayed shared Q/dO page release, not merely asymmetric scheduling or local
   first-use wait.
 - Fullperf/XCU is skipped by the stats gate. Workbook sheet 141 and the ledger
-  retain the negative evidence; the active source must return to tag
-  `best/dkv-owner32-40p09-20260717`.
+  retain the negative evidence in commit `30d44d8`. The active source now
+  exactly matches tag `best/dkv-owner32-40p09-20260717`; remote rebuild passes
+  roles `14/239/239/8`, metadata gates, and H1/S256 dK/dV correctness at
+  `/zys/sb/canonical_after_read8_reject/dkv_mmac_correctness_20260718_002545`.

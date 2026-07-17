@@ -788,7 +788,6 @@ __device__ __forceinline__ void owner32_dv_dk_mmac_four_out(
 template <typename Tile,
           typename Wdra,
           int MBlockBase,
-          bool BatchDvDkSources,
           bool FirstAccum,
           bool ReleaseHalf,
           int Half = 0>
@@ -806,37 +805,22 @@ __device__ __forceinline__ void owner32_dv_dk_read_mmac(
         ins::zero_f16x8(zero_f16);
     }
 
-    if constexpr (BatchDvDkSources) {
-        Owner32DvDkSources src0;
-        Owner32DvDkSources src1;
-        read_owner32_dv_dk_sources<Tile, 0, MBlockBase>(lds, page, src0);
-        read_owner32_dv_dk_sources<Tile, 2, MBlockBase>(lds, page, src1);
-        ins::wait_lgkm(0);
-        ins::raise_priority_2();
-        owner32_dv_dk_mmac_four_out<FirstAccum, 0>(
-            p_frag, ds_frag, src0, dv_acc, dk_acc, zero_f16);
-        if constexpr (ReleaseHalf) {
-            arrive_dout_half_used<Wdra, Half>();
-            arrive_q_half_used<Wdra, Half>();
-        }
-        owner32_dv_dk_mmac_four_out<FirstAccum, 4>(
-            p_frag, ds_frag, src1, dv_acc, dk_acc, zero_f16);
-    } else {
-        Owner32DvDkSources src;
-        read_owner32_dv_dk_sources<Tile, 0, MBlockBase>(lds, page, src);
-        ins::wait_lgkm(0);
-        ins::raise_priority_2();
-        owner32_dv_dk_mmac_four_out<FirstAccum, 0>(
-            p_frag, ds_frag, src, dv_acc, dk_acc, zero_f16);
-        read_owner32_dv_dk_sources<Tile, 2, MBlockBase>(lds, page, src);
-        ins::wait_lgkm(0);
-        if constexpr (ReleaseHalf) {
-            arrive_dout_half_used<Wdra, Half>();
-            arrive_q_half_used<Wdra, Half>();
-        }
-        owner32_dv_dk_mmac_four_out<FirstAccum, 4>(
-            p_frag, ds_frag, src, dv_acc, dk_acc, zero_f16);
+    Owner32DvDkSources src;
+    read_owner32_dv_dk_sources<Tile, 0, MBlockBase>(lds, page, src);
+
+    ins::wait_lgkm(0);
+    ins::raise_priority_2();
+    owner32_dv_dk_mmac_four_out<FirstAccum, 0>(
+        p_frag, ds_frag, src, dv_acc, dk_acc, zero_f16);
+
+    read_owner32_dv_dk_sources<Tile, 2, MBlockBase>(lds, page, src);
+    ins::wait_lgkm(0);
+    if constexpr (ReleaseHalf) {
+        arrive_dout_half_used<Wdra, Half>();
+        arrive_q_half_used<Wdra, Half>();
     }
+    owner32_dv_dk_mmac_four_out<FirstAccum, 4>(
+        p_frag, ds_frag, src, dv_acc, dk_acc, zero_f16);
     ins::lower_priority();
 }
 
@@ -889,7 +873,6 @@ __device__ __forceinline__ void store_dkv_owner32(
 template <typename Tile,
           typename Wdra,
           int MBlockBase,
-          bool BatchDvDkSources,
           bool FirstAccum,
           bool ReleaseHalf,
           int Half = 0>
@@ -922,13 +905,12 @@ __device__ __forceinline__ void consume_m16_owner32_causal_exact_tile(
         Tile,
         Wdra,
         MBlockBase,
-        BatchDvDkSources,
         FirstAccum,
         ReleaseHalf,
         Half>(lds, p_frag, ds_frag, dv_acc, dk_acc, page);
 }
 
-template <typename Tile, typename Wdra, bool BatchDvDkSources>
+template <typename Tile, typename Wdra>
 __device__ __forceinline__ void consume_q_tile_owner32_tail(
     __half* lds,
     int q_tile_base,
@@ -942,34 +924,27 @@ __device__ __forceinline__ void consume_q_tile_owner32_tail(
     ins::F32x4 (&dv_acc)[16],
     ins::F32x4 (&dk_acc)[16],
     int& q1_filled_phase) {
-    consume_m16_owner32_causal_exact_tile<
-        Tile, Wdra, 1, BatchDvDkSources, false, false>(
+    consume_m16_owner32_causal_exact_tile<Tile, Wdra, 1, false, false>(
         lds, q_tile_base + 16, owner_nblock32, owner_krow0, lane_col_group,
         softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc);
-    consume_m16_owner32_causal_exact_tile<
-        Tile, Wdra, 2, BatchDvDkSources, false, false>(
+    consume_m16_owner32_causal_exact_tile<Tile, Wdra, 2, false, false>(
         lds, q_tile_base + 32, owner_nblock32, owner_krow0, lane_col_group,
         softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc);
-    consume_m16_owner32_causal_exact_tile<
-        Tile, Wdra, 3, BatchDvDkSources, false, true, 0>(
+    consume_m16_owner32_causal_exact_tile<Tile, Wdra, 3, false, true, 0>(
         lds, q_tile_base + 48, owner_nblock32, owner_krow0, lane_col_group,
         softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc);
 
     wait_q_half_filled<Wdra, 1>(q1_filled_phase);
-    consume_m16_owner32_causal_exact_tile<
-        Tile, Wdra, 4, BatchDvDkSources, false, false>(
+    consume_m16_owner32_causal_exact_tile<Tile, Wdra, 4, false, false>(
         lds, q_tile_base + 64, owner_nblock32, owner_krow0, lane_col_group,
         softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc);
-    consume_m16_owner32_causal_exact_tile<
-        Tile, Wdra, 5, BatchDvDkSources, false, false>(
+    consume_m16_owner32_causal_exact_tile<Tile, Wdra, 5, false, false>(
         lds, q_tile_base + 80, owner_nblock32, owner_krow0, lane_col_group,
         softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc);
-    consume_m16_owner32_causal_exact_tile<
-        Tile, Wdra, 6, BatchDvDkSources, false, false>(
+    consume_m16_owner32_causal_exact_tile<Tile, Wdra, 6, false, false>(
         lds, q_tile_base + 96, owner_nblock32, owner_krow0, lane_col_group,
         softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc);
-    consume_m16_owner32_causal_exact_tile<
-        Tile, Wdra, 7, BatchDvDkSources, false, true, 1>(
+    consume_m16_owner32_causal_exact_tile<Tile, Wdra, 7, false, true, 1>(
         lds, q_tile_base + 112, owner_nblock32, owner_krow0, lane_col_group,
         softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc);
 }
@@ -998,7 +973,6 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     const int owner_k_base = k_base + owner_nblock32 * 32;
     const int owner_krow0 = owner_k_base + lane_n;
     const float softmax_scale_log2 = softmax_scale * kLog2E;
-    constexpr bool kBatchDvDkSources = true;
 
     ins::F32x4 dv_acc[16];
     ins::F32x4 dk_acc[16];
@@ -1020,7 +994,6 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
                 Tile,
                 Wdra,
                 0,
-                kBatchDvDkSources,
                 true,
                 false>(lds, q_tile_base, owner_nblock32, owner_krow0,
                        lane_col_group, softmax_scale, softmax_scale_log2, page,
@@ -1030,13 +1003,12 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
                 Tile,
                 Wdra,
                 0,
-                kBatchDvDkSources,
                 false,
                 false>(lds, q_tile_base, owner_nblock32, owner_krow0,
                         lane_col_group, softmax_scale, softmax_scale_log2,
                         page, kv_regs, dv_acc, dk_acc);
         }
-        consume_q_tile_owner32_tail<Tile, Wdra, kBatchDvDkSources>(
+        consume_q_tile_owner32_tail<Tile, Wdra>(
             lds, q_tile_base, owner_nblock32, owner_krow0, lane_col_group,
             softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc,
             q1_filled_phase);
@@ -1095,7 +1067,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
     const int q_tiles = seqlen / Tile::kBlockMq;
 
     if (wave_id < 4) {
-        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerKqVgprs);
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
         const int lane = static_cast<int>(threadIdx.x % 64);
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
@@ -1106,7 +1078,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
             q_tiles, wave_local, packed_sidecar, row_base, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 8) {
-        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumer0Vgprs);
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
         const int lane = static_cast<int>(threadIdx.x % 64);
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
@@ -1115,7 +1087,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
             softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 12) {
-        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumer1Vgprs);
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
         const int lane = static_cast<int>(threadIdx.x % 64);
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
@@ -1124,7 +1096,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
             softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
-        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVdoutVgprs);
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         producer_vdout_loop<Tile, Bar>(
