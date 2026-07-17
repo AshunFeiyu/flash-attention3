@@ -8418,9 +8418,11 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   barrier `114,103.5`, and waitLgkm `29,283.25`, versus canonical
   `69,053,530`, `40.0704%`, `80,555.5`, and `27,104.5`.
 - Fullperf/XCU is `SKIP_BY_GATE`. The failed integration is preserved in git
-  history and reverted from the active source. Do not retry M64 two-slot
-  ownership; the next design must preserve M128 ownership granularity or
-  reduce aggregate barrier generations.
+  history and reverted from the active source. Canonical already publishes
+  two M64 halves; the failure is not finer packet granularity. Do not retry a
+  topology where both heavy groups jointly publish and then jointly wait the
+  same packet. The next design must keep one useful path running while the
+  slower tensor becomes ready.
 - Remote isolated repo restore is certified: static roles `14/239/239/8`,
   private0, SGPR56, VGPR128, spill/scratch0, followed by exact H1/S256 dK/dV
   PASS and bank0 at `/zys/sb/rst/dkv_mmac_correctness_20260717_175601`.

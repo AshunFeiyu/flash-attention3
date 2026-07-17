@@ -2832,8 +2832,10 @@ Skill Candidate: distinguish producer payload balance from readiness balance
   correctness, exact `MMOP=131072`, `ldsBankConflict=0`, 128KB LDS, and
   private/spill/scratch0. Measured branch use is `1/252/243/1` inside WDRA
   windows `8/252/244/8`; the four per-SIMD windows sum to exactly 512.
-- The useful-work stagger did not amortize its ownership protocol. Splitting
-  one canonical M128 packet into two M64 Filled/Used generations raised
+- The useful-work stagger did not amortize its ownership protocol. Canonical
+  already has two M64 half-ready epochs; the candidate instead moved BPS,
+  vbcnt completion, Filled arrival, and Filled wait onto both heavy roles.
+  Making both consumers leave MMAC before each packet raised
   barrier cycles `80,555.5 -> 114,103.5`, waitLgkm `27,104.5 -> 29,283.25`,
   and kernel ticks `69,053,530 -> 72,709,000`; MMAC active fell
   `40.0704% -> 38.2341%`. Lower VALU/SCA did not recover the extra ownership
@@ -2846,23 +2848,24 @@ Skill Candidate: distinguish producer payload balance from readiness balance
   peak is still 128KB. Failed source is retained only in the experiment
   branch history and removed from the active tree.
 
-Skill Candidate: gate consumer-assisted publication by ownership epochs
+Skill Candidate: keep consumer publication off the joint heavy-role critical path
 
 - Trigger / 适用场景: high-VGPR consumer waves publish the next matrix packet
   while retaining long-lived GEMM accumulators.
-- Rule / 可复用规则: consumer-assisted publication is useful only if it keeps
-  or reduces the number of Filled/Used ownership generations per useful
-  M-tile. Before implementation, compare `packet_compute / ownership_epochs`;
-  reject a smaller packet when the barrier budget is not correspondingly
-  reduced.
+- Rule / 可复用规则: consumer-assisted publication is useful only when at
+  least one peer remains on useful MMAC/VALU while another role publishes and
+  the Filled token is complete before first use. Reject a design that makes
+  every heavy role execute BPS/vbcnt/arrive and then reconverge at the same
+  Filled wait, even if token count or VALU/SCA falls.
 - Evidence / 证据: H1/S1024 consumer conveyor run
   `/zys/shaobo_runs/dkv_consumer_conveyor_s1024_20260717_1740`; exact work and
   hard gates pass, but M128-to-two-M64 increases barrier by `33,548` cycles,
   ticks by `3,655,470`, and lowers MMAC active by `1.8363` percentage points.
-- Boundary / 适用边界: a consumer publisher may still win with a full M128
-  packet, an independently reusable page, or fewer aggregate arrivals/waits.
-- Counterexample / 反例或不适用情况: a long compute packet with one amortized
-  Filled/Used generation can hide publication without doubling ownership.
+- Boundary / 适用边界: a consumer publisher may still win when publication is
+  inserted inside a peer's long MMAC island, uses independent readiness, and
+  does not require all heavy groups to stop before the same packet.
+- Counterexample / 反例或不适用情况: tensor-separated Q/dO readiness can let
+  score MMAC proceed while dO publication completes, so only the dP path waits.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` during the next
   serialized skill-consolidation pass.

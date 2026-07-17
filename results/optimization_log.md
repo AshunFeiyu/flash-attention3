@@ -13572,8 +13572,10 @@ Status: `REJECT_STATS_BARRIER_REGRESSION_SOURCE_REMOVED`
   `200,272 -> 182,736` and SCA `36,408 -> 25,680`, proving instruction-count
   cleanup cannot pay for doubled ownership epochs.
 - Decision: skip fullperf/XCU by gate, commit the isolated hypothesis, revert
-  its source, and keep the probe plus workbook evidence. Next architecture
-  must retain one M128 ownership epoch or lower the total Filled/Used cost.
+  its source, and keep the probe plus workbook evidence. Canonical already
+  uses two M64 half-ready epochs; the actual failure is that all heavy roles
+  stop MMAC to publish and reconverge. The next architecture must let score or
+  another useful island run while the slower tensor is still being published.
 - Evidence:
   `/zys/shaobo_runs/dkv_consumer_conveyor_s1024_20260717_1740`, local stats
   `work/dkv_consumer_conveyor_s1024_20260717_1740/stats.txt`, and workbook
