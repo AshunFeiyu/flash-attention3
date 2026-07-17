@@ -8421,3 +8421,9 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   history and reverted from the active source. Do not retry M64 two-slot
   ownership; the next design must preserve M128 ownership granularity or
   reduce aggregate barrier generations.
+- Remote isolated repo restore is certified: static roles `14/239/239/8`,
+  private0, SGPR56, VGPR128, spill/scratch0, followed by exact H1/S256 dK/dV
+  PASS and bank0 at `/zys/sb/rst/dkv_mmac_correctness_20260717_175601`.
+  An earlier long-run-root attempt aborted inside `hsaKmtOpenKFD` before
+  dispatch; the short-root repeat proves this was PMD transport/path state,
+  not a kernel failure.
