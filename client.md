@@ -2738,6 +2738,27 @@ Skill Candidate: multi-producer last-arriver optimization
   `shaobo/references/shaobo-dkv-optimization-methods.md` in the next serialized
   skill-consolidation pass.
 
+## 2026-07-17 Consumer-Published BPS Live-Accumulator Probe
+
+- Status: `ACCEPT_PROBE_WITH_NONFATAL_PMD_WARNING`.
+- Workbook sheet `137_DKV_ConsumerConveyor` defines the next ownership route:
+  P0/P1 only publish resident K/V, while C0 publishes Q+sidecar and C1
+  publishes dO into a two-slot ring. The canonical `Mq128/Nk256/D128`, four
+  exact GEMMs, one Q/dO load per CTA, and owner32 stores remain fixed.
+- The focused probe keeps `32 x F32x4 = 128` accumulator scalars live in each
+  heavy consumer branch while C0/C1 issue `matrix_load_32x16 ... bps lds`,
+  jointly complete one Filled token, read both tensors with
+  `ds_read_matrix`, and release one Used token.
+- Static gates pass: branch usage `2/143/141/2` inside WDRA windows
+  `8/248/248/8`; metadata private0, SGPR24, VGPR128, spill/scratch0; native
+  BPS and matrix reads are present and `s_trap=0`.
+- PMD passes exactly: `fragment_errors=0`, `used_waiters=8`,
+  `acc_errors=0`, `ldsBankConflict=0`, no panic. Evidence:
+  `/zys/shaobo_runs/dkv_consumer_bps_live_probe_20260717_163627`.
+- PMD prints one nonfatal `read vgpr156 before writing` warning despite exact
+  outputs. Treat it as a register-init tracking observation and require the
+  integrated dKV correctness/resource gate to remain exact before promotion.
+
 dKV owner32 consumer-group Filled stagger result, 2026-07-17:
 
 - Rejected after fullperf/XCU. Independent C0/C1 Filled tokens preserve exact

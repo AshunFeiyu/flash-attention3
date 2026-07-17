@@ -13523,3 +13523,30 @@ Status: `REJECT_FULLPERF_TICKS_AND_COISSUE_REGRESSION_SOURCE_RESTORED`
   `/zys/shaobo_runs/o32joint_payload_xcu_20260717/`, canonical restore smoke
   `/zys/shaobo_runs/o32canonical_restore_after_joint_reject/`
   `dkv_mmac_correctness_20260717_083510`, and workbook sheet 134.
+
+## 2026-07-17 dKV Consumer-Published BPS Resource Gate
+
+Status: `ACCEPT_PROBE_WITH_NONFATAL_PMD_WARNING`
+
+- Hypothesis: a consumer can keep the canonical owner32 live accumulator
+  footprint while issuing BPS/MLS into LDS, so steady Q/dO publication can
+  move from thin producer roles into C0/C1 without spill or data corruption.
+- Probe shape: 16 waves with WDRA `8/248/248/8`; each heavy role keeps 128
+  FP32 accumulator scalars live. C0 publishes Q and C1 publishes dO; one
+  Filled count8 hands both tensors to all consumers and one Used count8 hands
+  the slot back to the thin roles.
+- Build result: branch use `2/143/141/2`; private0, SGPR24, VGPR128,
+  SGPR/VGPR spill0, scratch0; BPS, `ds_read_matrix`, resize, and ABarrier
+  opcodes present; no trap.
+- PMD result: exact fragment and accumulator sinks, all eight Used arrivals,
+  bank0, and no panic. Run:
+  `/zys/shaobo_runs/dkv_consumer_bps_live_probe_20260717_163627`.
+- Diagnostic note: an earlier probe check evaluated fragment errors before
+  storing the accumulator sink. ASM reused the first accumulator VGPR for the
+  check temporary, producing exactly 511 false accumulator mismatches. Moving
+  the sink before the check proves the intended live interval and passes.
+- One nonfatal PMD `read vgpr156 before writing` warning remains despite exact
+  data. It is tracked as PMD register-init evidence and is not permission to
+  waive integrated correctness.
+- Decision: proceed to one canonical consumer-assisted two-slot integration
+  on the isolated branch; preserve the probe as the instruction/resource gate.

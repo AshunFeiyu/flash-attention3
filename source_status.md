@@ -8386,3 +8386,19 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   binary passes source/metadata gates and H1/S256 dK/dV correctness in
   `/zys/shaobo_runs/o32canonical_restore_after_joint_reject/`
   `dkv_mmac_correctness_20260717_083510`.
+
+## 2026-07-17 Consumer-Assisted Conveyor Probe
+
+- Status: `ACCEPT_PROBE_WITH_NONFATAL_PMD_WARNING`; canonical dKV source is
+  still unchanged.
+- New isolated probe and runner:
+  `probes/dkv_consumer_bps_live_probe.cpp` and
+  `scripts/run_dkv_consumer_bps_live_probe.sh`.
+- Compiler windows are `2/8,143/248,141/248,2/8`; symbol metadata is
+  private0, SGPR24, VGPR128, SGPR/VGPR spill0, scratch0.
+- PMD result is exact with bank0 and no panic:
+  `fragment_errors=0 used_waiters=8 acc_errors=0 pass=1` at
+  `/zys/shaobo_runs/dkv_consumer_bps_live_probe_20260717_163627`.
+- A nonfatal `read vgpr156 before writing` warning remains in PMD. Main-kernel
+  integration is allowed only as an isolated branch and must re-pass dK/dV
+  golden, metadata, bank, MMOP, stats, and SQTT gates.
