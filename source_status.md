@@ -8402,3 +8402,22 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - A nonfatal `read vgpr156 before writing` warning remains in PMD. Main-kernel
   integration is allowed only as an isolated branch and must re-pass dK/dV
   golden, metadata, bank, MMOP, stats, and SQTT gates.
+
+## 2026-07-17 Consumer-Assisted M64 Conveyor Integration
+
+- Status: `REJECT_STATS_BARRIER_REGRESSION_SOURCE_REMOVED`.
+- The integrated main kernel uses two M64 raw Q/dO slots, consumer0 Q+sidecar
+  publication, consumer1 dO publication, resident V, and latched K plus V
+  dblock0. It preserves four exact GEMMs and owner32 stores.
+- Static/resource gates pass with WDRA windows `8/252/244/8`, actual branch use
+  `1/252/243/1`, private0, SGPR74, VGPR128, spill/scratch0, and 128KB LDS.
+- Correctness passes at H1/S256 and H1/S1024; S1024 relative L2 is
+  `0.00255632` for dK and `0.000337571` for dV. PMD reports exact
+  `MMOP=131072` and `ldsBankConflict=0`.
+- Stats reject the route: kernel ticks `72,709,000`, MMAC active `38.2341%`,
+  barrier `114,103.5`, and waitLgkm `29,283.25`, versus canonical
+  `69,053,530`, `40.0704%`, `80,555.5`, and `27,104.5`.
+- Fullperf/XCU is `SKIP_BY_GATE`. The failed integration is preserved in git
+  history and reverted from the active source. Do not retry M64 two-slot
+  ownership; the next design must preserve M128 ownership granularity or
+  reduce aggregate barrier generations.

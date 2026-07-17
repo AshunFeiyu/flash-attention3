@@ -13550,3 +13550,31 @@ Status: `ACCEPT_PROBE_WITH_NONFATAL_PMD_WARNING`
   waive integrated correctness.
 - Decision: proceed to one canonical consumer-assisted two-slot integration
   on the isolated branch; preserve the probe as the instruction/resource gate.
+
+## 2026-07-17 dKV Consumer-Assisted M64 Two-Slot Conveyor Rejected
+
+Status: `REJECT_STATS_BARRIER_REGRESSION_SOURCE_REMOVED`
+
+- Implemented the workbook sheet 137 route on an isolated branch: producers
+  publish K/V once; all consumers latch K and V dblock0; C0 publishes
+  Q+sidecar and C1 publishes dO into two alternating M64 slots. The math stays
+  at four exact GEMMs with owner32 dK/dV stores.
+- Register pressure was reduced methodically: runtime parity branch removal
+  cut VGPR spill `330 -> 25`; staged in-place max/exp/P/dS softmax cut it to
+  `3`; measured asymmetric windows `8/252/244/8` reached private/spill0 with
+  actual use `1/252/243/1` and exact per-SIMD ledger 512.
+- H1/S256 and detached H1/S1024 correctness pass. The target run reports dK
+  relative L2 `0.00255632`, dV relative L2 `0.000337571`, exact
+  `MMOP=131072`, bank0, and no PMD panic.
+- Same-shape stats reject the topology: canonical-to-candidate kernel ticks
+  `69,053,530 -> 72,709,000`, MMAC active `40.0704% -> 38.2341%`, barrier
+  `80,555.5 -> 114,103.5`, and waitLgkm `27,104.5 -> 29,283.25`. VALU falls
+  `200,272 -> 182,736` and SCA `36,408 -> 25,680`, proving instruction-count
+  cleanup cannot pay for doubled ownership epochs.
+- Decision: skip fullperf/XCU by gate, commit the isolated hypothesis, revert
+  its source, and keep the probe plus workbook evidence. Next architecture
+  must retain one M128 ownership epoch or lower the total Filled/Used cost.
+- Evidence:
+  `/zys/shaobo_runs/dkv_consumer_conveyor_s1024_20260717_1740`, local stats
+  `work/dkv_consumer_conveyor_s1024_20260717_1740/stats.txt`, and workbook
+  sheet `137_DKV_ConsumerConveyor`.
