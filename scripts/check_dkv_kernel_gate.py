@@ -64,12 +64,23 @@ def main() -> int:
             "missing_consumer1_branch")
     require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*1>",
             failures, "missing_consumer1_branch")
-    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVgprs\)",
-            failures,
-            "missing_producer_vgpr_window")
-    require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)",
-            failures,
-            "missing_consumer_vgpr_window")
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerKqVgprs\)",
+            failures, "missing_kq_producer_vgpr_window")
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumer0Vgprs\)",
+            failures, "missing_c0_read8_vgpr_window")
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumer1Vgprs\)",
+            failures, "missing_c1_canonical_vgpr_window")
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVdoutVgprs\)",
+            failures, "missing_vdout_producer_vgpr_window")
+    require(perf_source, r"constexpr bool kBatchDvDkSources\s*=\s*"
+            r"ConsumerGroup\s*==\s*0", failures,
+            "missing_c0_only_dvdk_read8_schedule")
+    require(perf_source,
+            r"if constexpr \(BatchDvDkSources\)[\s\S]{0,500}"
+            r"read_owner32_dv_dk_sources<Tile, 0, MBlockBase>"
+            r"[\s\S]{0,240}read_owner32_dv_dk_sources<Tile, 2, MBlockBase>"
+            r"[\s\S]{0,120}wait_lgkm\(0\)", failures,
+            "missing_read8_before_single_wait")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentFilled,\s*8\)",
             failures, "missing_resident_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*8\)",
@@ -134,6 +145,14 @@ def main() -> int:
             "missing_resident_nk_contract")
     require(contract, r"kRawBuffers\s*=\s*1", failures,
             "missing_active_rawbuffer1_contract")
+    require(contract, r"kProducerKqVgprs\s*=\s*16", failures,
+            "missing_p0_16_vgpr_contract")
+    require(contract, r"kConsumer0Vgprs\s*=\s*248", failures,
+            "missing_c0_248_vgpr_contract")
+    require(contract, r"kConsumer1Vgprs\s*=\s*240", failures,
+            "missing_c1_240_vgpr_contract")
+    require(contract, r"kProducerVdoutVgprs\s*=\s*8", failures,
+            "missing_p1_8_vgpr_contract")
     require(source, r"softmax_ds_owner32_causal_exact_tile", failures,
             "missing_causal_exact_tile_helper")
     require(contract, r"kOverlayRawOnResidentKv", failures,

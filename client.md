@@ -2899,6 +2899,17 @@ Skill Candidate: count persistent operands before admitting page overlay
   `shaobo/references/shaobo-dkv-optimization-methods.md` in the next serialized
   skill consolidation; do not edit the public skill in this task.
 
+## 2026-07-17 C0-Only dV/dK Read8
+
+- `REJECT_STATS_EXPERIMENT_BRANCH`: correctness/resource gates pass, but
+  H1/S1024 ticks regress 2.93% and MMAC active loses 0.78 points.
+- Shared Q/dO ownership is the boundary: unequal consumer schedules still
+  reconverge before page reuse, converting useful local stagger into barrier
+  wait. Do not promote coissue/island improvements without lower ticks.
+- Workbook sheet 141 holds the design and counters. A symmetric read8 run is
+  the only admitted follow-up; then restore the `best/dkv-owner32-40p09-20260717`
+  source unless it beats the control.
+
 ## 2026-07-17 Q-Ready Score-First Equivalence Probe
 
 - Status: `ACCEPT_PROBE`; workbook sheet `138_DKV_QReadyScoreFirst` admits the

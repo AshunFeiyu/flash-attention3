@@ -8498,3 +8498,14 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   not executed in PMD.
 - Active source must remain the committed owner32 M64 two-slot canonical.
   The M128 experiment is evidence only in workbook sheet 140 and the ledger.
+
+## 2026-07-17 C0-Only Read8 Stagger
+
+- Status: `REJECT_STATS_EXPERIMENT_BRANCH`.
+- C0-only dV/dK read8 is correct and resource-clean at roles
+  `14/239/239/8`, but H1/S1024 regresses to `70,769,335` ticks and
+  `39.3111%` MMAC active. Baseline is `68,752,320` and `40.0907%`.
+- Barrier grows by `12,797.2` cycles and waitLgkm by `1,568.5`; the shared
+  packet lifetime forces the asymmetric consumers to reconverge.
+- Fullperf/XCU is skipped. One symmetric read8 stats discriminator is allowed
+  before restoring the tagged canonical.

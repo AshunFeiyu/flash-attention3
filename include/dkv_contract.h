@@ -98,10 +98,17 @@ struct OptimizationTargets {
 };
 
 struct WdraResourceWindows {
-    static constexpr int kProducerVgprs = 16;
-    static constexpr int kConsumerVgprs = 240;
+    static constexpr int kProducerKqVgprs = 16;
+    static constexpr int kConsumer0Vgprs = 248;
+    static constexpr int kConsumer1Vgprs = 240;
+    static constexpr int kProducerVdoutVgprs = 8;
     static constexpr int kConsumerTargetVgprs = 200;
     static constexpr int kConsumerCeilingVgprs = 248;
+    static_assert(
+        kProducerKqVgprs + kConsumer0Vgprs + kConsumer1Vgprs +
+                kProducerVdoutVgprs ==
+            512,
+        "per-SIMD WDRA windows must exactly fit the Shaobo VGPR file");
 };
 
 }  // namespace shaobo::fa3::bwd::dkv

@@ -13687,3 +13687,26 @@ Status: `REJECT_RESOURCE_SOURCE_RESTORED`
 - Decision: do not run PMD performance with spill. Restore the committed
   canonical source. Workbook sheet `140_DKV_M128PagePingPong` records the
   corrected lifetime proof and resource rejection.
+
+## 2026-07-17 C0-Only dV/dK Read8 Stagger Rejected
+
+Status: `REJECT_STATS_EXPERIMENT_BRANCH`
+
+- Workbook sheet `141_DKV_C0Read8Stagger` keeps math, LDS, ABarrier tokens,
+  owner32 outputs, and MMOP fixed. C0 reads both dV/dK source groups before one
+  wait and emits a 16-MMAC island; C1 retains two read4/wait/MMAC8 stages.
+- Static and correctness gates pass: roles `14/239/239/8` in asymmetric
+  windows `16/248/240/8`, private0, SGPR56, VGPR128, spill/scratch0, H1/S256
+  and H1/S1024 dK/dV PASS, exact `MMOP=131072`, and bank0.
+- Same-environment H1/S1024 rejects the schedule. Kernel ticks regress
+  `68,752,320 -> 70,769,335` (`+2.93%`) and MMAC active falls
+  `40.0907% -> 39.3111%`. `waitLgkm` rises `27,063.5 -> 28,632`, barrier
+  rises `79,233 -> 92,030.2`, and coissue success/fail moves
+  `39,148/32,134 -> 36,155/31,216`.
+- The long island is real, but group asymmetry reconverges at shared
+  Q/dO Used/Filled ownership. The faster group waits for the slower group, so
+  useful stagger does not shorten the dispatch critical path. Fullperf/XCU is
+  skipped by the stats gate.
+- Next discriminator is symmetric read8 on both groups. It separates the cost
+  of read batching from the cost of forced group asymmetry; it is not a new
+  topology or phase stack.
