@@ -13580,3 +13580,20 @@ Status: `REJECT_STATS_BARRIER_REGRESSION_SOURCE_REMOVED`
   `/zys/shaobo_runs/dkv_consumer_conveyor_s1024_20260717_1740`, local stats
   `work/dkv_consumer_conveyor_s1024_20260717_1740/stats.txt`, and workbook
   sheet `137_DKV_ConsumerConveyor`.
+
+## 2026-07-17 dKV Q-Ready Score-First Probe Accepted
+
+Status: `ACCEPT_PROBE`
+
+- Workbook sheet 138 derives a tensor-separated readiness route: QFilled
+  releases score MMAC before dO is ready; DoutFilled is consumed only at dP
+  first use. Four GEMMs, Mq128/Nk256/D128, owner32 stores, LDS bytes and native
+  matrix path remain fixed.
+- The focused probe uses nonuniform Q/K/V/dO and computes both schedules from
+  identical fragments. It passes bit-exactly with `errors=0 max_abs=0`, bank0,
+  no PMD panic, private/spill/scratch0 and roles `1/89/89/1`.
+- Decision: preserve the probe as a layout/accumulation gate and integrate the
+  schedule once on the experiment branch. Promotion still requires full dK/dV
+  correctness, exact `MMOP=131072`, ticks below canonical and higher MMAC
+  active; otherwise revert.
+- Evidence: `/zys/sb/probes/dkv_qready_score_split_probe_20260717_184750`.

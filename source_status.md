@@ -8429,3 +8429,18 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   An earlier long-run-root attempt aborted inside `hsaKmtOpenKFD` before
   dispatch; the short-root repeat proves this was PMD transport/path state,
   not a kernel failure.
+
+## 2026-07-17 Q-Ready Score-First Probe
+
+- Status: `ACCEPT_PROBE`.
+- Added isolated `probes/dkv_qready_score_split_probe.cpp` and runner. It uses
+  separate Q/dO Filled tokens, native MLS/BPS, normal Shaobo matrix reads and
+  MMAC, then compares score-first/dP-late with fused score/dP on identical
+  nonuniform fragments.
+- Compile/resource gate: roles `1/89/89/1` in `8/248/248/8`, private0,
+  SGPR28, VGPR128, spill/scratch0; asm has resident BPS4, raw BPS4,
+  ds_read_matrix52, MMAC64, no trap.
+- PMD result: `errors=0 max_abs=0 pass=1`, bank0, no panic at
+  `/zys/sb/probes/dkv_qready_score_split_probe_20260717_184750`.
+- Main source is still canonical. Next admitted change is one tensor-separated
+  readiness integration; no consumer-published packet code returns.

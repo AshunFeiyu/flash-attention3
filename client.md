@@ -2869,3 +2869,19 @@ Skill Candidate: keep consumer publication off the joint heavy-role critical pat
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` during the next
   serialized skill-consolidation pass.
+
+## 2026-07-17 Q-Ready Score-First Equivalence Probe
+
+- Status: `ACCEPT_PROBE`; workbook sheet `138_DKV_QReadyScoreFirst` admits the
+  main-kernel experiment.
+- P0 publishes K then Q through native BPS; P1 publishes V then dO. Consumers
+  wait independent `QFilled`/`DoutFilled` tokens and evaluate the same
+  nonuniform fragments twice: score-first/dP-late versus the canonical fused
+  interleaving.
+- Result is bit-exact: `errors=0 max_abs=0 pass=1`, bank0, no PMD panic.
+  Static evidence is branch use `1/89/89/1` inside `8/248/248/8`, private0,
+  SGPR28, VGPR128, spill/scratch0, with 4 resident BPS, 4 raw BPS, 52 matrix
+  reads and 64 MMAC opcodes.
+- Evidence: `/zys/sb/probes/dkv_qready_score_split_probe_20260717_184750`.
+  This closes the old layout uncertainty; integration must still prove the
+  full owner32 resource ledger, dK/dV golden, exact MMOP, and elapsed gain.
