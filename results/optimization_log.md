@@ -13785,3 +13785,42 @@ Status: `REJECT_RESOURCE_FULL_KV_OWNER32_SOURCE_RESTORED`
   canonical. Restored static/metadata gates and H1/S256 correctness pass at
   `/zys/sb/canonical_after_fullkv_reject/`
   `dkv_mmac_correctness_20260718_113602`.
+
+## 2026-07-18 Owner16 1P+3C Full K/V Accepted by Stats
+
+Status: `ACCEPT_FULL_KV_ARCHITECTURE_XCU_DIAGNOSED`
+
+- The owner granularity changes from N32 to N16. Three four-wave consumer
+  groups cover resident Nk192, while waves0-3 publish K then stream the single
+  Q+dO+sidecar page and waves12-15 publish V before becoming consumer2.
+- Complete K/V persistence is resource-clean: branch use
+  `22/141/141/133` in `32/160/160/160`, private0, SGPR46, VGPR128, no
+  spill/scratch. Resident K/V use 96KB; the 65.5KB raw packet overlays that
+  epoch after all 12 consumers latch their fragments.
+- Initial dK failures were not a layout or algorithm error. Single-M16 emits
+  two reads per D block, but inherited `lgkmcnt(4)` came from the M32 path
+  where each D block emitted four reads. D2+D3 therefore had four total
+  outstanding reads and `lgkmcnt(4)` could retire none. `lgkmcnt(2)` makes D2
+  ready while retaining D3 in flight.
+- Formal S384 and S768 correctness pass. S768 dK/dV relL2 are
+  `0.00191329/0.000319636`, exact MMOP is 73,728, and bank conflict is zero.
+- Same-shape owner32/owner16 ticks are `54,078,570 -> 46,718,945`, a 13.61%
+  reduction at identical MMOP. Coissue success/fail is `29,900/23,617`.
+- Fullperf aggregate owner32/owner16 MMAC active is
+  `38.3658% -> 32.1307%`, with active SIMD slots `12 -> 16`. This is not a
+  padded-work speedup: exact MMOP remains 73,728 and the new route is faster.
+- XCU dispatch 0 reports 64 complete waves, average 63.14 active waves, and
+  zero no-wave idle. Wave slot 0 is the thin producer; slots 1/2/3 are three
+  near-symmetric consumers with about 5.4k instructions each. Their useful
+  MMAC+VALU coissue shares are `29.70%/27.91%/22.54%`.
+- XCU separates hidden role waits from the next critical work. Producer
+  `RawUsed` and tail `AllDone` dominate per-wave barrier bubbles, but do not
+  create no-wave idle. The actionable consumer gaps are `MMAC->MMAC 7.47%`,
+  `MMAC->wait 5.34%`, `matrix_trans_read->wait 4.95%`, and
+  `matrix_read->wait 4.46%`.
+- Decision: commit and tag this as the first resource-clean full-K/V baseline.
+  Continue on the same canonical path with a VGPR-budgeted score/dP read8 and
+  delayed first-use wait experiment; do not reopen K/V ownership.
+- Fullperf/XCU evidence:
+  `/zys/shaobo_runs/owner16_1p3c_fullkv_fullperf/`
+  `dkv_mmac_correctness_20260718_153852`.

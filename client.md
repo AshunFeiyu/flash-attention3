@@ -3045,6 +3045,74 @@ Skill Candidate: bound larger operand islands by packet release latency
   `shaobo/references/shaobo-dkv-optimization-methods.md` in a serialized
   consolidation pass.
 
+## 2026-07-18 Owner16 1P+3C Full K/V Milestone
+
+- Status: `ACCEPT_FULL_KV_ARCHITECTURE_XCU_DIAGNOSED`.
+- Canonical design is now owner16/Nk192 with one K+Q/dO producer, two pure
+  consumers, and one V-startup producer that becomes the third consumer.
+  K/V stay in consumer VGPRs across the q-loop; no score or dP is duplicated.
+- Resource evidence: LDS 96KB resident epoch, raw Q+dO+sidecar 65.5KB overlay,
+  branch use `22/141/141/133`, windows `32/160/160/160`, private0, spill0,
+  scratch0, bank0.
+- Correctness evidence: S384 and S768 pass; S768 dK/dV relL2
+  `0.00191329/0.000319636`.
+- Performance evidence: same-work S768 owner32/owner16 ticks
+  `54,078,570 -> 46,718,945` (`-13.61%`), both MMOP 73,728.
+- Fullperf evidence: owner32/owner16 aggregate MMAC active is
+  `38.3658% -> 32.1307%`. The lower share is not reduced work: the new route
+  activates all 16 SIMD slots instead of 12 and completes the same MMOP sooner.
+  XCU reports `64/64` complete waves, `0%` no-wave idle, and average `63.14`
+  active waves.
+- The three consumer wave slots show useful MMAC+VALU coissue of
+  `29.70% / 27.91% / 22.54%`. Remaining consumer-local issue gaps are
+  `MMAC->MMAC 7.47%`, `MMAC->wait 5.34%`, and
+  `matrix-read->wait 4.95% + 4.46%`; these are the next canonical bottleneck.
+- The largest XCU barrier rows are producer `RawUsed` wait and final
+  `AllDone`. They inflate per-wave bubble accounting, but `No-wave Idle=0`
+  shows they are not equivalent to CTA-wide scheduler starvation.
+- Correctness lesson: `s_waitcnt lgkmcnt(N)` must be recomputed whenever an
+  operand bundle changes size. Historical M32 used 4 reads per D block and
+  could wait at 4 after D2+D3; owner16 single-M emits 2 reads per D block and
+  must wait at 2. Copying the old threshold caused early D2 MMAC consumption.
+
+Skill Candidate: derive wait thresholds from outstanding instruction count
+
+- Trigger / 适用场景: an LDS-read bundle is split, merged, or changes tile
+  granularity while retaining an inherited `s_waitcnt lgkmcnt(N)` schedule.
+- Rule / 可复用规则: write an explicit outstanding-read ledger at every wait.
+  `lgkmcnt(N)` only guarantees at most N operations remain; choose N so every
+  operand consumed next has retired, while only later independent reads stay
+  in flight.
+- Evidence / 证据: M32 D2+D3 emitted 8 reads and `lgkm(4)` was correct. Owner16
+  emitted 4 total reads, so the same wait did nothing and corrupted dP/dK.
+  Changing only `4 -> 2` restored dK relL2 from about 0.35 to 0.000999 in the
+  focused S384 control and passed the full 3-consumer path.
+- Boundary / 适用边界: the exact count depends on opcode accounting and other
+  outstanding LDS operations; verify emitted ASM rather than source intent.
+- Counterexample / 反例或不适用情况: `lgkm(0)` is always conservative but may
+  destroy overlap, so it is a diagnostic oracle rather than the final schedule.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md`.
+
+Skill Candidate: separate MMAC share from elapsed work under topology changes
+
+- Trigger / 适用场景: a tile redesign changes the number of active SIMD/wave
+  roles while preserving exact MMOP.
+- Rule / 可复用规则: compare exact work and same-shape ticks first, then explain
+  MMAC active with the active-SIMD denominator and per-wave SQTT. A lower
+  aggregate share can coexist with a faster kernel when useful work is spread
+  over more SIMD slots.
+- Evidence / 证据: owner16 keeps MMOP at 73,728 and lowers ticks 13.61%, while
+  active SIMD count rises `12 -> 16` and aggregate MMAC active falls
+  `38.3658% -> 32.1307%`; XCU shows `0%` no-wave idle and three heavy consumer
+  slots per SIMD.
+- Boundary / 适用边界: this does not excuse low MMAC share when topology and
+  work are unchanged; the current consumer read/wait gaps still need removal.
+- Counterexample / 反例或不适用情况: a candidate that lowers ticks by doing
+  fewer MMOP or skipping tail work is invalid regardless of MMAC share.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md`.
+
 ## 2026-07-18 Read8 Early-Used Release
 
 - Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_SOURCE_RESTORED`.

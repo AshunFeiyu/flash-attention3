@@ -8569,3 +8569,31 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   SGPR56, VGPR128, spill/scratch0; H1/S256 correctness and bank0 pass at
   `/zys/sb/canonical_after_fullkv_reject/`
   `dkv_mmac_correctness_20260718_113602`.
+
+## 2026-07-18 Owner16 1P+3C Full K/V Canonical Candidate
+
+- Branch: `exp/dkv-owner16-1p3c-full-kv` from `eefc855`.
+- Active source contains one canonical owner16 dKV path: Nk192, three
+  symmetric four-wave consumer groups, persistent K/V, and one combined
+  Q+dO+sidecar raw packet. There is no owner32 fallback or phase switch.
+- Correctness root cause fixed: single-M16 score/dP has two reads per D block,
+  so the D2 first-use wait is `lgkmcnt(2)`, not the inherited M32 value 4.
+- Gates pass: source gate, metadata private0/SGPR46/VGPR128/spill0, branch use
+  `22/141/141/133`, S384 and S768 dK/dV correctness, exact MMOP 73,728, and
+  `ldsBankConflict=0`.
+- S768 stats improve from tagged owner32 `54,078,570` to `46,718,945` ticks at
+  identical MMOP. Fullperf gives owner32/owner16 aggregate MMAC active
+  `38.3658%/32.1307%`: the new topology uses 16 active SIMD slots rather than
+  12, so the share falls even though elapsed same-work ticks improve 13.61%.
+- XCU dispatch 0 completes all 64 waves with `0%` no-wave idle and average
+  `63.14` active waves. Each SIMD has one thin producer slot and three roughly
+  equal 5.4k-instruction consumer slots. Consumer MMAC+VALU coissue is
+  `29.70%/27.91%/22.54%`.
+- Remaining canonical bottleneck is consumer-local scheduling:
+  `MMAC->MMAC 7.47%`, `MMAC->wait 5.34%`, and matrix-read-to-wait gaps
+  `4.95%+4.46%`. Status is
+  `ACCEPT_FULL_KV_ARCHITECTURE_XCU_DIAGNOSED`; next edit must target those
+  gaps without changing ownership or exact work.
+- Fullperf:
+  `/zys/shaobo_runs/owner16_1p3c_fullkv_fullperf/`
+  `dkv_mmac_correctness_20260718_153852`.

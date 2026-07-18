@@ -10,8 +10,8 @@ inline constexpr int kDkvPathCanonicalDkv = 5;
 struct ActiveDkvTile {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = 128;
-    static constexpr int kNkPerConsumerWave = 32;
-    static constexpr int kConsumerGroups = 2;
+    static constexpr int kNkPerConsumerWave = 16;
+    static constexpr int kConsumerGroups = 3;
     static constexpr int kWavesPerConsumerGroup = 4;
     static constexpr int kConsumerWaves =
         kConsumerGroups * kWavesPerConsumerGroup;
@@ -68,10 +68,10 @@ struct ActiveDkvTile {
 
     static_assert(kBlockMq % 32 == 0,
                   "dKV clean tile consumes Mq in pairs of M16 blocks");
-    static_assert(kResidentNk == 256, "dKV owner32 lane expects Nk=256");
-    static_assert(kKvBytes == kLdsBudgetBytes,
-                  "resident K/V startup epoch must occupy exactly 128KB");
-    static_assert(kTotalMmacPerConsumer == 4 * kBlockMq,
+    static_assert(kResidentNk == 192, "owner16 1P+3C tile expects Nk=192");
+    static_assert(kKvBytes == 96 * 1024,
+                  "resident K/V startup epoch must occupy exactly 96KB");
+    static_assert(kTotalMmacPerConsumer == 2 * kBlockMq,
                   "dKV consumer MMAC count should scale with BlockMq");
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
                   "dKV clean LDS plan must fit 128KB");
@@ -80,13 +80,9 @@ struct ActiveDkvTile {
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
     static constexpr int kResidentUsed = 1;
-    static constexpr int kQ0Filled = 2;
-    static constexpr int kQ0Used = 3;
-    static constexpr int kDout0Used = 4;
-    static constexpr int kQ1Filled = 5;
-    static constexpr int kQ1Used = 6;
-    static constexpr int kDout1Used = 7;
-    static constexpr int kAllDone = 8;
+    static constexpr int kRawFilled = 2;
+    static constexpr int kRawUsed = 3;
+    static constexpr int kAllDone = 4;
 };
 
 struct OptimizationTargets {
@@ -98,10 +94,10 @@ struct OptimizationTargets {
 };
 
 struct WdraResourceWindows {
-    static constexpr int kProducerVgprs = 16;
-    static constexpr int kConsumerVgprs = 240;
-    static constexpr int kConsumerTargetVgprs = 200;
-    static constexpr int kConsumerCeilingVgprs = 248;
+    static constexpr int kProducerVgprs = 32;
+    static constexpr int kConsumerVgprs = 160;
+    static constexpr int kConsumerTargetVgprs = 152;
+    static constexpr int kConsumerCeilingVgprs = 160;
 };
 
 }  // namespace shaobo::fa3::bwd::dkv

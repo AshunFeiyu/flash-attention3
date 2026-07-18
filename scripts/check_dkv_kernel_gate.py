@@ -44,18 +44,18 @@ def main() -> int:
             "missing_canonical_dkv_kernel")
     require(perf_source, r"consumer_dkv_mmac_loop", failures,
             "missing_dkv_mmac_consumer_loop")
-    require(perf_source, r"score_dp_mmac_owner32", failures,
-            "missing_owner32_score_dp_mmac")
-    require(perf_source, r"owner32_dv_dk_read_mmac", failures,
-            "missing_owner32_dv_dk_mmac")
+    require(perf_source, r"score_dp_mmac_owner16", failures,
+            "missing_owner16_score_dp_mmac")
+    require(perf_source, r"owner16_dv_dk_read_mmac", failures,
+            "missing_owner16_dv_dk_mmac")
     require(source, r"kDkvPathCanonicalDkv", failures,
             "missing_canonical_path")
     require(perf_source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_wdra16_attribute")
-    require(perf_source, r"producer_kq_loop", failures,
-            "missing_16wave_kq_producer")
-    require(perf_source, r"producer_vdout_loop", failures,
-            "missing_16wave_vdout_producer")
+    require(perf_source, r"producer_k_q_dout_loop", failures,
+            "missing_k_then_q_dout_producer")
+    require(perf_source, r"publish_resident_v", failures,
+            "missing_v_startup_publisher")
     require(perf_source, r"wave_id\s*<\s*4", failures,
             "missing_producer_a_branch")
     require(perf_source, r"wave_id\s*<\s*8", failures,
@@ -64,6 +64,8 @@ def main() -> int:
             "missing_consumer1_branch")
     require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*1>",
             failures, "missing_consumer1_branch")
+    require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*2>",
+            failures, "missing_consumer2_branch")
     require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVgprs\)",
             failures,
             "missing_producer_vgpr_window")
@@ -72,24 +74,12 @@ def main() -> int:
             "missing_consumer_vgpr_window")
     require(perf_source, r"s_abarrier_init\(Bar::kResidentFilled,\s*8\)",
             failures, "missing_resident_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*8\)",
+    require(perf_source, r"s_abarrier_init\(Bar::kResidentUsed,\s*12\)",
             failures, "missing_resident_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ0Filled,\s*8\)",
-            failures, "missing_q0_combined_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ0Used,\s*8\)",
-            failures, "missing_q0_used_count")
-    forbid(perf_source, r"s_abarrier_init\(Bar::kDout0Filled,",
-           failures, "dout0_filled_should_share_q0_filled")
-    require(perf_source, r"s_abarrier_init\(Bar::kDout0Used,\s*8\)",
-            failures, "missing_dout0_used_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ1Filled,\s*8\)",
-            failures, "missing_q1_combined_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kQ1Used,\s*8\)",
-            failures, "missing_q1_used_count")
-    forbid(perf_source, r"s_abarrier_init\(Bar::kDout1Filled,",
-           failures, "dout1_filled_should_share_q1_filled")
-    require(perf_source, r"s_abarrier_init\(Bar::kDout1Used,\s*8\)",
-            failures, "missing_dout1_used_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kRawFilled,\s*4\)",
+            failures, "missing_raw_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kRawUsed,\s*12\)",
+            failures, "missing_raw_used_count")
     require(perf_source, r"publish_mq_half_tile<Tile,\s*0>", failures,
             "missing_qdo_half0_publisher")
     require(perf_source, r"publish_mq_half_tile<Tile,\s*1>", failures,
@@ -98,10 +88,8 @@ def main() -> int:
             failures, "missing_sidecar_half0_publisher")
     require(perf_source, r"publish_sidecar_half_tile_to_lds<Tile,\s*1>",
             failures, "missing_sidecar_half1_publisher")
-    require(perf_source, r"arrive_dout_half_used<Wdra,\s*Half>\(\)",
-            failures, "missing_dout_half_lifetime_release")
-    require(perf_source, r"arrive_q_half_used<Wdra,\s*Half>\(\)",
-            failures, "missing_q_half_lifetime_release")
+    require(perf_source, r"arrive_raw_used<Wdra>\(\)",
+            failures, "missing_combined_q_dout_lifetime_release")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
     require(perf_source,
@@ -128,13 +116,17 @@ def main() -> int:
             "missing_active_tile_contract")
     require(contract, r"kBlockMq\s*=\s*128", failures,
             "missing_active_mq128_contract")
-    require(contract, r"kNkPerConsumerWave\s*=\s*32", failures,
-            "missing_owner32_contract")
+    require(contract, r"kNkPerConsumerWave\s*=\s*16", failures,
+            "missing_owner16_contract")
+    require(contract, r"kConsumerGroups\s*=\s*3", failures,
+            "missing_three_consumer_groups_contract")
     require(contract, r"kResidentNk\s*=", failures,
             "missing_resident_nk_contract")
+    require(contract, r"kResidentNk\s*==\s*192", failures,
+            "missing_resident_nk192_assert")
     require(contract, r"kRawBuffers\s*=\s*1", failures,
             "missing_active_rawbuffer1_contract")
-    require(source, r"softmax_ds_owner32_causal_exact_tile", failures,
+    require(source, r"softmax_ds_owner16_causal_exact_tile", failures,
             "missing_causal_exact_tile_helper")
     require(contract, r"kOverlayRawOnResidentKv", failures,
             "missing_kv_raw_overlay_contract")
@@ -148,8 +140,10 @@ def main() -> int:
            r"matrix_load_32x32_b16_bps_lds\([\s\S]{0,360}?"
            r"wait_lgkm\(0\)[\s\S]{0,160}?abarrier_arrive_cnt",
            failures, "post_mls_wait_before_publication")
-    forbid(source, r"kRawFilled|kRawUsed|kTransFilled|kTransUsed|"
-           r"kKv0Filled|kKv0Used|kKv1Filled|kKv1Used",
+    forbid(source, r"kQ0Filled|kQ0Used|kQ1Filled|kQ1Used|"
+           r"kDout0Filled|kDout0Used|kDout1Filled|kDout1Used|"
+           r"kTransFilled|kTransUsed|kKv0Filled|kKv0Used|"
+           r"kKv1Filled|kKv1Used",
            failures, "legacy_fragment_barrier_tokens")
     forbid(source, r"kPacketAFilled|kPacketAUsed|kPacketBFilled|kPacketBUsed",
            failures, "single_packet_probe_barrier_tokens")
@@ -158,13 +152,13 @@ def main() -> int:
            r"kSource0Filled|kSource0Used|kSource1Filled|kSource1Used",
            failures, "source_layout_must_share_page_packet_token")
     require(source, r"publish_resident_tile", failures,
-            "missing_nk256_resident_publisher")
-    require(source, r"latch_owner32_kv_regs", failures,
-            "missing_owner32_kv_latch")
-    require(source, r"store_dkv_owner32", failures,
-            "missing_owner32_store")
-    forbid(source, r"Owner16|owner16", failures,
-           "owner16_route_must_not_remain")
+            "missing_nk192_resident_publisher")
+    require(source, r"latch_owner16_kv_regs", failures,
+            "missing_owner16_kv_latch")
+    require(source, r"store_dkv_owner16", failures,
+            "missing_owner16_store")
+    forbid(source, r"Owner32|owner32", failures,
+           "owner32_route_must_not_remain")
     forbid(source, r"dkv_barrier_tomography", failures,
            "canonical_source_must_not_include_tomography")
     forbid(source, r"ds_read_b32|ds_bpermute|ds_permute", failures,
