@@ -3392,3 +3392,69 @@ Skill Candidate: split readiness inside one ownership epoch
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` in the next
   serialized skill-consolidation round.
+
+## 2026-07-18 Mq96 Raw2 Lookahead Rejected
+
+- Status: `REJECT_MQ96_RAW2_LOOKAHEAD`.  The two-page design passed S384/S768
+  correctness, exact MMOP 73,728, bank0, and spill0 only after reserving WDRA
+  windows `20/172/172/148`; a consumer window set exactly to its observed
+  168-VGPR live edge produced undefined C0/C1 results despite metadata spill0.
+- It reduced barrier stall to 48,195, but shrinking Mq192 to Mq96 increased
+  packet/control frequency: S768 ticks regressed `41,065,570 -> 43,163,120`
+  (`+5.11%`), MMAC active fell `36.5520% -> 35.0070%`, waitLgkm rose 15.28%,
+  and VALU rose 9.21%.  The failed code was removed; only workbook sheet
+  `149_DKV_Mq96_Raw2_Lookahead` and this evidence remain.
+
+## 2026-07-18 Mq192 Head/Tail Split-Used Conveyor Accepted
+
+- Status: `ACCEPT_MQ192_HEAD_TAIL_SPLIT_USED` on branch
+  `exp/dkv-owner16-head-tail-split-used`.
+- The formula DAG, Mq192/Nk192 tile, resident K/V, exact four GEMMs, MMAC
+  islands, output ownership, matrix path, and 100,608B LDS layout are
+  unchanged.  Only the physical lifetime is split: consumers release Head64
+  after M3 source reads retire and Tail128 after M11; producer publishes
+  `Head(t+1)` before waiting for Tail(t), then publishes `Tail(t+1)`.
+- Gates pass at branches `32/145/145/145`, private0, SGPR50, VGPR128,
+  spill0/scratch0.  S384/S768 dK+dV pass with unchanged S768 relL2
+  `0.00191329/0.000319636`; MMOP/LDS/VMEM remain
+  `73,728/44,768/1,728`, bank0.
+- Stats-only S768 improves ticks `41,065,570 -> 39,486,265` (`-3.85%`) and
+  MMAC active `36.5520% -> 38.1762%`; barrier stall falls 21.26% while
+  waitLgkm rises only 0.50%.
+- Fullperf confirms ticks `40,882,205 -> 39,383,435` (`-3.67%`), MMAC active
+  `36.7738% -> 38.2453%`, barrier stall `61,634.25 -> 49,145.25`
+  (`-20.26%`), no spill/bank conflict, and exact work.
+- XCU duration falls `89,848 -> 86,560`; no-wave idle remains zero.  Ordinary
+  ABarrier events rise `496 -> 544`, but duration falls
+  `1,448,868 -> 1,285,192` (`-11.30%`) and max gap falls
+  `16,795 -> 12,263`.  Producer coissue in the fixed 8k:80k window rises
+  `42.26% -> 59.39%`, proving cross-packet useful overlap.
+- Remaining bottleneck: consumer MMAC+VALU coissue in the same window falls
+  from `30.83/28.70/24.59%` to `26.46/26.12/21.07%` across the three consumer
+  slots.  The next optimization must recover consumer read/VALU overlap
+  without reopening ownership serialization.
+- Evidence: workbook sheet `150_DKV_Mq192_SplitUsed`; remote fullperf/XCU
+  `/zys/shaobo_runs/owner16_split_used_fullperf/`
+  `dkv_mmac_correctness_20260718_203148`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_203148_owner16_mq192_head_tail_split_used_s768_sqc7/`.
+
+Skill Candidate: split physical reuse lifetime inside a large packet
+
+- Trigger / 适用场景: a large LDS packet already has disjoint native-layout
+  subranges whose consumers finish at different points, while one combined
+  Used token delays the next generation.
+- Rule / 可复用规则: preserve tile size and exact work; split only the Used
+  edges.  Publish the next early subrange before waiting on the current late
+  subrange, and release each range only after all source reads retire.
+- Evidence / 证据: Mq192 split-used lowers fullperf ticks 3.67%, barrier stall
+  20.26%, and XCU ownership duration 11.30%, while raising MMAC active 1.47 pp
+  and producer coissue 17.13 pp at identical MMOP/LDS/VMEM.
+- Boundary / 适用边界: subranges must be physically disjoint and every
+  consumer must arrive exactly once.  More tokens are useful only when their
+  duration and critical path fall; count alone is not a success metric.
+- Counterexample / 反例或不适用情况: Mq96 raw2 hid ownership but shrank MMAC
+  islands and raised control/VALU enough to regress ticks 5.11%.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` during serialized
+  skill consolidation.

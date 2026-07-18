@@ -8700,3 +8700,43 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   `dkv_mmac_correctness_20260718_183256`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_183256_owner16_head64_tail128_s768_sqc7/`.
+
+## 2026-07-18 Mq96 Raw2 Rejected
+
+- `REJECT_MQ96_RAW2_LOOKAHEAD`: correctness/resource/exact-work gates pass at
+  WDRA `20/172/172/148`, but S768 ticks regress 5.11%, active falls 1.55 pp,
+  waitLgkm rises 15.28%, and VALU rises 9.21%.  Barrier time alone improves.
+- A consumer WDRA window exactly equal to the observed 168-VGPR live edge gave
+  undefined C0/C1 results with metadata spill0; one four-VGPR allocation
+  granule of headroom restored correctness.  Treat metadata spill0 as
+  necessary but not sufficient at a role-window boundary.
+- The failed implementation has been removed.  Evidence is retained in
+  workbook sheet `149_DKV_Mq96_Raw2_Lookahead` and `client.md`.
+
+## 2026-07-18 Mq192 Head/Tail Split-Used Accepted
+
+- Status: `ACCEPT_MQ192_HEAD_TAIL_SPLIT_USED` on
+  `exp/dkv-owner16-head-tail-split-used`.
+- Canonical dataflow remains Mq192/Nk192, resident K/V, one physical
+  Q+dO+sidecar packet, three symmetric owner16 consumers, exact four GEMMs,
+  and native MLS/BPS + `ds_read_matrix` + MMAC.  Head64 and Tail128 now have
+  separate Used tokens so producer can publish Head(t+1) during Tail(t).
+- Gates: branches `32/145/145/145`, private0, SGPR50, VGPR128,
+  spill0/scratch0, LDS 100,608B; S384/S768 dK+dV PASS; S768 exact
+  MMOP/LDS/VMEM `73,728/44,768/1,728`, bank0.
+- Stats-only S768: ticks 39,486,265, MMAC active 38.1762%, waitLgkm 17,854.75,
+  barrier 49,613, coissue `29,944/23,369`.
+- Fullperf S768: ticks 39,383,435, MMAC active 38.2453%, waitLgkm 18,035.5,
+  barrier 49,145.25, coissue `29,880/23,479`.
+- Versus the previous best fullperf, ticks fall 3.67%, active rises 1.47 pp,
+  and barrier falls 20.26%.  XCU duration falls 89,848->86,560; ordinary
+  ownership gap duration falls 11.30% despite 496->544 events, and the maximum
+  gap falls 16,795->12,263.  Producer coissue rises 42.26%->59.39%.
+- Next measured bottleneck: fixed-window consumer MMAC+VALU coissue falls to
+  `26.46/26.12/21.07%`; retain split ownership and investigate consumer
+  read/wait/VALU scheduling rather than adding another page/token.
+- Evidence: workbook sheet 150; remote
+  `/zys/shaobo_runs/owner16_split_used_fullperf/`
+  `dkv_mmac_correctness_20260718_203148`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_203148_owner16_mq192_head_tail_split_used_s768_sqc7/`.

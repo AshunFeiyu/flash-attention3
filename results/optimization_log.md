@@ -13984,3 +13984,64 @@ Status: `ACCEPT_HEAD64_TAIL128_INTRA_PACKET_OVERLAP`
   `dkv_mmac_correctness_20260718_183256`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_183256_owner16_head64_tail128_s768_sqc7/`.
+
+## 2026-07-18 Mq96 Two-Page Lookahead Rejected
+
+Status: `REJECT_MQ96_RAW2_LOOKAHEAD`
+
+- Hypothesis: halve the raw packet to Mq96 and use two full pages so producer
+  can publish packet t+1 while consumers compute packet t.
+- Correctness/resource: S384/S768 pass with exact work, bank0, private0 and
+  spill0 at WDRA `20/172/172/148`.  Windows `20/168/168/156` failed exactly
+  the C0/C1 dK+dV outputs even though metadata reported spill0, showing that a
+  role window at the measured live edge needs one allocation-granule margin.
+- Result: barrier falls `63,005.25 -> 48,195`, but ticks regress
+  `41,065,570 -> 43,163,120` (`+5.11%`), active falls
+  `36.5520% -> 35.0070%`, waitLgkm rises 15.28%, VALU rises 9.21%, and
+  coissue success falls.  Smaller MMAC islands and doubled packet/control
+  cadence cost more than the lookahead saves.
+- Decision: remove the failed source; retain only workbook sheet
+  `149_DKV_Mq96_Raw2_Lookahead` and the negative evidence.
+
+## 2026-07-18 Mq192 Head/Tail Split-Used Conveyor Accepted
+
+Status: `ACCEPT_MQ192_HEAD_TAIL_SPLIT_USED`
+
+- Hypothesis: Head64 and Tail128 already occupy disjoint regions of the
+  accepted Mq192 packet.  Split only their Used edges so P0 publishes
+  Head(t+1) under Tail(t) compute, preserving large MMAC islands and exact
+  work.
+- Implementation: replace the combined RawUsed token with RawHeadUsed and
+  RawTailUsed.  Every consumer releases Head after the M3 Q/dO reads retire
+  and Tail after M11.  Producer order is
+  `wait HUsed -> publish Hnext -> wait TUsed -> publish Tnext`; waiting Tail
+  before publishing Head is statically forbidden by the source gate.
+- Static/resource: branches `32/145/145/145`, private0, SGPR50, VGPR128,
+  spill0/scratch0, LDS 100,608B.  No formula, tile, output ownership,
+  matrix-read path, or instruction work changes.
+- Correctness/work: S384/S768 PASS; S768 dK/dV relL2
+  `0.00191329/0.000319636`; MMOP/VALU/SCA/LDS/VMEM
+  `73,728/106,640/21,288/44,768/1,728`, bank0.  The SCA increase is the
+  explicit split-token control cost.
+- Stats-only: ticks `41,065,570 -> 39,486,265` (`-3.85%`), MMAC active
+  `36.5520% -> 38.1762%`, waitLgkm `17,766 -> 17,854.75`, barrier
+  `63,005.25 -> 49,613` (`-21.26%`), coissue `29,944/23,369`.
+- Fullperf: ticks `40,882,205 -> 39,383,435` (`-3.67%`), MMAC active
+  `36.7738% -> 38.2453%`, waitLgkm `17,576.25 -> 18,035.5`, barrier
+  `61,634.25 -> 49,145.25` (`-20.26%`), coissue `29,880/23,479`.
+- XCU: dispatch duration `89,848 -> 86,560`, no-wave idle remains 0.
+  Ordinary ownership waits increase `496 -> 544`, but duration falls
+  `1,448,868 -> 1,285,192` (`-11.30%`) and max duration falls
+  `16,795 -> 12,263`.  Hot `s_waitcnt` latency falls 3.88%.  In the same
+  8k:80k window producer coissue rises `42.26% -> 59.39%`.
+- Residual debt: consumer MMAC+VALU coissue changes from
+  `30.83/28.70/24.59%` to `26.46/26.12/21.07%`; MMAC-to-MMAC issue-gap
+  duration rises 3.23%.  Next work should preserve the accepted ownership
+  conveyor and optimize consumer read/wait/VALU cadence.
+- Evidence: workbook sheet `150_DKV_Mq192_SplitUsed`; stats-only
+  `/zys/shaobo_runs/owner16_split_used_s768/`
+  `dkv_mmac_correctness_20260718_202542`; fullperf/XCU
+  `/zys/shaobo_runs/owner16_split_used_fullperf/`
+  `dkv_mmac_correctness_20260718_203148`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_203148_owner16_mq192_head_tail_split_used_s768_sqc7/`.

@@ -80,10 +80,12 @@ def main() -> int:
             failures, "missing_resident_used_count")
     require(perf_source, r"s_abarrier_init\(Bar::kRawHeadFilled,\s*4\)",
             failures, "missing_raw_head_filled_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kRawHeadUsed,\s*12\)",
+            failures, "missing_raw_head_used_count")
     require(perf_source, r"s_abarrier_init\(Bar::kRawTailFilled,\s*4\)",
             failures, "missing_raw_tail_filled_count")
-    require(perf_source, r"s_abarrier_init\(Bar::kRawUsed,\s*12\)",
-            failures, "missing_raw_used_count")
+    require(perf_source, r"s_abarrier_init\(Bar::kRawTailUsed,\s*12\)",
+            failures, "missing_raw_tail_used_count")
     require(perf_source, r"publish_mq_slice<Tile,\s*0,\s*kHeadMBlocks>",
             failures, "missing_qdo_head_publisher")
     require(perf_source,
@@ -105,9 +107,20 @@ def main() -> int:
             failures, "missing_dual_base_normal_matrix_read")
     require(perf_source,
             r"MBlockBase\s*\+\s*1\s*==\s*Tile::kBlockMq\s*/\s*16",
-            failures, "missing_last_m16_raw_release_contract")
-    require(perf_source, r"arrive_raw_used<Wdra>\(\)",
-            failures, "missing_combined_q_dout_lifetime_release")
+            failures, "missing_tail_release_contract")
+    require(perf_source,
+            r"MBlockBase\s*\+\s*1\s*==\s*Tile::kHeadReadyMq\s*/\s*16",
+            failures, "missing_head_release_contract")
+    require(perf_source, r"arrive_raw_used<Wdra::kRawHeadUsed>\(\)",
+            failures, "missing_head_lifetime_release")
+    require(perf_source, r"arrive_raw_used<Wdra::kRawTailUsed>\(\)",
+            failures, "missing_tail_lifetime_release")
+    require(perf_source,
+            r"wait_raw_used<Wdra::kRawHeadUsed>[\s\S]{0,2400}"
+            r"arrive_raw_ready<Wdra::kRawHeadFilled>[\s\S]{0,500}"
+            r"wait_raw_used<Wdra::kRawTailUsed>[\s\S]{0,2400}"
+            r"arrive_raw_ready<Wdra::kRawTailFilled>",
+            failures, "missing_split_used_cross_packet_order")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
     require(perf_source,
@@ -181,6 +194,8 @@ def main() -> int:
            failures, "source_layout_must_share_page_packet_token")
     forbid(source + contract, r"\bkRawFilled\b", failures,
            "unsplit_raw_filled_token_must_not_remain")
+    forbid(source + contract, r"\bkRawUsed\b", failures,
+           "combined_raw_used_token_must_not_remain")
     require(source, r"publish_resident_tile", failures,
             "missing_nk192_resident_publisher")
     require(source, r"latch_owner16_kv_regs", failures,

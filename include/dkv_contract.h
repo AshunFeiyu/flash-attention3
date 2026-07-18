@@ -88,9 +88,10 @@ struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
     static constexpr int kResidentUsed = 1;
     static constexpr int kRawHeadFilled = 2;
-    static constexpr int kRawTailFilled = 3;
-    static constexpr int kRawUsed = 4;
-    static constexpr int kAllDone = 5;
+    static constexpr int kRawHeadUsed = 3;
+    static constexpr int kRawTailFilled = 4;
+    static constexpr int kRawTailUsed = 5;
+    static constexpr int kAllDone = 6;
 };
 
 struct OptimizationTargets {
