@@ -14284,3 +14284,22 @@ Status: `REJECT_DAG_STAGGER_BREAKS_MMAC_ISLAND`; source restored.
   peer overlap attempts.  Do not pursue per-consumer mathematical ordering
   on this tile.  Preserve fused score+dP and target K/V page readiness,
   producer work, or ownership around the intact island.
+
+## 2026-07-19 dQ Split V/K Page Ownership
+
+Status: `REJECT_SPLIT_USED_TOKEN_CONTROL_COST`; source restored.
+
+- Hypothesis: V becomes dead after the page's final dP, earlier than K becomes
+  dead after dQ.  Split the combined `PageUsed` token into V/K last-use tokens
+  so the producer can begin next V before waiting for K.
+- Correctness, bank0, exact MMOP/LDS/VMEM/FLAT, and no-spill resource gates all
+  passed.  The unconditional form reduced LDS credit stall by 13.81% and
+  raised successful coissue by 349, but added 1,122 SCA instructions and
+  regressed ticks `23,364,250 -> 23,586,290` (`+0.95%`).
+- A tail-aware variant intended to omit final-generation arrivals instead
+  raised VALU/SCA, reduced coissue, increased credit stall, and regressed to
+  `24,856,650` ticks (`+6.39%`).
+- Evidence says operand lifetime is real but too short to fund a second
+  ownership protocol.  Reject both variants, remove their source, and retain
+  one combined page-used token.  The next hypothesis must improve the
+  useful-work/control ratio rather than fragment readiness further.

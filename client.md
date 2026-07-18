@@ -3694,3 +3694,23 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
   overlap; it reduced MMAC continuity.  The experiment code was removed.
   Future dQ work must preserve the fused island and attack page readiness or
   useful producer/consumer overlap around it.
+
+## 2026-07-19 dQ Split V/K Page Ownership Rejected
+
+- XCU identified `PageUsed` as the dominant steady-state ownership bubble, so
+  the focused hypothesis split it into `VUsed` immediately after the final dP
+  and `KUsed` after dQ.  The producer then issued V for the next generation,
+  waited for K, and completed the same combined page-filled publication.
+- Exact mathematical and data work stayed fixed: MMOP/LDS/VMEM/FLAT remained
+  `28,800/15,092/704/564`, correctness passed, and bank conflicts stayed zero.
+- The unconditional split reduced LDS credit stall `7,784 -> 6,709` and raised
+  coissue success `12,071 -> 12,420`, proving that earlier V reuse overlapped
+  useful work.  Extra barrier control raised SCA `23,844 -> 24,966`, however,
+  and ticks regressed `23,364,250 -> 23,586,290` (`+0.95%`).
+- Making the arrivals tail-aware was worse: dynamic control raised
+  VALU/SCA to `34,192/25,128`, credit stall to `8,555`, and ticks to
+  `24,856,650` (`+6.39%`).  Both variants are rejected and all experiment
+  code is removed.
+- Design boundary: do not subdivide a page ownership epoch unless the released
+  operand starts a sufficiently long independent transfer.  The next route
+  must amortize synchronization with larger useful islands or fewer epochs.

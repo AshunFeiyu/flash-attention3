@@ -8914,3 +8914,26 @@ Status: `REJECT_DAG_STAGGER_BREAKS_MMAC_ISLAND`; source restored.
   DAG split loses MMAC continuity before peer waves can hide its P/softmax
   interval.  Preserve fused score+dP; next structural candidate must reduce
   readiness/ownership exposure without splitting MMAC work.
+
+## 2026-07-19 Rejected dQ Candidate: Split V/K Page Ownership
+
+Status: `REJECT_SPLIT_USED_TOKEN_CONTROL_COST`; canonical source restored.
+
+- The page `Used` handshake was split at real last-use points: consumers
+  arrived `VUsed` after the final dP and `KUsed` after dQ; the producer loaded
+  next-generation V between those waits, then loaded K and published the
+  original combined `Filled` token.
+- Static work and resources remained legal: branches `11/158/158/159`,
+  private0/spill0/scratch0, exact matrix-load/MMAC/read counts, and no added
+  global/LDS payload.  H1/S768 causal correctness and bank0 passed.
+- Canonical control was `23,364,250` ticks, SCA23,844, coissue
+  `12,071/10,930`, LDS credit stall7,784.  The unconditional split reached
+  `23,586,290` ticks (`+0.95%`), SCA24,966, coissue `12,420/11,366`, and credit
+  stall6,709.  It exposed useful overlap, but barrier bookkeeping cost more.
+- A tail-aware condition (`kt + 2 < active_k_tiles`) regressed to
+  `24,856,650` ticks (`+6.39%`), VALU34,192, SCA25,128, coissue
+  `10,727/9,705`, and credit stall8,555.  Dynamic tail control made the
+  producer schedule less regular and did not amortize the token split.
+- Do not add finer-grained ownership to this tile.  Preserve one page-used
+  token and pursue a design that increases useful MMAC per ownership epoch or
+  removes an epoch entirely.
