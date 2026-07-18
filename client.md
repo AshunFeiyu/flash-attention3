@@ -3652,14 +3652,30 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - Proposed Target / 建议进入哪个 skill 或 reference:
   project-local Shaobo optimization reference after measured ACCEPT evidence.
 
-## 2026-07-19 Control-First PMD Guard
+## 2026-07-19 Canonical-Path PMD Guard
 
-- The first 1P3C useful-stagger implementation preserved exact static work
-  and fit the 160-VGPR windows, but the PMD host became non-reproducible before
-  a valid before/after comparison.  Even the byte-identical known-good control
-  binary exceeded 180 seconds under a 16-CPU host load above 79.
+- The abandoned control command used `--canonical=0` and therefore ran the
+  scalar reference path.  A byte-identical binary is not an equivalent
+  performance control when runtime path selection differs.
 - No performance conclusion is attached to that source.  It was removed and
   the worktree returned to commit `3eeff47`.
-- Future runs use a control-first gate: exact known-good binary, same shape,
-  same PMD/compiler, resolved `--SQCIPfLines=7`, then candidate.  A candidate
-  cannot be ACCEPT/REJECT when its control fails this gate.
+- Future runs use a canonical-path control gate: `CANONICAL_DQ=1`, final
+  `path=canonical`, same shape/PMD/compiler, and resolved SQ7.  A candidate
+  cannot be ACCEPT/REJECT when any of these fingerprints differ.
+
+## 2026-07-19 Causal Workload Balance Before Stagger
+
+- Three consumers increase the available heavy-wave count, but contiguous
+  M16 ownership makes them highly asymmetric under `causal=true`: `6/14/22`
+  n32 units in the first Mq192 CTA.
+- Interleaving M16 rows changes that to `12/14/16` without changing total
+  GEMMs, reads, barriers, or output ownership.
+- The measured result is a clean rejection.  Exact MMOP/LDS/VMEM/FLAT stayed
+  `28,800/15,092/704/564`, but kernel ticks regressed
+  `23,364,250 -> 24,132,290` (`+3.29%`).  Coissue success rose
+  `12,071 -> 12,982`, while failed coissue also rose
+  `10,930 -> 11,717`.
+- Conclusion: contiguous causal imbalance was providing useful natural phase
+  skew.  Equalizing useful work made the three consumers more lockstep and
+  increased issue contention.  The source is restored to contiguous
+  ownership; future stagger must change legal DAG order, not row ownership.

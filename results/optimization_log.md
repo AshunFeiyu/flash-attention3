@@ -14215,7 +14215,7 @@ Status: `OBSERVE_1P3C_TOPOLOGY_PROOF_TICKS_REGRESSION`.
 
 ## 2026-07-19 dQ Useful-Stagger PMD Control Gate
 
-Status: `OBSERVE_ENV_CONTROL_NONREPRODUCIBLE`; no candidate verdict.
+Status: `REJECT_INVALID_CONTROL_REFERENCE_PATH`; no candidate verdict.
 
 - The isolated hypothesis was legal DAG reordering for consumer1 only:
   `score -> P -> dP -> dS -> dQ`, while peers retained
@@ -14223,20 +14223,44 @@ Status: `OBSERVE_ENV_CONTROL_NONREPRODUCIBLE`; no candidate verdict.
   matrix/read/wait/barrier counts: 576 MMAC, 96 normal matrix reads, 216
   transpose matrix reads, with branch VGPR `11/158/152/159`, private0,
   spill0, and scratch0.
-- PMD evidence became non-reproducible before candidate measurement.  The
-  exact previously passing control binary (SHA256
-  `d8d96c5d1f4cf3b2de6eb3661108349f8155c9ca582466f227ef3de0f0ed59c4`)
-  exceeded the 180-second control gate and was terminated after `05m38s`.
-  The same artifact had completed in about 20 seconds stats-only and 34
-  seconds fullperf earlier in the session.
-- The host exposed only 16 CPUs while load average was
-  `81.70/80.19/79.31`.  Six stale orphan PMD kernel processes from earlier
-  experiments were terminated; no other users' processes were touched.
+- The failed control was not equivalent to the earlier control.  Its live
+  process command contained `--canonical=0`, so it entered the scalar
+  reference path and was terminated after `05m38s`; successful runs of the
+  same binary ended with `path=canonical`.  Binary SHA equality is therefore
+  insufficient unless runtime path arguments also match.
+- The host was separately unhealthy: seven approximately 116-day-old runaway
+  `kded5` processes consumed about 14 of 16 CPUs.  They ignored `TERM` and were
+  removed with targeted `KILL`; CPU idle recovered to about 91%.  This cleanup
+  improves reproducibility but does not rehabilitate the invalid reference run.
 - Several earlier commands also showed a shell-quoting hazard: when invoked
   via `docker exec env`, `GPU_ARGS` must be passed as the single quoted value
   `GPU_ARGS=['--SQCIPfLines=7']`, and PMD stdout must list
   `--SQCIPfLines=7` before a run is admissible.
 - Decision: restore `src/dq_kernel.cpp` to topology-proof commit `3eeff47`.
-  Do not classify the stagger as ACCEPT or REJECT until the exact control
-  completes first under a recovered host, then measure the candidate in the
-  same toolchain/load window.
+  Every performance invocation must explicitly set `CANONICAL_DQ=1`, verify
+  final `path=canonical`, and match SQ7/toolchain before candidate comparison.
+
+## 2026-07-19 dQ Causal M16 Ownership Balance
+
+Status: `REJECT_CAUSAL_BALANCE_LOCKSTEP`; source restored.
+
+- The 1P3C topology was symmetric in code shape but not in causal work.  For
+  the first Mq192 CTA, contiguous ownership gives consumer n32 work units
+  `6/14/22` for M16 rows `{0..3}/{4..7}/{8..11}`.  The heaviest group performs
+  3.67x the useful score/dP/dQ work of the lightest, then all roles reconverge
+  at the terminal EBarrier.
+- Interleaving ownership as `{0,3,6,9}`, `{1,4,7,10}`, and `{2,5,8,11}` gives
+  `12/14/16` work units.  The total remains exactly 42 n32 units, so MMOP,
+  global/LDS bytes, ABarrier counts, and output ownership are unchanged.
+- This was a one-line canonical mapping change, not artificial delay or a new
+  phase.  Static resources remained `11/158/158/159`, private0, spill0,
+  scratch0; H1/S768 causal correctness passed and bank conflict remained 0.
+- Fresh canonical control: kernel ticks `23,364,250`, MMOP28,800,
+  VALU33,808, SCA23,844, LDS15,092, VMEM704, FLAT564, coissue
+  `12,071/10,930`.
+- Balanced candidate: kernel ticks `24,132,290` (`+3.29%`), identical
+  MMOP/LDS/VMEM/FLAT, VALU33,856, SCA23,876, coissue `12,982/11,717`.
+- The higher coissue count did not mean better overlap.  Equal work increased
+  peer-consumer lockstep and issue contention; the original causal imbalance
+  was providing useful stagger.  Restore contiguous ownership.  The next
+  isolated hypothesis is legal DAG-order staggering with exact row ownership.

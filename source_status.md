@@ -8855,19 +8855,42 @@ Status: `OBSERVE_1P3C_TOPOLOGY_PROOF_TICKS_REGRESSION`.
   delay, duplicate GEMM, extra page/token, or consumer-assisted prefetch is
   allowed in the same hypothesis.
 
-## 2026-07-19 PMD Control Non-Reproducibility Guard
+## 2026-07-19 Invalid dQ Control Path Guard
 
-Status: `OBSERVE_ENV_CONTROL_NONREPRODUCIBLE`; canonical source restored.
+Status: `REJECT_INVALID_CONTROL_REFERENCE_PATH`; canonical source restored.
 
 - A temporary consumer1 useful-stagger source passed static resource and ISA
   equality checks (`11/158/152/159`, private0, spill0, scratch0; exact MMAC,
   matrix-read, wait, and barrier counts), but it was not performance-tested
   against a valid control.
-- The exact known-good topology binary, SHA256
-  `d8d96c5d1f4cf3b2de6eb3661108349f8155c9ca582466f227ef3de0f0ed59c4`,
-  no longer completed inside the 180-second control window and was killed
-  after `05m38s`.  The host had 16 CPUs and load average above 79.
+- The terminated run used `--canonical=0`; it was the scalar reference path,
+  not a repeat of successful `path=canonical` controls.  It provides no PMD
+  environment or kernel-performance conclusion.  The overloaded host was
+  cleaned separately by removing seven runaway `kded5` processes.
 - `src/dq_kernel.cpp` is back at commit `3eeff47`; no unvalidated stagger code
-  remains.  The next PMD attempt must first pass the exact-binary control gate,
-  verify SQ7 in PMD's resolved argument list, and only then rebuild/run the
-  one-hypothesis candidate.
+  remains.  The next PMD attempt must explicitly set `CANONICAL_DQ=1`, finish
+  with `path=canonical`, verify SQ7 in PMD's resolved arguments, and only then
+  compare the one-hypothesis candidate.
+
+## 2026-07-19 Rejected dQ Candidate: Causal-Balanced M16 Ownership
+
+Status: `REJECT_CAUSAL_BALANCE_LOCKSTEP`; canonical mapping restored.
+
+- Current contiguous consumer ownership is mathematically imbalanced under
+  causal masking: first-CTA useful n32 units are `6/14/22`.
+- Tested mapping was `local_m16 = wave_local * 3 + ConsumerGroup`, yielding
+  M16 sets `{0,3,6,9}`, `{1,4,7,10}`, `{2,5,8,11}` and work `12/14/16`.
+- This preserves every row exactly once, exact three-GEMM work, LDS layout,
+  Q/dO latch, K/V pages, ABarrier ledger, MMAC/read/wait counts, and store
+  ownership.
+- Static gates passed at `11/158/158/159`, private0, spill0, scratch0.
+  H1/S768 causal correctness passed with maxAbs `1.5201e-7`, relL2
+  `0.00151559`, no NaN/Inf, and bank0.
+- Against the freshly recertified canonical control, exact work remained
+  MMOP/LDS/VMEM/FLAT `28,800/15,092/704/564`, but kernel ticks regressed
+  `23,364,250 -> 24,132,290` (`+3.29%`).  VALU/SCA rose slightly
+  `33,808/23,844 -> 33,856/23,876`; coissue success/fail both rose from
+  `12,071/10,930 -> 12,982/11,717`.
+- Interpretation: causal row imbalance was a useful phase offset.  Balancing
+  it increased lockstep MMAC competition rather than shortening the terminal
+  tail.  Restore contiguous ownership and pursue a legal DAG-order stagger.
