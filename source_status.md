@@ -8937,3 +8937,18 @@ Status: `REJECT_SPLIT_USED_TOKEN_CONTROL_COST`; canonical source restored.
 - Do not add finer-grained ownership to this tile.  Preserve one page-used
   token and pursue a design that increases useful MMAC per ownership epoch or
   removes an epoch entirely.
+
+## 2026-07-19 Rejected dQ Refactor: N32 Stage Helpers
+
+Status: `REJECT_STATIC_CODEGEN_DRIFT`; canonical source restored.
+
+- The refactor extracted forced-inline `score+dP` and `softmax+dQ` helpers but
+  deliberately preserved all mathematical work and loop order.
+- Static ISA kept exact MMAC576, matrix reads312, matrix loads20, ABarrier
+  wait/arrive/seq `12/15/4`, exp192, v_mov85, branches81, and stores25.
+- Despite that, wait instructions rose `89 -> 93`, specifically through
+  extra VMEM/combined waits, and branch VGPR use rose from `11/158/158/159`
+  to `11/160/160/160`.  The compiler therefore did not preserve the original
+  scheduling/lifetime boundary.
+- No PMD run was admitted.  Future coissue experiments must leave the compact
+  original compute body intact or prove an exact generated schedule first.

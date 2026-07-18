@@ -3714,3 +3714,14 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - Design boundary: do not subdivide a page ownership epoch unless the released
   operand starts a sufficiently long independent transfer.  The next route
   must amortize synchronization with larger useful islands or fewer epochs.
+
+## 2026-07-19 dQ N32 Stage-Helper Refactor Rejected Statically
+
+- A no-math-change refactor split each n32 into forced-inline
+  `score+dP` and `softmax+dQ` helpers as preparation for two-n32 batching.
+- MMAC, matrix reads, ABarrier, exp, v_mov, stores, and branches stayed exact,
+  but generated `s_waitcnt` rose `89 -> 93` and branch VGPRs rose from
+  `11/158/158/159` to `11/160/160/160`.
+- It failed the schedule/resource-preservation gate before PMD, so the source
+  was restored.  The next structural test keeps the original compute body and
+  transfers only V-page BPS ownership from producer to consumer1.

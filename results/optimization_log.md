@@ -14303,3 +14303,17 @@ Status: `REJECT_SPLIT_USED_TOKEN_CONTROL_COST`; source restored.
   ownership protocol.  Reject both variants, remove their source, and retain
   one combined page-used token.  The next hypothesis must improve the
   useful-work/control ratio rather than fragment readiness further.
+
+## 2026-07-19 dQ N32 Stage-Helper Refactor
+
+Status: `REJECT_STATIC_CODEGEN_DRIFT`; no PMD run.
+
+- The intended preparation for asymmetric two-n32 batching extracted two
+  forced-inline stage helpers without changing work or order.
+- Static counts proved the main work exact, but `s_waitcnt` increased
+  `89 -> 93` and all consumer branches reached the 160-VGPR ceiling instead
+  of measured `158/158/159`.
+- This violates the refactor-preservation gate and leaves no register headroom
+  for the actual batch.  Restore canonical source.  Test consumer-assisted V
+  BPS ownership next because it can create useful skew without rewriting the
+  proven fused MMAC body.
