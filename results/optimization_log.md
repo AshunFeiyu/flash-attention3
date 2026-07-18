@@ -13869,3 +13869,38 @@ Status: `ACCEPT_SCORE_DP_READ8_FIRST_USE`
   `dkv_mmac_correctness_20260718_161841`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_161841_owner16_scoredp_read8_s768_sqc7/`.
+
+## 2026-07-18 Owner16 dV/dK Read8 First-Use Wait Accepted
+
+Status: `ACCEPT_DVDK_READ8_FIRST_USE`
+
+- Hypothesis: after score/dP read8, normal Q/dO source readiness remains an
+  exposed consumer-local gap. Issue D0-D3 sources together, but retire D0/D1
+  at first use instead of draining all eight reads before useful MMAC.
+- Change: `read4 -> wait0 -> MMAC8 -> read4 -> wait0 -> MMAC8` becomes
+  `read8 -> wait4 -> MMAC8 -> wait0 -> RawUsed arrive -> MMAC8`. Math,
+  topology, token count, release boundary, and output ownership are unchanged.
+- Static evidence: roles stay `22/145/145/145`; private0, SGPR46, VGPR128,
+  spill0/scratch0. Symbol ASM contains eight consecutive normal matrix reads,
+  `lgkmcnt(4)`, MMAC8, `lgkmcnt(0)`, then MMAC8.
+- Correctness: H1/S384 and H1/S768 pass. S768 dK/dV relL2 is
+  `0.00191329/0.000319636`; MMOP/VALU/SCA/LDS/VMEM remain exactly
+  `73,728/105,712/20,856/44,768/1,728`; `ldsBankConflict=0`.
+- Stats-only S768: ticks `44,943,080 -> 43,976,205` (`-2.15%`), MMAC active
+  `32.7318% -> 33.8957%`, waitLgkm `22,656.5 -> 17,446.25` (`-23.0%`),
+  barrier `86,833.75 -> 84,723` (`-2.43%`).
+- Fullperf S768: ticks `44,852,080 -> 43,876,105` (`-2.18%`), MMAC active
+  `32.801527% -> 33.892813%`, waitLgkm `22,656.5 -> 17,530.5` (`-22.6%`),
+  barrier `86,833.75 -> 84,316.25` (`-2.90%`).
+- XCU duration falls `98,572 -> 96,428`; normal matrix-read-to-wait gap falls
+  `4.57% -> 4.15%`. Consumer MMAC+VALU shares become
+  `30.69%/29.36%/27.96%`. Trans-read-to-wait rises `3.96% -> 5.15%`, and the
+  two ABarrier wait rows now account for `32.88% + 8.95%`; ownership is the
+  next evidence-backed target.
+- Evidence: workbook sheet `146_DKV_DvDk_Read8`; stats-only
+  `/zys/shaobo_runs/owner16_dvdk_read8_firstuse/`
+  `dkv_mmac_correctness_20260718_165319`; fullperf/XCU
+  `/zys/shaobo_runs/owner16_dvdk_read8_firstuse_fullperf/`
+  `dkv_mmac_correctness_20260718_165607`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_165607_owner16_dvdk_read8_firstuse_s768_sqc7/`.

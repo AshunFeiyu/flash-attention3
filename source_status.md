@@ -8623,3 +8623,24 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   `dkv_mmac_correctness_20260718_161522`; fullperf/XCU
   `/zys/shaobo_runs/owner16_scoredp_read8_fullperf/`
   `dkv_mmac_correctness_20260718_161841`; workbook sheet 145.
+
+## 2026-07-18 Owner16 dV/dK Read8 First-Use Accepted
+
+- Status: `ACCEPT_DVDK_READ8_FIRST_USE` on branch
+  `exp/dkv-owner16-1p3c-full-kv`.
+- Canonical dV/dK now emits eight normal matrix reads followed by
+  `lgkmcnt(4) -> MMAC8 -> lgkmcnt(0) -> RawUsed arrive -> MMAC8`. No phase
+  switch or alternate kernel remains in source.
+- Gates pass: branches `22/145/145/145` in `32/160/160/160`; private0,
+  SGPR46, VGPR128, spill0/scratch0; exact emitted ASM; S384/S768 dK+dV PASS;
+  S768 MMOP 73,728 and bank0.
+- Stats-only S768: ticks `44,943,080 -> 43,976,205` (`-2.15%`), MMAC active
+  `32.7318% -> 33.8957%`, waitLgkm `22,656.5 -> 17,446.25`.
+- Fullperf S768: ticks `44,852,080 -> 43,876,105` (`-2.18%`), MMAC active
+  `32.8015% -> 33.8928%`, waitLgkm `22,656.5 -> 17,530.5`, XCU duration
+  `98,572 -> 96,428`, normal-read-to-wait `4.57% -> 4.15%`.
+- Remaining blocker: ABarrier wait issue gaps total `41.83%` in dispatch0.
+  Do not enlarge the read island again without ownership-edge evidence.
+- Fullperf/XCU:
+  `/zys/shaobo_runs/owner16_dvdk_read8_firstuse_fullperf/`
+  `dkv_mmac_correctness_20260718_165607`; workbook sheet 146.

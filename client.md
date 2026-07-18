@@ -3243,3 +3243,51 @@ Skill Candidate: batch independent LDS reads and retire at exact first use
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` during the next
   serialized skill consolidation.
+
+## 2026-07-18 Owner16 dV/dK Read8 First-Use Accepted
+
+- Status: `ACCEPT_DVDK_READ8_FIRST_USE`.
+- The canonical full-K/V owner16 topology, four GEMMs, five ABarrier IDs,
+  output ownership, and score/dP schedule are unchanged. Each dV/dK M16 now
+  issues eight normal matrix reads, retires D0/D1 at `lgkmcnt(4)`, executes
+  MMAC8, retires D2/D3 at `lgkmcnt(0)`, releases `RawUsed`, then executes the
+  final MMAC8.
+- Static/resource gates pass at branch use `22/145/145/145`, private0,
+  SGPR46, VGPR128, spill0/scratch0. ASM proves the intended schedule.
+- S384 and S768 correctness pass; exact S768 work remains MMOP 73,728 and
+  bank conflict remains zero.
+- Same-build stats-only S768 ticks improve `44,943,080 -> 43,976,205`
+  (`-2.15%`) and MMAC active rises `32.7318% -> 33.8957%`.
+- Fullperf confirms `44,852,080 -> 43,876,105` ticks (`-2.18%`), MMAC active
+  `32.8015% -> 33.8928%`, and waitLgkm `22,656.5 -> 17,530.5` (`-22.6%`).
+  XCU duration falls `98,572 -> 96,428`; normal matrix-read-to-wait issue gap
+  falls `4.57% -> 4.15%`.
+- The next limiter is no longer a reason to extend the read island blindly:
+  XCU attributes `32.88% + 8.95%` of issue-gap duration to two ABarrier wait
+  rows, while trans-read-to-wait rises to `5.15%`. The next experiment must
+  target a proven ownership edge without changing exact work.
+- Evidence: workbook sheet `146_DKV_DvDk_Read8`; stats-only
+  `/zys/shaobo_runs/owner16_dvdk_read8_firstuse/`
+  `dkv_mmac_correctness_20260718_165319`; fullperf/XCU
+  `/zys/shaobo_runs/owner16_dvdk_read8_firstuse_fullperf/`
+  `dkv_mmac_correctness_20260718_165607`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_165607_owner16_dvdk_read8_firstuse_s768_sqc7/`.
+
+Skill Candidate: apply first-use waits per operand family, not per helper
+
+- Trigger / 适用场景: one matrix helper emits several independent operand
+  families and a full `lgkmcnt(0)` exposes latency before the first MMAC.
+- Rule / 可复用规则: count emitted LDS operations, scope all destination
+  fragments together, and retire only the family consumed next. Keep the
+  ownership release at its original legal point until SQTT proves otherwise.
+- Evidence / 证据: dV/dK `read8 -> wait4 -> MMAC8 -> wait0 -> MMAC8` lowers
+  S768 ticks 2.15% and waitLgkm 22.6% with exact work, correctness, spill0,
+  and bank0.
+- Boundary / 适用边界: a lower threshold is valid only when the hardware
+  operation count and destination order are known from emitted ASM.
+- Counterexample / 反例或不适用情况: owner32 `read8 -> wait0 -> MMAC16`
+  delayed useful work and regressed despite a visually larger read island.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` in the next
+  serialized consolidation.

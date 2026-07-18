@@ -684,21 +684,23 @@ __device__ __forceinline__ void owner16_dv_dk_read_mmac(
         ins::zero_f16x8(zero_f16);
     }
 
-    Owner16DvDkSources src;
-    read_owner16_dv_dk_sources<Tile, 0, MBlockBase>(lds, page, src);
+    Owner16DvDkSources src_d01;
+    Owner16DvDkSources src_d23;
+    read_owner16_dv_dk_sources<Tile, 0, MBlockBase>(lds, page, src_d01);
+    read_owner16_dv_dk_sources<Tile, 2, MBlockBase>(lds, page, src_d23);
 
-    ins::wait_lgkm(0);
+    // Retire D0/D1 at first use while the four D2/D3 reads remain in flight.
+    ins::wait_lgkm(4);
     ins::raise_priority_2();
     owner16_dv_dk_mmac_four_out<FirstAccum, 0>(
-        p_frag, ds_frag, src, dv_acc, dk_acc, zero_f16);
+        p_frag, ds_frag, src_d01, dv_acc, dk_acc, zero_f16);
 
-    read_owner16_dv_dk_sources<Tile, 2, MBlockBase>(lds, page, src);
     ins::wait_lgkm(0);
     if constexpr (ReleaseRaw) {
         arrive_raw_used<Wdra>();
     }
     owner16_dv_dk_mmac_four_out<FirstAccum, 4>(
-        p_frag, ds_frag, src, dv_acc, dk_acc, zero_f16);
+        p_frag, ds_frag, src_d23, dv_acc, dk_acc, zero_f16);
     ins::lower_priority();
 }
 
