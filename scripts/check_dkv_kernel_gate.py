@@ -64,9 +64,12 @@ def main() -> int:
             "missing_consumer1_branch")
     require(perf_source, r"consumer_dkv_mmac_loop<Tile,\s*Bar,\s*1>",
             failures, "missing_consumer1_branch")
-    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVgprs\)",
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerKqVgprs\)",
             failures,
-            "missing_producer_vgpr_window")
+            "missing_kq_producer_vgpr_window")
+    require(perf_source, r"s_set_vgpr_size\(Vgpr::kProducerVdoutVgprs\)",
+            failures,
+            "missing_vdout_producer_vgpr_window")
     require(perf_source, r"s_set_vgpr_size\(Vgpr::kConsumerVgprs\)",
             failures,
             "missing_consumer_vgpr_window")
@@ -134,6 +137,18 @@ def main() -> int:
             "missing_resident_nk_contract")
     require(contract, r"kRawBuffers\s*=\s*1", failures,
             "missing_active_rawbuffer1_contract")
+    require(contract, r"kProducerKqVgprs\s*=\s*16", failures,
+            "missing_kq_producer_vgpr_contract")
+    require(contract, r"kConsumerVgprs\s*=\s*240", failures,
+            "missing_full_kv_consumer_vgpr_contract")
+    require(contract, r"kProducerVdoutVgprs\s*=\s*16", failures,
+            "missing_vdout_producer_vgpr_contract")
+    require(perf_source, r"ins::F16x8\s+v0\[4\]", failures,
+            "missing_full_v0_latch")
+    require(perf_source, r"ins::F16x8\s+v1\[4\]", failures,
+            "missing_full_v1_latch")
+    forbid(perf_source, r"v0_d0|v1_d0|v0_frag|v1_frag", failures,
+           "steady_score_dp_v_fragment_path_present")
     require(source, r"softmax_ds_owner32_causal_exact_tile", failures,
             "missing_causal_exact_tile_helper")
     require(contract, r"kOverlayRawOnResidentKv", failures,

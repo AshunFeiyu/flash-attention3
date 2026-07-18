@@ -3087,3 +3087,38 @@ Skill Candidate: distinguish release time from next-generation readiness
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` in a serialized
   consolidation pass.
+
+## 2026-07-18 Full K/V Latch Resource Closure
+
+- Status: `REJECT_RESOURCE_FULL_KV_OWNER32_EXPERIMENT_BRANCH`.
+- Workbook sheet 143 paired full owner32 K/V persistence with removal of all
+  steady score/dP V fragments. The intended arithmetic stays at four GEMMs;
+  score/dP matrix reads would fall from 14 to 8 per M16.
+- R1 two-slot compile reports role use `14/244/244/8`, but metadata is
+  `private=124B`, `vgpr_spill=116`, SGPR60, VGPR128. R3 one-slot Q/dO reports
+  the same private/spill result, proving the source read slot is not the
+  limiting lifetime.
+- ASM places folded spill stores at the `q_tile == 0` FirstAccum/steady-loop
+  merge. Peeling the first tile lowers spill count only `116 -> 111` while
+  private storage worsens `124B -> 248B`; it changes spill placement rather
+  than solving capacity.
+- No PMD run is allowed. The hard lower bound is 128 VGPR of dK+dV fp32
+  accumulators plus 64 VGPR of complete K/V, before score/dP, P/dS, sidecar,
+  addresses, and control. Restore the 40.0907% owner32 canonical.
+
+Skill Candidate: treat WDRA branch use as post-spill evidence
+
+- Trigger / 适用场景: a WDRA build prints a branch use that fits its window,
+  but symbol metadata still reports private storage or VGPR spills.
+- Rule / 可复用规则: branch use alone is not a no-spill proof. Gate on symbol
+  metadata and inspect folded spill/reload ASM before PMD; source-level VGPR
+  ledgers are only hypotheses until both checks pass.
+- Evidence / 证据: full-K/V R1 prints `244/244` for both consumers while
+  metadata reports `private=124B, vgpr_spill=116`; single-slot R3 is identical.
+- Boundary / 适用边界: branch use remains useful for WDRA file allocation
+  after metadata is clean.
+- Counterexample / 反例或不适用情况: canonical prints `239/240` and also has
+  private/spill0, so the two signals agree there.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` in a serialized
+  consolidation pass.

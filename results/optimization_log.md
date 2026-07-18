@@ -13761,3 +13761,24 @@ Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_SOURCE_RESTORED`
   `/zys/sb/qrsbase/dkv_mmac_correctness_20260717_192149`; restored canonical
   `/zys/sb/canonical_after_early_used_reject/`
   `dkv_mmac_correctness_20260718_010507`; workbook sheet 142.
+
+## 2026-07-18 Full K/V Latch with Transient-V Elimination
+
+Status: `REJECT_RESOURCE_FULL_KV_OWNER32_EXPERIMENT_BRANCH`
+
+- Design: keep all owner32 K/V fragments live across the q-loop and delete
+  the D1-D3 V rereads and temporary V fragments from score/dP. This removes
+  six matrix reads per M16 while preserving exact four-GEMM work, ownership,
+  and ABarrier topology.
+- R1 two-slot result: branch use `14/244/244/8`; metadata private124B,
+  vgpr_spill116, SGPR60, VGPR128. R3 one-slot result: branch use
+  `14/240/240/8` and the same metadata, so Q/dO slot count is not the spill
+  cause.
+- The compiler rejects `16/240/240/8=504` because branch-average VGPR size
+  misses target granularity; R3 must reserve `16/240/240/16=512` even though
+  producer1 uses only eight.
+- Folded scratch stores/reloads are emitted around the q_tile0 FirstAccum
+  merge. Peeling q_tile0 changes metadata to private248B/vgpr_spill111; this
+  is still a hard failure and shows the CFG was not the root capacity fix.
+- Decision: no PMD execution. Record in workbook sheet 143, preserve the
+  static negative experiment in git, and restore tagged owner32 canonical.

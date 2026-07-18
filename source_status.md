@@ -8549,3 +8549,19 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   correctness and bank0 are recertified at
   `/zys/sb/canonical_after_early_used_reject/`
   `dkv_mmac_correctness_20260718_010507`.
+
+## 2026-07-18 Full K/V Latch Rejected by Resource Gate
+
+- Status: `REJECT_RESOURCE_FULL_KV_OWNER32_EXPERIMENT_BRANCH`.
+- Full V D0-D3 is latched with K and all steady-loop V matrix reads/fragments
+  are removed. R1 retains two Q/dO read slots; R3 uses one slot.
+- R1 roles are `14/244/244/8`, metadata private124B/vgpr_spill116. R3 roles
+  are `14/240/240/8` with the identical private/spill result. The required
+  R3 WDRA windows are `16/240/240/16=512`; total 504 is rejected by the
+  compiler's branch-average VGPR granularity gate.
+- ASM attributes folded spill traffic to the FirstAccum/steady-loop merge.
+  Peeling q_tile0 changes metadata to private248B/vgpr_spill111 and therefore
+  does not solve capacity. No correctness or PMD performance run is allowed.
+- Workbook sheet 143 contains the DAG, VGPR lower bound, instruction saving,
+  expected pipeline, and all three static results. Active source must return
+  to the owner32 canonical.

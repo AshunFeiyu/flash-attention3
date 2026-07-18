@@ -446,8 +446,8 @@ __device__ __forceinline__ void producer_vdout_loop(
 struct Owner32KvRegs {
     ins::F16x8 k0[4];
     ins::F16x8 k1[4];
-    ins::F16x8 v0_d0;
-    ins::F16x8 v1_d0;
+    ins::F16x8 v0[4];
+    ins::F16x8 v1[4];
 };
 
 template <typename Tile>
@@ -463,12 +463,10 @@ __device__ __forceinline__ void latch_owner32_kv_regs(
             Layout::kKBase + kv_block_offset<Tile>(owner_nblock32, d_block);
         ins::ds_read_matrix_trans_pair(
             lds, k_off, regs.k0[d_block].f16x8, regs.k1[d_block].f16x8);
-        if (d_block == 0) {
-            const int v_off =
-                Layout::kVBase + kv_block_offset<Tile>(owner_nblock32, 0);
-            ins::ds_read_matrix_trans_pair(
-                lds, v_off, regs.v0_d0.f16x8, regs.v1_d0.f16x8);
-        }
+        const int v_off =
+            Layout::kVBase + kv_block_offset<Tile>(owner_nblock32, d_block);
+        ins::ds_read_matrix_trans_pair(
+            lds, v_off, regs.v0[d_block].f16x8, regs.v1[d_block].f16x8);
     }
     ins::wait_lgkm(0);
 }
@@ -477,11 +475,8 @@ template <typename Tile, int MBlockBase, int DBlock>
 __device__ __forceinline__ void read_score_dp_owner32_dblock(
     __half* lds,
     int page,
-    int owner_nblock32,
     ins::F16x8& q_frag,
-    ins::F16x8& dout_frag,
-    ins::F16x8& v0_frag,
-    ins::F16x8& v1_frag) {
+    ins::F16x8& dout_frag) {
     using Layout = DkvLdsLayout<Tile>;
     static_assert(MBlockBase < Layout::kRawMBlocksPerMqTile,
                   "score/dP reads one M16 block");
@@ -502,12 +497,6 @@ __device__ __forceinline__ void read_score_dp_owner32_dblock(
 
     ins::ds_read_matrix_32x16_trans_imm2<kQOff, kDoutOff>(
         lds, q_frag.f16x8, dout_frag.f16x8);
-    if constexpr (DBlock != 0) {
-        const int v_off =
-            Layout::kVBase + kv_block_offset<Tile>(owner_nblock32, DBlock);
-        ins::ds_read_matrix_trans_pair(
-            lds, v_off, v0_frag.f16x8, v1_frag.f16x8);
-    }
 }
 
 template <int DBlock, int OwnerHalf>
@@ -515,8 +504,6 @@ __device__ __forceinline__ void score_dp_mmac_owner32_half(
     const Owner32KvRegs& kv_regs,
     const ins::F16x8& q_frag,
     const ins::F16x8& dout_frag,
-    const ins::F16x8& v0_frag,
-    const ins::F16x8& v1_frag,
     const ins::F16x8& zero,
     ins::F32x4 (&score)[2],
     ins::F32x4 (&dp)[2]) {
@@ -527,9 +514,7 @@ __device__ __forceinline__ void score_dp_mmac_owner32_half(
     const ins::F16x8& k_reg =
         OwnerHalf == 0 ? kv_regs.k0[DBlock] : kv_regs.k1[DBlock];
     const ins::F16x8& v_reg =
-        DBlock == 0
-            ? (OwnerHalf == 0 ? kv_regs.v0_d0 : kv_regs.v1_d0)
-            : (OwnerHalf == 0 ? v0_frag : v1_frag);
+        OwnerHalf == 0 ? kv_regs.v0[DBlock] : kv_regs.v1[DBlock];
 #pragma unroll
     for (int k_half = 0; k_half < 2; ++k_half) {
         const bool first = DBlock == 0 && k_half == 0;
@@ -547,15 +532,13 @@ __device__ __forceinline__ void score_dp_mmac_owner32_dblock(
     const Owner32KvRegs& kv_regs,
     const ins::F16x8& q_frag,
     const ins::F16x8& dout_frag,
-    const ins::F16x8& v0_frag,
-    const ins::F16x8& v1_frag,
     const ins::F16x8& zero,
     ins::F32x4 (&score)[2],
     ins::F32x4 (&dp)[2]) {
     score_dp_mmac_owner32_half<DBlock, 0>(
-        kv_regs, q_frag, dout_frag, v0_frag, v1_frag, zero, score, dp);
+        kv_regs, q_frag, dout_frag, zero, score, dp);
     score_dp_mmac_owner32_half<DBlock, 1>(
-        kv_regs, q_frag, dout_frag, v0_frag, v1_frag, zero, score, dp);
+        kv_regs, q_frag, dout_frag, zero, score, dp);
 }
 
 template <typename Tile, int MBlockBase>
@@ -573,39 +556,33 @@ __device__ __forceinline__ void score_dp_mmac_owner32(
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
 
-    ins::F16x8 q_d0;
-    ins::F16x8 dout_d0;
-    ins::F16x8 v0_d0;
-    ins::F16x8 v1_d0;
-    ins::F16x8 q_d1;
-    ins::F16x8 dout_d1;
-    ins::F16x8 v0_d1;
-    ins::F16x8 v1_d1;
+    ins::F16x8 q_frag;
+    ins::F16x8 dout_frag;
 
     read_score_dp_owner32_dblock<Tile, MBlockBase, 0>(
-        lds, page, owner_nblock32, q_d0, dout_d0, v0_d0, v1_d0);
-    read_score_dp_owner32_dblock<Tile, MBlockBase, 1>(
-        lds, page, owner_nblock32, q_d1, dout_d1, v0_d1, v1_d1);
+        lds, page, q_frag, dout_frag);
     ins::wait_lgkm(0);
     ins::raise_priority_2();
     score_dp_mmac_owner32_dblock<0>(
-        kv_regs, q_d0, dout_d0, v0_d0, v1_d0, zero, score, dp);
+        kv_regs, q_frag, dout_frag, zero, score, dp);
 
-    // Reuse the consumed D0 register set for D2.  D1 MMAC hides the D2 read;
-    // D2 MMAC then hides the D3 read in the other register set.
-    read_score_dp_owner32_dblock<Tile, MBlockBase, 2>(
-        lds, page, owner_nblock32, q_d0, dout_d0, v0_d0, v1_d0);
+    read_score_dp_owner32_dblock<Tile, MBlockBase, 1>(
+        lds, page, q_frag, dout_frag);
+    ins::wait_lgkm(0);
     score_dp_mmac_owner32_dblock<1>(
-        kv_regs, q_d1, dout_d1, v0_d1, v1_d1, zero, score, dp);
+        kv_regs, q_frag, dout_frag, zero, score, dp);
+
+    read_score_dp_owner32_dblock<Tile, MBlockBase, 2>(
+        lds, page, q_frag, dout_frag);
+    ins::wait_lgkm(0);
+    score_dp_mmac_owner32_dblock<2>(
+        kv_regs, q_frag, dout_frag, zero, score, dp);
 
     read_score_dp_owner32_dblock<Tile, MBlockBase, 3>(
-        lds, page, owner_nblock32, q_d1, dout_d1, v0_d1, v1_d1);
-    ins::wait_lgkm(4);
-    score_dp_mmac_owner32_dblock<2>(
-        kv_regs, q_d0, dout_d0, v0_d0, v1_d0, zero, score, dp);
+        lds, page, q_frag, dout_frag);
     ins::wait_lgkm(0);
     score_dp_mmac_owner32_dblock<3>(
-        kv_regs, q_d1, dout_d1, v0_d1, v1_d1, zero, score, dp);
+        kv_regs, q_frag, dout_frag, zero, score, dp);
     ins::lower_priority();
 }
 
@@ -984,30 +961,38 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
         arrive_resident_used<Wdra>();
     }
 
+    {
+        constexpr int q_tile = 0;
+        const int page = raw_page_for_q_tile<Tile>(q_tile);
+        constexpr int q_tile_base = 0;
+        wait_q_half_filled<Wdra, 0>(q0_filled_phase);
+        consume_m16_owner32_causal_exact_tile<
+            Tile,
+            Wdra,
+            0,
+            true,
+            false>(lds, q_tile_base, owner_nblock32, owner_krow0,
+                   lane_col_group, softmax_scale, softmax_scale_log2, page,
+                   kv_regs, dv_acc, dk_acc);
+        consume_q_tile_owner32_tail<Tile, Wdra>(
+            lds, q_tile_base, owner_nblock32, owner_krow0, lane_col_group,
+            softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc,
+            q1_filled_phase);
+    }
+
 #pragma clang loop unroll(disable)
-    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
+    for (int q_tile = 1; q_tile < q_tiles; ++q_tile) {
         const int page = raw_page_for_q_tile<Tile>(q_tile);
         const int q_tile_base = q_tile * Tile::kBlockMq;
         wait_q_half_filled<Wdra, 0>(q0_filled_phase);
-        if (q_tile == 0) {
-            consume_m16_owner32_causal_exact_tile<
-                Tile,
-                Wdra,
-                0,
-                true,
-                false>(lds, q_tile_base, owner_nblock32, owner_krow0,
-                       lane_col_group, softmax_scale, softmax_scale_log2, page,
-                       kv_regs, dv_acc, dk_acc);
-        } else {
-            consume_m16_owner32_causal_exact_tile<
-                Tile,
-                Wdra,
-                0,
-                false,
-                false>(lds, q_tile_base, owner_nblock32, owner_krow0,
-                        lane_col_group, softmax_scale, softmax_scale_log2,
-                        page, kv_regs, dv_acc, dk_acc);
-        }
+        consume_m16_owner32_causal_exact_tile<
+            Tile,
+            Wdra,
+            0,
+            false,
+            false>(lds, q_tile_base, owner_nblock32, owner_krow0,
+                    lane_col_group, softmax_scale, softmax_scale_log2,
+                    page, kv_regs, dv_acc, dk_acc);
         consume_q_tile_owner32_tail<Tile, Wdra>(
             lds, q_tile_base, owner_nblock32, owner_krow0, lane_col_group,
             softmax_scale, softmax_scale_log2, page, kv_regs, dv_acc, dk_acc,
@@ -1067,7 +1052,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
     const int q_tiles = seqlen / Tile::kBlockMq;
 
     if (wave_id < 4) {
-        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerKqVgprs);
         const int lane = static_cast<int>(threadIdx.x % 64);
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
@@ -1096,7 +1081,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
             softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
-        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVdoutVgprs);
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         producer_vdout_loop<Tile, Bar>(
