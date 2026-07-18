@@ -13904,3 +13904,45 @@ Status: `ACCEPT_DVDK_READ8_FIRST_USE`
   `dkv_mmac_correctness_20260718_165607`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_165607_owner16_dvdk_read8_firstuse_s768_sqc7/`.
+
+## 2026-07-18 Owner16 Mq192 Ownership-Epoch Scaling Accepted
+
+Status: `ACCEPT_MQ192_OWNERSHIP_EPOCH`
+
+- Hypothesis: with K/V already latched in consumer VGPRs, the 96KiB startup
+  LDS is dead during the q-loop. Use that capacity for one Mq192 raw packet so
+  S768 pays four RawFilled generations and three reuse waits instead of six
+  and five, without changing total bytes, MMAC work, or output ownership.
+- Design: retain Nk192, three symmetric Nk16 consumer groups, one raw page,
+  five ABarrier IDs, and four exact GEMMs. Raw Q+dO is 98,304B and sidecar is
+  2,304B, for 100,608B steady LDS. S384/S768 are the only admitted exact
+  shapes; S1024 remains rejected until a real tail exists.
+- Codegen boundary discovered during implementation: the DS matrix-read
+  offset field is 16-bit, not 18-bit. The native solution is separate Q and
+  dO LDS base SGPRs plus relative immediates; no `ds_read_b32`, gather,
+  bpermute, or layout workaround enters the matrix path.
+- Static evidence: role branches `30/145/145/145` fit the
+  `32/160/160/160` WDRA windows; metadata is private0, SGPR55, VGPR128,
+  spill0/scratch0. Emitted ASM has no out-of-range DS offset.
+- Correctness: S384 and S768 pass; S768 relL2 is
+  dK `0.00191329`, dV `0.000319636`. MMOP/LDS/VMEM stay exactly
+  `73,728/44,768/1,728`, with bank0.
+- Stats-only: ticks `43,976,205 -> 42,662,165` (`-2.99%`), MMAC active
+  `33.8957% -> 35.1548%`, waitLgkm `17,446.25 -> 16,165.75`, and barrier
+  `84,723 -> 75,916`.
+- Fullperf: ticks `43,876,105 -> 43,033,445` (`-1.92%`), MMAC active
+  `33.8928% -> 34.8979%`, barrier `84,316.25 -> 76,858.25`, and XCU duration
+  `96,428 -> 94,576`. Fullperf waitLgkm rises slightly
+  `17,530.5 -> 17,865.75`, so the acceptance rests on ticks and the proven
+  ownership reduction, not every secondary counter moving together.
+- XCU: ordinary `try_wait -> s_xor` events fall `432 -> 304` and duration
+  falls `1,909,104 -> 1,776,840`; total ABarrier issue-gap duration falls
+  2.63%. AllDone stays 64 events but its duration rises 13.16%, identifying
+  tail convergence as residual debt. Fixed-time consumer-window coissue is
+  not promoted as a comparison because packet boundaries moved.
+- Evidence: workbook sheet `147_DKV_Mq192_EpochScale`; stats-only
+  `/zys/shaobo_runs/owner16_mq192/dkv_mmac_correctness_20260718_174547`;
+  fullperf/XCU `/zys/shaobo_runs/owner16_mq192_fullperf/`
+  `dkv_mmac_correctness_20260718_174748`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_174748_owner16_mq192_s768_sqc7/`.

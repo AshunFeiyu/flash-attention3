@@ -9,7 +9,7 @@ inline constexpr int kDkvPathCanonicalDkv = 5;
 
 struct ActiveDkvTile {
     static constexpr int kHeadDim = 128;
-    static constexpr int kBlockMq = 128;
+    static constexpr int kBlockMq = 192;
     static constexpr int kNkPerConsumerWave = 16;
     static constexpr int kConsumerGroups = 3;
     static constexpr int kWavesPerConsumerGroup = 4;
@@ -66,8 +66,10 @@ struct ActiveDkvTile {
             ? (kSteadyRawBytes > kKvBytes ? kSteadyRawBytes : kKvBytes)
             : kKvBytes + kSteadyRawBytes;
 
-    static_assert(kBlockMq % 32 == 0,
-                  "dKV clean tile consumes Mq in pairs of M16 blocks");
+    static_assert(kBlockMq % kWaveSize == 0,
+                  "sidecar publisher requires complete 64-row wave stripes");
+    static_assert(kBlockMq <= 4 * kWaveSize,
+                  "four producer waves must cover one sidecar packet");
     static_assert(kResidentNk == 192, "owner16 1P+3C tile expects Nk=192");
     static_assert(kKvBytes == 96 * 1024,
                   "resident K/V startup epoch must occupy exactly 96KB");

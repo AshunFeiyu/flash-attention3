@@ -29,8 +29,10 @@ def main() -> int:
     perf_source = source
     contract = Path(args.contract).read_text(errors="ignore")
     asm_path = Path(args.asm)
-    asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
     failures: list[str] = []
+    if not asm_path.is_file():
+        failures.append("asm_file_missing")
+    asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
 
     require(source, r"fa3_bwd_dkv_ref_softmax_kernel",
             failures, "missing_ref_softmax_kernel")
@@ -80,14 +82,17 @@ def main() -> int:
             failures, "missing_raw_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kRawUsed,\s*12\)",
             failures, "missing_raw_used_count")
-    require(perf_source, r"publish_mq_half_tile<Tile,\s*0>", failures,
-            "missing_qdo_half0_publisher")
-    require(perf_source, r"publish_mq_half_tile<Tile,\s*1>", failures,
-            "missing_qdo_half1_publisher")
-    require(perf_source, r"publish_sidecar_half_tile_to_lds<Tile,\s*0>",
-            failures, "missing_sidecar_half0_publisher")
-    require(perf_source, r"publish_sidecar_half_tile_to_lds<Tile,\s*1>",
-            failures, "missing_sidecar_half1_publisher")
+    require(perf_source, r"publish_mq_tile<Tile>", failures,
+            "missing_qdo_packet_publisher")
+    require(perf_source, r"publish_sidecar_tile_to_lds<Tile>", failures,
+            "missing_sidecar_packet_publisher")
+    require(perf_source, r"ds_read_matrix_32x16_trans_dual_base_imm4",
+            failures, "missing_dual_base_trans_matrix_read")
+    require(perf_source, r"ds_read_matrix_32x16_normal_dual_base_imm2",
+            failures, "missing_dual_base_normal_matrix_read")
+    require(perf_source,
+            r"MBlockBase\s*\+\s*1\s*==\s*Tile::kBlockMq\s*/\s*16",
+            failures, "missing_last_m16_raw_release_contract")
     require(perf_source, r"arrive_raw_used<Wdra>\(\)",
             failures, "missing_combined_q_dout_lifetime_release")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
@@ -114,8 +119,10 @@ def main() -> int:
             "missing_canonical_path_contract")
     require(contract, r"struct\s+ActiveDkvTile", failures,
             "missing_active_tile_contract")
-    require(contract, r"kBlockMq\s*=\s*128", failures,
-            "missing_active_mq128_contract")
+    require(contract, r"kBlockMq\s*=\s*192", failures,
+            "missing_active_mq192_contract")
+    require(contract, r"kBlockMq\s*%\s*kWaveSize\s*==\s*0", failures,
+            "missing_full_wave_sidecar_coverage_contract")
     require(contract, r"kNkPerConsumerWave\s*=\s*16", failures,
             "missing_owner16_contract")
     require(contract, r"kConsumerGroups\s*=\s*3", failures,
@@ -134,6 +141,9 @@ def main() -> int:
             "missing_active_share_target")
     require(contract, r"kForbidDuplicateScoreDp\s*=\s*true", failures,
             "missing_no_duplicate_contract")
+    require(contract,
+            r"kTotalMmacPerConsumer\s*==\s*2\s*\*\s*kBlockMq",
+            failures, "missing_exact_four_gemm_mmac_contract")
     forbid(source, r"61C\d+|C1\d{2}", failures,
            "clean_source_must_not_define_cxx_phase_stack")
     forbid(perf_source,

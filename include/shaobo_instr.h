@@ -137,10 +137,10 @@ __device__ __forceinline__ void ds_read_matrix_32x16_normal_imm4(
     Vec8F16& frag1,
     Vec8F16& frag2,
     Vec8F16& frag3) {
-    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 18) &&
-                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 18) &&
-                      LdsOffset2 >= 0 && LdsOffset2 < (1 << 18) &&
-                      LdsOffset3 >= 0 && LdsOffset3 < (1 << 18),
+    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 16) &&
+                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 16) &&
+                      LdsOffset2 >= 0 && LdsOffset2 < (1 << 16) &&
+                      LdsOffset3 >= 0 && LdsOffset3 < (1 << 16),
                   "DS matrix-read immediate must fit the byte offset field");
 #if defined(__gfx946__) || defined(__gfx92a__)
     const int lds_addr = static_cast<int>(reinterpret_cast<size_t>(lds));
@@ -159,6 +159,39 @@ __device__ __forceinline__ void ds_read_matrix_32x16_normal_imm4(
     frag1 = {};
     frag2 = {};
     frag3 = {};
+#endif
+}
+
+template <int LdsOffset0, int LdsOffset1>
+__device__ __forceinline__ void ds_read_matrix_32x16_normal_dual_base_imm2(
+    const __half* lhs_lds,
+    const __half* rhs_lds,
+    Vec8F16& lhs0,
+    Vec8F16& lhs1,
+    Vec8F16& rhs0,
+    Vec8F16& rhs1) {
+    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 16) &&
+                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 16),
+                  "DS matrix-read immediate must fit the byte offset field");
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const int lhs_addr = static_cast<int>(reinterpret_cast<size_t>(lhs_lds));
+    const int rhs_addr = static_cast<int>(reinterpret_cast<size_t>(rhs_lds));
+    asm volatile(
+        "ds_read_matrix_format %0, %4 offset:%6 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_format %1, %4 offset:%7 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_format %2, %5 offset:%6 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_format %3, %5 offset:%7 element:0x2 row:0x2 col:0x1 alt:0x0\n"
+        : "=v"(lhs0), "=v"(lhs1), "=v"(rhs0), "=v"(rhs1)
+        : "s"(lhs_addr), "s"(rhs_addr), "n"(LdsOffset0),
+          "n"(LdsOffset1)
+        : "memory");
+#else
+    (void)lhs_lds;
+    (void)rhs_lds;
+    lhs0 = {};
+    lhs1 = {};
+    rhs0 = {};
+    rhs1 = {};
 #endif
 }
 
@@ -186,8 +219,8 @@ __device__ __forceinline__ void ds_read_matrix_32x16_trans_imm2(
     const __half* lds,
     Vec8F16& frag0,
     Vec8F16& frag1) {
-    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 18) &&
-                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 18),
+    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 16) &&
+                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 16),
                   "DS matrix-read immediate must fit the byte offset field");
 #if defined(__gfx946__) || defined(__gfx92a__)
     const int lds_addr = static_cast<int>(reinterpret_cast<size_t>(lds));
@@ -211,10 +244,10 @@ __device__ __forceinline__ void ds_read_matrix_32x16_trans_imm4(
     Vec8F16& frag1,
     Vec8F16& frag2,
     Vec8F16& frag3) {
-    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 18) &&
-                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 18) &&
-                      LdsOffset2 >= 0 && LdsOffset2 < (1 << 18) &&
-                      LdsOffset3 >= 0 && LdsOffset3 < (1 << 18),
+    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 16) &&
+                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 16) &&
+                      LdsOffset2 >= 0 && LdsOffset2 < (1 << 16) &&
+                      LdsOffset3 >= 0 && LdsOffset3 < (1 << 16),
                   "DS matrix-read immediate must fit the byte offset field");
 #if defined(__gfx946__) || defined(__gfx92a__)
     const int lds_addr = static_cast<int>(reinterpret_cast<size_t>(lds));
@@ -233,6 +266,54 @@ __device__ __forceinline__ void ds_read_matrix_32x16_trans_imm4(
     frag1 = {};
     frag2 = {};
     frag3 = {};
+#endif
+}
+
+template <int LdsOffset0, int LdsOffset1, int LdsOffset2, int LdsOffset3>
+__device__ __forceinline__ void ds_read_matrix_32x16_trans_dual_base_imm4(
+    const __half* lhs_lds,
+    const __half* rhs_lds,
+    Vec8F16& lhs0,
+    Vec8F16& rhs0,
+    Vec8F16& lhs1,
+    Vec8F16& rhs1,
+    Vec8F16& lhs2,
+    Vec8F16& rhs2,
+    Vec8F16& lhs3,
+    Vec8F16& rhs3) {
+    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 16) &&
+                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 16) &&
+                      LdsOffset2 >= 0 && LdsOffset2 < (1 << 16) &&
+                      LdsOffset3 >= 0 && LdsOffset3 < (1 << 16),
+                  "DS matrix-read immediate must fit the byte offset field");
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const int lhs_addr = static_cast<int>(reinterpret_cast<size_t>(lhs_lds));
+    const int rhs_addr = static_cast<int>(reinterpret_cast<size_t>(rhs_lds));
+    asm volatile(
+        "ds_read_matrix_trans_format %0, %8 offset:%10 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %1, %9 offset:%10 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %2, %8 offset:%11 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %3, %9 offset:%11 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %4, %8 offset:%12 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %5, %9 offset:%12 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %6, %8 offset:%13 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %7, %9 offset:%13 element:0x2 row:0x2 col:0x1 alt:0x0\n"
+        : "=v"(lhs0), "=v"(rhs0), "=v"(lhs1), "=v"(rhs1),
+          "=v"(lhs2), "=v"(rhs2), "=v"(lhs3), "=v"(rhs3)
+        : "s"(lhs_addr), "s"(rhs_addr), "n"(LdsOffset0),
+          "n"(LdsOffset1), "n"(LdsOffset2), "n"(LdsOffset3)
+        : "memory");
+#else
+    (void)lhs_lds;
+    (void)rhs_lds;
+    lhs0 = {};
+    rhs0 = {};
+    lhs1 = {};
+    rhs1 = {};
+    lhs2 = {};
+    rhs2 = {};
+    lhs3 = {};
+    rhs3 = {};
 #endif
 }
 

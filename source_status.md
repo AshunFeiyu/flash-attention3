@@ -8644,3 +8644,26 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - Fullperf/XCU:
   `/zys/shaobo_runs/owner16_dvdk_read8_firstuse_fullperf/`
   `dkv_mmac_correctness_20260718_165607`; workbook sheet 146.
+
+## 2026-07-18 Owner16 Mq192 Ownership Epoch Accepted
+
+- Status: `ACCEPT_MQ192_OWNERSHIP_EPOCH` on
+  `exp/dkv-owner16-mq192`.
+- The canonical kernel remains 16-wave 1P+3C with resident K/V and exact four
+  GEMMs. Mq192 only enlarges the one Q+dO+sidecar packet; S768 ownership
+  cadence changes from six packets to four.
+- Layout/resource gates pass: startup K/V 96KiB, steady raw+sidecar 100,608B,
+  branches `30/145/145/145`, private0, SGPR55, VGPR128, spill0/scratch0.
+  Q and dO use two LDS base SGPRs so every native matrix-read immediate remains
+  below 64KiB; no gather or ordinary matrix-read workaround is introduced.
+- S384/S768 dK+dV pass. S768 keeps MMOP 73,728, LDS 44,768, VMEM 1,728 and
+  bank0. Stats-only ticks are 42,662,165 and MMAC active 35.1548%.
+- Fullperf ticks are 43,033,445, MMAC active 34.8979%, barrier stall
+  76,858.25, and XCU duration 94,576. Versus `d248e9b`, ticks fall 1.92%,
+  active rises 1.01 pp, and ordinary ABarrier wait count falls 432->304.
+- Remaining limitation: a single raw page still serializes publish/consume;
+  AllDone tail duration increased and fullperf waitLgkm rose 1.91%. The next
+  hypothesis must distinguish useful lookahead from merely adding tokens.
+- Evidence: workbook sheet 147 and shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_174748_owner16_mq192_s768_sqc7/`.

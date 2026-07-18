@@ -3291,3 +3291,51 @@ Skill Candidate: apply first-use waits per operand family, not per helper
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` in the next
   serialized consolidation.
+
+## 2026-07-18 Owner16 Mq192 Ownership Epoch Accepted
+
+- Status: `ACCEPT_MQ192_OWNERSHIP_EPOCH` on branch
+  `exp/dkv-owner16-mq192`.
+- K/V remain fully resident in the three consumer groups. Only the raw
+  Q+dO+sidecar ownership packet grows from Mq128 to Mq192, reducing S768
+  packet generations `6 -> 4` and producer reuse waits `5 -> 3`; the exact
+  four-GEMM DAG and Nk16 output ownership are unchanged.
+- Steady LDS is `98,304 + 2,304 = 100,608B`; startup K/V remains 96KiB.
+  Static gates pass at `30/145/145/145`, private0, SGPR55, VGPR128,
+  spill0/scratch0. Large raw operands use separate Q/dO LDS base SGPRs because
+  the native DS matrix-read immediate is 16-bit.
+- S384 and S768 correctness pass. Exact S768 work remains MMOP 73,728,
+  LDS 44,768, VMEM 1,728, and bank conflict zero.
+- Stats-only S768 ticks improve `43,976,205 -> 42,662,165` (`-2.99%`) and
+  MMAC active rises `33.8957% -> 35.1548%`; barrier stall falls 10.40%.
+- Fullperf confirms ticks `43,876,105 -> 43,033,445` (`-1.92%`) and MMAC
+  active `33.8928% -> 34.8979%`. XCU duration falls `96,428 -> 94,576`.
+  Ordinary ABarrier waits fall `432 -> 304`; their duration falls 6.93%, while
+  total ABarrier issue-gap duration falls 2.63%. The fixed 8k:80k coissue
+  window is not logically aligned after changing packet size and is diagnostic
+  only.
+- Evidence: workbook sheet `147_DKV_Mq192_EpochScale`; stats-only
+  `/zys/shaobo_runs/owner16_mq192/dkv_mmac_correctness_20260718_174547`;
+  fullperf/XCU `/zys/shaobo_runs/owner16_mq192_fullperf/`
+  `dkv_mmac_correctness_20260718_174748`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_174748_owner16_mq192_s768_sqc7/`.
+
+Skill Candidate: amortize ownership handshakes with a larger legal packet
+
+- Trigger / 适用场景: persistent operands already vacate LDS before a
+  repeatedly published raw packet, and SQTT attributes a material share to
+  per-packet Filled/Used handshakes.
+- Rule / 可复用规则: enlarge the ownership epoch without changing total
+  rows, bytes, GEMMs, or output ownership. Prove LDS lifetime overlay and
+  exact work first; compare wait counts and durations, not just token count.
+- Evidence / 证据: Mq128->Mq192 keeps MMOP/LDS/VMEM exact, cuts fullperf
+  ticks 1.92%, raises MMAC active 1.01 pp, and reduces ordinary ABarrier waits
+  29.6% with bank0 and spill0.
+- Boundary / 适用边界: S must be exactly covered by the tile until a guarded
+  tail is implemented; instruction footprint and address-generation cost grow.
+- Counterexample / 反例或不适用情况: adding another raw page can exceed LDS
+  or add token cadence without reducing the critical ownership edge.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` during serialized
+  skill consolidation.
