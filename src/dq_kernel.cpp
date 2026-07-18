@@ -109,24 +109,17 @@ struct DqLdsLayout {
     static constexpr int kDoutBase = kQBase + kQBytes;
     static constexpr int kDoutBytes = kBlockMq * kHeadDim * kHalfBytes;
     static constexpr int kQDoBytes = kDoutBase + kDoutBytes;
-    static constexpr int kPageBase = kQDoBytes;
     static constexpr int kKPageBytes = kBlockNk * kHeadDim * kHalfBytes;
     static constexpr int kVPageBytes = kBlockNk * kHeadDim * kHalfBytes;
     static constexpr int kPageBytes = kKPageBytes + kVPageBytes;
     static constexpr int kPages = 2;
-    static constexpr int kPage0Base = kPageBase;
-    static constexpr int kPage1Base = kQBase;
-    static constexpr int kSidecarBase = kPage0Base;
+    static constexpr int kPage0Base = kQBase;
+    static constexpr int kPage1Base = kPageBytes;
+    static constexpr int kSidecarBase = kQDoBytes;
     static constexpr int kSidecarRows = kBlockMq;
     static constexpr int kSidecarBytes = 3 * kSidecarRows * sizeof(float);
     static constexpr int kQBlockOffset(int m32_block, int d32_block) {
         return (m32_block * (kHeadDim / 32) + d32_block) * kMatrixBlockBytes;
-    }
-    static constexpr int kKBase() {
-        return kPageBase;
-    }
-    static constexpr int kVBase() {
-        return kKBase() + kKPageBytes;
     }
     static constexpr int kPageBaseFor(int page) {
         return page == 0 ? kPage0Base : kPage1Base;
@@ -387,9 +380,8 @@ __device__ __forceinline__ void dq_arrive_qdo_latched();
 
 template <typename Tile,
           typename Bar,
-          bool UsePageBarriers,
-          bool BoundaryKTile>
-__device__ __forceinline__ void dq_compute_pages_from_latched(
+          bool UsePageBarriers>
+__device__ __forceinline__ void dq_compute_page_from_latched(
     const __half* __restrict__ lds,
     int q_base_tile,
     int local_m16,
@@ -430,13 +422,10 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
         const int n_tile_k1 = n_tile_k0 + 31;
         const int wave_q0 = q_base_tile + local_m16 * 16;
         const int wave_q1 = wave_q0 + 15;
-        if constexpr (BoundaryKTile) {
-            if (n_tile_k0 > wave_q1) {
-                continue;
-            }
+        if (n_tile_k0 > wave_q1) {
+            continue;
         }
-        const bool n_tile_full_valid =
-            !BoundaryKTile || n_tile_k1 <= wave_q0;
+        const bool n_tile_full_valid = n_tile_k1 <= wave_q0;
         ins::F16x8 k_frag0[KBlocks];
         ins::F16x8 k_frag1[KBlocks];
         ins::F16x8 v_frag0[KBlocks];
@@ -597,18 +586,11 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
     const ins::F32x4& mmac_zero,
     ins::F32x4 (&dq_reg)[8]) {
 #pragma clang loop unroll(disable)
-    for (int kt = 0; kt + 1 < active_k_tiles; ++kt) {
-        dq_compute_pages_from_latched<Tile, Bar, UsePageBarriers, false>(
+    for (int kt = 0; kt < active_k_tiles; ++kt) {
+        dq_compute_page_from_latched<Tile, Bar, UsePageBarriers>(
             lds, q_base_tile, local_m16, row_max, row_sum, row_delta,
             q_reg, dout_reg, softmax_scale, softmax_scale_log2, kt,
             filled_phase0, filled_phase1, mmac_zero, dq_reg);
-    }
-    if (active_k_tiles > 0) {
-        dq_compute_pages_from_latched<Tile, Bar, UsePageBarriers, true>(
-            lds, q_base_tile, local_m16, row_max, row_sum, row_delta,
-            q_reg, dout_reg, softmax_scale, softmax_scale_log2,
-            active_k_tiles - 1, filled_phase0, filled_phase1, mmac_zero,
-            dq_reg);
     }
 }
 
@@ -789,12 +771,12 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
     (void)batch;
     const uint32_t wave_id = __builtin_hcu_get_wave_id();
     if (wave_id == 0) {
-        __builtin_hcu_s_abarrier_init(Bar::kPage0Filled, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kPage0Used, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kPage1Filled, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kPage1Used, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kQDoFilled, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kQDoLatched, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kPage0Filled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kPage0Used, 12);
+        __builtin_hcu_s_abarrier_init(Bar::kPage1Filled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kPage1Used, 12);
+        __builtin_hcu_s_abarrier_init(Bar::kQDoFilled, 16);
+        __builtin_hcu_s_abarrier_init(Bar::kQDoLatched, 12);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
@@ -811,16 +793,16 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
     const int wave_local = static_cast<int>(wave_id & 3u);
 
     if (wave_id < 4) {
-        __builtin_hcu_s_set_vgpr_size(40);
+        __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kProducerVgprs);
         const int lane = static_cast<int>(threadIdx.x % 64);
         int used_phase0 = 0;
         int used_phase1 = 0;
         int qdo_latched_phase = 0;
-        dq_load_q_dout_group<Tile>(
-            q, dout, lds, 0, wave_local, q_base_tile, qkv_base);
-        dq_load_sidecar_group<Tile>(
-            scores_max, scores_sum, delta, lds, 0, wave_local, lane,
-            q_base_tile, row_base);
+        for (int group = 0; group < Tile::kConsumerGroups; ++group) {
+            dq_load_sidecar_group<Tile>(
+                scores_max, scores_sum, delta, lds, group, wave_local, lane,
+                q_base_tile, row_base);
+        }
         ins::wait_vmem_lgkm();
         dq_seq_page_filled<Bar>(0);
         if (active_k_tiles > 1) {
@@ -839,46 +821,41 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
             }
             dq_load_k_tile_page<Tile>(
                 k, lds, wave_local, page, k_base_tile, qkv_base);
-            ins::maybe_wait_bps_vbcnt_before_arrive();
-            dq_arrive_page_filled<Bar>(page);
-        }
-    } else if (wave_id < 8) {
-        __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
-        dq_consumer_full3gemm_role<Tile, Bar, 0>(
-            lds, dq_out, q_base_tile, seqlen, bh, diag_store,
-            softmax_scale, softmax_scale_log2, wave_local);
-    } else if (wave_id < 12) {
-        __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
-        dq_consumer_full3gemm_role<Tile, Bar, 1>(
-            lds, dq_out, q_base_tile, seqlen, bh, diag_store,
-            softmax_scale, softmax_scale_log2, wave_local);
-    } else {
-        __builtin_hcu_s_set_vgpr_size(40);
-        const int lane = static_cast<int>(threadIdx.x % 64);
-        int used_phase0 = 0;
-        int used_phase1 = 0;
-        int qdo_latched_phase = 0;
-        dq_load_q_dout_group<Tile>(
-            q, dout, lds, 1, wave_local, q_base_tile, qkv_base);
-        dq_load_sidecar_group<Tile>(
-            scores_max, scores_sum, delta, lds, 1, wave_local, lane,
-            q_base_tile, row_base);
-        ins::wait_vmem_lgkm();
-        ins::maybe_wait_bps_vbcnt_before_arrive();
-        dq_arrive_qdo_filled<Bar>();
-        for (int kt = 0; kt < active_k_tiles; ++kt) {
-            const int page = kt & 1;
-            const int k_base_tile = kt * Nk;
-            if (kt == 0) {
-                dq_wait_qdo_latched<Bar>(qdo_latched_phase);
-            } else if (kt > 1) {
-                dq_wait_page_used<Bar>(page, used_phase0, used_phase1);
-            }
             dq_load_v_tile_page<Tile>(
                 v, lds, wave_local, page, k_base_tile, qkv_base);
             ins::maybe_wait_bps_vbcnt_before_arrive();
             dq_arrive_page_filled<Bar>(page);
         }
+    } else if (wave_id < 8) {
+        __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
+        dq_load_q_dout_group<Tile>(
+            q, dout, lds, 0, wave_local, q_base_tile, qkv_base);
+        ins::wait_vmem_lgkm();
+        ins::maybe_wait_bps_vbcnt_before_arrive();
+        dq_arrive_qdo_filled<Bar>();
+        dq_consumer_full3gemm_role<Tile, Bar, 0>(
+            lds, dq_out, q_base_tile, seqlen, bh, diag_store,
+            softmax_scale, softmax_scale_log2, wave_local);
+    } else if (wave_id < 12) {
+        __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
+        dq_load_q_dout_group<Tile>(
+            q, dout, lds, 1, wave_local, q_base_tile, qkv_base);
+        ins::wait_vmem_lgkm();
+        ins::maybe_wait_bps_vbcnt_before_arrive();
+        dq_arrive_qdo_filled<Bar>();
+        dq_consumer_full3gemm_role<Tile, Bar, 1>(
+            lds, dq_out, q_base_tile, seqlen, bh, diag_store,
+            softmax_scale, softmax_scale_log2, wave_local);
+    } else {
+        __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
+        dq_load_q_dout_group<Tile>(
+            q, dout, lds, 2, wave_local, q_base_tile, qkv_base);
+        ins::wait_vmem_lgkm();
+        ins::maybe_wait_bps_vbcnt_before_arrive();
+        dq_arrive_qdo_filled<Bar>();
+        dq_consumer_full3gemm_role<Tile, Bar, 2>(
+            lds, dq_out, q_base_tile, seqlen, bh, diag_store,
+            softmax_scale, softmax_scale_log2, wave_local);
     }
 
     __builtin_hcu_s_ebarrier_sync(0);

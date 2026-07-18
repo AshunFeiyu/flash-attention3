@@ -14173,3 +14173,42 @@ Status: `ACCEPT_CANONICAL_TOOLCHAIN_ROUTE`.
 - Decision: accept and commit as the canonical dKV toolchain route.  This does
   not count as the next algorithm optimization; remaining distance to 50%
   is still ABarrier/readiness work.
+
+## 2026-07-19 dQ Mq192 One-Producer Three-Consumer Topology Proof
+
+Status: `OBSERVE_1P3C_TOPOLOGY_PROOF_TICKS_REGRESSION`.
+
+- Hypothesis: replace the Mq128 two-producer/two-consumer CTA with one K/V
+  producer and three symmetric 64-row dQ consumers.  The larger tile should
+  amortize control and expose three peer waves per SIMD for later useful
+  MMAC/VALU staggering.
+- Static/resource result: role use is `11/158/158/159` inside WDRA windows
+  `32/160/160/160`; private0, SGPR59, VGPR128, spill0, scratch0.  Startup
+  Q+dO+sidecar is 100,608B; steady two-page K/V is exactly 131,072B.
+- Correctness: H1/S768 causal PASS, maxAbs `1.5201e-7`, relL2 `0.00151559`,
+  no NaN/Inf, and bank0.
+- Same-work fullperf comparison against Mq128 2P2C: MMOP remains 28,800.
+  Active rises `30.0592% -> 34.3345%`; VALU falls
+  `39,580 -> 33,808`, SCA `26,002 -> 23,844`, VMEM `864 -> 704`, and
+  coissue success rises `8,125 -> 12,031`.
+- Ticks regress `19,608,225 -> 23,591,750` (`+20.32%`).  H1/S768 launches
+  four larger CTAs rather than six smaller CTAs, while the three consumers
+  still execute their score/dP/softmax/dQ stages mostly in lockstep.  The
+  topology reduces instruction/control debt but lengthens each CTA critical
+  path, so it is evidence of headroom rather than a promoted performance
+  version.
+- XCU confirms the remaining debt: the top gap is
+  `s_abarrier_try_wait -> s_xor_b32` (12.73%); ABarrier-to-SALU is 10.61%,
+  and lds-matrix-to-immediate is 4.66%.  Compared with the control, branch
+  hits fall `680 -> 288`, phase-xor hits `212 -> 48`, vbcnt waits
+  `216 -> 80`, and ordinary waits `300 -> 132`.
+- Next hypothesis is one isolated mathematical stagger: consumer0 keeps
+  `score -> dP -> P/dS -> dQ`, while consumer1 executes
+  `score -> P -> dP -> dS -> dQ`.  This is legal because P depends on score
+  but not dP.  Consumer-assisted V prefetch remains deferred until that
+  experiment passes correctness/resources and improves both active and ticks.
+- Evidence: workbook sheet `154_1P3C_50pct_Gate`; candidate
+  `/zys/shaobo_runs/goal50_dq_mq192_1p3c_fullperf/`
+  `dq_correctness_20260719_031425`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260719_031425_dq_mq192_1p3c_topology_s768_sqc7/`.

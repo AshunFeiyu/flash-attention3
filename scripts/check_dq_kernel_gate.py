@@ -30,6 +30,8 @@ def main() -> int:
     asm_path = Path(args.asm)
     asm = asm_path.read_text(errors="ignore") if asm_path.exists() else ""
     failures: list[str] = []
+    if not asm_path.exists():
+        failures.append("asm_file_missing")
 
     require(source, r"fa3_bwd_dq_ref_softmax_kernel",
             failures, "missing_ref_softmax_kernel")
@@ -58,14 +60,16 @@ def main() -> int:
             "missing_consumer_qdo_filled_wait")
     require(source, r"dq_arrive_qdo_filled", failures,
             "missing_producer_qdo_filled_arrive")
-    require(source, r"kSidecarBase\s*=\s*kPage0Base", failures,
-            "missing_sidecar_kv_page0_overlay")
+    require(source, r"kSidecarBase\s*=\s*kQDoBytes", failures,
+            "missing_sidecar_after_qdo_startup_layout")
+    require(source, r"kPage0Base\s*=\s*kQBase", failures,
+            "missing_kv_page0_startup_overlay")
     require(source, r"dq_update_from_ds_(?:vec|pair)", failures,
             "missing_vgpr_ds_to_dq_mmac")
     require(source, r"CANONICAL_DQ", failures,
             "missing_canonical_standalone_switch")
-    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<128,\s*128>",
-            failures, "missing_active_mq128_nk128_tile")
+    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<192,\s*128>",
+            failures, "missing_active_mq192_nk128_tile")
     require(contract, r"kStartupLdsBytes", failures,
             "missing_latched_sidecar_startup_lds_budget")
     require(contract, r"kSteadyLdsBytes", failures,
@@ -76,8 +80,12 @@ def main() -> int:
             failures, "missing_no_duplicate_score_dp_contract")
     require(contract, r"kForbidDqAtomicAdd\s*=\s*true",
             failures, "missing_no_atomic_contract")
-    require(contract, r"kTargetMmacActiveSharePercent\s*=\s*40",
+    require(contract, r"kTargetMmacActiveSharePercent\s*=\s*50",
             failures, "missing_mmac_active_target")
+    require(contract, r"kConsumerGroups\s*=\s*3", failures,
+            "missing_three_consumer_contract")
+    require(contract, r"kConsumerTargetVgprs\s*=\s*160", failures,
+            "missing_three_consumer_vgpr_window")
     require(contract, r"kPlannedLdsBytes\s*=", failures,
             "missing_lds_budget_contract")
     require(source, r"dq_out", failures, "missing_dq_output_name")

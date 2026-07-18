@@ -3613,3 +3613,41 @@ Skill Candidate: split physical reuse lifetime inside a large packet
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` during serialized
   skill consolidation.
+
+## 2026-07-19 dQ Three-Consumer Topology Proof
+
+- Branch `exp/dq-mq192-1p3c-resource` changes only the canonical dQ topology:
+  Mq192/Nk128, one K/V producer, and three symmetric 64-row consumers.
+- Resource and correctness gates pass: branches `11/158/158/159`, WDRA
+  `32/160/160/160`, private0/spill0/scratch0, LDS131,072B, bank0, and
+  H1/S768 causal PASS.
+- Exact MMOP stays 28,800.  Against Mq128 2P2C, MMAC active improves
+  `30.0592% -> 34.3345%`; VALU falls 14.58%, SCA 8.30%, VMEM 18.52%, and
+  control/wait instruction counts fall substantially.
+- Same-shape ticks regress 20.32%, so this is `OBSERVE`, not promotion.  It
+  proves that three consumers raise pipeline headroom, while also proving
+  that topology alone does not create coissue: the consumers remain largely
+  lockstep and each larger CTA has a longer critical path.
+- The next single hypothesis is mathematically useful staggering between
+  consumer0 and consumer1.  Consumer-assisted V prefetch is a later, separate
+  experiment.
+
+Skill Candidate: use dependency-DAG order to create real peer-wave stagger
+
+- Trigger / 适用场景: symmetric consumer waves execute independent GEMMs and
+  dependent VALU stages in lockstep even though the DAG permits more than one
+  legal topological order.
+- Rule / 可复用规则: assign different legal stage orders to peer consumers so
+  one wave's MMAC island overlaps another wave's VALU island; never insert an
+  empty delay or duplicate mathematical work.
+- Evidence / 证据: dQ P depends on score but not dP, so
+  `score -> P -> dP -> dS` is equivalent to the canonical
+  `score -> dP -> P/dS`.  The current 1P3C trace raises active but retains
+  ABarrier/readiness lockstep, providing the discriminator for the next run.
+- Boundary / 适用边界: both orders must preserve source lifetime, causal mask,
+  exact MMOP, output ownership, and the 160-VGPR consumer ceiling.
+- Counterexample / 反例或不适用情况: phase-xor, artificial delays, or rotated
+  work that changes which causal pairs are computed do not count as useful
+  stagger.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  project-local Shaobo optimization reference after measured ACCEPT evidence.

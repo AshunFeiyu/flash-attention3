@@ -8831,3 +8831,26 @@ Status: `ACCEPT_CANONICAL_TOOLCHAIN_ROUTE`.
   MMOP73,728, VALU80,272, coissue21,792/18,043, bank0.
 - S128 returns the harness status `unsupported`; it is not a numerical
   failure.  Canonical dKV smoke is S384 and steady evidence is S768.
+
+## 2026-07-19 dQ Mq192 1P3C Topology Is An Observe Baseline
+
+Status: `OBSERVE_1P3C_TOPOLOGY_PROOF_TICKS_REGRESSION`.
+
+- Active source branch maps waves0-3 to one K/V producer and the remaining
+  three wave groups to symmetric 64-row dQ consumers.  Q/dO are self-published
+  and latched by each consumer group; sidecar is producer-published; K/V use
+  two lifetime-overlaid 64KB pages.
+- Static gates pass at `11/158/158/159` branch VGPRs with private0, spill0,
+  scratch0 and LDS131,072B.  H1/S768 causal correctness passes and bank
+  conflict is zero.
+- Against the same-work Mq128 2P2C control, exact MMOP remains 28,800 and
+  MMAC active rises `30.0592% -> 34.3345%`; VALU, SCA, VMEM, branch, xor,
+  vbcnt-wait and ordinary-wait counts all fall.
+- Same-shape ticks regress `19,608,225 -> 23,591,750`, so this branch is not
+  the dQ best-performance branch.  It is retained as the clean topology proof
+  for the next useful-stagger experiment.
+- XCU still shows lockstep ownership/readiness debt: ABarrier-to-xor 12.73%,
+  ABarrier-to-SALU 10.61%, and lds-matrix-to-immediate 4.66%.
+- Next edit must change only useful mathematical order across consumers; no
+  delay, duplicate GEMM, extra page/token, or consumer-assisted prefetch is
+  allowed in the same hypothesis.

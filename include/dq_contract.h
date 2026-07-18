@@ -11,7 +11,9 @@ template <int BlockMq, int BlockNk>
 struct DqTileD128MqNk {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = BlockMq;
-    static constexpr int kRowsPerConsumerGroup = BlockMq / 2;
+    static constexpr int kConsumerGroups = 3;
+    static constexpr int kRowsPerConsumerGroup =
+        BlockMq / kConsumerGroups;
     static constexpr int kRowsPerConsumerWave = 16;
     static constexpr int kBlockNk = BlockNk;
     static constexpr int kWaveSize = 64;
@@ -44,8 +46,10 @@ struct DqTileD128MqNk {
         kStartupLdsBytes > kSteadyLdsBytes ? kStartupLdsBytes
                                            : kSteadyLdsBytes;
 
-    static_assert(kBlockMq == 128,
-                  "dQ 16-wave path maps two consumer groups over M128");
+    static_assert(kBlockMq == 192,
+                  "dQ 16-wave path maps three consumer groups over M192");
+    static_assert(kBlockMq % kConsumerGroups == 0,
+                  "dQ rows must divide evenly across consumer groups");
     static_assert(kRowsPerConsumerGroup == 64,
                   "dQ consumer group owns four M16 rows");
     static_assert(kBlockNk % 32 == 0,
@@ -55,7 +59,7 @@ struct DqTileD128MqNk {
                   "dQ target LDS plan must fit 128KB");
 };
 
-using ActiveDqTile = DqTileD128MqNk<128, 128>;
+using ActiveDqTile = DqTileD128MqNk<192, 128>;
 
 struct DqBarrierLedger {
     static constexpr int kPage0Filled = 0;
@@ -68,7 +72,7 @@ struct DqBarrierLedger {
 };
 
 struct OptimizationTargets {
-    static constexpr int kTargetMmacActiveSharePercent = 40;
+    static constexpr int kTargetMmacActiveSharePercent = 50;
     static constexpr bool kRequireNoScratch = true;
     static constexpr bool kRequireNoSpill = true;
     static constexpr bool kRequireNoLdsBankConflict = true;
@@ -77,9 +81,9 @@ struct OptimizationTargets {
 };
 
 struct WdraResourceWindows {
-    static constexpr int kProducerVgprs = 16;
-    static constexpr int kConsumerTargetVgprs = 216;
-    static constexpr int kConsumerCeilingVgprs = 248;
+    static constexpr int kProducerVgprs = 32;
+    static constexpr int kConsumerTargetVgprs = 160;
+    static constexpr int kConsumerCeilingVgprs = 160;
 };
 
 }  // namespace shaobo::fa3::bwd::dq
