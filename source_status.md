@@ -8792,3 +8792,27 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   `dkv_mmac_correctness_20260718_225519`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_225519_owner16_loop_mmac_zero_s768_sqc7/`.
+
+## 2026-07-19 Latest-Pair Rebaseline And 1P3C Design Gate
+
+Status: `DKV_ACCEPT_ENV_REBASE_DQ_KEEP_STABLE_COMPILER_1P3C_DESIGN_READY`.
+
+- PMD is fixed to side-by-side HEAD1694 at
+  `/zys/shaobo/toolchains/pmd_20260717`; its executable and preloaded
+  `libgem5_opt.so` must come from the same root.
+- dKV latest-compiler artifact uses explicit WDRA windows
+  `32/160/160/160`.  S768 fullperf correctness passes with private0, spill0,
+  bank0, exact MMOP73,728; ticks `35,707,035`, active `43.7836%`, coissue
+  `22,104/18,318`.  XCU still attributes the largest debt to
+  ABarrier/readiness: `s_waitcnt` 31.13%, `s_xor` 18.92%, with top gaps
+  ABarrier->xor 19.93% and ABarrier->wait 11.23%.
+- dQ stable baseline remains old compiler plus latest PMD: S1024 correctness
+  PASS, private0/spill0/bank0, exact MMOP50,688; ticks `24,600,030`, active
+  `33.3978%`, coissue `15,306/13,534`.  The latest compiler is OBSERVE/REJECT
+  for dQ because it regresses to `25,002,705 / 30.7854%` even though VALU is
+  lower; SQTT exposes longer BPS and ABarrier waits.
+- Workbook sheet `154_1P3C_50pct_Gate` is the implementation contract.  dQ
+  code changes may begin only if static generation proves each of three
+  consumer windows <=160 VGPR with no spill.  The candidate uses Mq192/Nk128,
+  96KB Q+dO startup plus 2.25KB sidecar, and a lifetime-overlaid 128KB K/V
+  two-page steady state.

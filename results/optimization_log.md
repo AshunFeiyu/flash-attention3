@@ -14125,3 +14125,33 @@ Status: `ACCEPT_LOOP_LIVED_MMAC_ZERO`
   `dkv_mmac_correctness_20260718_225519`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_225519_owner16_loop_mmac_zero_s768_sqc7/`.
+
+## 2026-07-19 Toolchain Rebaseline And 50% Topology Gate
+
+Status: `ACCEPT_DKV_ENV_REBASE / OBSERVE_DQ_COMPILER_REGRESSION / DESIGN_1P3C`.
+
+- dKV S768, latest PMD HEAD1694 plus LLVM `7b796991`: correctness PASS,
+  private0/spill0/bank0, ticks `35,707,035`, MMAC active `43.7836%`, exact
+  MMOP73,728, VALU80,272, SCA21,624, LDS44,768, VMEM1,728, FLAT816.  This
+  improves the old best fullperf ticks by 3.00% and active by 3.18 pp.
+- dQ S1024, latest PMD plus old stable compiler: correctness PASS,
+  private0/spill0/bank0, ticks `24,600,030`, MMAC active `33.3978%`, exact
+  MMOP50,688, VALU68,144, SCA41,772, LDS26,352, VMEM1,408, FLAT752.
+- dQ latest compiler is not promoted: no-MMU fullperf passes but regresses to
+  ticks `25,002,705`, active `30.7854%`; full flags with MMUCheck crash inside
+  PMD `Mmu::memcpy_check`.  This is environment evidence, not a dQ algorithm
+  failure.
+- Required active-time reduction at fixed MMOP is now explicit: dKV needs
+  12.43%; dQ needs 33.20%.  Therefore dKV continues with ABarrier/readiness
+  scheduling, while dQ needs the Mq192 1P3C structural route rather than
+  wait-only edits.
+- dQ 1P3C design: one producer wave group streams both K/V; three consumer
+  groups own disjoint 64-row ranges.  Q/dO/dQ stay long-lived.  K-trans,
+  V-trans, and K-normal are live one family at a time, targeting 160 VGPR per
+  consumer.  Full K pages rotate useful n32 work/order across groups; the
+  causal boundary page remains canonical until correctness is proven.
+- Evidence: workbook `154_1P3C_50pct_Gate`; dKV run
+  `/zys/shaobo_runs/env_audit_latest_pair_fullperf_dkv/`
+  `dkv_mmac_correctness_20260719_015237`; dQ stable run
+  `/zys/shaobo_runs/env_audit_latest_pmd_fullperf_dq_oldcc/`
+  `dq_correctness_20260719_015727`.

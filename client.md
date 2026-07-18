@@ -3340,6 +3340,51 @@ Skill Candidate: amortize ownership handshakes with a larger legal packet
   `shaobo/references/shaobo-dkv-optimization-methods.md` during serialized
   skill consolidation.
 
+## 2026-07-19 Dual-Kernel 50% Goal And Environment Lock
+
+- Goal: optimize canonical dKV and dQ to `MMAC active >= 50%`, while keeping
+  same-work ticks as the final decision metric.  Correctness, no
+  spill/scratch/private segment, LDS <=128KB, bank0, and native
+  MLS/BPS+`ds_read_matrix`+MMAC remain hard gates.
+- Latest split PMD is staged side-by-side at
+  `/zys/shaobo/toolchains/pmd_20260717` and reports `CoreArch:HEAD_1694`.
+  It must preload its matching `core/libgem5_opt.so`; otherwise executable
+  HEAD1694 can bind the old HEAD1668 library.
+- Latest rolling compiler is staged at
+  `/zys/shaobo/toolchains/compiler_perf_model_latest_20260718_root` and reports
+  LLVM `7b796991375a...`.  It requires explicit kernel-entry
+  `__builtin_hcu_wdra_init(...)` plus `-mllvm -run-on-model=true`.
+- dKV accepts the latest pair: S768 fullperf is correctness PASS, bank0,
+  ticks `35,707,035`, and MMAC active `43.7836%`, versus the previous best
+  `36,811,775 / 40.6086%`.  Dynamic VALU falls `100,704 -> 80,272`.
+- dQ does not yet accept the latest compiler.  On latest PMD, the stable old
+  compiler gives S1024 ticks `24,600,030`, MMAC active `33.3978%`; the latest
+  compiler gives `25,002,705 / 30.7854%` and exposes larger
+  `matrix_load -> vbcnt` and ABarrier waits.  Keep compiler selection
+  per-kernel until this codegen regression is resolved.
+- Workbook sheet `154_1P3C_50pct_Gate` records the top-down route.  dKV keeps
+  its proven 1P+3C Mq192 topology.  The dQ candidate is Mq192/Nk128 with one
+  producer and three symmetric consumers, but implementation is gated by
+  `producer32 + 3*consumer160 = 512` VGPR/SIMD and sequential K/V fragment
+  lifetimes; adding a third consumer without that compression is forbidden.
+
+Skill Candidate: per-kernel compiler promotion for model-only ISA
+
+- Trigger / 适用场景: a newer Shaobo compiler improves one WDRA kernel but
+  regresses another under the same PMD.
+- Rule / 可复用规则: promote compiler versions per kernel from same-PMD
+  correctness, metadata, ticks, and SQTT evidence; do not make a repo-wide
+  compiler switch from version recency alone.
+- Evidence / 证据: dKV latest-compiler ticks improve 2.74% stats-only and
+  3.00% fullperf with lower VALU; dQ latest-compiler ticks regress 1.64%
+  fullperf and MMAC active falls 2.61 pp because BPS/ABarrier gaps grow.
+- Boundary / 适用边界: this is a temporary silicon-pre policy.  Production
+  release still needs one supported compiler matrix and ABI.
+- Counterexample / 反例或不适用情况: if binaries share LTO objects or ABI
+  metadata that cannot be mixed, per-kernel compiler selection is invalid.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-perf-model.md` during serialized consolidation.
+
 ## 2026-07-18 Loop-Lived MMAC Zero Seed Accepted
 
 - Status: `ACCEPT_LOOP_LIVED_MMAC_ZERO`.  One four-VGPR zero fragment is now
