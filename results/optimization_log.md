@@ -14085,3 +14085,43 @@ Status: `ACCEPT_DVDK_SOURCES_UNDER_USEFUL_WORK`
   `/zys/shaobo_runs/owner16_dvdk_under_softmax_d2_s768/`; fullperf/XCU
   `/zys/shaobo_runs/owner16_dvdk_under_softmax_d2_fullperf/`
   `dkv_mmac_correctness_20260718_215518`.
+
+## 2026-07-18 Loop-Lived MMAC Zero Seed Accepted
+
+Status: `ACCEPT_LOOP_LIVED_MMAC_ZERO`
+
+- Hypothesis: D2 recreates four zero VGPRs in every M16 score/dP block and
+  again for the first dV/dK accumulation.  Hoist one native zero fragment to
+  the consumer q-loop, preserving all arithmetic, ownership, reads, waits,
+  stores, and exact work.
+- Static proof: branch windows move `32/154/154/154 -> 32/158/158/158` while
+  private/spill/scratch remain zero.  Static plain-zero `v_mov_b64` falls
+  `150 -> 6`, total b64 moves `289 -> 137`, and ASM bytes fall about 2.1%
+  without compensating `v_mov_b64_e32` growth.
+- Correctness/work: S384 and S768 pass; S768 dK/dV relL2 remains
+  `0.00191329/0.000319636`; MMOP/LDS/VMEM remains
+  `73,728/44,768/1,728`, bank0.
+- Stats-only: ticks `38,680,460 -> 37,219,000` (`-3.78%`), MMAC active
+  `39.4033% -> 40.4364%`, waitLgkm `13,414.5 -> 11,668`, barrier
+  `47,105 -> 42,965.75`, and VALU `105,440 -> 100,704`.
+- Fullperf: ticks `38,840,165 -> 36,811,775` (`-5.22%`), MMAC active
+  `39.2073% -> 40.6086%`, waitLgkm `13,615.5 -> 11,779.75`, barrier
+  `47,845.25 -> 42,157.75`, and empty-buffer falls 10.54%.
+- XCU: duration `85,360 -> 80,904`, issues `281,336 -> 276,600`, dynamic
+  `v_mov_b64_e32` hits `6,880 -> 2,144`, and the dominant
+  `s_abarrier_try_wait -> s_xor_b32` gap falls
+  `1,303,708 -> 1,053,024`.  Consumer MMAC+VALU coissue changes from
+  `24.68/23.81/19.88%` to `27.66/28.34/26.26%`.
+- Tradeoff: XCU `s_waitcnt` latency rises 5.23%; normal
+  `ds_read_matrix_format -> s_waitcnt` duration rises 4.80%, while the
+  trans-read counterpart falls 2.56%.  This is the next measured bottleneck.
+- Decision: promote as new best.  Preserve D2 ownership and the shared zero;
+  next change must isolate matrix-read first-use cadence rather than combining
+  another token, page, or live-source expansion.
+- Evidence: workbook sheet `152_DKV_LoopMmacZero`; S384/S768 stats under
+  `/zys/shaobo_runs/owner16_loop_zero_s384/` and
+  `/zys/shaobo_runs/owner16_loop_zero_s768/`; fullperf/XCU under
+  `/zys/shaobo_runs/owner16_loop_zero_fullperf/`
+  `dkv_mmac_correctness_20260718_225519`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_225519_owner16_loop_mmac_zero_s768_sqc7/`.

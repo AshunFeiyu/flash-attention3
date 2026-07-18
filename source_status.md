@@ -8764,3 +8764,31 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - Evidence: workbook sheet 151; fullperf/XCU
   `/zys/shaobo_runs/owner16_dvdk_under_softmax_d2_fullperf/`
   `dkv_mmac_correctness_20260718_215518`.
+
+## 2026-07-18 Loop-Lived MMAC Zero Accepted
+
+- Status: `ACCEPT_LOOP_LIVED_MMAC_ZERO` on
+  `exp/dkv-owner16-loop-zero-static-probe`.
+- The canonical algorithm and pipeline remain D2.  One read-only `F16x8`
+  zero fragment is initialized once per consumer q-loop and passed to the
+  first-accumulation score/dP and dV/dK helpers.
+- Gates: branches `32/158/158/158`, private0, SGPR50, VGPR128,
+  spill0/scratch0, LDS100,608B; S384/S768 PASS; S768 MMOP/LDS/VMEM remains
+  exactly `73,728/44,768/1,728`, VALU falls to 100,704, and bank0.
+- Stats-only S768: ticks 37,219,000, MMAC active 40.4364%, waitLgkm 11,668,
+  barrier 42,965.75, coissue `30,694/26,620`.
+- Fullperf S768: ticks 36,811,775, MMAC active 40.6086%, waitLgkm 11,779.75,
+  barrier 42,157.75, coissue `30,659/26,489`.
+- Versus D2 fullperf, ticks fall 5.22%, active rises 1.40 pp, and dynamic
+  `v_mov_b64_e32` falls `6,880 -> 2,144`.  XCU duration falls to 80,904;
+  the main ABarrier gap falls 19.23%, while consumer MMAC+VALU coissue rises
+  to `27.66/28.34/26.26%`.
+- Remaining trace bottleneck is matrix readiness: XCU `s_waitcnt` latency is
+  5.23% higher and normal matrix-read-to-wait duration 4.80% higher despite
+  lower PMD wait stalls.  Do not alter ownership or zero lifetime in the next
+  experiment.
+- Evidence: workbook sheet 152; remote
+  `/zys/shaobo_runs/owner16_loop_zero_fullperf/`
+  `dkv_mmac_correctness_20260718_225519`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_225519_owner16_loop_mmac_zero_s768_sqc7/`.

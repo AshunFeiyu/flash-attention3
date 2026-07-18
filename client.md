@@ -3340,6 +3340,58 @@ Skill Candidate: amortize ownership handshakes with a larger legal packet
   `shaobo/references/shaobo-dkv-optimization-methods.md` during serialized
   skill consolidation.
 
+## 2026-07-18 Loop-Lived MMAC Zero Seed Accepted
+
+- Status: `ACCEPT_LOOP_LIVED_MMAC_ZERO`.  One four-VGPR zero fragment is now
+  initialized once per consumer q-loop and reused by the first score, dP, dV,
+  and dK MMAC accumulations.  The D2 formula DAG, Mq192/Nk192 tile, resident
+  K/V, split Head64/Tail128 ownership, read/wait schedule, and exact four
+  GEMMs are unchanged.
+- Static/resource gates pass at branches `32/158/158/158`, private0, SGPR50,
+  VGPR128, spill0/scratch0, and LDS100,608B.  Static `v_mov_b64` falls
+  `289 -> 137`; explicit zero moves fall `150 -> 6`; ASM size falls about
+  2.1%.  S384/S768 correctness passes with unchanged S768 relL2 and bank0.
+- Stats-only S768 improves ticks `38,680,460 -> 37,219,000` (`-3.78%`) and
+  MMAC active `39.4033% -> 40.4364%`; waitLgkm falls 13.02%, barrier 8.79%,
+  and VALU `105,440 -> 100,704` at exact MMOP/LDS/VMEM
+  `73,728/44,768/1,728`.
+- Fullperf confirms ticks `38,840,165 -> 36,811,775` (`-5.22%`) and MMAC
+  active `39.2073% -> 40.6086%`; waitLgkm falls 13.48%, barrier 11.89%, and
+  empty-buffer 10.54%.
+- XCU dispatch duration falls `85,360 -> 80,904`, issues
+  `281,336 -> 276,600`, and dynamic `v_mov_b64_e32` hits
+  `6,880 -> 2,144`.  The dominant ABarrier gap falls
+  `1,303,708 -> 1,053,024` cycles.  Fixed-window consumer MMAC+VALU coissue
+  improves from `24.68/23.81/19.88%` to `27.66/28.34/26.26%`.
+- Residual debt: aggregate XCU `s_waitcnt` latency rises about 5.2%, and
+  normal `ds_read_matrix -> s_waitcnt` duration rises about 4.8%, even though
+  PMD wait stalls fall.  Preserve this accepted zero lifetime; the next
+  isolated hypothesis should target matrix-read first-use cadence.
+- Evidence: workbook sheet `152_DKV_LoopMmacZero`; remote fullperf
+  `/zys/shaobo_runs/owner16_loop_zero_fullperf/`
+  `dkv_mmac_correctness_20260718_225519`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_225519_owner16_loop_mmac_zero_s768_sqc7/`.
+
+Skill Candidate: loop-lived native zero operand
+
+- Trigger / 适用场景: the same native MMAC zero operand is recreated in every
+  unrolled sub-tile while the consumer role has bounded VGPR headroom.
+- Rule / 可复用规则: hoist one four-VGPR zero fragment to the longest legal
+  consumer loop, reuse it only for first-accumulation MMACs, and require ASM
+  proof that explicit moves and compensating copies both fall.
+- Evidence / 证据: exact-work dKV removes 4,736 dynamic `v_mov_b64` hits,
+  lowers fullperf ticks 5.22%, raises MMAC active 1.40 pp, and improves all
+  three consumer MMAC+VALU coissue rates with spill0 and bank0.
+- Boundary / 适用边界: reject before PMD if branch VGPR exceeds its WDRA
+  budget, private/spill appears, or backend remaps erase the move reduction.
+- Counterexample / 反例或不适用情况: earlier long-lived-zero experiments
+  reduced source zero calls but generated compensating register moves and did
+  not improve runtime.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` during a serialized
+  skill-consolidation round.
+
 ## 2026-07-18 dV/dK Sources Under Useful Work Accepted
 
 - Status: `ACCEPT_DVDK_SOURCES_UNDER_USEFUL_WORK`; one canonical kernel and
