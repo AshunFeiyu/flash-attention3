@@ -3194,3 +3194,52 @@ Skill Candidate: treat WDRA branch use as post-spill evidence
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` in a serialized
   consolidation pass.
+
+## 2026-07-18 Owner16 Score/dP Read8 First-Use Schedule
+
+- Status: `ACCEPT_SCORE_DP_READ8_FIRST_USE`.
+- The accepted owner16 1P+3C topology, exact four-GEMM math, K/V persistence,
+  LDS layout, output ownership, and five ABarrier IDs are unchanged. Only one
+  M16 score/dP operand schedule changes from two-source ping-pong to eight
+  consecutive trans matrix reads followed by exact first-use waits
+  `lgkmcnt(6/4/2/0)` and four MMAC per D block.
+- Static/resource evidence: consumer branch use rises only `141 -> 145` inside
+  the 160-VGPR window; metadata remains private0, SGPR46, VGPR128, spill0,
+  scratch0. Emitted ASM exactly matches `8 reads -> wait6 -> MMAC4 -> wait4 ->
+  MMAC4 -> wait2 -> MMAC4 -> wait0 -> MMAC4`.
+- S384 and S768 dK/dV correctness pass. S768 keeps exact `MMOP=73,728`, bank0,
+  and identical PMD instruction-class counts.
+- Same-build stats-only S768 ticks improve `46,718,945 -> 44,943,080`
+  (`-3.80%`); MMAC active rises `32.2055% -> 32.7318%`.
+- Fullperf confirms the result: kernel ticks `46,804,485 -> 44,852,080`
+  (`-4.17%`), XCU duration `102,864 -> 98,572`, and MMAC active
+  `32.1307% -> 32.8015%`. `waitLgkm` falls `28,421.75 -> 22,656.5`
+  (`-20.3%`) and barrier stall falls `91,890.5 -> 86,833.75` (`-5.5%`).
+- XCU trans matrix-read hot latency falls `192,552 -> 129,216` (`-32.9%`).
+  Consumer MMAC+VALU shares move from `29.70/27.91/22.54%` to
+  `29.65/30.67/26.92%`. The dominant `RawUsed` barrier row remains, but falls
+  from `32.56%` to `31.45%` and no-wave idle remains zero.
+- Archived evidence:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_161841_owner16_scoredp_read8_s768_sqc7/`.
+
+Skill Candidate: batch independent LDS reads and retire at exact first use
+
+- Trigger / 适用场景: a short matrix operand loop repeatedly performs
+  `read pair -> wait -> MMAC`, while later operands are independent and the
+  branch has enough transient VGPR slack.
+- Rule / 可复用规则: issue the complete independent read island first, then
+  derive descending `lgkmcnt` thresholds from an explicit outstanding-read
+  ledger so each operand retires only at first use. Verify the emitted ASM,
+  resource metadata, and exact work before measuring.
+- Evidence / 证据: owner16 score/dP read8 raises branch use `141 -> 145` but
+  cuts same-work S768 ticks by 3.80% stats-only and 4.17% fullperf; waitLgkm
+  drops 20.3%, trans-read latency drops 32.9%, correctness and bank0 hold.
+- Boundary / 适用边界: the source fragments must fit without spill and their
+  LDS ownership must not be extended. Read batching that delays a shared Used
+  token can regress even when the local MMAC island looks cleaner.
+- Counterexample / 反例或不适用情况: the earlier owner32 dV/dK read8 route
+  delayed shared Q/dO release, raised barrier stalls, and regressed ticks.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` during the next
+  serialized skill consolidation.

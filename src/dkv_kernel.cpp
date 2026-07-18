@@ -406,32 +406,56 @@ __device__ __forceinline__ void latch_owner16_kv_regs(
     }
 }
 
-template <typename Tile, int MBlockBase, int DBlock>
-__device__ __forceinline__ void read_score_dp_owner16_dblock(
+struct Owner16ScoreDpSources {
+    ins::F16x8 q_d0;
+    ins::F16x8 dout_d0;
+    ins::F16x8 q_d1;
+    ins::F16x8 dout_d1;
+    ins::F16x8 q_d2;
+    ins::F16x8 dout_d2;
+    ins::F16x8 q_d3;
+    ins::F16x8 dout_d3;
+};
+
+template <typename Tile, int MBlockBase>
+__device__ __forceinline__ void read_score_dp_owner16_all_dblocks(
     __half* lds,
     int page,
-    ins::F16x8& q_frag,
-    ins::F16x8& dout_frag) {
+    Owner16ScoreDpSources& src) {
     using Layout = DkvLdsLayout<Tile>;
     static_assert(MBlockBase < Layout::kRawMBlocksPerMqTile,
                   "score/dP reads one M16 block");
-    static_assert(DBlock >= 0 && DBlock < 4,
-                  "score/dP DBlock must be in D128");
     static_assert(Layout::kRawPages == 1,
                   "immediate score/dP reads require one canonical raw page");
     (void)page;
 
-    constexpr int kQOff =
+    constexpr int kQD0Off =
         Layout::kQBase +
-        (MBlockBase * Layout::kDBlocksPerMqTile + DBlock) *
+        (MBlockBase * Layout::kDBlocksPerMqTile + 0) *
             Layout::kRawBlockBytes;
-    constexpr int kDoutOff =
+    constexpr int kDoutD0Off =
         Layout::kDoutBase +
-        (MBlockBase * Layout::kDBlocksPerMqTile + DBlock) *
+        (MBlockBase * Layout::kDBlocksPerMqTile + 0) *
             Layout::kRawBlockBytes;
+    constexpr int kQD1Off = kQD0Off + Layout::kRawBlockBytes;
+    constexpr int kDoutD1Off = kDoutD0Off + Layout::kRawBlockBytes;
+    constexpr int kQD2Off = kQD1Off + Layout::kRawBlockBytes;
+    constexpr int kDoutD2Off = kDoutD1Off + Layout::kRawBlockBytes;
+    constexpr int kQD3Off = kQD2Off + Layout::kRawBlockBytes;
+    constexpr int kDoutD3Off = kDoutD2Off + Layout::kRawBlockBytes;
 
-    ins::ds_read_matrix_32x16_trans_imm2<kQOff, kDoutOff>(
-        lds, q_frag.f16x8, dout_frag.f16x8);
+    ins::ds_read_matrix_32x16_trans_imm4<
+        kQD0Off,
+        kDoutD0Off,
+        kQD1Off,
+        kDoutD1Off>(lds, src.q_d0.f16x8, src.dout_d0.f16x8,
+                    src.q_d1.f16x8, src.dout_d1.f16x8);
+    ins::ds_read_matrix_32x16_trans_imm4<
+        kQD2Off,
+        kDoutD2Off,
+        kQD3Off,
+        kDoutD3Off>(lds, src.q_d2.f16x8, src.dout_d2.f16x8,
+                    src.q_d3.f16x8, src.dout_d3.f16x8);
 }
 
 template <int DBlock>
@@ -472,36 +496,24 @@ __device__ __forceinline__ void score_dp_mmac_owner16(
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
 
-    ins::F16x8 q_d0;
-    ins::F16x8 dout_d0;
-    ins::F16x8 q_d1;
-    ins::F16x8 dout_d1;
+    Owner16ScoreDpSources src;
+    read_score_dp_owner16_all_dblocks<Tile, MBlockBase>(lds, page, src);
 
-    read_score_dp_owner16_dblock<Tile, MBlockBase, 0>(
-        lds, page, q_d0, dout_d0);
-    read_score_dp_owner16_dblock<Tile, MBlockBase, 1>(
-        lds, page, q_d1, dout_d1);
-    ins::wait_lgkm(0);
+    // Eight reads are issued in D0..D3 order. Retire each Q/dO pair at its
+    // first use while later D blocks remain in flight behind the MMAC island.
+    ins::wait_lgkm(6);
     ins::raise_priority_2();
     score_dp_mmac_owner16_dblock<0>(
-        kv_regs, q_d0, dout_d0, zero, score, dp);
-
-    // Reuse the consumed D0 register set for D2.  D1 MMAC hides the D2 read;
-    // D2 MMAC then hides the D3 read in the other register set.
-    read_score_dp_owner16_dblock<Tile, MBlockBase, 2>(
-        lds, page, q_d0, dout_d0);
+        kv_regs, src.q_d0, src.dout_d0, zero, score, dp);
+    ins::wait_lgkm(4);
     score_dp_mmac_owner16_dblock<1>(
-        kv_regs, q_d1, dout_d1, zero, score, dp);
-
-    read_score_dp_owner16_dblock<Tile, MBlockBase, 3>(
-        lds, page, q_d1, dout_d1);
-    // Each D block issues two reads.  Retire D2 and leave D3 in flight.
+        kv_regs, src.q_d1, src.dout_d1, zero, score, dp);
     ins::wait_lgkm(2);
     score_dp_mmac_owner16_dblock<2>(
-        kv_regs, q_d0, dout_d0, zero, score, dp);
+        kv_regs, src.q_d2, src.dout_d2, zero, score, dp);
     ins::wait_lgkm(0);
     score_dp_mmac_owner16_dblock<3>(
-        kv_regs, q_d1, dout_d1, zero, score, dp);
+        kv_regs, src.q_d3, src.dout_d3, zero, score, dp);
     ins::lower_priority();
 }
 

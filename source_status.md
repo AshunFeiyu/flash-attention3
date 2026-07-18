@@ -8597,3 +8597,29 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - Fullperf:
   `/zys/shaobo_runs/owner16_1p3c_fullkv_fullperf/`
   `dkv_mmac_correctness_20260718_153852`.
+
+## 2026-07-18 Owner16 Score/dP Read8 Accepted
+
+- Status: `ACCEPT_SCORE_DP_READ8_FIRST_USE` on branch
+  `exp/dkv-owner16-1p3c-full-kv`.
+- Canonical topology and math are unchanged. One M16 score/dP tile now issues
+  all eight Q/dO trans matrix reads before first use and retires D0-D3 with
+  `lgkmcnt(6/4/2/0)` before four MMAC each.
+- Static gates pass: branch use `22/145/145/145` in
+  `32/160/160/160`; private0, SGPR46, VGPR128, spill0/scratch0; emitted ASM
+  matches the planned read/wait/MMAC sequence.
+- S384 and S768 correctness pass; S768 dK/dV relL2 is
+  `0.00191329/0.000319636`, MMOP is exactly 73,728, and bank conflict is zero.
+- Stats-only S768 improves `46,718,945 -> 44,943,080` kernel ticks (`-3.80%`)
+  and `32.2055% -> 32.7318%` MMAC active.
+- Fullperf improves `46,804,485 -> 44,852,080` kernel ticks (`-4.17%`),
+  `32.1307% -> 32.8015%` MMAC active, waitLgkm
+  `28,421.75 -> 22,656.5`, and barrier `91,890.5 -> 86,833.75`.
+  XCU duration falls `102,864 -> 98,572`; trans-read hot latency falls
+  `192,552 -> 129,216`. Consumer MMAC+VALU is
+  `29.65%/30.67%/26.92%` in the same 8k:80k window.
+- Evidence: stats-only
+  `/zys/shaobo_runs/owner16_scoredp_read8/`
+  `dkv_mmac_correctness_20260718_161522`; fullperf/XCU
+  `/zys/shaobo_runs/owner16_scoredp_read8_fullperf/`
+  `dkv_mmac_correctness_20260718_161841`; workbook sheet 145.

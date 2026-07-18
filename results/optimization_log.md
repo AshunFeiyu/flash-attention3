@@ -13824,3 +13824,48 @@ Status: `ACCEPT_FULL_KV_ARCHITECTURE_XCU_DIAGNOSED`
 - Fullperf/XCU evidence:
   `/zys/shaobo_runs/owner16_1p3c_fullkv_fullperf/`
   `dkv_mmac_correctness_20260718_153852`.
+
+## 2026-07-18 Owner16 Score/dP Read8 First-Use Wait Accepted
+
+Status: `ACCEPT_SCORE_DP_READ8_FIRST_USE`
+
+- Hypothesis: the accepted owner16 consumer has 19 VGPR of branch slack and
+  the largest actionable SQTT gaps are local `matrix-read -> wait` and
+  `MMAC -> wait`. Batch all Q/dO D0-D3 source reads for score+dP, but retain
+  staged first-use waits so the first MMAC does not pay the entire LDS latency.
+- Change: replace two-set ping-pong with one scoped eight-fragment source
+  bundle. Emit eight consecutive trans matrix reads, then
+  `lgkmcnt(6/4/2/0)` before four MMAC for D0/D1/D2/D3. No token, page, math,
+  output ownership, dV/dK schedule, or API change.
+- Static result: roles `22/145/145/145` fit `32/160/160/160`; metadata remains
+  private0, SGPR46, VGPR128, SGPR/VGPR spill0, scratch0. ASM proves the exact
+  planned schedule, not merely the source ordering.
+- Correctness: H1/S384 and H1/S768 pass. S768 dK/dV relL2 is
+  `0.00191329/0.000319636`, exact MMOP is 73,728, and `ldsBankConflict=0`.
+- Stats-only comparison at H1/S768: kernel ticks
+  `46,718,945 -> 44,943,080` (`-3.80%`); MMAC active
+  `32.2055% -> 32.7318%`; coissue `29,900/23,617 -> 35,322/30,540`;
+  MMOP/VALU/SCA/LDS/VMEM remain exactly
+  `73,728/105,712/20,856/44,768/1,728`.
+- Fullperf comparison: kernel ticks `46,804,485 -> 44,852,080` (`-4.17%`),
+  aggregate MMAC active `32.130697% -> 32.801527%`, waitLgkm
+  `28,421.75 -> 22,656.5` (`-20.28%`), barrier
+  `91,890.5 -> 86,833.75` (`-5.50%`), and coissue
+  `30,032/23,765 -> 35,318/30,440`.
+- XCU dispatch duration falls `102,864 -> 98,572`. Trans matrix-read hot
+  latency falls `192,552 -> 129,216`; trans-read-to-wait issue gaps fall
+  `4.95% -> 3.96%` and MMAC-to-wait falls `5.34% -> 4.90%`. In the same
+  8k:80k SIMD0 window, consumer MMAC+VALU shares move
+  `29.70/27.91/22.54% -> 29.65/30.67/26.92%`.
+- Interpretation: the gain comes from overlapping later independent source
+  reads with earlier score/dP MMAC. The added 2,304 XCU instruction issues are
+  staged first-use waits, yet aggregate wait latency and dispatch duration
+  both fall. This does not solve the 40% target; the dominant producer
+  `RawUsed` row remains 31.45%, and normal-read-to-wait remains 4.57%.
+- Evidence: workbook sheet `145_DKV_ScoreDP_Read8`; stats-only
+  `/zys/shaobo_runs/owner16_scoredp_read8/`
+  `dkv_mmac_correctness_20260718_161522`; fullperf/XCU
+  `/zys/shaobo_runs/owner16_scoredp_read8_fullperf/`
+  `dkv_mmac_correctness_20260718_161841`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_161841_owner16_scoredp_read8_s768_sqc7/`.
