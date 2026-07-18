@@ -3090,7 +3090,7 @@ Skill Candidate: distinguish release time from next-generation readiness
 
 ## 2026-07-18 Full K/V Latch Resource Closure
 
-- Status: `REJECT_RESOURCE_FULL_KV_OWNER32_EXPERIMENT_BRANCH`.
+- Status: `REJECT_RESOURCE_FULL_KV_OWNER32_SOURCE_RESTORED`.
 - Workbook sheet 143 paired full owner32 K/V persistence with removal of all
   steady score/dP V fragments. The intended arithmetic stays at four GEMMs;
   score/dP matrix reads would fall from 14 to 8 per M16.
@@ -3102,9 +3102,13 @@ Skill Candidate: distinguish release time from next-generation readiness
   merge. Peeling the first tile lowers spill count only `116 -> 111` while
   private storage worsens `124B -> 248B`; it changes spill placement rather
   than solving capacity.
-- No PMD run is allowed. The hard lower bound is 128 VGPR of dK+dV fp32
+- No PMD run is allowed. Experiment commit `91c2437` preserves all rejected
+  code. The hard lower bound is 128 VGPR of dK+dV fp32
   accumulators plus 64 VGPR of complete K/V, before score/dP, P/dS, sidecar,
-  addresses, and control. Restore the 40.0907% owner32 canonical.
+  addresses, and control. Active source is restored to the 40.0907% owner32
+  canonical and recertified at
+  `/zys/sb/canonical_after_fullkv_reject/`
+  `dkv_mmac_correctness_20260718_113602`.
 
 Skill Candidate: treat WDRA branch use as post-spill evidence
 

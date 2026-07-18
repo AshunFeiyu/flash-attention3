@@ -8552,7 +8552,7 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 
 ## 2026-07-18 Full K/V Latch Rejected by Resource Gate
 
-- Status: `REJECT_RESOURCE_FULL_KV_OWNER32_EXPERIMENT_BRANCH`.
+- Status: `REJECT_RESOURCE_FULL_KV_OWNER32_SOURCE_RESTORED`.
 - Full V D0-D3 is latched with K and all steady-loop V matrix reads/fragments
   are removed. R1 retains two Q/dO read slots; R3 uses one slot.
 - R1 roles are `14/244/244/8`, metadata private124B/vgpr_spill116. R3 roles
@@ -8563,5 +8563,9 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   Peeling q_tile0 changes metadata to private248B/vgpr_spill111 and therefore
   does not solve capacity. No correctness or PMD performance run is allowed.
 - Workbook sheet 143 contains the DAG, VGPR lower bound, instruction saving,
-  expected pipeline, and all three static results. Active source must return
-  to the owner32 canonical.
+  expected pipeline, and all three static results. Experiment commit
+  `91c2437` preserves the rejected source; active source is restored to the
+  owner32 canonical. Static/metadata gates pass at `14/239/239/8`, private0,
+  SGPR56, VGPR128, spill/scratch0; H1/S256 correctness and bank0 pass at
+  `/zys/sb/canonical_after_fullkv_reject/`
+  `dkv_mmac_correctness_20260718_113602`.

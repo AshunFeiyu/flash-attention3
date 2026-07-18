@@ -13764,7 +13764,7 @@ Status: `REJECT_STATS_EARLY_RELEASE_CONTENTION_SOURCE_RESTORED`
 
 ## 2026-07-18 Full K/V Latch with Transient-V Elimination
 
-Status: `REJECT_RESOURCE_FULL_KV_OWNER32_EXPERIMENT_BRANCH`
+Status: `REJECT_RESOURCE_FULL_KV_OWNER32_SOURCE_RESTORED`
 
 - Design: keep all owner32 K/V fragments live across the q-loop and delete
   the D1-D3 V rereads and temporary V fragments from score/dP. This removes
@@ -13781,4 +13781,7 @@ Status: `REJECT_RESOURCE_FULL_KV_OWNER32_EXPERIMENT_BRANCH`
   merge. Peeling q_tile0 changes metadata to private248B/vgpr_spill111; this
   is still a hard failure and shows the CFG was not the root capacity fix.
 - Decision: no PMD execution. Record in workbook sheet 143, preserve the
-  static negative experiment in git, and restore tagged owner32 canonical.
+  static negative experiment as commit `91c2437`, and restore tagged owner32
+  canonical. Restored static/metadata gates and H1/S256 correctness pass at
+  `/zys/sb/canonical_after_fullkv_reject/`
+  `dkv_mmac_correctness_20260718_113602`.
