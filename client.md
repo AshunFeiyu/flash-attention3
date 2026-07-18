@@ -3385,6 +3385,21 @@ Skill Candidate: per-kernel compiler promotion for model-only ISA
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-perf-model.md` during serialized consolidation.
 
+## 2026-07-19 Canonical dKV Latest-Compiler Route
+
+- Branch: `exp/dkv-latest-pair-wdra-init`.
+- `SHAOBO_RUN_ON_MODEL=1` is a toolchain switch, not an algorithm phase.  It
+  adds the explicit WDRA entry contract and `-mllvm -run-on-model=true`;
+  default old-compiler builds remain unchanged.
+- Canonical branch resource use is `32/158/158/158` inside requested
+  `32/160/160/160`, metadata SGPR50/VGPR128, private0, spill0, scratch0.
+- Latest PMD HEAD1694 correctness passes at S384.  S768 stats-only gives
+  ticks `35,823,515`, MMAC active `43.1608%`, exact MMOP73,728 and VALU80,272,
+  coissue `21,792/18,043`, bank0.  This reproduces the temporary environment
+  audit from canonical source.
+- S128 is outside this Mq192 dKV harness contract and reports `unsupported`;
+  use S384 for smoke and S768 for the clean steady comparison.
+
 ## 2026-07-18 Loop-Lived MMAC Zero Seed Accepted
 
 - Status: `ACCEPT_LOOP_LIVED_MMAC_ZERO`.  One four-VGPR zero fragment is now

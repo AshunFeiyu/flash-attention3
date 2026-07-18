@@ -911,6 +911,13 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
                    int dim,
                    int causal,
                    float softmax_scale) {
+#if defined(SHAOBO_EXPLICIT_WDRA_INIT)
+    __builtin_hcu_wdra_init(
+        dkv::WdraResourceWindows::kProducerVgprs,
+        dkv::WdraResourceWindows::kConsumerVgprs,
+        dkv::WdraResourceWindows::kConsumerVgprs,
+        dkv::WdraResourceWindows::kConsumerVgprs);
+#endif
 #if defined(__gfx946__) || defined(__gfx92a__)
     using Tile = dkv::ActiveDkvTile;
     using Bar = dkv::DkvBarrierLedger;

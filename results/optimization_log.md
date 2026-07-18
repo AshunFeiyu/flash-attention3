@@ -14155,3 +14155,21 @@ Status: `ACCEPT_DKV_ENV_REBASE / OBSERVE_DQ_COMPILER_REGRESSION / DESIGN_1P3C`.
   `dkv_mmac_correctness_20260719_015237`; dQ stable run
   `/zys/shaobo_runs/env_audit_latest_pmd_fullperf_dq_oldcc/`
   `dq_correctness_20260719_015727`.
+
+## 2026-07-19 Canonical dKV Model-Build Contract
+
+Status: `ACCEPT_CANONICAL_TOOLCHAIN_ROUTE`.
+
+- Hypothesis: make the already measured latest-compiler gain reproducible
+  without changing the default compiler route or dKV mathematics.
+- Change: guarded kernel-entry WDRA init plus a build-level
+  `SHAOBO_RUN_ON_MODEL=1` switch.  No tile, barrier, instruction island, or
+  output ownership change.
+- Static result: both latest and default compiler builds pass; latest branch
+  use is `32/158/158/158`, private0, spill0, scratch0.
+- PMD result: S384 correctness PASS.  S768 stats-only ticks `35,823,515`,
+  MMAC active `43.1608%`, MMOP73,728, VALU80,272, bank0.  This is consistent
+  with the earlier fullperf `35,707,035 / 43.7836%` environment audit.
+- Decision: accept and commit as the canonical dKV toolchain route.  This does
+  not count as the next algorithm optimization; remaining distance to 50%
+  is still ABarrier/readiness work.

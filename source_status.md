@@ -8816,3 +8816,18 @@ Status: `DKV_ACCEPT_ENV_REBASE_DQ_KEEP_STABLE_COMPILER_1P3C_DESIGN_READY`.
   consumer windows <=160 VGPR with no spill.  The candidate uses Mq192/Nk128,
   96KB Q+dO startup plus 2.25KB sidecar, and a lifetime-overlaid 128KB K/V
   two-page steady state.
+
+## 2026-07-19 Canonical dKV Explicit WDRA Route Accepted
+
+Status: `ACCEPT_CANONICAL_TOOLCHAIN_ROUTE`.
+
+- Source change is guarded by `SHAOBO_RUN_ON_MODEL=1`; it emits
+  `__builtin_hcu_wdra_init(32,160,160,160)` and `run-on-model` only for the
+  latest compiler route.  Default compiler build still passes unchanged.
+- Latest compiler build: role use `32/158/158/158`; private0, SGPR50,
+  VGPR128, no spill/scratch; dKV static gate PASS.
+- Latest PMD HEAD1694 S384 correctness PASS.  S768 stats-only:
+  simTicks39,437,125, first3,613,610, kernel ticks35,823,515, active43.1608%,
+  MMOP73,728, VALU80,272, coissue21,792/18,043, bank0.
+- S128 returns the harness status `unsupported`; it is not a numerical
+  failure.  Canonical dKV smoke is S384 and steady evidence is S768.

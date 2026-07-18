@@ -51,6 +51,13 @@ if [[ -n "${EXTRA_CXXFLAGS:-}" ]]; then
   EXTRA_FLAGS=(${EXTRA_CXXFLAGS})
 fi
 
+if [[ "${SHAOBO_RUN_ON_MODEL:-0}" == "1" ]]; then
+  EXTRA_FLAGS+=(
+    -DSHAOBO_EXPLICIT_WDRA_INIT=1
+    -mllvm -run-on-model=true
+  )
+fi
+
 SHAOBO_FLAGS=(
   -mllvm -support-768-vgprs=true
   -mllvm -vgpr-greedy-alloc-mode=local-wave
