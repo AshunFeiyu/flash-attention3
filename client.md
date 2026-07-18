@@ -3679,3 +3679,18 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
   skew.  Equalizing useful work made the three consumers more lockstep and
   increased issue contention.  The source is restored to contiguous
   ownership; future stagger must change legal DAG order, not row ownership.
+
+## 2026-07-19 dQ Legal DAG Stagger Rejected
+
+- Consumer1 was isolated as `score -> P -> dP -> dS -> dQ`; consumer0/2 kept
+  the canonical fused score+dP island.  Static ISA stayed exact at
+  `576 MMAC`, `96/216` normal/trans matrix reads, `72` lgkm waits,
+  `12/15` ABarrier wait/arrive, and `192` exp.  Only eight extra `s_setprio`
+  instructions appeared; branch VGPR became `11/158/152/159`.
+- Correctness, private/spill/scratch, and bank0 gates passed.  Nevertheless,
+  kernel ticks regressed `23,364,250 -> 24,166,870` (`+3.44%`), while
+  coissue success/fail fell `12,071/10,930 -> 11,305/10,121`.
+- Splitting one compact score+dP MMAC island did not create peer MMAC/VALU
+  overlap; it reduced MMAC continuity.  The experiment code was removed.
+  Future dQ work must preserve the fused island and attack page readiness or
+  useful producer/consumer overlap around it.

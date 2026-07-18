@@ -14264,3 +14264,23 @@ Status: `REJECT_CAUSAL_BALANCE_LOCKSTEP`; source restored.
   peer-consumer lockstep and issue contention; the original causal imbalance
   was providing useful stagger.  Restore contiguous ownership.  The next
   isolated hypothesis is legal DAG-order staggering with exact row ownership.
+
+## 2026-07-19 dQ Legal DAG-Order Stagger
+
+Status: `REJECT_DAG_STAGGER_BREAKS_MMAC_ISLAND`; source restored.
+
+- Hypothesis: consumer1 computes score, converts score to P, then computes dP
+  and dS, while consumer0/2 retain fused score+dP.  The legal DAG order was
+  intended to place P VALU under peer score+dP MMAC.
+- Static evidence was exact: `576 MMAC`, `96` normal reads, `216` trans reads,
+  `72` lgkm waits, `12/15` ABarrier wait/arrive, `192` exp, `85` v_mov.
+  Candidate added eight `s_setprio`; roles `11/158/152/159`, private0,
+  spill0, scratch0.
+- H1/S768 correctness and bank0 passed.  Control versus candidate:
+  kernel ticks `23,364,250 -> 24,166,870` (`+3.44%`), VALU
+  `33,808 -> 33,608`, coissue `12,071/10,930 -> 11,305/10,121`; exact
+  MMOP/LDS/VMEM/FLAT remained `28,800/15,092/704/564`.
+- Verdict: splitting the fused score+dP island reduces issue continuity and
+  peer overlap attempts.  Do not pursue per-consumer mathematical ordering
+  on this tile.  Preserve fused score+dP and target K/V page readiness,
+  producer work, or ownership around the intact island.

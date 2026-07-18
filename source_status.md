@@ -8894,3 +8894,23 @@ Status: `REJECT_CAUSAL_BALANCE_LOCKSTEP`; canonical mapping restored.
 - Interpretation: causal row imbalance was a useful phase offset.  Balancing
   it increased lockstep MMAC competition rather than shortening the terminal
   tail.  Restore contiguous ownership and pursue a legal DAG-order stagger.
+
+## 2026-07-19 Rejected dQ Candidate: Legal DAG-Order Stagger
+
+Status: `REJECT_DAG_STAGGER_BREAKS_MMAC_ISLAND`; source restored.
+
+- Consumer1 alone used `score -> P -> dP -> dS -> dQ`; consumer0/2 retained
+  fused score+dP.  Static generation preserved exact MMAC, matrix-read,
+  lgkm-wait, ABarrier, exp, v_mov, and data-movement counts.  It added only
+  eight `s_setprio`; roles were `11/158/152/159`, metadata private0 SGPR59
+  VGPR128, spill0, scratch0.
+- H1/S768 causal correctness passed with maxAbs `1.5201e-7`, relL2
+  `0.00151559`, no NaN/Inf, and bank0.
+- Exact MMOP/LDS/VMEM/FLAT stayed `28,800/15,092/704/564`; VALU fell
+  `33,808 -> 33,608`, but kernel ticks regressed
+  `23,364,250 -> 24,166,870` (`+3.44%`).  Coissue success/fail fell
+  `12,071/10,930 -> 11,305/10,121`.
+- Conclusion: the fused score+dP island is locally beneficial.  A one-group
+  DAG split loses MMAC continuity before peer waves can hide its P/softmax
+  interval.  Preserve fused score+dP; next structural candidate must reduce
+  readiness/ownership exposure without splitting MMAC work.
