@@ -8854,3 +8854,20 @@ Status: `OBSERVE_1P3C_TOPOLOGY_PROOF_TICKS_REGRESSION`.
 - Next edit must change only useful mathematical order across consumers; no
   delay, duplicate GEMM, extra page/token, or consumer-assisted prefetch is
   allowed in the same hypothesis.
+
+## 2026-07-19 PMD Control Non-Reproducibility Guard
+
+Status: `OBSERVE_ENV_CONTROL_NONREPRODUCIBLE`; canonical source restored.
+
+- A temporary consumer1 useful-stagger source passed static resource and ISA
+  equality checks (`11/158/152/159`, private0, spill0, scratch0; exact MMAC,
+  matrix-read, wait, and barrier counts), but it was not performance-tested
+  against a valid control.
+- The exact known-good topology binary, SHA256
+  `d8d96c5d1f4cf3b2de6eb3661108349f8155c9ca582466f227ef3de0f0ed59c4`,
+  no longer completed inside the 180-second control window and was killed
+  after `05m38s`.  The host had 16 CPUs and load average above 79.
+- `src/dq_kernel.cpp` is back at commit `3eeff47`; no unvalidated stagger code
+  remains.  The next PMD attempt must first pass the exact-binary control gate,
+  verify SQ7 in PMD's resolved argument list, and only then rebuild/run the
+  one-hypothesis candidate.

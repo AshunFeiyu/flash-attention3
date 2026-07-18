@@ -3651,3 +3651,15 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
   stagger.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   project-local Shaobo optimization reference after measured ACCEPT evidence.
+
+## 2026-07-19 Control-First PMD Guard
+
+- The first 1P3C useful-stagger implementation preserved exact static work
+  and fit the 160-VGPR windows, but the PMD host became non-reproducible before
+  a valid before/after comparison.  Even the byte-identical known-good control
+  binary exceeded 180 seconds under a 16-CPU host load above 79.
+- No performance conclusion is attached to that source.  It was removed and
+  the worktree returned to commit `3eeff47`.
+- Future runs use a control-first gate: exact known-good binary, same shape,
+  same PMD/compiler, resolved `--SQCIPfLines=7`, then candidate.  A candidate
+  cannot be ACCEPT/REJECT when its control fails this gate.

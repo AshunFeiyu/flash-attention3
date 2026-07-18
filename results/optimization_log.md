@@ -14212,3 +14212,31 @@ Status: `OBSERVE_1P3C_TOPOLOGY_PROOF_TICKS_REGRESSION`.
   `dq_correctness_20260719_031425`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260719_031425_dq_mq192_1p3c_topology_s768_sqc7/`.
+
+## 2026-07-19 dQ Useful-Stagger PMD Control Gate
+
+Status: `OBSERVE_ENV_CONTROL_NONREPRODUCIBLE`; no candidate verdict.
+
+- The isolated hypothesis was legal DAG reordering for consumer1 only:
+  `score -> P -> dP -> dS -> dQ`, while peers retained
+  `score -> dP -> P/dS -> dQ`.  Static generation kept exact work and all
+  matrix/read/wait/barrier counts: 576 MMAC, 96 normal matrix reads, 216
+  transpose matrix reads, with branch VGPR `11/158/152/159`, private0,
+  spill0, and scratch0.
+- PMD evidence became non-reproducible before candidate measurement.  The
+  exact previously passing control binary (SHA256
+  `d8d96c5d1f4cf3b2de6eb3661108349f8155c9ca582466f227ef3de0f0ed59c4`)
+  exceeded the 180-second control gate and was terminated after `05m38s`.
+  The same artifact had completed in about 20 seconds stats-only and 34
+  seconds fullperf earlier in the session.
+- The host exposed only 16 CPUs while load average was
+  `81.70/80.19/79.31`.  Six stale orphan PMD kernel processes from earlier
+  experiments were terminated; no other users' processes were touched.
+- Several earlier commands also showed a shell-quoting hazard: when invoked
+  via `docker exec env`, `GPU_ARGS` must be passed as the single quoted value
+  `GPU_ARGS=['--SQCIPfLines=7']`, and PMD stdout must list
+  `--SQCIPfLines=7` before a run is admissible.
+- Decision: restore `src/dq_kernel.cpp` to topology-proof commit `3eeff47`.
+  Do not classify the stagger as ACCEPT or REJECT until the exact control
+  completes first under a recovered host, then measure the candidate in the
+  same toolchain/load window.
