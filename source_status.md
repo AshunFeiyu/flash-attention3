@@ -8740,3 +8740,27 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
   `dkv_mmac_correctness_20260718_203148`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_203148_owner16_mq192_head_tail_split_used_s768_sqc7/`.
+
+## 2026-07-18 dV/dK Source-Read Software Pipeline Accepted
+
+- Status: `ACCEPT_DVDK_SOURCES_UNDER_USEFUL_WORK` on
+  `exp/dkv-owner16-dvdk-under-softmax`.
+- Canonical math, Mq192/Nk192 tile, resident K/V, split Head/Tail Used
+  ownership, one kernel, and exact four GEMMs are unchanged.  The consumer
+  now issues sidecar3 plus D0/D1 normal reads, retires only sidecar with
+  `lgkmcnt(4)`, executes softmax/dS, retires D0/D1, then overlaps D2/D3 reads
+  with the first dV/dK MMAC8.
+- Static/resource gates pass at branches `32/154/154/154`, private0, SGPR50,
+  VGPR128, spill0/scratch0 and LDS100,608B.  S384/S768 correctness passes;
+  S768 keeps MMOP/LDS/VMEM `73,728/44,768/1,728` and bank0.
+- Stats/fullperf ticks are `38,680,460/38,840,165`; MMAC active is
+  `39.4010%/39.2062%`.  Versus tag
+  `best/dkv-owner16-head-tail-split-used-s768-20260718`, fullperf ticks fall
+  1.38%, MMAC active rises 0.96 pp, and waitLgkm falls 24.51%.
+- XCU duration falls to 85,360 and wait hits fall 21.57%.  Residual debt is
+  worse MMAC-to-MMAC spacing and lower fixed-window consumer MMAC+VALU
+  coissue, so the next edit must target MMAC cadence without expanding the
+  source live set back to the spilling D1 design.
+- Evidence: workbook sheet 151; fullperf/XCU
+  `/zys/shaobo_runs/owner16_dvdk_under_softmax_d2_fullperf/`
+  `dkv_mmac_correctness_20260718_215518`.

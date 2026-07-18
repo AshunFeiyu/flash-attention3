@@ -14045,3 +14045,43 @@ Status: `ACCEPT_MQ192_HEAD_TAIL_SPLIT_USED`
   `dkv_mmac_correctness_20260718_203148`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_203148_owner16_mq192_head_tail_split_used_s768_sqc7/`.
+
+## 2026-07-18 dV/dK Sources Under Useful Work Accepted
+
+Status: `ACCEPT_DVDK_SOURCES_UNDER_USEFUL_WORK`
+
+- Hypothesis: preserve the accepted Mq192 split-used ownership conveyor, but
+  issue only D0/D1 normal Q/dO sources before softmax and D2/D3 before the
+  first dV/dK MMAC8.  This bounds live source VGPR while allowing useful VALU
+  and MMAC to cover LDS readiness.
+- Resource stress: the wider D1 request train (sidecar3+normal8) compiled at
+  branches `32/160/160/160` with private28B and vgpr_spill18, so it was
+  rejected before PMD.  D2 passes at `32/154/154/154`, private0, SGPR50,
+  VGPR128, spill0/scratch0, LDS100,608B.
+- Correctness/work: S384 and S768 pass with unchanged S768 dK/dV relL2
+  `0.00191329/0.000319636`; MMOP/LDS/VMEM remain exactly
+  `73,728/44,768/1,728`, VALU falls `106,640 -> 105,440`, and bank conflict
+  remains zero.
+- Stats-only: ticks `39,486,265 -> 38,680,460` (`-2.04%`), MMAC active
+  `38.1762% -> 39.4010%`, waitLgkm `17,854.75 -> 13,414.5` (`-24.87%`),
+  barrier `49,613 -> 47,105`, coissue `26,200/21,206`.
+- Fullperf: ticks `39,383,435 -> 38,840,165` (`-1.38%`), MMAC active
+  `38.2453% -> 39.2062%`, waitLgkm `18,035.5 -> 13,615.5` (`-24.51%`),
+  barrier `49,145.25 -> 47,845.25`.
+- XCU: dispatch duration falls `86,560 -> 85,360`, instruction issues fall
+  `285,416 -> 281,336`, and `s_waitcnt` hits/latency fall
+  `21,360 -> 16,752` / `1,411,776 -> 1,303,020`.  In the representative
+  consumer window, wait instructions fall `432 -> 336`; sidecar-to-wait and
+  `v_cmp_ge -> wait` gaps disappear.  The tradeoff is explicit:
+  MMAC-to-MMAC gap rises `8,751 -> 9,483`, normal-read-to-wait rises
+  `4,500 -> 6,452`, and consumer MMAC+VALU falls to
+  `24.68/23.81/19.88%`.
+- Decision: promote because hard gates, same work, ticks, MMAC active, and
+  aggregate wait all improve.  Do not interpret it as the final coissue
+  solution; the next hypothesis must reduce MMAC gaps without restoring the
+  rejected 32-VGPR source overlap.
+- Evidence: workbook sheet `151_DKV_DvDkUnderSoftmax`; stats-only roots
+  `/zys/shaobo_runs/owner16_dvdk_under_softmax_d2_s384/` and
+  `/zys/shaobo_runs/owner16_dvdk_under_softmax_d2_s768/`; fullperf/XCU
+  `/zys/shaobo_runs/owner16_dvdk_under_softmax_d2_fullperf/`
+  `dkv_mmac_correctness_20260718_215518`.

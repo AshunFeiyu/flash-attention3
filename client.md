@@ -3340,6 +3340,49 @@ Skill Candidate: amortize ownership handshakes with a larger legal packet
   `shaobo/references/shaobo-dkv-optimization-methods.md` during serialized
   skill consolidation.
 
+## 2026-07-18 dV/dK Sources Under Useful Work Accepted
+
+- Status: `ACCEPT_DVDK_SOURCES_UNDER_USEFUL_WORK`; one canonical kernel and
+  no phase switch were added.
+- The accepted split-used topology is frozen.  Only consumer issue chronology
+  changes: `sidecar3 + D01 reads -> lgkm4 -> softmax/dS -> lgkm0 -> D23 reads
+  -> MMAC8 -> lgkm0 -> MMAC8`.
+- D1 proved the resource boundary: keeping all eight normal sources live
+  across softmax spills 18 VGPR and allocates 28 private bytes.  D2 keeps only
+  four normal reads live and passes at branches `32/154/154/154`, private0,
+  SGPR50, VGPR128, spill0/scratch0.
+- S384/S768 correctness passes with exact MMOP/LDS/VMEM and bank0.  Fullperf
+  ticks improve `39,383,435 -> 38,840,165`, MMAC active improves
+  `38.2453% -> 39.2062%`, and waitLgkm falls 24.51%.
+- XCU confirms the mechanism: representative consumer waits fall
+  `432 -> 336`, and dispatch duration falls `86,560 -> 85,360`.  Consumer
+  coissue and MMAC-to-MMAC spacing are worse, so this is a wait-reduction
+  promotion with explicit remaining pipeline debt, not a 60% claim.
+- Evidence: workbook sheet `151_DKV_DvDkUnderSoftmax`; remote fullperf/XCU
+  `/zys/shaobo_runs/owner16_dvdk_under_softmax_d2_fullperf/`
+  `dkv_mmac_correctness_20260718_215518`.
+
+Skill Candidate: bounded operand preread across useful work
+
+- Trigger / 适用场景: a matrix consumer repeatedly drains side-data and
+  matrix-source LDS requests before independent VALU/MMAC work, while the
+  full preread set exceeds the role-local VGPR budget.
+- Rule / 可复用规则: make side-data requests an explicit island, retire only
+  the oldest side-data requests, and carry the smallest legal matrix-source
+  subset across useful work.  Admit the schedule only after emitted-ASM,
+  resource, correctness, exact-work, and SQTT wait evidence all agree.
+- Evidence / 证据: D2 removes two waits per M16, cuts fullperf waitLgkm 24.51%,
+  improves ticks 1.38%, and raises MMAC active 0.96 pp with spill0/bank0.
+- Boundary / 适用边界: request retirement relies on the verified Shaobo LDS
+  request order and independent first-use operands; branch headroom must
+  include compiler temporaries.
+- Counterexample / 反例或不适用情况: D1 carried all eight normal sources
+  across softmax and spilled 18 VGPR, so wider preread is not automatically
+  better.  D2 also worsens local MMAC spacing and consumer coissue.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` during serialized
+  skill consolidation.
+
 ## 2026-07-18 Owner16 Head64/Tail128 Readiness Accepted
 
 - Status: `ACCEPT_HEAD64_TAIL128_INTRA_PACKET_OVERLAP` on branch

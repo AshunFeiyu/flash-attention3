@@ -48,7 +48,7 @@ def main() -> int:
             "missing_dkv_mmac_consumer_loop")
     require(perf_source, r"score_dp_mmac_owner16", failures,
             "missing_owner16_score_dp_mmac")
-    require(perf_source, r"owner16_dv_dk_read_mmac", failures,
+    require(perf_source, r"owner16_dv_dk_mmac_from_sources", failures,
             "missing_owner16_dv_dk_mmac")
     require(source, r"kDkvPathCanonicalDkv", failures,
             "missing_canonical_path")
@@ -105,6 +105,17 @@ def main() -> int:
             failures, "missing_dual_base_trans_matrix_read")
     require(perf_source, r"ds_read_matrix_32x16_normal_dual_base_imm2",
             failures, "missing_dual_base_normal_matrix_read")
+    require(perf_source, r"ds_read_b128_lds_imm3",
+            failures, "missing_sidecar_read3_island")
+    require(perf_source,
+            r"read_sidecar_owner16<Tile,\s*MBlockBase>[\s\S]{0,500}"
+            r"read_owner16_dv_dk_sources<Tile,\s*0,\s*MBlockBase>"
+            r"[\s\S]{0,500}wait_lgkm\(4\)[\s\S]{0,500}"
+            r"softmax_ds_owner16_causal_exact_tile[\s\S]{0,700}"
+            r"wait_lgkm\(0\)[\s\S]{0,300}"
+            r"read_owner16_dv_dk_sources<Tile,\s*2,\s*MBlockBase>"
+            r"[\s\S]{0,400}owner16_dv_dk_mmac_from_sources",
+            failures, "missing_sidecar_matrix_softmax_pipeline")
     require(perf_source,
             r"MBlockBase\s*\+\s*1\s*==\s*Tile::kBlockMq\s*/\s*16",
             failures, "missing_tail_release_contract")
@@ -226,6 +237,10 @@ def main() -> int:
                 "asm_missing_matrix_load_bps_lds")
         require(asm, r"ds_read_matrix_.*format", failures,
                 "asm_missing_ds_read_matrix")
+        require(asm, r"ds_read_b128", failures,
+                "asm_missing_sidecar_ds_read_b128")
+        forbid(asm, r"s_waitcnt lgkmcnt\(8\)", failures,
+               "asm_d1_wait8_must_not_remain")
         require(asm, r"v_mmac_.*lit", failures, "asm_missing_v_mmac_lit")
         require(asm, r"s_setprio", failures, "asm_missing_s_setprio")
         require(asm, r"fa3_bwd_dkv_kernel", failures,

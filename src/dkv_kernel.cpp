@@ -519,6 +519,27 @@ __device__ __forceinline__ void score_dp_mmac_owner16(
     ins::lower_priority();
 }
 
+struct Owner16SidecarSources {
+    ins::Vec4F32 row_max_log2;
+    ins::Vec4F32 row_inv_sum;
+    ins::Vec4F32 row_delta;
+};
+
+template <typename Tile, int MBlockBase>
+__device__ __forceinline__ void read_sidecar_owner16(
+    const float* sidecar_page,
+    int lane_col_group,
+    Owner16SidecarSources& src) {
+    static_assert(MBlockBase < DkvLdsLayout<Tile>::kRawMBlocksPerMqTile,
+                  "sidecar reads one M16 block");
+    constexpr int kFieldBytes =
+        Tile::kSidecarRows * static_cast<int>(sizeof(float));
+    const int local_m_base = MBlockBase * 16 + lane_col_group * 4;
+    ins::ds_read_b128_lds_imm3<kFieldBytes, 2 * kFieldBytes>(
+        sidecar_page + local_m_base, src.row_max_log2, src.row_inv_sum,
+        src.row_delta);
+}
+
 __device__ __forceinline__ void softmax_ds_owner16(
     const ins::F32x4& score,
     const ins::F32x4& dp,
@@ -554,7 +575,7 @@ template <typename Tile, int MBlockBase>
 __device__ __forceinline__ void softmax_ds_owner16_causal_exact_tile(
     const ins::F32x4& score,
     const ins::F32x4& dp,
-    const float* sidecar_page,
+    const Owner16SidecarSources& sidecar,
     int q_m_base,
     int owner_krow,
     int lane_col_group,
@@ -564,21 +585,10 @@ __device__ __forceinline__ void softmax_ds_owner16_causal_exact_tile(
     ins::Vec4F16& ds_frag) {
     static_assert(MBlockBase < DkvLdsLayout<Tile>::kRawMBlocksPerMqTile,
                   "softmax/dS consumes one M16 block");
-    const int local_m_base = MBlockBase * 16 + lane_col_group * 4;
-    const ins::Vec4F32 row_max_log2 =
-        *reinterpret_cast<const ins::Vec4F32*>(
-            sidecar_page + Tile::kSidecarMaxLog2Base + local_m_base);
-    const ins::Vec4F32 row_inv_sum =
-        *reinterpret_cast<const ins::Vec4F32*>(
-            sidecar_page + Tile::kSidecarInvSumBase + local_m_base);
-    const ins::Vec4F32 row_delta =
-        *reinterpret_cast<const ins::Vec4F32*>(
-            sidecar_page + Tile::kSidecarDeltaBase + local_m_base);
-
     softmax_ds_owner16(
-        score, dp, row_max_log2, row_inv_sum, row_delta, q_m_base,
-        owner_krow, lane_col_group, softmax_scale, softmax_scale_log2,
-        p_frag, ds_frag);
+        score, dp, sidecar.row_max_log2, sidecar.row_inv_sum,
+        sidecar.row_delta, q_m_base, owner_krow, lane_col_group,
+        softmax_scale, softmax_scale_log2, p_frag, ds_frag);
 }
 
 struct Owner16DvDkSources {
@@ -656,31 +666,24 @@ __device__ __forceinline__ void owner16_dv_dk_mmac_four_out(
         p_frag, ds_frag, src.dout_d1, src.q_d1, dv_acc, dk_acc, zero_f16);
 }
 
-template <typename Tile,
-          typename Wdra,
-          int MBlockBase,
+template <typename Wdra,
           bool FirstAccum,
           bool ReleaseHead,
           bool ReleaseTail>
-__device__ __forceinline__ void owner16_dv_dk_read_mmac(
-    __half* lds,
+__device__ __forceinline__ void owner16_dv_dk_mmac_from_sources(
     const ins::Vec4F16& p_frag,
     const ins::Vec4F16& ds_frag,
+    const Owner16DvDkSources& src_d01,
+    const Owner16DvDkSources& src_d23,
     ins::F32x4 (&dv_acc)[8],
-    ins::F32x4 (&dk_acc)[8],
-    int page) {
+    ins::F32x4 (&dk_acc)[8]) {
     ins::F16x8 zero_f16;
     if constexpr (FirstAccum) {
         ins::zero_f16x8(zero_f16);
     }
 
-    Owner16DvDkSources src_d01;
-    Owner16DvDkSources src_d23;
-    read_owner16_dv_dk_sources<Tile, 0, MBlockBase>(lds, page, src_d01);
-    read_owner16_dv_dk_sources<Tile, 2, MBlockBase>(lds, page, src_d23);
-
-    // Retire D0/D1 at first use while the four D2/D3 reads remain in flight.
-    ins::wait_lgkm(4);
+    // D0/D1 are ready. The independent D2/D3 reads mature under this MMAC
+    // island and are retired only at their exact first use below.
     ins::raise_priority_2();
     owner16_dv_dk_mmac_four_out<FirstAccum, 0>(
         p_frag, ds_frag, src_d01, dv_acc, dk_acc, zero_f16);
@@ -741,25 +744,38 @@ __device__ __forceinline__ void consume_m16_owner16_causal_exact_tile(
     ins::F32x4 (&dk_acc)[8]) {
     ins::Vec4F16 p_frag;
     ins::Vec4F16 ds_frag;
+    Owner16DvDkSources src_d01;
     {
         ins::F32x4 score;
         ins::F32x4 dp;
         score_dp_mmac_owner16<Tile, MBlockBase>(
             lds, page, kv_regs, score, dp);
         const float* sidecar_page = sidecar_page_ptr<Tile>(lds, page);
+        Owner16SidecarSources sidecar;
+        read_sidecar_owner16<Tile, MBlockBase>(
+            sidecar_page, lane_col_group, sidecar);
+        read_owner16_dv_dk_sources<Tile, 0, MBlockBase>(
+            lds, page, src_d01);
+
+        // The three sidecar requests are oldest. lgkmcnt(4) retires only
+        // those requests while D0/D1 Q/dO matrix reads remain in flight.
+        ins::wait_lgkm(4);
         softmax_ds_owner16_causal_exact_tile<Tile, MBlockBase>(
-            score, dp, sidecar_page, q_tile_base + MBlockBase * 16,
+            score, dp, sidecar, q_tile_base + MBlockBase * 16,
             owner_krow, lane_col_group, softmax_scale, softmax_scale_log2,
             p_frag, ds_frag);
     }
 
-    owner16_dv_dk_read_mmac<
-        Tile,
+    ins::wait_lgkm(0);
+    Owner16DvDkSources src_d23;
+    read_owner16_dv_dk_sources<Tile, 2, MBlockBase>(
+        lds, page, src_d23);
+
+    owner16_dv_dk_mmac_from_sources<
         Wdra,
-        MBlockBase,
         FirstAccum,
         ReleaseHead,
-        ReleaseTail>(lds, p_frag, ds_frag, dv_acc, dk_acc, page);
+        ReleaseTail>(p_frag, ds_frag, src_d01, src_d23, dv_acc, dk_acc);
 }
 
 template <typename Tile,
