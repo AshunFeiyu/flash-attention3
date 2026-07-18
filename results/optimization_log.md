@@ -13946,3 +13946,41 @@ Status: `ACCEPT_MQ192_OWNERSHIP_EPOCH`
   `dkv_mmac_correctness_20260718_174748`; shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_174748_owner16_mq192_s768_sqc7/`.
+
+## 2026-07-18 Owner16 Head64/Tail128 Intra-Packet Overlap Accepted
+
+Status: `ACCEPT_HEAD64_TAIL128_INTRA_PACKET_OVERLAP`
+
+- Hypothesis: the one-page Mq192 packet serializes all 192 rows behind one
+  Filled edge.  Publish a complete 64-row head first so consumers can execute
+  128 MMAC plus softmax/dS while P0 publishes the remaining 128 rows; keep one
+  RawUsed release and exact four-GEMM ownership.
+- Implementation: replace RawFilled with RawHeadFilled/RawTailFilled.  P0
+  publishes Q+dO+sidecar M0-M3, arrives head, publishes M4-M11, then arrives
+  tail.  Three symmetric consumer groups execute head, wait tail, execute the
+  remainder, and release once at M11.  No extra LDS page or matrix workaround.
+- Static/resource evidence: roles `32/145/145/145`, private0, SGPR50,
+  VGPR128, spill0/scratch0, steady LDS 100,608B.  Source/ASM gates prove the
+  native split publisher and wait boundary.
+- Correctness/work: S384 and S768 PASS with unchanged dK/dV relL2
+  `0.00191329/0.000319636`; S768 MMOP/LDS/VMEM are exactly
+  `73,728/44,768/1,728`, bank0.  S1024 is explicitly unsupported by the exact
+  `S%192` host gate and is not claimed.
+- Stats-only: ticks `42,662,165 -> 41,065,570` (`-3.74%`), MMAC active
+  `35.1548% -> 36.5520%`, barrier `75,916 -> 63,005.25` (`-17.01%`).
+- Fullperf: ticks `43,033,445 -> 40,882,205` (`-5.00%`), MMAC active
+  `34.8979% -> 36.7738%`, waitLgkm `17,865.75 -> 17,576.2` (`-1.62%`),
+  barrier `76,858.25 -> 61,634.2` (`-19.81%`).  Exact instruction work is
+  unchanged; coissue is `30,188/23,730`.
+- XCU: duration `94,576 -> 89,848`, no-wave idle stays 0.  Ordinary
+  ownership-wait count rises `304 -> 496` as designed, but duration falls
+  `1,776,840 -> 1,448,868` (`-18.46%`).  In the same 8k:80k window the top
+  ABarrier gap falls `23,249 -> 17,141`; producer-wave coissue rises
+  `2.27% -> 42.26%`.  This confirms useful producer-tail/consumer-head WASP
+  overlap rather than count reduction or artificial staggering.
+- Evidence: workbook sheet `148_DKV_Head64_Tail128`; S384/S768 under
+  `/zys/shaobo_runs/owner16_head64_tail128/`; fullperf/XCU
+  `/zys/shaobo_runs/owner16_head64_tail128_fullperf/`
+  `dkv_mmac_correctness_20260718_183256`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_183256_owner16_head64_tail128_s768_sqc7/`.

@@ -8667,3 +8667,36 @@ Status: `OBSERVE_LOCAL_READY_REMOTE_PENDING`.
 - Evidence: workbook sheet 147 and shared archive
   `/Volumes/172.20.68.76/共享/shaobo/perf/`
   `20260718_174748_owner16_mq192_s768_sqc7/`.
+
+## 2026-07-18 Owner16 Head64/Tail128 Intra-Packet Readiness Accepted
+
+- Status: `ACCEPT_HEAD64_TAIL128_INTRA_PACKET_OVERLAP` on
+  `exp/dkv-owner16-head64-tail128`.
+- Canonical source still has one dKV kernel, one Mq192 raw page, resident K/V,
+  three symmetric owner16 consumer groups, and four exact GEMMs.  The only
+  ownership change is `RawFilled -> RawHeadFilled + RawTailFilled`; `RawUsed`
+  remains a single release after M11.
+- Producer publishes native 64-row Q/dO/sidecar head, then the 128-row tail.
+  Consumers wait head, execute M0-M3, wait tail, and execute M4-M11.  No empty
+  delay, second page, duplicate GEMM, `ds_read_b32`, gather, or layout
+  workaround enters the matrix path.
+- Gates: branches `32/145/145/145`, private0, SGPR50, VGPR128,
+  spill0/scratch0; S384/S768 PASS; MMOP/LDS/VMEM
+  `73,728/44,768/1,728`; `ldsBankConflict=0`.
+- Stats-only S768: ticks 41,065,570, MMAC active 36.5520%, barrier 63,005.25.
+  Versus accepted Mq192 this is `-3.74%`, `+1.40 pp`, and `-17.01%`.
+- Fullperf S768: ticks 40,882,205, MMAC active 36.7738%, waitLgkm 17,576.2,
+  barrier 61,634.2.  Versus Mq192 this is `-5.00%`, `+1.88 pp`, `-1.62%`, and
+  `-19.81%`; coissue is `30,188/23,730`.
+- XCU duration is 89,848 with 0% no-wave idle.  Ordinary ownership waits rise
+  from 304 to the predicted 496 events but their duration falls 18.46%; the
+  fixed-window top ABarrier gap falls 23,249->17,141 cycles and producer-wave
+  coissue rises 2.27%->42.26%.
+- Host support remains exact-tile only.  S1024 returned `status=unsupported`
+  because `S % 192 != 0`; partial-tail support is deferred, not silently
+  treated as correct.
+- Evidence: workbook sheet 148; fullperf/XCU
+  `/zys/shaobo_runs/owner16_head64_tail128_fullperf/`
+  `dkv_mmac_correctness_20260718_183256`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_183256_owner16_head64_tail128_s768_sqc7/`.

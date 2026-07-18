@@ -3339,3 +3339,56 @@ Skill Candidate: amortize ownership handshakes with a larger legal packet
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-dkv-optimization-methods.md` during serialized
   skill consolidation.
+
+## 2026-07-18 Owner16 Head64/Tail128 Readiness Accepted
+
+- Status: `ACCEPT_HEAD64_TAIL128_INTRA_PACKET_OVERLAP` on branch
+  `exp/dkv-owner16-head64-tail128`.
+- The accepted Mq192 one-page/full-resident-K/V/four-GEMM design is unchanged.
+  Producer P0 publishes native rows 0-63 first and arrives `RawHeadFilled`,
+  then publishes rows 64-191 and arrives `RawTailFilled`.  The three symmetric
+  consumer groups execute M0-M3 while the tail is being published, wait for
+  `RawTailFilled`, then execute M4-M11 and release the single raw page once.
+- Resource and correctness gates pass: branches `32/145/145/145`, private0,
+  SGPR50, VGPR128, spill0/scratch0, LDS 100,608B, and S384/S768 dK+dV PASS.
+  S768 exact work stays MMOP 73,728, LDS 44,768, VMEM 1,728, bank0, with
+  unchanged dK/dV relL2 `0.00191329/0.000319636`.
+- Stats-only S768 ticks improve `42,662,165 -> 41,065,570` (`-3.74%`) and
+  MMAC active rises `35.1548% -> 36.5520%`; PMD barrier stall falls 17.01%.
+- Fullperf confirms ticks `43,033,445 -> 40,882,205` (`-5.00%`), MMAC active
+  `34.8979% -> 36.7738%`, barrier stall `76,858.25 -> 61,634.2` (`-19.81%`),
+  and XCU duration `94,576 -> 89,848` with no-wave idle still zero.
+- The ordinary ownership-wait count intentionally rises `304 -> 496`, but
+  duration falls `1,776,840 -> 1,448,868` (`-18.46%`).  In the fixed
+  8k:80k window, the representative ABarrier gap falls `23,249 -> 17,141`
+  cycles and producer-wave coissue rises `2.27% -> 42.26%`.  This is evidence
+  that tail publication is useful work hidden under head compute, not an
+  artificial stagger.
+- S1024 is explicitly rejected by the existing `S % 192 == 0` host gate and
+  was observed as `status=unsupported`; no partial-tail correctness is
+  claimed.  Evidence: workbook sheet `148_DKV_Head64_Tail128`; fullperf/XCU
+  `/zys/shaobo_runs/owner16_head64_tail128_fullperf/`
+  `dkv_mmac_correctness_20260718_183256`; shared archive
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260718_183256_owner16_head64_tail128_s768_sqc7/`.
+
+Skill Candidate: split readiness inside one ownership epoch
+
+- Trigger / 适用场景: one legal LDS packet is large enough that its first
+  native row stripe can start useful consumer work while the producer is still
+  publishing the remaining stripes.
+- Rule / 可复用规则: keep one Used/release token, but split Filled readiness
+  at a native layout boundary.  Judge the design by total wait duration and
+  same-work ticks, not by the larger static wait count.
+- Evidence / 证据: Head64/Tail128 keeps exact work, bank0, and spill0 while
+  lowering fullperf ticks 5.00%, PMD barrier stall 19.81%, and ordinary XCU
+  ABarrier duration 18.46%; producer coissue rises from 2.27% to 42.26%.
+- Boundary / 适用边界: the head must be a complete writer/layout stripe and
+  contain enough real MMAC/VALU work to hide tail publication.  This version
+  supports only sequence lengths divisible by 192.
+- Counterexample / 反例或不适用情况: splitting readiness at a partial wave
+  boundary adds guards; adding a second Used token/page changes ownership and
+  must be evaluated as a separate design.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-dkv-optimization-methods.md` in the next
+  serialized skill-consolidation round.

@@ -10,6 +10,8 @@ inline constexpr int kDkvPathCanonicalDkv = 5;
 struct ActiveDkvTile {
     static constexpr int kHeadDim = 128;
     static constexpr int kBlockMq = 192;
+    static constexpr int kHeadReadyMq = 64;
+    static constexpr int kTailReadyMq = kBlockMq - kHeadReadyMq;
     static constexpr int kNkPerConsumerWave = 16;
     static constexpr int kConsumerGroups = 3;
     static constexpr int kWavesPerConsumerGroup = 4;
@@ -68,6 +70,9 @@ struct ActiveDkvTile {
 
     static_assert(kBlockMq % kWaveSize == 0,
                   "sidecar publisher requires complete 64-row wave stripes");
+    static_assert(kHeadReadyMq % kWaveSize == 0 &&
+                      kTailReadyMq % kWaveSize == 0,
+                  "head and tail readiness must use complete wave stripes");
     static_assert(kBlockMq <= 4 * kWaveSize,
                   "four producer waves must cover one sidecar packet");
     static_assert(kResidentNk == 192, "owner16 1P+3C tile expects Nk=192");
@@ -82,9 +87,10 @@ struct ActiveDkvTile {
 struct DkvBarrierLedger {
     static constexpr int kResidentFilled = 0;
     static constexpr int kResidentUsed = 1;
-    static constexpr int kRawFilled = 2;
-    static constexpr int kRawUsed = 3;
-    static constexpr int kAllDone = 4;
+    static constexpr int kRawHeadFilled = 2;
+    static constexpr int kRawTailFilled = 3;
+    static constexpr int kRawUsed = 4;
+    static constexpr int kAllDone = 5;
 };
 
 struct OptimizationTargets {
