@@ -1,5 +1,39 @@
 # Source Status
 
+## 2026-07-19 Canonical dQ M128 Two-Producer Restore
+
+Status: `ACCEPT_CANONICAL_GOVERNANCE_RESTORE`.
+
+- Canonical dQ is restored from the M192 one-producer/three-consumer OBSERVE
+  topology to `Mq=128,Nk=128,D=128`, 16 waves, two symmetric producers and
+  two symmetric 64-row consumers. It keeps exactly three GEMMs, row-owned dQ,
+  startup Q/dO/sidecar latch, and two 64KB K/V pages. The M192 path cannot
+  launch the fixed S1024 target because `1024 % 192 != 0` and had regressed
+  same-work S768 ticks by 20.3%.
+- Static gates pass with private/spill/scratch0, VGPR128, LDS exactly 128KB,
+  no regular-DS matrix workaround, native MLS/BPS + `ds_read_matrix` + MMAC,
+  and real `s_trap=0`. The source entry keeps a guarded
+  `__builtin_hcu_wdra_init(40,216,216,40)` for run-on-model compilers; the old
+  stable compiler legally omits it.
+- On PMD HEAD1694, both old LLVM `a6a6eb6616ab...` and Jul18 LLVM pass S128
+  and S1024 correctness. The old compiler wins the same-work A/B:
+  `25,084,150 -> 24,585,015` kernel ticks (`-1.99%`) and
+  `31.4899% -> 33.3848%` MMAC active. Barrier counter falls
+  `71,508.5 -> 47,387.25`; therefore the latest compiler is rejected for this
+  kernel despite its lower VALU count.
+- Fullperf/xcu shows producer wave slots0/3 at `98.51%/98.62%` bubble and
+  consumer slots1/2 at `46.32%/47.18%`. Consumers already show useful stagger:
+  60 MMAC-vs-VALU bins and 49 MMAC-vs-MMAC bins in the 5k:45k window, with
+  MMAC vector peers `397/1248` and `483/1245`. The next hypothesis targets
+  ordinary PageUsed ownership cadence, not topology stacking.
+- XCU's largest `s_abarrier_try_wait -> s_xor_b32` edge is wait attribution;
+  it is not evidence that XOR itself is expensive. XCU 4.6.3 invalid-jump
+  decode warnings are recorded as a parser limitation, not a kernel failure.
+- Evidence: workbook sheet `158_DQ_CanonicalRestore`; remote run
+  `/zys/shaobo_runs/dq_mq128_restore_a6_s1024_fullperf/`
+  `dq_correctness_20260719_154801`; shared archive
+  `/共享/shaobo/perf/20260719_154801_dq_mq128_restore_a6_h1s1024_sqc7_fullperf`.
+
 ## 2026-07-19 Canonical dKV Next-M16 Score Prefetch
 
 Status: `ACCEPT_LATENCY_HIDING_SAME_EXACT_WORK`.

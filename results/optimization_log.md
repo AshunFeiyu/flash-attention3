@@ -14519,3 +14519,36 @@ Status: `ACCEPT_LATENCY_HIDING_SAME_EXACT_WORK`.
 - Evidence: workbook `157_DKV_NextM16Prefetch`; remote fullperf
   `/zys/shaobo_runs/dkv_next_m16_prefetch_s768_fullperf_retry/`
   `dkv_mmac_correctness_20260719_142126`.
+
+## 2026-07-19 dQ M128 Canonical Restore And Compiler A/B
+
+Status: `ACCEPT_CANONICAL_GOVERNANCE_RESTORE`.
+
+- Restored the accepted dQ topology to `Mq128/Nk128/D128`, 16 waves, two
+  producers and two symmetric 64-row consumers. The formula DAG remains
+  exactly three GEMMs with row-owned dQ; no M192/1P3C experiment path remains
+  in canonical source.
+- Added a run-on-model-only entry contract:
+  `__builtin_hcu_wdra_init(40,216,216,40)`. The latest compiler emits it with
+  real `s_trap=0`; the old stable compiler omits it under the source guard.
+  This follows the shaobo skill/wiki boundary and does not conflate WDRA init
+  with ABarrier init.
+- Both compilers pass H1/S128 and H1/S1024 on PMD HEAD1694 with identical dQ
+  output (`dq_rel_l2=0.00208192` at S1024), bank0 and no
+  private/spill/scratch. Same-work stats select old LLVM `a6a6eb6616ab...`:
+  kernel ticks `25,084,150 -> 24,585,015` (`-1.99%`), MMAC active
+  `31.489878% -> 33.384755%`, and barrier `71,508.5 -> 47,387.25`.
+  The latest compiler is rejected for dQ even though VALU falls
+  `68,144 -> 45,696`.
+- Winner-only fullperf/xcu reports P0/P1 steady-window bubble
+  `98.51%/98.62%` and C0/C1 `46.32%/47.18%`. Consumer phase bins are
+  `MMAC_vs_VALU=60`, `MMAC_vs_MMAC=49`, `MMAC_without_peer_VALU=28`,
+  `no_MMAC=15`; actual MMAC vector peers are `397/1248` and `483/1245`.
+- The hot `s_abarrier_try_wait -> s_xor_b32` edge is attributed to waiting
+  for the ownership phase. Do not optimize XOR. The next isolated hypothesis
+  is to shorten ordinary K/V PageUsed exposure while preserving the exact
+  readiness ledger and symmetric consumer roles.
+- Evidence: workbook `158_DQ_CanonicalRestore`; remote fullperf
+  `/zys/shaobo_runs/dq_mq128_restore_a6_s1024_fullperf/`
+  `dq_correctness_20260719_154801`; shared archive
+  `/共享/shaobo/perf/20260719_154801_dq_mq128_restore_a6_h1s1024_sqc7_fullperf`.

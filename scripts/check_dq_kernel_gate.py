@@ -52,6 +52,8 @@ def main() -> int:
             "missing_canonical_dq_kernel")
     require(source, r"hcu_wdra_waves_per_tg\(16\)", failures,
             "missing_16wave_wdra_attribute")
+    require(source, r"__builtin_hcu_wdra_init", failures,
+            "missing_guarded_wdra_init")
     require(source, r"dq_consumer_full3gemm_role", failures,
             "missing_full3gemm_consumer")
     require(source, r"dq_load_sidecar_group", failures,
@@ -60,16 +62,14 @@ def main() -> int:
             "missing_consumer_qdo_filled_wait")
     require(source, r"dq_arrive_qdo_filled", failures,
             "missing_producer_qdo_filled_arrive")
-    require(source, r"kSidecarBase\s*=\s*kQDoBytes", failures,
-            "missing_sidecar_after_qdo_startup_layout")
-    require(source, r"kPage0Base\s*=\s*kQBase", failures,
-            "missing_kv_page0_startup_overlay")
+    require(source, r"kSidecarBase\s*=\s*kPage0Base", failures,
+            "missing_sidecar_kv_page0_overlay")
     require(source, r"dq_update_from_ds_(?:vec|pair)", failures,
             "missing_vgpr_ds_to_dq_mmac")
     require(source, r"CANONICAL_DQ", failures,
             "missing_canonical_standalone_switch")
-    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<192,\s*128>",
-            failures, "missing_active_mq192_nk128_tile")
+    require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<128,\s*128>",
+            failures, "missing_active_mq128_nk128_tile")
     require(contract, r"kStartupLdsBytes", failures,
             "missing_latched_sidecar_startup_lds_budget")
     require(contract, r"kSteadyLdsBytes", failures,
@@ -82,10 +82,10 @@ def main() -> int:
             failures, "missing_no_atomic_contract")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*50",
             failures, "missing_mmac_active_target")
-    require(contract, r"kConsumerGroups\s*=\s*3", failures,
-            "missing_three_consumer_contract")
-    require(contract, r"kConsumerTargetVgprs\s*=\s*160", failures,
-            "missing_three_consumer_vgpr_window")
+    require(contract, r"kConsumerGroups\s*=\s*2", failures,
+            "missing_two_consumer_contract")
+    require(contract, r"kConsumerTargetVgprs\s*=\s*216", failures,
+            "missing_two_consumer_vgpr_window")
     require(contract, r"kPlannedLdsBytes\s*=", failures,
             "missing_lds_budget_contract")
     require(source, r"dq_out", failures, "missing_dq_output_name")
@@ -116,6 +116,8 @@ def main() -> int:
         require(asm, r"v_mmac", failures, "asm_missing_mmac")
         require(asm, r"s_set_vgpr_size", failures,
                 "asm_missing_wdra_vgpr_resize")
+        forbid(asm, r"^\s*s_trap\b", failures,
+               "asm_contains_real_wdra_trap")
 
     if failures:
         print("dQ kernel gate: FAIL")

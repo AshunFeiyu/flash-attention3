@@ -156,6 +156,26 @@ evidence are required before any performance claim.
 
 ## Current dQ Override
 
+- 2026-07-19 canonical governance restore:
+  dQ is again the clean `Mq128/Nk128/D128` 16-wave 2P+2C path. Waves0-3 and
+  waves12-15 publish symmetric Q/dO/sidecar halves and then K/V pages;
+  waves4-7 and waves8-11 each own 64 dQ rows and compute the complete
+  `QK^T -> dOV^T -> softmax/dS -> dSK` chain. The M192 1P+3C source remains
+  evidence only and is not in canonical code.
+- Same PMD HEAD1694 compiler A/B selects old LLVM `a6a6eb6616ab...`: S1024
+  kernel ticks are `24,585,015` versus Jul18 LLVM `25,084,150`, and MMAC active
+  is `33.3848%` versus `31.4899%`. Both pass correctness and resource gates;
+  compiler age is not a promotion criterion.
+- Current fullperf SQTT identifies the next bottleneck: producer slots0/3 are
+  `98.51%/98.62%` bubble while consumer slots1/2 are `46.32%/47.18%` bubble.
+  Consumer staggering is present but incomplete (`397/1248` and `483/1245`
+  MMAC instructions have vector peers). Do not blame `s_xor_b32`: the large
+  XCU edge is the preceding ABarrier wait. Next work must shorten ordinary
+  PageUsed ownership exposure without weakening source readiness.
+- Workbook: `158_DQ_CanonicalRestore`. Perf archive:
+  `/Volumes/172.20.68.76/共享/shaobo/perf/`
+  `20260719_154801_dq_mq128_restore_a6_h1s1024_sqc7_fullperf`.
+
 - 2026-07-12 current canonical:
   `dq_boundary_ntile_classify` is still the accepted best.  Repeat H1/S1024
   under `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']` is
