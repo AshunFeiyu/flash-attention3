@@ -14732,3 +14732,26 @@ but keep M192 next-M16 prefetch as the accepted performance source.
 - Proposed Target / 建议进入哪个 skill 或 reference: project-local Shaobo
   reference first; propose the logical-versus-physical ownership check to
   `dcu-kernel-optimization` during a governed consolidation round.
+
+## 2026-07-20 Owner16 Four-Consumer Resource Probe Accepted
+
+Status: `ACCEPT_RESOURCE_GATE`; no canonical performance claim.
+
+- Hypothesis: replace M128's logical-but-not-physical `64/32/32` split with
+  four symmetric owner16 physical consumer groups in an exact
+  `Mq64/Nk256/D128` topology.  Each wave must fit persistent K/V and dK/dV
+  state plus transient score/dP/softmax sources inside 128 VGPR.
+- Result: LLVM7b branch report is `114/128` for all four roles.  Metadata is
+  private0/SGPR29/VGPR128/spill0/scratch0; LDS is 33,536B in the focused
+  packet probe.  ASM evidence is BPS10, matrix-read96, MMAC128,
+  `s_set_vgpr_size 128` x4 and executable trap0.
+- PMD HEAD1694: checksum `bad=0 pass=1`, bank0, no panic.  Diagnostic stats:
+  simTicks7,759,570, firstWave3,611,790, lastWave7,759,570,
+  kernel ticks4,147,780, MMOP512, VALU2066, coissue238/978.
+- Evidence:
+  `/zys/shaobo_runs/dkv_owner16_4c_resource_probe_20260720_045244`;
+  workbook `172_DKV_M128_3C_Gate`; branch
+  `exp/dkv-owner16-4c-resource-probe-20260720`.
+- Boundary: this probe validates register pressure, native instructions,
+  ABarrier execution and bank behavior.  It does not validate full FA golden
+  output, K/V startup overwrite, two-page ownership, or performance.

@@ -3985,3 +3985,27 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - Proposed Target / 建议进入哪个 skill 或 reference: project-local `shaobo`
   reference first; propose the generic dead-slot prefetch rule to
   `dcu-kernel-optimization` only during a coordinated consolidation round.
+
+## 2026-07-20 M128 64/32/32 Physical Gate And Owner16-4C Probe
+
+- `Mq128` with logical consumer ownership `64+32+32` is exact and tail-free,
+  but it does not create three physical heavy consumer groups.  The two M32
+  owners use only two waves each, so the CTA still has eight useful consumer
+  waves and two heavy waves per SIMD.  Activating all twelve consumer waves
+  would execute 3,072 instead of 2,048 MMAC per Q packet, a 50% arithmetic
+  waste because gfx946 exposes no M8-output MMAC.
+- Workbook sheet `172_DKV_M128_3C_Gate` therefore keeps M128 as the 2P2C
+  tail-free control and admits only a no-duplicate alternative:
+  `Mq64/Nk256/D128`, four symmetric owner16 groups, one group wave per SIMD.
+- The isolated resource probe is implemented in
+  `probes/dkv_owner16_4c_resource_probe.cpp`.  LLVM7b reports all four
+  branches at `114/128 VGPR`; metadata is private0/spill0/scratch0, SGPR29,
+  LDS33,536B, and final ASM contains native BPS, matrix reads, MMAC, four
+  `s_set_vgpr_size 128`, and no executable trap.
+- PMD HEAD1694 passes the focused checksum with `bad=0`, bank0, and no panic at
+  `/zys/shaobo_runs/dkv_owner16_4c_resource_probe_20260720_045244`.
+  The one-CTA ticks/MMOP are diagnostic only; this is an
+  `ACCEPT_RESOURCE_GATE`, not canonical FA correctness or performance.
+- Next: write the exact canonical ownership/page-generation contract, then
+  integrate one dKV kernel.  Do not add a phase switch or promote the probe
+  itself.

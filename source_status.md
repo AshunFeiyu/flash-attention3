@@ -9286,3 +9286,25 @@ Status: `REJECT_STATIC_CODEGEN_EQUIVALENT`; canonical source restored.
 - No candidate fullperf was captured. Accepted best remains tag
   `best/dkv-latest-pair-43p78-20260719` with S768 fullperf
   `35,707,035` ticks and `43.7836%` MMAC active.
+
+## 2026-07-20 dKV Owner16 Four-Consumer Resource Gate Passes
+
+Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
+
+- M128 logical `64/32/32` remains exact and tail-free but physical 2P2C.  A
+  half-active M32 role cannot increase per-SIMD heavy-wave residency, while a
+  full four-wave role would add 50% redundant MMAC.
+- The admitted alternative is `Mq64/Nk256/D128`: four independent 4-wave
+  owner16 groups, persistent per-wave ledger
+  `dK32+dV32+K16+V16=96 VGPR`, target window 128.
+- Focused compilation with LLVM `7b796991` reports branch use
+  `114/114/114/114` inside `128/128/128/128`; private0, SGPR29, VGPR128,
+  spill0, scratch0.  Static opcode evidence is BPS10, matrix-read96, MMAC128,
+  resize128x4, executable trap0.
+- Seeded PMD HEAD1694 execution passes `bad=0`, bank0, no panic.  Evidence:
+  `/zys/shaobo_runs/dkv_owner16_4c_resource_probe_20260720_045244`.
+  Diagnostic kernel ticks are 4,147,780 with MMOP512 and coissue238/978; do
+  not compare these numbers against the canonical dKV kernel.
+- Canonical `src/dkv_kernel.cpp` is untouched.  Integration is now allowed
+  only after the full K/V-startup, raw-page, ABarrier-generation and exact
+  output-ownership ledger is written into the workbook.

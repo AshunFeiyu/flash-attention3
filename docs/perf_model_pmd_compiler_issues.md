@@ -1,6 +1,6 @@
 # Shaobo Perf Model PMD And Compiler Issue Registry
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 This document tracks possible PMD, compiler, and compiler/PMD compatibility
 issues found while validating Shaobo kernels. It is an issue registry, not a
@@ -44,6 +44,32 @@ PMD gem5.opt sha256: b517f4b384a8641549f385a75c3f6677b353bec95783f520fe2fadf2e00
 
 Refresh this block after every PMD or compiler update. Never compare compiler
 or PMD behavior across fingerprints without saying so explicitly.
+
+### Current Side-By-Side HEAD1694 Launch Contract
+
+The side-by-side PMD root is `/zys/shaobo/toolchains/pmd_20260717`.  For a
+split installation, `ROCM_PATH` during PMD execution must be that root, not
+the compiler/runtime root `/opt/rocm-6.3.3`.  Its `lib/libgem5.so` symlink
+points to the matching `core/libgem5_opt.so` SHA256
+`29fa2020e6bfb399225e206cf7c589ba838ad56b891cb07c97e88029e954bfa5`.
+
+If `run.py` uses new HEAD1694 configs but loads
+`/opt/rocm-6.3.3/lib/libgem5.so` from HEAD1668, config generation fails at
+`ASTCA has no parameter num_phase`.  This is an environment mix, not a kernel
+or instruction failure.  Use this runtime ordering:
+
+```bash
+export ROCM_PATH=/zys/shaobo/toolchains/pmd_20260717
+export PMD_PATH=${ROCM_PATH}/core
+export SOC_PATH=${ROCM_PATH}/soc
+export LD_LIBRARY_PATH=${SOC_PATH}/libs
+export RPY_LIB_PATH=${ROCM_PATH}/lib:${PMD_PATH}:${SOC_PATH}:${SOC_PATH}/libs
+```
+
+HEAD1694 currently still needs a known-good `config.ini` seed when its config
+generator hits the `num_phase` mismatch; the model can then consume the seed
+and run the target binary with the matching HEAD1694 library.  Evidence:
+`/zys/shaobo_runs/dkv_owner16_4c_resource_probe_20260720_045244`.
 
 ## PMD Issues
 
