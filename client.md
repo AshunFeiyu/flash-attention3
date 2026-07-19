@@ -1,5 +1,18 @@
 # Client
 
+## 2026-07-20 dKV Terminal AllDone Boundary
+
+- Do not interpret the full 31.27% ABarrier bubble sum as raw-packet debt.
+  Barrier ID 8 contributes about 15.07% at kernel exit; raw Used barriers
+  contribute about 16.20% in the main loop.
+- Directly copying FWD's two-CTA-barrier release failed dV correctness even
+  though static resources were unchanged. The dKV wave12-15 role first
+  publishes V and then consumes, so keep `AllDone` as the canonical WDRA
+  convergence token until a focused exit-ABI probe proves otherwise.
+- The source is restored. Optimize the store critical path and raw ownership
+  independently; removing an idle wait does not by itself shorten the
+  slowest consumer's global stores.
+
 ## 2026-07-20 Owner16 Four-Consumer Full-Kernel Verdict
 
 - Reject the current `Mq64/Nk256` four-heavy-group integration at the static

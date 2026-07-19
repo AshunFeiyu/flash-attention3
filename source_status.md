@@ -1,5 +1,21 @@
 # Source Status
 
+## 2026-07-20 dKV Terminal Bubble Attribution
+
+Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`; canonical M192 source is
+unchanged.
+
+- XCU proves the largest `s_abarrier_try_wait -> s_waitcnt` intervals execute
+  `s_abarrier_try_wait s0, 8`; barrier 8 is terminal `AllDone`, not a raw
+  Q/dO ownership token. The prior combined 31.27% ABarrier statement must not
+  be used: terminal AllDone is about 15.07%, raw Used waits about 16.20%.
+- A FWD-style terminal release compiled resource-clean but failed H1/S384 dV
+  correctness on PMD. The experiment was removed locally and remotely.
+- Keep AllDone convergence around the wave12-15 V-publisher-to-consumer role
+  transition. The actionable steady-state debt remains raw Used waits and
+  LDS first-use waits; terminal tick reduction requires shortening or hiding
+  the actual global-store epilogue, not deleting idle-wave synchronization.
+
 ## 2026-07-20 Dual Canonical Best Reconciliation
 
 Status: `ACCEPT_GOVERNANCE_DUAL_BASELINE`; one clean branch now contains the

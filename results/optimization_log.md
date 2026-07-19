@@ -1,5 +1,28 @@
 # Optimization Log
 
+## 2026-07-20 dKV FWD-Style Terminal Release Rejected
+
+- Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`.
+- SQTT attribution correction: the `s_abarrier_try_wait -> s_waitcnt` bubble
+  totaling about `15.07%` uses immediate barrier ID 8, which is terminal
+  `AllDone`; it is not a raw Q/dO main-loop wait. Raw Used waits account for
+  the separate `s_abarrier_try_wait -> s_xor_b32` family, about `16.20%`.
+- Hypothesis: match FA3 FWD release and replace dKV `AllDone` with
+  `__syncthreads(); wave0 invalidate; __syncthreads()` without changing math,
+  tile, ownership, stores, or the raw pipeline.
+- Static gates passed with branch VGPR `31/156/156/156`, private0, SGPR50,
+  VGPR128, spill/scratch0. PMD H1/S384 then failed dV correctness
+  (`dv_rel_l2=0.073167`, `pass=0`) and reported an invalid LDS read on the V
+  consumer path; dK remained near reference.
+- Decision: restore canonical source. In this mixed role, waves12-15 publish V
+  before becoming heavy consumers, so terminal `AllDone` is a current WDRA
+  role-convergence requirement rather than a redundant wait. Do not optimize
+  the 15.07% terminal idle accounting by deleting it; reduce the consumer
+  global-store critical path or first prove a focused WDRA-exit ABI.
+- Evidence:
+  `/zys/shaobo_runs/dkv_fwd_terminal_release_20260720/`
+  `dkv_mmac_correctness_20260720_073533`.
+
 ## 2026-07-20 dKV Owner16 Four-Consumer Full Integration Rejected
 
 - Status: `REJECT_STATIC_RESOURCE`.
