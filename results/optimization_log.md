@@ -14331,3 +14331,22 @@ Status: `REJECT_COMBINED_FILLED_TOKEN`; source restored.
 - This rejects mixed sequencing ownership, not useful lookahead itself.  The
   last admitted test uses separate KFilled/VFilled tokens and one shared Used
   token; failure there rejects consumer-assisted prefetch completely.
+
+## 2026-07-19 dQ Split K/V Filled Generations
+
+Status: `REJECT_SPLIT_FILLED_CONTROL_AND_READINESS_COST`; source restored.
+
+- Producer-owned K and consumer1-owned V used separate `KFilled`/`VFilled`
+  generations and retained one shared `PageUsed` generation.  Refactoring the
+  sentinel loop into `load V(t) -> compute(t-1) -> final compute` repaired the
+  missing V arrival and made the topology functionally correct.
+- Static/resource gates passed with role use `11/158/159/159`, private0,
+  spill0, scratch0, exact `576` static MMAC, and no matrix-path workaround.
+  H1/S384 and H1/S768 causal correctness passed; S768 maxAbs was
+  `1.5201e-7`, relL2 `0.00151559`, and `ldsBankConflict=0`.
+- H1/S768 kernel ticks were `25,837,175` versus the canonical control
+  `23,364,250`, a `+10.58%` regression.  Exact dynamic MMOP remained `28,800`;
+  coissue was `10,942/9,761` versus control `12,071/10,930`.
+- Separate Filled generations solve the protocol legality problem but add
+  readiness/control work and reduce useful overlap.  Reject consumer-assisted
+  V prefetch for this tile and restore the canonical single producer path.

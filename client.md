@@ -3741,3 +3741,11 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
   and VFilled generations while retaining one shared Used token.  It is
   admissible only if it restores all `4+4` arrivals and beats the canonical
   ticks; otherwise consumer-assisted prefetch is rejected as an architecture.
+
+## 2026-07-19 dQ Split-Filled Final Verdict
+
+- Separate KFilled/VFilled generations repaired the combined-token deadlock
+  and passed S384/S768 correctness, resource, exact-work, and bank0 gates.
+- S768 nevertheless regressed `23,364,250 -> 25,837,175` ticks (`+10.58%`)
+  and reduced coissue to `10,942/9,761`.  The experiment is rejected and its
+  source removed; canonical dQ again has one K/V producer and one Filled token.

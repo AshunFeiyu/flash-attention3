@@ -8970,3 +8970,17 @@ Status: `REJECT_COMBINED_BPS_GENERATION`; source restored.
 - Rule: one BPS-tracked ABarrier generation has one sequencing owner.  K and V
   lookahead from independent roles requires separate KFilled/VFilled tokens;
   a combined Used token may remain shared.
+
+## 2026-07-19 dQ Separate K/V Filled Rejected
+
+Status: `REJECT_SPLIT_FILLED_TICKS_REGRESSION`; canonical source restored.
+
+- The corrected no-sentinel schedule gives independent K/V BPS owners legal
+  `KFilled` and `VFilled` generations, then computes the preceding tile while
+  V for the current tile is resident.  It passes S384/S768 correctness,
+  private/spill/scratch0, exact work, and bank0.
+- S768 is `25,837,175` ticks versus canonical `23,364,250` (`+10.58%`), with
+  coissue `10,942/9,761` versus `12,071/10,930`.  Protocol correctness did not
+  translate into pipeline overlap; the extra Filled lifecycle is net cost.
+- Remove the experiment from the active route.  Reopen consumer-assisted BPS
+  only with a topology that removes an ownership epoch rather than adding one.
