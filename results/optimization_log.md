@@ -14573,3 +14573,29 @@ Status: `ACCEPT_CANONICAL_GOVERNANCE_RESTORE`.
 - Decision: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`; no fullperf/xcu.
   The next legal retry must specialize a fixed N32 pair at compile time and
   prove island preservation in ASM before PMD.
+## 2026-07-19 dQ 1P3C Saturated-Grid Gate Accepted
+
+Status: `ACCEPT_TOPOLOGY_SATURATED_GATE`; canonical S1024 source is unchanged.
+
+- The earlier H1/S768 comparison mixed topology quality with grid underfill:
+  M128 2P2C launches six CTAs per head, while M192 1P3C launches four. The
+  saturated control uses H12, giving 72 versus 48 CTAs so both variants can
+  occupy all 48 CUs.
+- Both runs execute exact MMOP `345,600`, use the same PMD HEAD1694, old LLVM
+  a6 compiler and SQ7, pass correctness, and report bank0. The 1P3C candidate
+  retains resource admission at `11/158/158/159`, private/spill/scratch0 and
+  LDS exactly 128KB.
+- Saturated kernel ticks improve `33,831,525 -> 26,230,750` (`-22.47%`), and
+  MMAC active improves `29.2940% -> 30.9286%` (`+1.6346 pp`). Dynamic VALU
+  falls `474,960 -> 405,696` and SCA falls `312,024 -> 286,128`; the topology
+  removes producer/control debt without removing mathematical work.
+- Interpretation: the prior H1/S768 `+20.3%` result is not an architecture
+  rejection; four M192 CTAs left most of the 48-CU model empty. Promote 1P3C
+  as the dQ topology candidate, but do not merge its current Mq192 source into
+  canonical S1024 until tail ownership and ABarrier generation counts are
+  proved.
+- Evidence: workbook `160_DQ_3C_SaturationGate`; control
+  `/zys/shaobo_runs/dq_3c_saturation_control_h12s768/`
+  `dq_correctness_20260719_170844`; candidate
+  `/zys/shaobo_runs/dq_3c_saturation_candidate_h12s768/`
+  `dq_correctness_20260719_171618`.

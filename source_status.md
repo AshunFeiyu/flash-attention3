@@ -1,5 +1,29 @@
 # Source Status
 
+## 2026-07-19 dQ 1P3C Saturated-Grid Gate Accepted
+
+Status: `ACCEPT_TOPOLOGY_SATURATED_GATE`; source remains the clean M128 2P2C
+canonical body while the S1024-capable 1P3C design is derived.
+
+- The existing M192/Nk128/D128 1P3C artifact is static-clean at
+  `11/158/158/159`, private/spill/scratch0, LDS131072B and bank0. Its three
+  64-row consumers execute the exact three-GEMM row-owned dQ DAG.
+- H12/S768 gives both topologies enough CTAs to fill 48 CUs. With exact MMOP
+  `345,600` and correctness PASS on both sides, 1P3C improves kernel ticks
+  `33,831,525 -> 26,230,750` (`-22.47%`) and MMAC active
+  `29.2940% -> 30.9286%` (`+1.6346 pp`). VALU/SCA also fall
+  `474,960/312,024 -> 405,696/286,128`.
+- This overturns the earlier topology rejection: H1/S768 launched only four
+  M192 CTAs and measured CU underfill. It does not yet admit the current M192
+  source for fixed S1024 because the tail CTA, row ownership and ABarrier
+  arrivals are not implemented.
+- Next source change must be one clean S1024-capable 1P3C implementation,
+  preceded by workbook proof. Do not stack it with next-N32 prefetch or any
+  other rejected scheduling experiment.
+- Evidence: workbook `160_DQ_3C_SaturationGate`; remote control/candidate
+  roots `/zys/shaobo_runs/dq_3c_saturation_control_h12s768/` and
+  `/zys/shaobo_runs/dq_3c_saturation_candidate_h12s768/`.
+
 ## 2026-07-19 dQ Next-N32 Head Prefetch Rejected
 
 Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.

@@ -1,5 +1,17 @@
 # Client
 
+## 2026-07-19 dQ Three-Consumer Saturation Verdict
+
+- dQ 1P3C is now an accepted topology candidate. The earlier H1/S768 loss was
+  confounded by four M192 CTAs underfilling a 48-CU model.
+- In an H12/S768 saturated same-work A/B, M192 1P3C improves kernel ticks
+  `33.832M -> 26.231M` (`-22.47%`) and MMAC active
+  `29.29% -> 30.93%`; exact MMOP is `345,600`, correctness passes, resources
+  remain spill/scratch/private0, and LDS bank conflict is zero.
+- Canonical source remains M128 2P2C until an S1024-capable 1P3C tail and
+  ownership ledger is proved in workbook `160_DQ_3C_SaturationGate`. The
+  topology result must not be combined with the rejected next-N32 prefetch.
+
 ## 2026-07-19 dQ Next-N32 Prefetch Verdict
 
 - The canonical M128 2P2C dQ path was tested with next-N32 score/dP head reads
