@@ -1,5 +1,21 @@
 # Optimization Log
 
+## 2026-07-20 dKV M128 Final-M16 Early Store Rejected
+
+- Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`.
+- Hypothesis: exploit the M128 `P0/C0/C12/P1` VGPR headroom by storing the
+  finalized D0-D63 dK/dV half after its last MMAC8, while D64-D127 executes
+  its final MMAC8.  Formula, MMOP, bytes, ownership, LDS and ABarrier count
+  were unchanged by construction.
+- Static result: 160 and 168 consumer windows spilled; 176 was clean with
+  branch use `8/175/175/14`, private/spill/scratch zero, and the native matrix
+  path gate passing.
+- Correctness: H1/S128 causal failed both dK and dV.  Diagnostics were
+  `simTicks=14,469,455`, kernel ticks `10,855,845`, MMOP `2,048`, coissue
+  `695/479`, waitLgkm `1,649.5`, barrier `6,543.75`, bank conflict zero.
+- Decision: stop before S1024/fullperf, restore `fcd87aa`, and retain only the
+  negative evidence in workbook `171_DKV_M128EarlyStore`.
+
 ## 2026-07-15 dKV Score/dP Immediate LDS Offsets Accepted
 
 - Status:

@@ -1,5 +1,25 @@
 # Source Status
 
+## 2026-07-20 dKV M128 Final-M16 Early Store Rejected
+
+Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`.
+
+- Base topology remains the exact, tail-free `Mq128/Nk128/D128` logical
+  `64/32/32` path at `fcd87aa`; no score/dP or output work was duplicated.
+- The candidate moved only finalized D0-D63 dK/dV stores between the final
+  low-D and high-D MMAC8 islands.  A 160-VGPR window spilled 8 VGPR/28B and a
+  168-VGPR window spilled 6 VGPR/20B.  The minimum clean window was 176, with
+  actual branch use 175 and private/spill/scratch zero.
+- H1/S128 causal failed the hard numerical gate: dK max_abs `1.3076`, RMSE
+  `0.296851`; dV max_abs `0.373255`, RMSE `0.115149`.  PMD also warned that a
+  write hit a pending cacheline.  `simTicks=14,469,455`, kernel ticks
+  `10,855,845`, MMOP `2,048`, coissue `695/479`, bank conflict zero; these are
+  failed-correctness diagnostics, not performance evidence.
+- No S1024 or SQTT capture was admitted.  Candidate source and the temporary
+  176-VGPR window were removed.  Evidence is in workbook
+  `171_DKV_M128EarlyStore` and remote run
+  `/zys/shaobo_runs/dkv_m128_early_store_s128/dkv_mmac_correctness_20260720_032954`.
+
 ## 2026-07-19 dKV M128 Logical 64/32/32
 
 Status: `OBSERVE_TAIL_FREE_CONTROL_DEBT`; isolated branch only. Accepted best

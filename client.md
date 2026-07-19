@@ -1,5 +1,16 @@
 # Client
 
+## 2026-07-20 M128 Early-Store Verdict
+
+- Keep M128 `64/32/32` as a valid tail-free S1024 topology, but reject the
+  final-M16 low-half early global-store schedule.
+- The schedule required a 176-VGPR consumer window (actual 175) to clear
+  private/spill, then failed H1/S128 dK/dV correctness.  Do not infer a store
+  latency gain from its failed PMD counters and do not retain the code.
+- Canonical source is restored to `fcd87aa`.  Any next store-tail experiment
+  must preserve output lifetime without issuing global writes while another
+  accumulator half is still in its final MMAC island.
+
 ## Current dKV Decision (2026-07-19)
 
 - Keep the accepted M192 next-M16-prefetch kernel as the canonical source.
