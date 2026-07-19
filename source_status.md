@@ -1,5 +1,24 @@
 # Source Status
 
+## 2026-07-20 dKV M128 64/32/32 Native-Role Gate
+
+Status: `DESIGN_COMPLETE_RESOURCE_PROBE_PENDING`.
+
+- Canonical source is unchanged after the rejected early-store experiment;
+  it still matches the correct M128 `fcd87aa` source.
+- Public ISA and HCU compiler tests list FP16 MMAC as
+  `v_mmac_f32_16x16x16_f16` / the corresponding 16x16x16 builtin.  No native
+  8-row output MMAC was found.  `16x16x8_f32` uses K=8 and still produces a
+  16x16 output.
+- M128 logical `64/32/32` is exact but physical `2P2C`.  A full-wave physical
+  1P3C version adds 50% redundant MMAC; a half-active version retains only
+  eight heavy waves and no per-SIMD scheduling gain.  Do not implement either.
+- Workbook `172_DKV_M128_3C_Gate` admits only an isolated
+  `Mq64/Nk256/D128` owner16-4C resource probe next.  It budgets K/V startup
+  LDS 131072B, steady two-page Q/dO+sidecar LDS 67072B, persistent 96 VGPR
+  per wave and only 32 transient VGPR.  Any use above 128 VGPR per role
+  rejects the topology before PMD.
+
 ## 2026-07-20 dKV M128 Final-M16 Early Store Rejected
 
 Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`.

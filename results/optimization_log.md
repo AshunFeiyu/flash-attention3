@@ -1,5 +1,28 @@
 # Optimization Log
 
+## 2026-07-20 dKV M128 64/32/32 Physical 1P3C Gate
+
+- Status: `DESIGN_COMPLETE_RESOURCE_PROBE_PENDING`.
+- The existing M128 branch already implements exact, tail-free logical
+  ownership `64/32/32`, but SQTT residency is `P0/C0/C12/P1`: two heavy waves
+  per SIMD, not three.
+- ISA/HCU evidence fixes native FP16 output ownership at 16 rows per wave.
+  A four-wave C1 or C2 therefore covers 64 physical rows.  Running all twelve
+  consumer waves would issue `3072` MMAC per q packet instead of exact `2048`
+  (+50%); activating only two waves in each small role returns to eight heavy
+  waves and leaves four role slots idle.
+- A D64 split can keep arithmetic exact only by reducing score/dP partials
+  across waves and republishing P/dS.  The lower-bound extra LDS traffic is
+  about 192KB per q packet for both 32-row groups, so it breaks the current
+  direct-register P/dS feed and is rejected before code.
+- Exact-work PMD evidence is M128 H1/S1024 `32,393,270` kernel ticks and
+  `37.8149%` active versus M192 H1/S768 `34,372,975` and `39.2884%` active.
+  The old `43.7836%` M192 number included causal-invalid MMAC.
+- Workbook sheet `172_DKV_M128_3C_Gate` advances one structural resource
+  probe: `Mq64/Nk256/D128`, four symmetric owner16 groups, each with 96
+  persistent VGPR plus 32 transient, two raw pages at 67,072B after a 128KB
+  K/V latch epoch.  No canonical source was changed in this design round.
+
 ## 2026-07-20 dKV M128 Final-M16 Early Store Rejected
 
 - Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`.

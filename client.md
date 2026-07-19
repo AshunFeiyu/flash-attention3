@@ -1,5 +1,28 @@
 # Client
 
+## 2026-07-20 M128 64/32/32 Physical-Consumer Gate
+
+- The proposed `M128 = C0:64 + C1:32 + C2:32` ownership is mathematically
+  exact, tail-free for S1024, and already implemented at `fcd87aa`.  Keep it
+  as the M128 control.
+- It is not a native 1P3C schedule.  GFX946 FP16 MMAC exposes a 16x16 output
+  tile; no 8x16/16x8 output opcode or builtin exists in the public ISA/HCU
+  tests.  Four waves therefore own 64 rows at native owner16 granularity.
+- Giving C1 and C2 four full waves computes 192 physical rows for 128 useful
+  rows (`3072` versus `2048` MMAC per q packet, +50%).  Giving each only two
+  active waves leaves eight heavy waves total, the same per-SIMD heavy-wave
+  count as current `P0/C0/C12/P1`.
+- Correct exact-work comparison is M128 `37.8149%` MMAC active versus M192
+  next-M16-prefetch `39.2884%`; the older M192 `43.7836%` trace included
+  causal-invalid MMAC and must not be used as the exact-work target.
+- Workbook sheet `172_DKV_M128_3C_Gate` records the formula, ISA proof, SQTT
+  evidence, alternatives, and the next resource gate.  The next structural
+  candidate is `Mq64/Nk256/D128`, four owner16 consumer groups with no
+  permanent producer: all groups latch their K/V64 startup slice, then each
+  publishes one disjoint M16 Q/dO slice into a two-page ring.  Admission
+  requires `4*128=512` WDRA VGPR, private/spill/scratch0, exact work, and
+  bank0 before canonical integration.
+
 ## 2026-07-20 M128 Early-Store Verdict
 
 - Keep M128 `64/32/32` as a valid tail-free S1024 topology, but reject the
