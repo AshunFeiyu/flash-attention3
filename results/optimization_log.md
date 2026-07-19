@@ -14755,3 +14755,29 @@ Status: `ACCEPT_RESOURCE_GATE`; no canonical performance claim.
 - Boundary: this probe validates register pressure, native instructions,
   ABarrier execution and bank behavior.  It does not validate full FA golden
   output, K/V startup overwrite, two-page ownership, or performance.
+
+## 2026-07-20 Owner16 Four-Consumer Canonical Design
+
+Status: `DESIGN_COMPLETE_CANONICAL_INTEGRATION_PENDING`.
+
+- Keep M128 `64/32/32` as the exact tail-free control.  It uses `4+2+2`
+  heavy waves and therefore does not create three full consumer groups.
+- Workbook `173_DKV_Owner16_4C_Canonical` derives an exact
+  `Mq64/Nk256/D128` topology.  Four symmetric groups own disjoint K/V and
+  dK/dV N64 ranges; each wave is the unique owner of one N16 fragment.
+- The startup K/V epoch occupies all 128KB LDS.  Its lifetime ends only after
+  all 16 owner fragments are latched.  The same storage then holds two
+  33,536B Q/dO+sidecar pages; startup and steady allocations never coexist.
+- Page0/1 Filled+Used and AllDone form the steady protocol.  One rotated
+  publisher wave per group emits the complete M16 slice, so Filled uses four
+  arrivals.  Used uses 16 arrivals: without another synchronization primitive
+  a group leader cannot prove its three peers completed their reads.  Strict
+  even/odd generations prevent page ABA.
+- Owner16 causal dispatch removes fully-invalid M16xN16 pairs.  S1024 honest
+  MMOP is `2080*32=66560`; do not use the M128 control's 73728 masked MMAC or
+  a group-level 69632 count to inflate active share.
+- The first implementation gate is ownership/lifetime correctness, not
+  performance: K/V latch checksum must survive LDS overwrite, and a
+  page0-page1-page0 sentinel must prove no ABA or early release.  Full dKV is
+  admitted only after `<=128 VGPR`, private/spill/scratch0, bank0 and native
+  BPS+matrix-read+MMAC gates pass.

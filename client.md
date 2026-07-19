@@ -1,5 +1,23 @@
 # Client
 
+## 2026-07-20 Owner16 Four-Consumer Canonical Contract
+
+- `M128=64+32+32` remains the exact tail-free control, not a true physical
+  three-consumer topology.  Native 16-row MMAC ownership makes its heavy-wave
+  count `4+2+2=8`; filling all three four-wave roles would add 50% MMAC.
+- The next canonical candidate is workbook
+  `173_DKV_Owner16_4C_Canonical`: `Mq64/Nk256/D128`, four symmetric groups,
+  each wave uniquely owns one K/V and dK/dV N16 fragment.  Score and dP are
+  never repeated.
+- Startup K/V uses the full 128KB LDS and must be completely latched before
+  the same storage becomes two 33536B Q/dO+sidecar pages.  A rotated leader
+  per group publishes a complete M16 slice: Filled count is 4, but Used count
+  is 16 because every reader must prove completion.  Causal skips never skip
+  protocol arrivals.
+- Resource admission is complete: `e4562dc` reports `114/128 VGPR` for all
+  four roles, private/spill/scratch0, native matrix path, PMD PASS and bank0.
+  Full FA correctness and SQTT performance remain pending.
+
 ## 2026-07-20 M128 64/32/32 Physical-Consumer Gate
 
 - The proposed `M128 = C0:64 + C1:32 + C2:32` ownership is mathematically

@@ -1,8 +1,33 @@
 # Source Status
 
+## 2026-07-20 dKV Owner16 Four-Consumer Canonical Design
+
+Status: `DESIGN_COMPLETE_CANONICAL_INTEGRATION_PENDING`.
+
+- Keep `M128=C0:64+C1:32+C2:32` at `fcd87aa` as the exact, tail-free
+  control.  Native owner16 granularity gives it only eight heavy waves; it
+  cannot become three full four-wave consumer groups without 50% redundant
+  MMAC or an inter-wave partial reduction.
+- Workbook `173_DKV_Owner16_4C_Canonical` defines the admitted candidate:
+  `Mq64/Nk256/D128`, four symmetric owner16 groups, one unique N16 dK/dV
+  owner per wave, no permanent producer and no repeated score/dP.
+- Startup K/V consumes exactly 131072B LDS.  All 16 waves must latch their
+  owner K/V fragment before that storage is reinterpreted as two
+  Q/dO+sidecar pages totaling 67072B.  The two lifetimes may overlay but may
+  never coexist.
+- The steady protocol uses Page0/1 Filled+Used and AllDone.  A rotated
+  designated wave publishes one complete M16 slice per group, so Filled has
+  four arrivals.  Used must have 16 arrivals because one group leader cannot
+  prove its three peer waves finished their LDS reads.  Causal-invalid math
+  still participates in every page generation.
+- The focused resource gate at `e4562dc` passes four independent roles at
+  `114/128 VGPR`, private/spill/scratch zero, native BPS+matrix-read+MMAC,
+  PMD checksum PASS and bank0.  It admits canonical integration but is not
+  full FA correctness or performance evidence.
+
 ## 2026-07-20 dKV M128 64/32/32 Native-Role Gate
 
-Status: `DESIGN_COMPLETE_RESOURCE_PROBE_PENDING`.
+Status: `DESIGN_COMPLETE_RESOURCE_PROBE_PASS`.
 
 - Canonical source is unchanged after the rejected early-store experiment;
   it still matches the correct M128 `fcd87aa` source.
@@ -13,11 +38,13 @@ Status: `DESIGN_COMPLETE_RESOURCE_PROBE_PENDING`.
 - M128 logical `64/32/32` is exact but physical `2P2C`.  A full-wave physical
   1P3C version adds 50% redundant MMAC; a half-active version retains only
   eight heavy waves and no per-SIMD scheduling gain.  Do not implement either.
-- Workbook `172_DKV_M128_3C_Gate` admits only an isolated
-  `Mq64/Nk256/D128` owner16-4C resource probe next.  It budgets K/V startup
+- Workbook `172_DKV_M128_3C_Gate` admitted an isolated
+  `Mq64/Nk256/D128` owner16-4C resource probe.  It budgets K/V startup
   LDS 131072B, steady two-page Q/dO+sidecar LDS 67072B, persistent 96 VGPR
   per wave and only 32 transient VGPR.  Any use above 128 VGPR per role
   rejects the topology before PMD.
+- That resource probe passed at `e4562dc`; full ownership/lifetime design is
+  now recorded in workbook `173_DKV_Owner16_4C_Canonical`.
 
 ## 2026-07-20 dKV M128 Final-M16 Early Store Rejected
 
