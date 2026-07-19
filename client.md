@@ -10,6 +10,15 @@
   the S1024 tail, assigns native owner16 work as `4+2+2` heavy waves, and must
   give the other four waves useful producer/helper work. Compare saturated
   same-work evidence; do not call it three heavy consumers.
+- That experiment now passes correctness/resource/bank gates. It removes the
+  tail, but is `OBSERVE_TAIL_FREE_CONTROL_DEBT`: physical residency is
+  `P0/C0/C12/P1`, so logical `64/32/32` still provides only two heavy waves
+  per SIMD. Against M192 at S768, normalized barrier/SCA/wait rise and
+  successful coissue falls; M192 remains the accepted performance source.
+- M128 evidence is committed only on
+  `exp/dkv-m128-c0-64-c1-32-c2-32-20260719`. The next isolated test is one
+  raw publisher; a failed result must be removed before trying an M192 masked
+  tail implementation.
 
 ## 2026-07-19 dQ Three-Consumer Saturation Verdict
 

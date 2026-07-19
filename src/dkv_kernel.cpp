@@ -291,12 +291,13 @@ __device__ __forceinline__ void publish_resident_tile(
     }
 }
 
-template <typename Tile, typename Wdra>
-__device__ __forceinline__ void producer_k_q_dout_loop(
-    const __half* q_base_ptr,
-    const __half* dout_base_ptr,
-    const __half* k_base_ptr,
+template <typename Tile, typename Wdra, bool PublishSidecar>
+__device__ __forceinline__ void producer_resident_raw_loop(
+    const __half* resident_base_ptr,
+    const __half* raw_base_ptr,
     __half* lds,
+    int resident_lds_base,
+    int raw_lds_base,
     int q_base,
     int k_base,
     int seqlen,
@@ -306,14 +307,14 @@ __device__ __forceinline__ void producer_k_q_dout_loop(
     const float* packed_sidecar = nullptr,
     int64_t row_base = 0,
     int lane = 0) {
-    using Layout = DkvLdsLayout<Tile>;
     int raw_head_used_phase = 0;
     int raw_tail_used_phase = 0;
     int resident_used_phase = 0;
 
     ins::abarrier_seq<false>(Wdra::kResidentFilled);
     publish_resident_tile<Tile>(
-        lds, Layout::kKBase, k_base_ptr, row_stride, k_base, wave_local);
+        lds, resident_lds_base, resident_base_ptr, row_stride, k_base,
+        wave_local);
     ins::maybe_wait_bps_vbcnt_before_arrive();
     ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
     if constexpr (Tile::kOverlayRawOnResidentKv) {
@@ -331,14 +332,13 @@ __device__ __forceinline__ void producer_k_q_dout_loop(
         constexpr int kTotalMBlocks = Tile::kBlockMq / 16;
         seq_raw_ready<Wdra::kRawHeadFilled>();
         publish_mq_slice<Tile, 0, kHeadMBlocks>(
-            lds, Layout::kQBase, q_base_ptr, row_stride, packet_q_base, page,
+            lds, raw_lds_base, raw_base_ptr, row_stride, packet_q_base, page,
             wave_local);
-        publish_mq_slice<Tile, 0, kHeadMBlocks>(
-            lds, Layout::kDoutBase, dout_base_ptr, row_stride, packet_q_base,
-            page, wave_local);
-        publish_sidecar_slice_to_lds<Tile, 0, Tile::kHeadReadyMq>(
-            lds, packed_sidecar, row_base, packet_q_base, seqlen, page,
-            wave_local, lane);
+        if constexpr (PublishSidecar) {
+            publish_sidecar_slice_to_lds<Tile, 0, Tile::kHeadReadyMq>(
+                lds, packed_sidecar, row_base, packet_q_base, seqlen, page,
+                wave_local, lane);
+        }
         ins::maybe_wait_bps_vbcnt_before_arrive();
         arrive_raw_ready<Wdra::kRawHeadFilled>();
 
@@ -347,34 +347,17 @@ __device__ __forceinline__ void producer_k_q_dout_loop(
         }
         seq_raw_ready<Wdra::kRawTailFilled>();
         publish_mq_slice<Tile, kHeadMBlocks, kTotalMBlocks>(
-            lds, Layout::kQBase, q_base_ptr, row_stride, packet_q_base, page,
+            lds, raw_lds_base, raw_base_ptr, row_stride, packet_q_base, page,
             wave_local);
-        publish_mq_slice<Tile, kHeadMBlocks, kTotalMBlocks>(
-            lds, Layout::kDoutBase, dout_base_ptr, row_stride, packet_q_base,
-            page, wave_local);
-        publish_sidecar_slice_to_lds<
-            Tile, Tile::kHeadReadyMq, Tile::kTailReadyMq>(
-            lds, packed_sidecar, row_base, packet_q_base, seqlen, page,
-            wave_local, lane);
+        if constexpr (PublishSidecar) {
+            publish_sidecar_slice_to_lds<
+                Tile, Tile::kHeadReadyMq, Tile::kTailReadyMq>(
+                lds, packed_sidecar, row_base, packet_q_base, seqlen, page,
+                wave_local, lane);
+        }
         ins::maybe_wait_bps_vbcnt_before_arrive();
         arrive_raw_ready<Wdra::kRawTailFilled>();
     }
-}
-
-template <typename Tile, typename Wdra>
-__device__ __forceinline__ void publish_resident_v(
-    const __half* v_base_ptr,
-    __half* lds,
-    int k_base,
-    int row_stride,
-    int wave_local) {
-    using Layout = DkvLdsLayout<Tile>;
-
-    ins::abarrier_seq<false>(Wdra::kResidentFilled);
-    publish_resident_tile<Tile>(
-        lds, Layout::kVBase, v_base_ptr, row_stride, k_base, wave_local);
-    ins::maybe_wait_bps_vbcnt_before_arrive();
-    ins::abarrier_arrive_cnt<false>(Wdra::kResidentFilled, 1);
 }
 
 struct Owner16KvRegs {
@@ -895,8 +878,9 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     int resident_filled_phase = 0;
     int raw_head_filled_phase = 0;
     int raw_tail_filled_phase = 0;
-    static_assert(ConsumerGroup >= 0 && ConsumerGroup < 3,
-                  "dKV owner16 consumer group must be 0, 1, or 2");
+    static_assert(ConsumerGroup >= 0 &&
+                      ConsumerGroup < Tile::kConsumerGroups,
+                  "dKV owner16 consumer group must belong to the tile");
     (void)causal;
     const int owner_nblock = ConsumerGroup * 4 + wave_local;
     const int lane_n = lane & 15;
@@ -958,7 +942,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
         dkv::WdraResourceWindows::kProducerVgprs,
         dkv::WdraResourceWindows::kConsumerVgprs,
         dkv::WdraResourceWindows::kConsumerVgprs,
-        dkv::WdraResourceWindows::kConsumerVgprs);
+        dkv::WdraResourceWindows::kProducerVgprs);
 #endif
 #if defined(__gfx946__) || defined(__gfx92a__)
     using Tile = dkv::ActiveDkvTile;
@@ -976,12 +960,12 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
     if (wave_id == 0) {
         __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 8);
         if constexpr (Tile::kOverlayRawOnResidentKv) {
-            __builtin_hcu_s_abarrier_init(Bar::kResidentUsed, 12);
+            __builtin_hcu_s_abarrier_init(Bar::kResidentUsed, 8);
         }
-        __builtin_hcu_s_abarrier_init(Bar::kRawHeadFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kRawHeadUsed, 12);
-        __builtin_hcu_s_abarrier_init(Bar::kRawTailFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kRawTailUsed, 12);
+        __builtin_hcu_s_abarrier_init(Bar::kRawHeadFilled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRawHeadUsed, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRawTailFilled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRawTailUsed, 8);
         __builtin_hcu_s_abarrier_init(Bar::kAllDone, 16);
     }
     __builtin_hcu_s_ebarrier_sync(0);
@@ -1002,10 +986,10 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         const int64_t row_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen;
-        producer_k_q_dout_loop<Tile, Bar>(
-            q + tensor_base, dout + tensor_base, k + tensor_base, lds, q_base,
-            k_base, seqlen, dim, q_tiles, wave_local, packed_sidecar, row_base,
-            lane);
+        producer_resident_raw_loop<Tile, Bar, false>(
+            k + tensor_base, q + tensor_base, lds, Layout::kKBase,
+            Layout::kQBase, q_base, k_base, seqlen, dim, q_tiles, wave_local,
+            nullptr, row_base, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 8) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
@@ -1026,15 +1010,16 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
             softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
-        __builtin_hcu_s_set_vgpr_size(Vgpr::kConsumerVgprs);
+        __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
         const int lane = static_cast<int>(threadIdx.x % 64);
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
-        publish_resident_v<Tile, Bar>(
-            v + tensor_base, lds, k_base, dim, wave_local);
-        consumer_dkv_mmac_loop<Tile, Bar, 2>(
-            lds, dk, dv, tensor_base, k_base, q_base, q_tiles, causal,
-            softmax_scale, wave_local, lane);
+        const int64_t row_base =
+            (static_cast<int64_t>(b) * heads + h) * seqlen;
+        producer_resident_raw_loop<Tile, Bar, true>(
+            v + tensor_base, dout + tensor_base, lds, Layout::kVBase,
+            Layout::kDoutBase, q_base, k_base, seqlen, dim, q_tiles,
+            wave_local, packed_sidecar, row_base, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     }
 

@@ -14641,3 +14641,55 @@ Status: `REJECT_STATIC_RESOURCE`; canonical source restored before PMD.
 - Proposed Target / 建议进入哪个 skill 或 reference: project-local Shaobo
   reference now; propose to `dcu-kernel-optimization` only during a governed
   skill-consolidation round.
+
+## 2026-07-19 dKV M128 Logical 64/32/32 Tail-Free Topology
+
+Status: `OBSERVE_TAIL_FREE_CONTROL_DEBT`; preserve on its isolated branch,
+but keep M192 next-M16 prefetch as the accepted performance source.
+
+- The proposed `M128` tile is mathematically sound. It assigns K rows
+  `0..63`, `64..95`, and `96..127` to logical C0/C1/C2, executes score, dP,
+  dV and dK exactly once for every owner16 slice, and removes the S1024 tail.
+  S128, S768 and S1024 correctness pass; metadata is private0, SGPR52,
+  VGPR96, spill/scratch0; LDS is 67,072B and bank conflict is zero.
+- The physical schedule is not three heavy consumers. Waves4-7 are C0;
+  waves8-11 contain both logical C1 and C2; waves0-3 and waves12-15 are two
+  producers. Each SIMD therefore has `P0/C0/C12/P1`, only two MMAC waves,
+  versus M192's `P/C0/C1/C2` with three MMAC waves.
+- S1024 fullperf reports kernel ticks `32,393,270`, MMAC active `37.8149%`,
+  exact MMOP `73,728`, coissue `10,577/7,417`, waitLgkm `19,571`, barrier
+  `71,161.75`, and bank0. XCU attributes hot latency to ABarrier/XOR
+  `29.80%`, wait `23.35%`, MMAC `13.58%`, and shows both consumers still
+  aligning MMAC rather than forming sustained MMAC-versus-VALU stagger.
+- H1/S768 raw ticks are not a promotion comparison because M128 launches six
+  CTAs while M192 launches four. Normalized by exact MMOP, M128 raises
+  barrier `0.8065 -> 1.1446` (+42%), SCA `0.3258 -> 0.5642` (+73%), and
+  waitLgkm `0.2352 -> 0.3041` (+29%); successful coissue falls
+  `0.2465 -> 0.1497` (-39%). Native active falls `39.2884% -> 34.6836%`.
+- Decision: tail removal and VGPR headroom are real, but the second producer
+  and eight-party raw publication add ownership/control debt. The next
+  isolated A/B may let one producer publish Q+dO+sidecar to reduce Filled
+  arrivals; if that serializes publication, return to M192 and implement a
+  legal masked M64 tail CTA while retaining three heavy waves per SIMD.
+- Evidence: workbook `162_DKV_M128_64_32_32`; remote fullperf
+  `/zys/shaobo_runs/dkv_m128_2p2c_s1024_fullperf/`
+  `dkv_mmac_correctness_20260719_191431`; shared archive
+  `/共享/shaobo/perf/20260719_191431_dkv_m128_c0_64_c1_32_c2_32_h1s1024_sqc7_fullperf`.
+
+### Skill Candidate
+
+- Trigger / 适用场景: a logical tile is split among more named owners than
+  the number of physical heavy wave groups.
+- Rule / 可复用规则: draw both logical output ownership and per-SIMD physical
+  wave residency. A `64/32/32` mathematical split does not create three-way
+  WASP overlap when the two 32-row owners share one physical wave group.
+- Evidence / 证据: workbook `162_DKV_M128_64_32_32`; M128 physical 2P2C
+  normalized barrier/SCA/wait regressions above; correctness and bank0 pass.
+- Boundary / 适用边界: logical splitting still helps exact tails and output
+  ownership; it only fails as a claim of additional simultaneous consumers.
+- Counterexample / 反例或不适用情况: three independent consumer wave groups
+  with legal VGPR/LDS budgets, or hardware scheduling that time-multiplexes
+  the logical owners into genuinely different overlap windows.
+- Proposed Target / 建议进入哪个 skill 或 reference: project-local Shaobo
+  reference first; propose the logical-versus-physical ownership check to
+  `dcu-kernel-optimization` during a governed consolidation round.

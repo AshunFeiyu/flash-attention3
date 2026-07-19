@@ -1,5 +1,26 @@
 # Source Status
 
+## 2026-07-19 dKV M128 Logical 64/32/32
+
+Status: `OBSERVE_TAIL_FREE_CONTROL_DEBT`; isolated branch only. Accepted best
+remains `best/dkv-next-m16-prefetch-20260719`.
+
+- `Mq=Nk=128,D=128` removes the S1024 tail and gives exact logical ownership
+  C0/C1/C2=`64/32/32`, with no repeated score or dP. Physical WDRA residency
+  is nevertheless 2P2C: `32/160/160/32`; logical C1/C2 share waves8-11.
+- S128/S768/S1024 correctness passes. Static resources are private0, SGPR52,
+  VGPR96, spill/scratch0; LDS is 67,072B and bank conflict is zero.
+- S1024 fullperf: kernel ticks `32,393,270`, MMAC active `37.8149%`, MMOP
+  `73,728`, coissue `10,577/7,417`, waitLgkm `19,571`, barrier `71,161.75`.
+  XCU still shows consumer MMAC alignment and ownership/wait bubbles.
+- Do not compare H1/S768 raw ticks directly: M128 launches six CTAs and M192
+  four. Normalized M128 barrier, SCA and wait debt are worse, while successful
+  coissue and native active are lower. This source is evidence for exact-tail
+  ownership and spare VGPR, not a performance promotion.
+- Branch: `exp/dkv-m128-c0-64-c1-32-c2-32-20260719`; workbook
+  `162_DKV_M128_64_32_32`; archive
+  `/共享/shaobo/perf/20260719_191431_dkv_m128_c0_64_c1_32_c2_32_h1s1024_sqc7_fullperf`.
+
 ## 2026-07-19 dKV M192 Early Half-Store
 
 - Status: `REJECT_STATIC_RESOURCE`; failed source removed.
