@@ -3772,3 +3772,13 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - ABarrier init and WDRA init are separate contracts.  The canonical dKV
   ABarrier lifecycle already matches the DCU Wiki; the LLVM `7b796991` route
   gets explicit WDRA init only through `SHAOBO_RUN_ON_MODEL=1`.
+
+## 2026-07-19 FWD Packed-Conversion Check
+
+- The official FWD builtin is now covered by a focused regression probe:
+  `__builtin_hcu_cvt_pk_f16_f32` emits exactly 16 packed conversions and eight
+  64-bit stores for one owner16 output tile, with exact PMD correctness.
+- It does not improve the canonical C1 epilogue.  LLVM already fused scalar
+  casts to the same packed opcode/count, so the canonical rewrite was rejected
+  statically and removed.  Do not retry this spelling without compiler ISA
+  evidence that the generated sequence has changed.

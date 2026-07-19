@@ -12,6 +12,8 @@ namespace {
 
 using Vec4F16 =
     __attribute__((__vector_size__(4 * sizeof(_Float16)))) _Float16;
+using Vec2F16 =
+    __attribute__((__vector_size__(2 * sizeof(_Float16)))) _Float16;
 
 constexpr int kWaveSize = 64;
 constexpr int kWaves = 16;
@@ -23,6 +25,7 @@ constexpr float kTolerance = 0.0f;
 
 union F16x4 {
     Vec4F16 vec;
+    Vec2F16 pair[2];
     _Float16 scalar[4];
 };
 
@@ -43,12 +46,14 @@ __global__ void __launch_bounds__(kThreads, 1)
     for (int d_idx = 0; d_idx < 8; ++d_idx) {
         const int col_base = d_idx * 16 + lane_col_group * 4;
         F16x4 packed{};
-#pragma unroll
-        for (int vec_id = 0; vec_id < 4; ++vec_id) {
-            const float accumulator_value = static_cast<float>(
-                1 + row_base + col_base + vec_id);
-            packed.scalar[vec_id] = static_cast<_Float16>(accumulator_value);
-        }
+        const float value0 = static_cast<float>(1 + row_base + col_base);
+        const float value1 = value0 + 1.0f;
+        const float value2 = value0 + 2.0f;
+        const float value3 = value0 + 3.0f;
+        packed.pair[0] = __builtin_hcu_cvt_pk_f16_f32(
+            value0, value1, false, 0);
+        packed.pair[1] = __builtin_hcu_cvt_pk_f16_f32(
+            value2, value3, false, 0);
         *reinterpret_cast<Vec4F16*>(output + row_base + col_base) = packed.vec;
     }
 #else

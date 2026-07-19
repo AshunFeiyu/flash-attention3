@@ -52,7 +52,7 @@ awk '
   END {
     printf("asm_gate direct_store_x2=%d direct_store_x4=%d " \
            "f32_to_f16=%d trap=%d\n", store_x2, store_x4, cvt_f16, trap)
-    if (store_x2 == 0 || cvt_f16 == 0 || trap != 0) exit 1
+    if (store_x2 != 8 || store_x4 != 0 || cvt_f16 != 16 || trap != 0) exit 1
   }
 ' "${ASM}" | tee "${RUN_DIR}/asm_gate.txt"
 
@@ -86,5 +86,5 @@ sha256sum "${ROOT}/${BIN}" "${ROOT}/${ASM}" | tee artifact_sha256.txt
 grep 'dkv_b16_direct_store' pmd_stdout.log | tee result.txt
 printf 'dkv_b16_direct_store_status=PASS bank=%s run=%s\n' \
   "${bank_conflicts}" "${RUN_DIR}" | tee -a result.txt
-printf 'comparison_contract=C1_fp32_vgpr_to_packed_b16_direct_global; canonical_perf_pending=1\n' \
+printf 'comparison_contract=C1_fwd_builtin_packed_b16_direct_global; packed_cvt_static=16\n' \
   | tee -a result.txt

@@ -9046,3 +9046,21 @@ Status: `REJECT_PERF_VALID_FUNCTION`; canonical source restored to FP32 output.
 - Evidence:
   `/zys/shaobo_runs/dkv_b16_direct_canonical_s768/`
   `dkv_mmac_correctness_20260719_105832`.
+
+## 2026-07-19 dKV C1b FWD Packed Builtin Is Codegen-Equivalent
+
+Status: `REJECT_STATIC_CODEGEN_EQUIVALENT`; canonical source restored.
+
+- The focused FWD-style builtin probe passes PMD exactly and emits the desired
+  16 `v_cvt_pk_f16_f32` plus eight packed stores.
+- In the full dKV kernel, however, LLVM already fused the previous scalar
+  casts.  Scalar-C1 and builtin-C1b both contain 384 packed conversions, no
+  scalar conversion opcode, 49 `global_store_dwordx2`, branch use
+  `32/158/158/158`, and private/spill/scratch0.
+- The explicit builtin is therefore useful as instruction evidence but not a
+  canonical optimization.  No full PMD run is admitted; the active source is
+  restored before the next hypothesis.
+- Evidence:
+  `/zys/shaobo_runs/dkv_b16_packed_cvt_probe_gate/run_20260719_113043` and remote
+  ASM directories `build/dkv_b16_direct_canonical` versus
+  `build/dkv_b16_packed_canonical`.

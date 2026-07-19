@@ -14409,3 +14409,22 @@ Status: `REJECT_PERF_VALID_FUNCTION`; restore the FP32 oracle epilogue.
 - Evidence:
   `/zys/shaobo_runs/dkv_b16_direct_canonical_s768/`
   `dkv_mmac_correctness_20260719_105832`.
+
+## 2026-07-19 dKV Output C1b FWD Packed Conversion
+
+Status: `REJECT_STATIC_CODEGEN_EQUIVALENT`; canonical source restored.
+
+- HCU tests and FA3 FWD use
+  `__builtin_hcu_cvt_pk_f16_f32(a, b, false, 0)`.  The focused owner16 probe
+  lowers to exactly 16 packed conversions plus eight `global_store_dwordx2`
+  and passes all 2,048 values on PMD HEAD1694.
+- Replacing canonical scalar casts with that builtin leaves generated work
+  unchanged: both artifacts contain `v_cvt_pk_f16_f32=384`, scalar
+  `v_cvt_f16_f32=0`, and `global_store_dwordx2=49`.  Branch use remains
+  `32/158/158/158`; metadata remains private/spill/scratch0.
+- LLVM already performed the intended pair fusion in the previous C1.  The
+  measured extra VALU is therefore the irreducible packed-conversion work for
+  this direct FP16 epilogue, not missed source-level vectorization.
+- Do not spend PMD time on the canonical builtin spelling.  Keep the focused
+  probe as a compiler-regression gate and return optimization effort to
+  ABarrier/readiness and MMAC-island gaps.
