@@ -111,7 +111,7 @@ def main() -> int:
             r"read_sidecar_owner16<Tile,\s*MBlockBase>[\s\S]{0,500}"
             r"read_owner16_dv_dk_sources<Tile,\s*0,\s*MBlockBase>"
             r"[\s\S]{0,500}wait_lgkm\(4\)[\s\S]{0,500}"
-            r"softmax_ds_owner16_causal_exact_tile[\s\S]{0,700}"
+            r"softmax_ds_owner16_tile[\s\S]{0,700}"
             r"wait_lgkm\(0\)[\s\S]{0,300}"
             r"read_owner16_dv_dk_sources<Tile,\s*2,\s*MBlockBase>"
             r"[\s\S]{0,400}owner16_dv_dk_mmac_from_sources",
@@ -175,8 +175,17 @@ def main() -> int:
             "missing_resident_nk192_assert")
     require(contract, r"kRawBuffers\s*=\s*1", failures,
             "missing_active_rawbuffer1_contract")
-    require(source, r"softmax_ds_owner16_causal_exact_tile", failures,
-            "missing_causal_exact_tile_helper")
+    require(source, r"softmax_ds_owner16<ApplyCausalMask>", failures,
+            "missing_boundary_selective_softmax_helper")
+    require(source,
+            r"consume_m16_owner16_tile<[\s\S]{0,180}FirstQTile",
+            failures, "missing_first_tile_causal_mask_contract")
+    require(source,
+            r"q_base\s*=\s*k_tile\s*\*\s*Tile::kBlockMq",
+            failures, "missing_causal_q_start")
+    require(source,
+            r"q_tiles\s*=\s*seqlen\s*/\s*Tile::kBlockMq\s*-\s*k_tile",
+            failures, "missing_causal_q_tile_count")
     require(contract, r"kOverlayRawOnResidentKv", failures,
             "missing_kv_raw_overlay_contract")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,

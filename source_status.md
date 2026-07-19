@@ -1,5 +1,29 @@
 # Source Status
 
+## 2026-07-19 Canonical dKV Causal Q-Start
+
+Status: `ACCEPT_ALGORITHM_CAUSAL_ZERO_WORK_PRUNE`.
+
+- Canonical dKV remains one 16-wave, one-producer/three-consumer kernel with
+  `Mq=Nk=192,D=128`, seven ABarrier IDs, one raw page, and native
+  MLS/BPS + `ds_read_matrix` + MMAC traffic. No phase or fallback path was
+  added.
+- For causal K tile `j`, Q publication and consumption now begin at Q tile
+  `j`. Only that first retained tile applies the exact element mask; later Q
+  tiles are compile-time full-valid. S768 issued work is the exact triangular
+  count `46,080` MMOP instead of `73,728`.
+- Latest LLVM reports branch use `32/156/156/156`, private/spill/scratch0 and
+  real `s_trap=0`; PMD HEAD1694 passes S384 and repeated S768 correctness with
+  `ldsBankConflict=0`.
+- Accepted fullperf S768 kernel ticks are `34,951,735`, improving the previous
+  best `35,707,035` by `2.115%`. Raw MMAC active is `39.5157%`; its fall from
+  `43.7836%` is expected because the old trace counted invalid triangular
+  MMAC. Workbook sheet `156_DKV_CausalQStart` contains the normalization and
+  critical-CTA XCU proof.
+- Preserve this state as tag `best/dkv-causal-qstart-20260719`. The next dKV
+  change must retain the triangular work count and target fixed ownership wait
+  or the global-store tail.
+
 ## 2026-07-17 Current Canonical After EBarrier Filled Rejection
 
 Status: `CANONICAL_RESTORED_EBARRIER_PROBE_RETAINED`.

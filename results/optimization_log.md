@@ -14456,3 +14456,36 @@ Status: `REJECT_STATS_FIRST_USE_WAIT`; canonical staged waits restored.
 - Evidence: workbook sheet `155_DKV_ScoreDP_LongIsland`; remote S384/S768 runs
   `/zys/shaobo_runs/dkv_scoredp_long_mmac16_s384/` and
   `/zys/shaobo_runs/dkv_scoredp_long_mmac16_s768/`.
+
+## 2026-07-19 dKV Causal Q-Start Accepted
+
+- Status: `ACCEPT_ALGORITHM_CAUSAL_ZERO_WORK_PRUNE`.
+- Formula proof: for a fixed causal K tile `j`, every Q tile `i < j` has
+  `P(q,k)=dS(q,k)=0`. Canonical publication now starts at `i=j`; only the
+  diagonal tile uses the exact element mask and every later tile is compiled
+  as fully valid. The four-GEMM DAG, output ownership, LDS pages, seven-token
+  ABarrier topology, and native matrix path are unchanged.
+- S768 Q epochs become `4/3/2/1` instead of `4/4/4/4`. Issued MMOP falls
+  exactly `73,728 -> 46,080`, matching the triangular-domain derivation and
+  removing `37.5%` mathematically zero MMAC rather than changing tile size.
+- Latest compiler gates pass at `32/156/156/156`, private/spill/scratch0,
+  `LDS=100,608`, real `s_trap=0`, and bank0. S384 and three S768 runs pass dK
+  and dV correctness; fullperf S768 reports `dk_rel_l2=0.00193715` and
+  `dv_rel_l2=0.000319636`.
+- Same-toolchain fullperf kernel ticks improve
+  `35,707,035 -> 34,951,735` (`-2.115%`). Raw MMAC active falls
+  `43.7836% -> 39.5157%` because the old value counted invalid triangular
+  work. A derived causal-useful-active proxy rises `27.36% -> 39.52%`; this is
+  an explanatory normalization, not a replacement for the PMD native metric.
+- XCU isolates the longest CTA (`SE0/CU0/SIMD0`): both versions retain
+  `4,608` MMOP, `2,352` matrix reads, and `1,066` waits. Mask/predicate
+  instructions fall `1,256 -> 392`, total instructions fall
+  `16,266 -> 14,888`, and consumer spans shrink `1.5%..3.8%`. Dispatch SQTT
+  duration falls `78,476 -> 76,820`.
+- Remaining target: absolute ABarrier-to-wait time is nearly fixed at about
+  `519K` captured cycles and global-store latency is now more exposed. Do not
+  restore invalid MMAC to raise raw active; attack ownership/startup and the
+  output tail with same-useful-work experiments.
+- Evidence: workbook sheet `156_DKV_CausalQStart`; remote run
+  `/zys/shaobo_runs/dkv_causal_qstart_s768_fullperf/`
+  `dkv_mmac_correctness_20260719_130657`.

@@ -538,6 +538,7 @@ __device__ __forceinline__ void read_sidecar_owner16(
         src.row_delta);
 }
 
+template <bool ApplyCausalMask>
 __device__ __forceinline__ void softmax_ds_owner16(
     const ins::F32x4& score,
     const ins::F32x4& dp,
@@ -555,12 +556,15 @@ __device__ __forceinline__ void softmax_ds_owner16(
 #pragma unroll
     for (int vec_id = 0; vec_id < 4; ++vec_id) {
         const int qrow = q_m_base + local_m_base + vec_id;
-        const bool valid_pair = owner_krow <= qrow;
         const float p_unmasked =
             exp2f(score.scalar[vec_id] * softmax_scale_log2 -
                   row_max_log2[vec_id]) *
             row_inv_sum[vec_id];
-        const float p_val = valid_pair ? p_unmasked : 0.0f;
+        float p_val = p_unmasked;
+        if constexpr (ApplyCausalMask) {
+            const bool valid_pair = owner_krow <= qrow;
+            p_val = valid_pair ? p_unmasked : 0.0f;
+        }
         const float ds_val =
             p_val * (dp.scalar[vec_id] - row_delta[vec_id]) *
             softmax_scale;
@@ -569,8 +573,8 @@ __device__ __forceinline__ void softmax_ds_owner16(
     }
 }
 
-template <typename Tile, int MBlockBase>
-__device__ __forceinline__ void softmax_ds_owner16_causal_exact_tile(
+template <typename Tile, int MBlockBase, bool ApplyCausalMask>
+__device__ __forceinline__ void softmax_ds_owner16_tile(
     const ins::F32x4& score,
     const ins::F32x4& dp,
     const Owner16SidecarSources& sidecar,
@@ -583,7 +587,7 @@ __device__ __forceinline__ void softmax_ds_owner16_causal_exact_tile(
     ins::Vec4F16& ds_frag) {
     static_assert(MBlockBase < DkvLdsLayout<Tile>::kRawMBlocksPerMqTile,
                   "softmax/dS consumes one M16 block");
-    softmax_ds_owner16(
+    softmax_ds_owner16<ApplyCausalMask>(
         score, dp, sidecar.row_max_log2, sidecar.row_inv_sum,
         sidecar.row_delta, q_m_base, owner_krow, lane_col_group,
         softmax_scale, softmax_scale_log2, p_frag, ds_frag);
@@ -723,9 +727,10 @@ template <typename Tile,
           typename Wdra,
           int MBlockBase,
           bool FirstAccum,
+          bool ApplyCausalMask,
           bool ReleaseHead,
           bool ReleaseTail>
-__device__ __forceinline__ void consume_m16_owner16_causal_exact_tile(
+__device__ __forceinline__ void consume_m16_owner16_tile(
     __half* lds,
     int q_tile_base,
     int owner_krow,
@@ -755,7 +760,7 @@ __device__ __forceinline__ void consume_m16_owner16_causal_exact_tile(
         // The three sidecar requests are oldest. lgkmcnt(4) retires only
         // those requests while D0/D1 Q/dO matrix reads remain in flight.
         ins::wait_lgkm(4);
-        softmax_ds_owner16_causal_exact_tile<Tile, MBlockBase>(
+        softmax_ds_owner16_tile<Tile, MBlockBase, ApplyCausalMask>(
             score, dp, sidecar, q_tile_base + MBlockBase * 16,
             owner_krow, lane_col_group, softmax_scale, softmax_scale_log2,
             p_frag, ds_frag);
@@ -799,8 +804,9 @@ __device__ __forceinline__ void consume_q_tile_owner16_blocks(
         MBlockBase + 1 == Tile::kHeadReadyMq / 16;
     constexpr bool kReleaseTail =
         MBlockBase + 1 == Tile::kBlockMq / 16;
-    consume_m16_owner16_causal_exact_tile<
-        Tile, Wdra, MBlockBase, kFirstAccum, kReleaseHead, kReleaseTail>(
+    consume_m16_owner16_tile<
+        Tile, Wdra, MBlockBase, kFirstAccum, FirstQTile, kReleaseHead,
+        kReleaseTail>(
         lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
         softmax_scale_log2, page, kv_regs, mmac_zero, dv_acc, dk_acc);
     if constexpr (MBlockBase + 1 < MBlockEnd) {
@@ -845,6 +851,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     float* dv,
     int64_t tensor_base,
     int k_base,
+    int q_base,
     int q_tiles,
     int causal,
     float softmax_scale,
@@ -878,7 +885,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     if (q_tiles > 0) {
         wait_raw_ready<Wdra::kRawHeadFilled>(raw_head_filled_phase);
         consume_q_tile_owner16<Tile, Wdra, true>(
-            lds, 0, owner_krow, lane_col_group, softmax_scale,
+            lds, q_base, owner_krow, lane_col_group, softmax_scale,
             softmax_scale_log2, raw_page_for_q_tile<Tile>(0),
             raw_tail_filled_phase, kv_regs, mmac_zero, dv_acc, dk_acc);
     }
@@ -886,7 +893,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
 #pragma clang loop unroll(disable)
     for (int q_tile = 1; q_tile < q_tiles; ++q_tile) {
         const int page = raw_page_for_q_tile<Tile>(q_tile);
-        const int q_tile_base = q_tile * Tile::kBlockMq;
+        const int q_tile_base = q_base + q_tile * Tile::kBlockMq;
         wait_raw_ready<Wdra::kRawHeadFilled>(raw_head_filled_phase);
         consume_q_tile_owner16<Tile, Wdra, false>(
             lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
@@ -947,9 +954,11 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
     const int k_tile = blockIdx.x;
     const int h = blockIdx.y;
     const int b = blockIdx.z;
-    const int q_base = 0;
+    static_assert(Tile::kBlockMq == Tile::kResidentNk,
+                  "causal Q-start requires aligned Mq/Nk tiles");
+    const int q_base = k_tile * Tile::kBlockMq;
     const int k_base = k_tile * Tile::kResidentNk;
-    const int q_tiles = seqlen / Tile::kBlockMq;
+    const int q_tiles = seqlen / Tile::kBlockMq - k_tile;
 
     if (wave_id < 4) {
         __builtin_hcu_s_set_vgpr_size(Vgpr::kProducerVgprs);
@@ -969,7 +978,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         consumer_dkv_mmac_loop<Tile, Bar, 0>(
-            lds, dk, dv, tensor_base, k_base, q_tiles, causal,
+            lds, dk, dv, tensor_base, k_base, q_base, q_tiles, causal,
             softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else if (wave_id < 12) {
@@ -978,7 +987,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
         const int64_t tensor_base =
             (static_cast<int64_t>(b) * heads + h) * seqlen * dim;
         consumer_dkv_mmac_loop<Tile, Bar, 1>(
-            lds, dk, dv, tensor_base, k_base, q_tiles, causal,
+            lds, dk, dv, tensor_base, k_base, q_base, q_tiles, causal,
             softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     } else {
@@ -989,7 +998,7 @@ fa3_bwd_dkv_kernel(const __half* __restrict__ dout,
         publish_resident_v<Tile, Bar>(
             v + tensor_base, lds, k_base, dim, wave_local);
         consumer_dkv_mmac_loop<Tile, Bar, 2>(
-            lds, dk, dv, tensor_base, k_base, q_tiles, causal,
+            lds, dk, dv, tensor_base, k_base, q_base, q_tiles, causal,
             softmax_scale, wave_local, lane);
         ins::abarrier_arrive_cnt<false>(Bar::kAllDone, 1);
     }

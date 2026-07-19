@@ -16,8 +16,8 @@ evidence are required before any performance claim.
   panic, invalid opcode, WDRA register warning, or codegen regression.
 - Active PMD host: `vega20`, reached through jump host `192.168.162.67` with
   `ssh -F work/ssh/liuchang_common_config liuchang-common`.
-- Active container is `zys1`; the remote repository for this branch is
-  `/zys/shaobo/fa3_bwd_wasp_7gemm_tomography_20260716`.
+- Active container is `zys1`; the remote repository is
+  `/zys/shaobo/fa3_bwd_wasp_7gemm_consumer_conveyor_20260717`.
 - The new-machine `shaobo_dev_8426` environment remains a deferred fallback
   until its PMD/compiler compatibility is resolved; do not use it for baseline
   comparisons.
@@ -3797,3 +3797,42 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
   `best/dkv-latest-pair-43p78-20260719`; do not retry full wait0. A future
   partial-island experiment must carry an explicit outstanding-read ledger and
   retain useful work before all eight reads retire.
+
+## 2026-07-19 Canonical Causal Q-Start
+
+- Canonical dKV now prunes fully invalid causal Q-tile epochs before producer
+  publication. At S768 the per-K-tile epoch ledger is `4/3/2/1`, and only the
+  diagonal tile executes exact causal compares; later retained tiles are
+  compile-time full-valid.
+- This is an algorithmic promotion, not a cosmetic active-share win. Exact
+  MMOP drops `73,728 -> 46,080`, while fullperf kernel ticks improve
+  `35,707,035 -> 34,951,735` (`-2.115%`). Raw MMAC active drops to `39.5157%`
+  because invalid MMAC was removed. Never reintroduce zero-result MMAC merely
+  to increase that native percentage.
+- Hard gates: S384 and repeated S768 correctness PASS; branch use
+  `32/156/156/156`; private/spill/scratch0; `LDS=100,608`; bank0; native
+  matrix path unchanged. XCU longest-CTA evidence keeps MMOP/read/wait exact
+  and reduces mask ops `1,256 -> 392`.
+- Source tag: `best/dkv-causal-qstart-20260719`. Workbook evidence:
+  `156_DKV_CausalQStart`. Fullperf evidence:
+  `/zys/shaobo_runs/dkv_causal_qstart_s768_fullperf/`
+  `dkv_mmac_correctness_20260719_130657`.
+
+### Skill Candidate
+
+- Trigger / 适用场景: causal attention kernels whose CTA owns one K tile and
+  loops over aligned Q tiles.
+- Rule / 可复用规则: derive the triangular tile domain before tuning the
+  pipeline; skip fully invalid Q/K tile pairs before loading or GEMM, and keep
+  element masking only on diagonal boundary tiles.
+- Evidence / 证据: tag `best/dkv-causal-qstart-20260719`, workbook sheet
+  `156_DKV_CausalQStart`, H1/S768 MMOP `73,728 -> 46,080`, ticks
+  `35,707,035 -> 34,951,735`, correctness PASS and bank0.
+- Boundary / 适用边界: requires causal mode, aligned square Q/K tile geometry,
+  and output ownership that accumulates all retained Q rows for one K tile.
+- Counterexample / 反例或不适用情况: non-causal attention, ragged tails, or
+  split ownership where skipping an epoch changes required reduction or
+  ABarrier generation counts without a matching protocol proof.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` during a later consolidation round; keep it only
+  in this handoff until then.
