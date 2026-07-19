@@ -1,5 +1,27 @@
 # Source Status
 
+## 2026-07-20 dKV Owner16 Four-Consumer Lifecycle Gate
+
+Status: `ACCEPT_OWNERSHIP_LIFECYCLE_GATE`; full FA integration pending.
+
+- `probes/dkv_owner16_4c_lifecycle_probe.cpp` proves the complete
+  startup/steady ownership transition: four rotated leaders publish disjoint
+  K/V N64 slices into 131072B LDS, all 16 waves latch a unique N16 K/V view,
+  `ResidentUsed(16)` releases the storage, and page0/page1/page0 reuse two
+  Q/dO+sidecar pages totaling 67072B.
+- Latest compiler metadata is private0, SGPR40, VGPR128, spill/scratch0 and
+  LDS131072. Static evidence is BPS108, `ds_read_matrix`56,
+  ABarrier wait25/arrive36, four `s_set_vgpr_size 128` branches and no trap.
+- PMD run
+  `/zys/shaobo_runs/dkv_owner16_4c_lifecycle_probe_20260720_054620` passes
+  with `bad=0`, roles `128/128/128/128`, three raw generations and
+  `ldsBankConflict=0`. Probe kernel ticks are `6,412,770`; this is an
+  admission measurement, not FA performance evidence.
+- In-kernel vector comparisons exposed a PMD VCC/SGPR init-tracking false
+  failure. Deterministic fragment capture plus host comparison is the
+  reliable probe pattern. Branch-local lane/wave setup also avoids the
+  earlier WDRA/global-store tracking abort.
+
 ## 2026-07-20 dKV Owner16 Four-Consumer Canonical Design
 
 Status: `DESIGN_COMPLETE_CANONICAL_INTEGRATION_PENDING`.
@@ -22,8 +44,9 @@ Status: `DESIGN_COMPLETE_CANONICAL_INTEGRATION_PENDING`.
   still participates in every page generation.
 - The focused resource gate at `e4562dc` passes four independent roles at
   `114/128 VGPR`, private/spill/scratch zero, native BPS+matrix-read+MMAC,
-  PMD checksum PASS and bank0.  It admits canonical integration but is not
-  full FA correctness or performance evidence.
+  PMD checksum PASS and bank0. The subsequent lifecycle gate also passes;
+  together they admit canonical integration but are not full FA correctness
+  or performance evidence.
 
 ## 2026-07-20 dKV M128 64/32/32 Native-Role Gate
 

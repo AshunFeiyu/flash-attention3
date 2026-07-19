@@ -16,7 +16,16 @@
   protocol arrivals.
 - Resource admission is complete: `e4562dc` reports `114/128 VGPR` for all
   four roles, private/spill/scratch0, native matrix path, PMD PASS and bank0.
-  Full FA correctness and SQTT performance remain pending.
+- The ownership/lifetime probe also passes. It publishes four disjoint K/V
+  N64 slices into the exact 128KB startup epoch, latches one N16 owner per
+  wave, releases the resident page, then validates page0/page1/page0 raw
+  generations after overwrite. Host-side capture reports `bad=0`, all four
+  roles use `128/128/128/128`, and PMD reports bank0. Full FA math and SQTT
+  performance remain pending.
+- Do not put vector equality checks inside a WDRA probe: PMD falsely reported
+  VCC/SGPR state errors on that shape. Export deterministic fragments and
+  compare on the host instead. Keep `wave_id/lane` setup branch-local to
+  avoid the earlier global-store tracking abort.
 
 ## 2026-07-20 M128 64/32/32 Physical-Consumer Gate
 

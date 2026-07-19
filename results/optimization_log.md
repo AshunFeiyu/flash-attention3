@@ -1,5 +1,25 @@
 # Optimization Log
 
+## 2026-07-20 dKV Owner16 Four-Consumer Lifecycle Gate
+
+- Status: `ACCEPT_OWNERSHIP_LIFECYCLE_GATE`.
+- Hypothesis: `Mq64/Nk256/D128` can use four symmetric owner16 groups if K/V
+  occupies a one-shot 128KB LDS epoch, every wave latches its unique N16
+  fragment, and the same LDS is then reused by a two-page Q/dO+sidecar ring.
+- Static result: four WDRA branches at 128 VGPR, private0, SGPR40, VGPR128,
+  spill/scratch0, LDS131072, BPS108, matrix-read56, ABarrier wait25/arrive36,
+  trap0.
+- PMD result: deterministic host comparison passes with `bad=0`, three page
+  generations and bank0. Run is
+  `/zys/shaobo_runs/dkv_owner16_4c_lifecycle_probe_20260720_054620`; kernel
+  ticks `6,412,770` are probe diagnostics only.
+- Debugging lesson: device-side vector equality caused a false PMD VCC/SGPR
+  init failure, while exporting the fragments and comparing on the host
+  passed. Pre-role lane/wave state plus many global stores also triggered a
+  PMD tracking abort; branch-local setup and compact outputs removed it.
+- Decision: admit the canonical four-GEMM integration. Do not claim a
+  performance win until S256/S1024 FA correctness and SQTT pass.
+
 ## 2026-07-20 dKV M128 64/32/32 Physical 1P3C Gate
 
 - Status: `DESIGN_COMPLETE_RESOURCE_PROBE_PENDING`.
