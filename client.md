@@ -4069,3 +4069,4 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
   the latest compiler output with the old HEAD1668 runtime library.
 - M128 dKV `64+32+32` remains a no-tail control, not the canonical steady
   pipeline: native owner16 maps it to only eight useful heavy waves.
+- Design evidence: shared workbook sheet `174_DKV_M128_vs_M192Tail`.

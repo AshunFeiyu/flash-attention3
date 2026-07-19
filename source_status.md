@@ -31,6 +31,11 @@ kernel path.
   Its M32 owners map to two waves each, so it has `4+2+2=8` heavy waves rather
   than three full four-wave consumers. Expanding them to twelve heavy waves
   would execute 50% redundant MMAC.
+- Workbook sheet `174_DKV_M128_vs_M192Tail` records the formula DAG, physical
+  wave ledger, LDS/WDRA budget, S1024 decompositions, measured normalized
+  control debt, and time0/time1/time2 expected pipeline. It keeps M192 as the
+  steady canonical source and admits `M192 main + static M128 tail` only as a
+  design candidate pending exact S1024 correctness and perf.
 
 ## 2026-07-20 dKV Owner16 Four-Consumer Full Integration Rejected
 

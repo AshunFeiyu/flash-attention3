@@ -14790,6 +14790,11 @@ but keep M192 next-M16 prefetch as the accepted performance source.
 - Decision: `ACCEPT_GOVERNANCE_DUAL_BASELINE`. Keep M128 `64+32+32` as the
   tail-free comparison only. Continue structural optimization from this
   single reconciled source, one hypothesis per branch.
+- Workbook stress review: `174_DKV_M128_vs_M192Tail` proves the no-tail M128
+  control is mathematically exact but physically 2P2C. The only admitted
+  S1024 continuation is a static-entry hybrid whose M192 main keeps twelve
+  heavy waves and whose M128 tail owns disjoint K rows; it must not be folded
+  into a runtime Tile branch.
 
 ## 2026-07-20 Owner16 Four-Consumer Resource Probe Accepted
 
