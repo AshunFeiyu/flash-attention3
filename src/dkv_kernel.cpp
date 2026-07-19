@@ -432,32 +432,33 @@ struct Owner16ScoreDpSources {
     ins::F16x8 dout_d3;
 };
 
-template <typename Tile, int MBlockBase>
-__device__ __forceinline__ void read_score_dp_owner16_all_dblocks(
+template <typename Tile, int MBlockBase, int DBlockBase>
+__device__ __forceinline__ void read_score_dp_owner16_dblock_pair(
     __half* lds,
     int page,
-    Owner16ScoreDpSources& src) {
+    ins::F16x8& q_d0,
+    ins::F16x8& dout_d0,
+    ins::F16x8& q_d1,
+    ins::F16x8& dout_d1) {
     using Layout = DkvLdsLayout<Tile>;
     static_assert(MBlockBase < Layout::kRawMBlocksPerMqTile,
                   "score/dP reads one M16 block");
+    static_assert(DBlockBase == 0 || DBlockBase == 2,
+                  "score/dP read pair starts at D0 or D2");
     static_assert(Layout::kRawPages == 1,
                   "immediate score/dP reads require one canonical raw page");
     (void)page;
 
     constexpr int kD0Off =
-        (MBlockBase * Layout::kDBlocksPerMqTile + 0) *
+        (MBlockBase * Layout::kDBlocksPerMqTile + DBlockBase) *
         Layout::kRawBlockBytes;
     constexpr int kD1Off = kD0Off + Layout::kRawBlockBytes;
-    constexpr int kD2Off = kD1Off + Layout::kRawBlockBytes;
-    constexpr int kD3Off = kD2Off + Layout::kRawBlockBytes;
     const __half* q_lds = lds + Layout::kQBase / sizeof(__half);
     const __half* dout_lds = lds + Layout::kDoutBase / sizeof(__half);
 
-    ins::ds_read_matrix_32x16_trans_dual_base_imm4<
-        kD0Off, kD1Off, kD2Off, kD3Off>(
-        q_lds, dout_lds, src.q_d0.f16x8, src.dout_d0.f16x8,
-        src.q_d1.f16x8, src.dout_d1.f16x8, src.q_d2.f16x8,
-        src.dout_d2.f16x8, src.q_d3.f16x8, src.dout_d3.f16x8);
+    ins::ds_read_matrix_32x16_trans_dual_base_imm2<kD0Off, kD1Off>(
+        q_lds, dout_lds, q_d0.f16x8, dout_d0.f16x8, q_d1.f16x8,
+        dout_d1.f16x8);
 }
 
 template <int DBlock>
@@ -490,14 +491,15 @@ __device__ __forceinline__ void score_dp_mmac_owner16(
     int page,
     const Owner16KvRegs& kv_regs,
     const ins::F16x8& mmac_zero,
+    Owner16ScoreDpSources& src,
     ins::F32x4& score,
     ins::F32x4& dp) {
     using Layout = DkvLdsLayout<Tile>;
     static_assert(MBlockBase < Layout::kRawMBlocksPerMqTile,
                   "score/dP reads one M16 block");
 
-    Owner16ScoreDpSources src;
-    read_score_dp_owner16_all_dblocks<Tile, MBlockBase>(lds, page, src);
+    read_score_dp_owner16_dblock_pair<Tile, MBlockBase, 2>(
+        lds, page, src.q_d2, src.dout_d2, src.q_d3, src.dout_d3);
 
     // Eight reads are issued in D0..D3 order. Retire each Q/dO pair at its
     // first use while later D blocks remain in flight behind the MMAC island.
@@ -668,25 +670,40 @@ __device__ __forceinline__ void owner16_dv_dk_mmac_four_out(
         p_frag, ds_frag, src.dout_d1, src.q_d1, dv_acc, dk_acc, zero_f16);
 }
 
-template <typename Wdra,
+template <typename Tile,
+          typename Wdra,
+          int NextMBlock,
+          bool PrefetchNext,
           bool FirstAccum,
           bool ReleaseHead,
           bool ReleaseTail>
 __device__ __forceinline__ void owner16_dv_dk_mmac_from_sources(
+    __half* lds,
+    int page,
     const ins::Vec4F16& p_frag,
     const ins::Vec4F16& ds_frag,
     const Owner16DvDkSources& src_d01,
     const Owner16DvDkSources& src_d23,
+    Owner16ScoreDpSources& next_score_src,
     const ins::F16x8& mmac_zero,
     ins::F32x4 (&dv_acc)[8],
     ins::F32x4 (&dk_acc)[8]) {
+    static_assert(!PrefetchNext || (!ReleaseHead && !ReleaseTail),
+                  "next-M16 prefetch cannot cross a raw ownership boundary");
     // D0/D1 are ready. The independent D2/D3 reads mature under this MMAC
     // island and are retired only at their exact first use below.
     ins::raise_priority_2();
     owner16_dv_dk_mmac_four_out<FirstAccum, 0>(
         p_frag, ds_frag, src_d01, dv_acc, dk_acc, mmac_zero);
 
-    ins::wait_lgkm(0);
+    if constexpr (PrefetchNext) {
+        read_score_dp_owner16_dblock_pair<Tile, NextMBlock, 0>(
+            lds, page, next_score_src.q_d0, next_score_src.dout_d0,
+            next_score_src.q_d1, next_score_src.dout_d1);
+        ins::wait_lgkm(4);
+    } else {
+        ins::wait_lgkm(0);
+    }
     if constexpr (ReleaseHead) {
         arrive_raw_used<Wdra::kRawHeadUsed>();
     }
@@ -728,6 +745,7 @@ template <typename Tile,
           int MBlockBase,
           bool FirstAccum,
           bool ApplyCausalMask,
+          bool PrefetchNext,
           bool ReleaseHead,
           bool ReleaseTail>
 __device__ __forceinline__ void consume_m16_owner16_tile(
@@ -740,6 +758,7 @@ __device__ __forceinline__ void consume_m16_owner16_tile(
     int page,
     const Owner16KvRegs& kv_regs,
     const ins::F16x8& mmac_zero,
+    Owner16ScoreDpSources& score_src,
     ins::F32x4 (&dv_acc)[8],
     ins::F32x4 (&dk_acc)[8]) {
     ins::Vec4F16 p_frag;
@@ -749,7 +768,7 @@ __device__ __forceinline__ void consume_m16_owner16_tile(
         ins::F32x4 score;
         ins::F32x4 dp;
         score_dp_mmac_owner16<Tile, MBlockBase>(
-            lds, page, kv_regs, mmac_zero, score, dp);
+            lds, page, kv_regs, mmac_zero, score_src, score, dp);
         const float* sidecar_page = sidecar_page_ptr<Tile>(lds, page);
         Owner16SidecarSources sidecar;
         read_sidecar_owner16<Tile, MBlockBase>(
@@ -772,11 +791,14 @@ __device__ __forceinline__ void consume_m16_owner16_tile(
         lds, page, src_d23);
 
     owner16_dv_dk_mmac_from_sources<
+        Tile,
         Wdra,
+        MBlockBase + 1,
+        PrefetchNext,
         FirstAccum,
         ReleaseHead,
-        ReleaseTail>(p_frag, ds_frag, src_d01, src_d23, mmac_zero, dv_acc,
-                     dk_acc);
+        ReleaseTail>(lds, page, p_frag, ds_frag, src_d01, src_d23, score_src,
+                     mmac_zero, dv_acc, dk_acc);
 }
 
 template <typename Tile,
@@ -794,6 +816,7 @@ __device__ __forceinline__ void consume_q_tile_owner16_blocks(
     int page,
     const Owner16KvRegs& kv_regs,
     const ins::F16x8& mmac_zero,
+    Owner16ScoreDpSources& score_src,
     ins::F32x4 (&dv_acc)[8],
     ins::F32x4 (&dk_acc)[8]) {
     static_assert(MBlockBase < MBlockEnd &&
@@ -804,16 +827,19 @@ __device__ __forceinline__ void consume_q_tile_owner16_blocks(
         MBlockBase + 1 == Tile::kHeadReadyMq / 16;
     constexpr bool kReleaseTail =
         MBlockBase + 1 == Tile::kBlockMq / 16;
+    constexpr bool kPrefetchNext = MBlockBase + 1 < MBlockEnd;
     consume_m16_owner16_tile<
-        Tile, Wdra, MBlockBase, kFirstAccum, FirstQTile, kReleaseHead,
-        kReleaseTail>(
+        Tile, Wdra, MBlockBase, kFirstAccum, FirstQTile, kPrefetchNext,
+        kReleaseHead, kReleaseTail>(
         lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
-        softmax_scale_log2, page, kv_regs, mmac_zero, dv_acc, dk_acc);
+        softmax_scale_log2, page, kv_regs, mmac_zero, score_src, dv_acc,
+        dk_acc);
     if constexpr (MBlockBase + 1 < MBlockEnd) {
         consume_q_tile_owner16_blocks<
             Tile, Wdra, FirstQTile, MBlockBase + 1, MBlockEnd>(
             lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
-            softmax_scale_log2, page, kv_regs, mmac_zero, dv_acc, dk_acc);
+            softmax_scale_log2, page, kv_regs, mmac_zero, score_src, dv_acc,
+            dk_acc);
     }
 }
 
@@ -833,15 +859,24 @@ __device__ __forceinline__ void consume_q_tile_owner16(
     ins::F32x4 (&dk_acc)[8]) {
     constexpr int kHeadMBlocks = Tile::kHeadReadyMq / 16;
     constexpr int kTotalMBlocks = Tile::kBlockMq / 16;
+    Owner16ScoreDpSources score_src;
+    read_score_dp_owner16_dblock_pair<Tile, 0, 0>(
+        lds, page, score_src.q_d0, score_src.dout_d0, score_src.q_d1,
+        score_src.dout_d1);
     consume_q_tile_owner16_blocks<
         Tile, Wdra, FirstQTile, 0, kHeadMBlocks>(
         lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
-        softmax_scale_log2, page, kv_regs, mmac_zero, dv_acc, dk_acc);
+        softmax_scale_log2, page, kv_regs, mmac_zero, score_src, dv_acc,
+        dk_acc);
     wait_raw_ready<Wdra::kRawTailFilled>(tail_filled_phase);
+    read_score_dp_owner16_dblock_pair<Tile, kHeadMBlocks, 0>(
+        lds, page, score_src.q_d0, score_src.dout_d0, score_src.q_d1,
+        score_src.dout_d1);
     consume_q_tile_owner16_blocks<
         Tile, Wdra, FirstQTile, kHeadMBlocks, kTotalMBlocks>(
         lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
-        softmax_scale_log2, page, kv_regs, mmac_zero, dv_acc, dk_acc);
+        softmax_scale_log2, page, kv_regs, mmac_zero, score_src, dv_acc,
+        dk_acc);
 }
 
 template <typename Tile, typename Wdra, int ConsumerGroup>

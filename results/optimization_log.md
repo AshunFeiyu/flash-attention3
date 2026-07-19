@@ -14489,3 +14489,33 @@ Status: `REJECT_STATS_FIRST_USE_WAIT`; canonical staged waits restored.
 - Evidence: workbook sheet `156_DKV_CausalQStart`; remote run
   `/zys/shaobo_runs/dkv_causal_qstart_s768_fullperf/`
   `dkv_mmac_correctness_20260719_130657`.
+
+## 2026-07-19 dKV Next-M16 Score Half Prefetch
+
+Status: `ACCEPT_LATENCY_HIDING_SAME_EXACT_WORK`.
+
+- Hypothesis: after current-M16 dV/dK D0/D1 MMAC consumes its normal-source
+  VGPRs, reuse those dead slots for the next M16 score D0/D1 transpose reads.
+  Issue them before current D2/D3 MMAC, retire current D2/D3 with
+  `lgkmcnt(4)`, and forbid prefetch across HeadFilled/TailFilled boundaries.
+- Static proof: 60 exact
+  `normal4 -> MMAC8 -> next-trans4 -> wait4 -> MMAC8` sequences; branch use
+  `32/156/156/156`; private0, SGPR53, VGPR128, spill0, scratch0, real trap0.
+  No phase, fallback, extra buffer, extra GEMM, or ownership change was added.
+- Correctness/resource proof: S384 PASS; two stats S768 runs and one fullperf
+  S768 run PASS; `ldsBankConflict=0`. Dynamic MMOP/VALU/SCA/LDS/VMEM/FLAT is
+  exactly unchanged at `46,080/41,314/15,014/28,316/1,152/798`.
+- Repeated stats improve about `1.94%..2.08%`. Fullperf kernel ticks improve
+  `34,951,735 -> 34,372,975` (`-1.656%`). PMD `waitLgkmCounter` falls
+  `12,106 -> 10,836.75` (`-10.48%`) and barrier falls `1.67%`.
+- XCU dispatch duration improves `76,820 -> 75,548`. Hot `s_waitcnt` latency
+  falls `1,193,416 -> 1,115,532`; `MMAC -> s_waitcnt` bubble duration falls
+  `151,672 -> 114,264` (`-24.66%`). Same-SIMD MMAC+VALU coissue rises
+  `1,881 -> 2,397` (`+27.43%`).
+- Native MMAC active falls slightly `39.5157% -> 39.2884%`; do not describe
+  this as an active-share promotion. The candidate wins on exact-work ticks
+  with direct readiness/coissue evidence, so it is accepted while the 50%
+  MMAC-active goal remains open.
+- Evidence: workbook `157_DKV_NextM16Prefetch`; remote fullperf
+  `/zys/shaobo_runs/dkv_next_m16_prefetch_s768_fullperf_retry/`
+  `dkv_mmac_correctness_20260719_142126`.

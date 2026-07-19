@@ -1,5 +1,38 @@
 # Source Status
 
+## 2026-07-19 Canonical dKV Next-M16 Score Prefetch
+
+Status: `ACCEPT_LATENCY_HIDING_SAME_EXACT_WORK`.
+
+- Canonical dKV keeps the accepted causal `Mq=Nk=192,D=128`, one-producer /
+  three-consumer ownership, seven ABarrier IDs, and exact four-GEMM DAG. The
+  only change reuses dead current-M16 normal-source VGPRs to prefetch the next
+  M16 score D0/D1 transpose fragments under the current dV/dK MMAC8 island.
+- Generated ASM contains 60 exact
+  `normal4 -> MMAC8 -> next-trans4 -> lgkmcnt(4) -> MMAC8` patterns and never
+  prefetches across the HeadFilled/TailFilled ownership boundary. Branch use
+  remains `32/156/156/156`; metadata remains private/spill/scratch0 with
+  SGPR53/VGPR128 and real `s_trap=0`.
+- S384 and three S768 runs pass dK/dV correctness with
+  `ldsBankConflict=0`. Dynamic work is identical to the causal control:
+  MMOP/VALU/SCA/LDS/VMEM/FLAT is
+  `46,080/41,314/15,014/28,316/1,152/798`.
+- Fullperf S768 ticks improve `34,951,735 -> 34,372,975` (`-1.656%`).
+  `waitLgkmCounter` falls `12,106 -> 10,836.75` (`-10.48%`), and xcu reduces
+  `MMAC -> s_waitcnt` bubble duration `151,672 -> 114,264` (`-24.66%`).
+  Same-SIMD MMAC+VALU coissue rises `1,881 -> 2,397` (`+27.43%`).
+- Native MMAC active slips `39.5157% -> 39.2884%` (`-0.2273 pp`), so this is
+  accepted as a ticks/readiness/coissue improvement, not as completion of the
+  50% active target. Terminal AllDone waits remain excluded from the critical
+  optimization attribution; the next hypothesis must target ordinary
+  ownership/readiness or the serialized output tail.
+- Evidence: workbook sheet `157_DKV_NextM16Prefetch`; remote run
+  `/zys/shaobo_runs/dkv_next_m16_prefetch_s768_fullperf_retry/`
+  `dkv_mmac_correctness_20260719_142126`; shared archive
+  `/共享/shaobo/perf/20260719_142126_dkv_next_m16_prefetch_h1s768_sqc7_fullperf`.
+- Preserve this accepted state as tag
+  `best/dkv-next-m16-prefetch-20260719`.
+
 ## 2026-07-19 Canonical dKV Causal Q-Start
 
 Status: `ACCEPT_ALGORITHM_CAUSAL_ZERO_WORK_PRUNE`.
@@ -20,9 +53,9 @@ Status: `ACCEPT_ALGORITHM_CAUSAL_ZERO_WORK_PRUNE`.
   `43.7836%` is expected because the old trace counted invalid triangular
   MMAC. Workbook sheet `156_DKV_CausalQStart` contains the normalization and
   critical-CTA XCU proof.
-- Preserve this state as tag `best/dkv-causal-qstart-20260719`. The next dKV
-  change must retain the triangular work count and target fixed ownership wait
-  or the global-store tail.
+- Preserve this state as tag `best/dkv-causal-qstart-20260719`; it is the
+  control for the accepted next-M16 prefetch successor. Do not restore invalid
+  causal work to inflate MMAC active.
 
 ## 2026-07-17 Current Canonical After EBarrier Filled Rejection
 

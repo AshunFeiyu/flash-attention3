@@ -344,6 +344,39 @@ __device__ __forceinline__ void ds_read_matrix_32x16_trans_dual_base_imm4(
 #endif
 }
 
+template <int LdsOffset0, int LdsOffset1>
+__device__ __forceinline__ void ds_read_matrix_32x16_trans_dual_base_imm2(
+    const __half* lhs_lds,
+    const __half* rhs_lds,
+    Vec8F16& lhs0,
+    Vec8F16& rhs0,
+    Vec8F16& lhs1,
+    Vec8F16& rhs1) {
+    static_assert(LdsOffset0 >= 0 && LdsOffset0 < (1 << 16) &&
+                      LdsOffset1 >= 0 && LdsOffset1 < (1 << 16),
+                  "DS matrix-read immediate must fit the byte offset field");
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const int lhs_addr = static_cast<int>(reinterpret_cast<size_t>(lhs_lds));
+    const int rhs_addr = static_cast<int>(reinterpret_cast<size_t>(rhs_lds));
+    asm volatile(
+        "ds_read_matrix_trans_format %0, %4 offset:%6 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %1, %5 offset:%6 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %2, %4 offset:%7 element:0x2 row:0x2 col:0x1 alt:0x0\n\t"
+        "ds_read_matrix_trans_format %3, %5 offset:%7 element:0x2 row:0x2 col:0x1 alt:0x0\n"
+        : "=v"(lhs0), "=v"(rhs0), "=v"(lhs1), "=v"(rhs1)
+        : "s"(lhs_addr), "s"(rhs_addr), "n"(LdsOffset0),
+          "n"(LdsOffset1)
+        : "memory");
+#else
+    (void)lhs_lds;
+    (void)rhs_lds;
+    lhs0 = {};
+    rhs0 = {};
+    lhs1 = {};
+    rhs1 = {};
+#endif
+}
+
 __device__ __forceinline__ void ds_write_matrix_32x16_f16(
     Vec8F16 frag,
     __half* lds,

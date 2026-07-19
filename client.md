@@ -38,6 +38,15 @@ evidence are required before any performance claim.
 
 ## Current dKV State
 
+- Current accepted best is the causal next-M16 score-half prefetch successor.
+  It keeps exact MMOP `46,080` and all dynamic instruction counts unchanged,
+  but reuses dead source VGPRs to issue four next-M16 transpose reads under
+  the current dV/dK MMAC8 island. S768 fullperf ticks improve
+  `34,951,735 -> 34,372,975` (`-1.656%`), waitLgkm falls `10.48%`, and xcu
+  MMAC+VALU coissue rises `27.43%`; correctness, spill0 and bank0 pass. MMAC
+  active is `39.2884%`, so the 50% target remains open. Workbook:
+  `157_DKV_NextM16Prefetch`.
+
 - 2026-07-19 output-epilogue probe: the official B16 matrix-store builtin has
   now been tested with the full Wiki-documented ABarrier lifecycle.  A single
   32x16 store still commits only rows0..16 on PMD.  Missing barrier init is
@@ -3836,3 +3845,44 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `dcu-kernel-optimization` during a later consolidation round; keep it only
   in this handoff until then.
+
+## 2026-07-19 Next-M16 Score Prefetch
+
+- Status: `ACCEPT_LATENCY_HIDING_SAME_EXACT_WORK`.
+- The producer/consumer ownership, causal domain, ABarrier topology, matrix
+  path, formulas, output epilogue, and instruction counts are unchanged. The
+  consumer overwrites dead current-M16 D0/D1 normal-source VGPRs with next-M16
+  score D0/D1 transpose fragments, then executes current D2/D3 after
+  `lgkmcnt(4)`. Prefetch is statically forbidden across Head/Tail ownership.
+- ASM proves 60 instances of
+  `normal4 -> MMAC8 -> next-trans4 -> wait4 -> MMAC8`; branch use stays
+  `32/156/156/156`, metadata stays private/spill/scratch0, and S384 plus three
+  S768 correctness runs pass with bank0.
+- Fullperf evidence: ticks `-1.656%`, waitLgkm `-10.48%`, xcu
+  MMAC-to-wait bubble `-24.66%`, and same-SIMD MMAC+VALU coissue
+  `1,881 -> 2,397`. MMAC active falls `0.2273 pp`, so record the change as
+  better latency hiding rather than an active-share win.
+- Evidence root:
+  `/zys/shaobo_runs/dkv_next_m16_prefetch_s768_fullperf_retry/`
+  `dkv_mmac_correctness_20260719_142126`.
+
+### Skill Candidate
+
+- Trigger / 适用场景: a tiled GEMM pipeline where the next tile needs the same
+  source-register slots immediately after the current tile's first MMAC half.
+- Rule / 可复用规则: draw the outstanding-read and VGPR-death ledger, then
+  issue only the next tile's oldest operand half into proven-dead slots under
+  current useful MMAC; use a bounded partial wait and restart at ownership
+  boundaries.
+- Evidence / 证据: workbook sheet `157_DKV_NextM16Prefetch`, S768 exact-work
+  ticks `34,951,735 -> 34,372,975`, waitLgkm `-10.48%`, xcu MMAC+VALU
+  coissue `+27.43%`, correctness PASS, spill0 and bank0.
+- Boundary / 适用边界: requires deterministic LDS issue order, dead source
+  VGPRs, enough outstanding-read capacity, and compile-time ownership
+  boundaries. Static ASM must prove the intended ordering.
+- Counterexample / 反例或不适用情况: full `wait0` before a long MMAC island,
+  prefetch across a Filled/Used generation, compiler-retained source
+  lifetimes, or layouts where the prefetched fragment aliases a live value.
+- Proposed Target / 建议进入哪个 skill 或 reference: project-local `shaobo`
+  reference first; propose the generic dead-slot prefetch rule to
+  `dcu-kernel-optimization` only during a coordinated consolidation round.
