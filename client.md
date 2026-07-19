@@ -4050,3 +4050,22 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - Next: write the exact canonical ownership/page-generation contract, then
   integrate one dKV kernel.  Do not add a phase switch or promote the probe
   itself.
+
+## 2026-07-20 Dual Canonical Baseline
+
+- Active branch: `work/dual-canonical-best-20260720`.
+- Canonical dKV source: tag `best/dkv-three-m64-lifetimes-20260719`,
+  `Mq192/Nk192`, 1P3C, three M64 raw lifetimes, accepted fullperf
+  `33,135,830` ticks and `41.1992%` MMAC active at H1/S768.
+- Canonical dQ source: tag `best/dq-c1-kread-stagger-20260720`,
+  `Mq128/Nk128`, 2P2C, C1-only useful K-read stagger, repeated fullperf
+  `24,279,710/24,438,505` ticks and `34.0720%/34.0778%` MMAC active at
+  H1/S1024.
+- Fresh correctness recertification passes dKV S384/S768 and dQ S128/S1024;
+  all four runs have bank conflict zero. Static gates remain
+  private/spill/scratch zero.
+- Build rule: use `SHAOBO_RUN_ON_MODEL=1`. Runtime rule: point `ROCM_PATH`,
+  `PMD_PATH`, and `SOC_PATH` at the same HEAD1694 PMD sidecar tree. Do not mix
+  the latest compiler output with the old HEAD1668 runtime library.
+- M128 dKV `64+32+32` remains a no-tail control, not the canonical steady
+  pipeline: native owner16 maps it to only eight useful heavy waves.

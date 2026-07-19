@@ -14770,6 +14770,27 @@ but keep M192 next-M16 prefetch as the accepted performance source.
   reference first; propose the logical-versus-physical ownership check to
   `dcu-kernel-optimization` during a governed consolidation round.
 
+## 2026-07-20 Dual Canonical Best Reconciliation
+
+- Hypothesis: the clean branch had diverged from the independently measured
+  best dKV and dQ sources, so further tuning risked comparing the wrong code.
+- Change: restore the dKV source exactly from
+  `best/dkv-three-m64-lifetimes-20260719` and the dQ source exactly from
+  `best/dq-c1-kread-stagger-20260720`; do not add a phase, dispatch, or
+  alternate kernel.
+- Static result: dKV roles `31/156/156/156`; dQ roles `8/159/9/159` in the
+  branch report; both have private/spill/scratch zero, native matrix paths,
+  and no executable trap when built with `SHAOBO_RUN_ON_MODEL=1`.
+- Correctness result: dKV H1/S384 and H1/S768 PASS; dQ H1/S128 and H1/S1024
+  PASS. Bank conflict is zero in every recertification run.
+- PMD result: dKV S768 kernel ticks `33,104,435`, exact MMOP `46,080`,
+  coissue `11,693/9,716`; dQ S1024 kernel ticks `24,786,125`, exact MMOP
+  `50,688`, coissue `11,787/10,476`. These stats-only recerts confirm source
+  integrity; promotion metrics remain the archived fullperf values.
+- Decision: `ACCEPT_GOVERNANCE_DUAL_BASELINE`. Keep M128 `64+32+32` as the
+  tail-free comparison only. Continue structural optimization from this
+  single reconciled source, one hypothesis per branch.
+
 ## 2026-07-20 Owner16 Four-Consumer Resource Probe Accepted
 
 Status: `ACCEPT_RESOURCE_GATE`; no canonical performance claim.

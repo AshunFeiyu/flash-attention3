@@ -1,5 +1,37 @@
 # Source Status
 
+## 2026-07-20 Dual Canonical Best Reconciliation
+
+Status: `ACCEPT_GOVERNANCE_DUAL_BASELINE`; one clean branch now contains the
+independently verified best dKV and dQ sources without adding a phase or a new
+kernel path.
+
+- Branch `work/dual-canonical-best-20260720` takes the dKV contract, gate, and
+  kernel exactly from tag `best/dkv-three-m64-lifetimes-20260719`, and the dQ
+  kernel exactly from tag `best/dq-c1-kread-stagger-20260720`.
+- dKV remains exact-work `Mq192/Nk192/D128`, one producer plus three heavy
+  consumers, with one physical Q/dO page split into three M64 ownership
+  lifetimes. Fresh PMD HEAD1694 recertification passes H1/S384 and H1/S768;
+  S768 reports kernel ticks `33,104,435`, MMOP `46,080`, coissue
+  `11,693/9,716`, and bank conflict zero. The accepted fullperf reference is
+  `33,135,830` ticks and `41.1992%` MMAC active.
+- dQ remains exact-work `Mq128/Nk128/D128`, two producers plus two symmetric
+  64-row consumers. C0 keeps the canonical cadence while C1 moves its existing
+  K-normal reads before softmax/dS. Fresh recertification passes H1/S128 and
+  H1/S1024; S1024 reports kernel ticks `24,786,125`, MMOP `50,688`, coissue
+  `11,787/10,476`, and bank conflict zero. The accepted repeated fullperf
+  reference is `24,279,710/24,438,505` ticks and
+  `34.0720%/34.0778%` MMAC active.
+- Both static gates pass with private/spill/scratch zero and executable
+  `s_trap=0`. Build with `SHAOBO_RUN_ON_MODEL=1` so the latest compiler emits
+  the guarded WDRA init/run-on-model sequence. At PMD runtime set `ROCM_PATH`
+  to `/zys/shaobo/toolchains/pmd_20260717`; otherwise the old HEAD1668
+  `libgem5.so` may be loaded and fail the current ASTCA ABI before kernel code.
+- The M128 logical `64+32+32` dKV topology stays an isolated tail-free control.
+  Its M32 owners map to two waves each, so it has `4+2+2=8` heavy waves rather
+  than three full four-wave consumers. Expanding them to twelve heavy waves
+  would execute 50% redundant MMAC.
+
 ## 2026-07-20 dKV Owner16 Four-Consumer Full Integration Rejected
 
 Status: `REJECT_STATIC_RESOURCE`; canonical performance source remains the

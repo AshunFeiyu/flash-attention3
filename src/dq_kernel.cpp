@@ -311,20 +311,16 @@ __device__ __forceinline__ void dq_store_m16_full_d_to_global(
 }
 
 template <typename Tile>
-__device__ __forceinline__ void dq_update_from_ds_pair(
+__device__ __forceinline__ void dq_read_k_normal_pair(
     const __half* __restrict__ lds,
     int page,
     int n_tile,
-    const ins::Vec4F16& ds_vec0,
-    const ins::Vec4F16& ds_vec1,
-    ins::F32x4 (&dq_reg)[8]) {
+    ins::F16x8 (&k_norm0)[Tile::kHeadDim / 32],
+    ins::F16x8 (&k_norm1)[Tile::kHeadDim / 32]) {
     constexpr int MatrixBlockBytes = DqLdsLayout<Tile>::kMatrixBlockBytes;
     const __half* k_lds =
         lds + DqLdsLayout<Tile>::kPageKBase(page) / sizeof(__half);
 
-    ins::raise_priority_2();
-    ins::F16x8 k_norm0[Tile::kHeadDim / 32];
-    ins::F16x8 k_norm1[Tile::kHeadDim / 32];
 #pragma unroll
     for (int d_block = 0; d_block < Tile::kHeadDim / 32; ++d_block) {
         const int block = n_tile * (Tile::kHeadDim / 32) + d_block;
@@ -332,6 +328,15 @@ __device__ __forceinline__ void dq_update_from_ds_pair(
             k_lds, block * MatrixBlockBytes,
             k_norm0[d_block].f16x8, k_norm1[d_block].f16x8);
     }
+}
+
+template <typename Tile>
+__device__ __forceinline__ void dq_update_from_ds_pair(
+    const ins::Vec4F16& ds_vec0,
+    const ins::Vec4F16& ds_vec1,
+    const ins::F16x8 (&k_norm0)[Tile::kHeadDim / 32],
+    const ins::F16x8 (&k_norm1)[Tile::kHeadDim / 32],
+    ins::F32x4 (&dq_reg)[8]) {
     ins::wait_lgkm(4);
 
 #pragma unroll
@@ -367,7 +372,6 @@ __device__ __forceinline__ void dq_update_from_ds_pair(
             ins::mmac_f16_lit(ds_vec1, k_norm1[d_block].f16x4[1],
                               dq_reg[d_block * 2 + 1].f32);
     }
-    ins::lower_priority();
 }
 
 template <typename Bar>
@@ -388,6 +392,7 @@ __device__ __forceinline__ void dq_arrive_qdo_latched();
 template <typename Tile,
           typename Bar,
           bool UsePageBarriers,
+          int ConsumerGroup,
           bool BoundaryKTile>
 __device__ __forceinline__ void dq_compute_pages_from_latched(
     const __half* __restrict__ lds,
@@ -520,6 +525,13 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
         }
         ins::lower_priority();
 
+        ins::F16x8 k_norm0[KBlocks];
+        ins::F16x8 k_norm1[KBlocks];
+        if constexpr (ConsumerGroup == 1) {
+            dq_read_k_normal_pair<Tile>(
+                lds, page, n_tile, k_norm0, k_norm1);
+        }
+
         ins::Vec4F16 ds_vec0;
         ins::Vec4F16 ds_vec1;
         if (!n_tile_full_valid) {
@@ -571,15 +583,21 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
                 ds_vec1[vec_id] = static_cast<_Float16>(ds_value1);
             }
         }
+        ins::raise_priority_2();
+        if constexpr (ConsumerGroup == 0) {
+            dq_read_k_normal_pair<Tile>(
+                lds, page, n_tile, k_norm0, k_norm1);
+        }
         dq_update_from_ds_pair<Tile>(
-            lds, page, n_tile, ds_vec0, ds_vec1, dq_reg);
+            ds_vec0, ds_vec1, k_norm0, k_norm1, dq_reg);
+        ins::lower_priority();
     }
     if constexpr (UsePageBarriers) {
         dq_arrive_page_used<Bar>(page);
     }
 }
 
-template <typename Tile, typename Bar, bool UsePageBarriers>
+template <typename Tile, typename Bar, bool UsePageBarriers, int ConsumerGroup>
 __device__ __forceinline__ void dq_compute_pages_from_latched(
     const __half* __restrict__ lds,
     int q_base_tile,
@@ -598,13 +616,15 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
     ins::F32x4 (&dq_reg)[8]) {
 #pragma clang loop unroll(disable)
     for (int kt = 0; kt + 1 < active_k_tiles; ++kt) {
-        dq_compute_pages_from_latched<Tile, Bar, UsePageBarriers, false>(
+        dq_compute_pages_from_latched<
+            Tile, Bar, UsePageBarriers, ConsumerGroup, false>(
             lds, q_base_tile, local_m16, row_max, row_sum, row_delta,
             q_reg, dout_reg, softmax_scale, softmax_scale_log2, kt,
             filled_phase0, filled_phase1, mmac_zero, dq_reg);
     }
     if (active_k_tiles > 0) {
-        dq_compute_pages_from_latched<Tile, Bar, UsePageBarriers, true>(
+        dq_compute_pages_from_latched<
+            Tile, Bar, UsePageBarriers, ConsumerGroup, true>(
             lds, q_base_tile, local_m16, row_max, row_sum, row_delta,
             q_reg, dout_reg, softmax_scale, softmax_scale_log2,
             active_k_tiles - 1, filled_phase0, filled_phase1, mmac_zero,
@@ -677,7 +697,7 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
     }
     ins::F32x4 mmac_zero;
     dq_zero_f32x4(mmac_zero);
-    dq_compute_pages_from_latched<Tile, Bar, true>(
+    dq_compute_pages_from_latched<Tile, Bar, true, ConsumerGroup>(
         lds, q_base_tile, local_m16, row_max, row_sum, row_delta,
         q_reg, dout_reg, softmax_scale, softmax_scale_log2, active_k_tiles,
         filled_phase0, filled_phase1, mmac_zero, dq_reg);

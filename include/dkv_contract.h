@@ -9,17 +9,16 @@ inline constexpr int kDkvPathCanonicalDkv = 5;
 
 struct ActiveDkvTile {
     static constexpr int kHeadDim = 128;
-    static constexpr int kBlockMq = 128;
-    static constexpr int kHeadReadyMq = 64;
-    static constexpr int kTailReadyMq = kBlockMq - kHeadReadyMq;
+    static constexpr int kBlockMq = 192;
+    static constexpr int kRawRegionMq = 64;
+    static constexpr int kHeadReadyMq = kRawRegionMq;
+    static constexpr int kMiddleReadyMq = kRawRegionMq;
+    static constexpr int kTailReadyMq = kRawRegionMq;
     static constexpr int kNkPerConsumerWave = 16;
-    static constexpr int kConsumerGroups = 2;
+    static constexpr int kConsumerGroups = 3;
     static constexpr int kWavesPerConsumerGroup = 4;
     static constexpr int kConsumerWaves =
         kConsumerGroups * kWavesPerConsumerGroup;
-    static constexpr int kLogicalConsumer0Rows = 64;
-    static constexpr int kLogicalConsumer1Rows = 32;
-    static constexpr int kLogicalConsumer2Rows = 32;
     static constexpr int kResidentNk =
         kNkPerConsumerWave * kConsumerWaves;
     static constexpr int kWaveSize = 64;
@@ -73,19 +72,17 @@ struct ActiveDkvTile {
 
     static_assert(kBlockMq % kWaveSize == 0,
                   "sidecar publisher requires complete 64-row wave stripes");
+    static_assert(kHeadReadyMq + kMiddleReadyMq + kTailReadyMq == kBlockMq,
+                  "three raw lifetimes must cover BlockMq exactly");
     static_assert(kHeadReadyMq % kWaveSize == 0 &&
+                      kMiddleReadyMq % kWaveSize == 0 &&
                       kTailReadyMq % kWaveSize == 0,
-                  "head and tail readiness must use complete wave stripes");
+                  "raw readiness regions must use complete wave stripes");
     static_assert(kBlockMq <= 4 * kWaveSize,
                   "four producer waves must cover one sidecar packet");
-    static_assert(kLogicalConsumer0Rows + kLogicalConsumer1Rows +
-                          kLogicalConsumer2Rows ==
-                      kResidentNk,
-                  "logical 64/32/32 ownership must cover Nk exactly");
-    static_assert(kResidentNk == 128,
-                  "owner16 physical 2P2C tile expects Nk=128");
-    static_assert(kKvBytes == 64 * 1024,
-                  "resident K/V startup epoch must occupy exactly 64KB");
+    static_assert(kResidentNk == 192, "owner16 1P+3C tile expects Nk=192");
+    static_assert(kKvBytes == 96 * 1024,
+                  "resident K/V startup epoch must occupy exactly 96KB");
     static_assert(kTotalMmacPerConsumer == 2 * kBlockMq,
                   "dKV consumer MMAC count should scale with BlockMq");
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
@@ -97,9 +94,11 @@ struct DkvBarrierLedger {
     static constexpr int kResidentUsed = 1;
     static constexpr int kRawHeadFilled = 2;
     static constexpr int kRawHeadUsed = 3;
-    static constexpr int kRawTailFilled = 4;
-    static constexpr int kRawTailUsed = 5;
-    static constexpr int kAllDone = 6;
+    static constexpr int kRawMiddleFilled = 4;
+    static constexpr int kRawMiddleUsed = 5;
+    static constexpr int kRawTailFilled = 6;
+    static constexpr int kRawTailUsed = 7;
+    static constexpr int kAllDone = 8;
 };
 
 struct OptimizationTargets {
