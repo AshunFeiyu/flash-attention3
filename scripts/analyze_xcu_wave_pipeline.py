@@ -22,18 +22,18 @@ class Event:
 def category(row: dict[str, str]) -> str:
     opcode = row["Opcode"]
     group = row["Group"]
-    if group == "MMOP" or opcode.startswith("v_mmac"):
+    if group in {"MMOP", "MMAC"} or opcode.startswith(("v_mmac", "mmop_")):
         return "MMAC"
     if opcode.startswith("s_waitcnt"):
         return "WAIT"
     if "abarrier" in opcode or opcode == "s_barrier":
         return "BARRIER"
-    if group.startswith("Vector"):
+    if group.startswith(("Vector Memory", "Global")):
+        return "VMEM"
+    if group == "VALU" or group.startswith("Vector"):
         return "VALU"
     if group.startswith("LDS"):
         return "LDS"
-    if group.startswith("Global"):
-        return "VMEM"
     return "OTHER"
 
 
@@ -83,9 +83,14 @@ def peer_vector_opcode(peers: str) -> list[str]:
         return []
     found: list[str] = []
     for peer in peers.split(";"):
-        if ":Vector " not in peer:
+        fields = peer.rsplit(":", 2)
+        if len(fields) != 3:
             continue
-        found.append(peer.rsplit(":", 1)[-1].strip())
+        group = fields[1].strip()
+        if group != "VALU" and not (
+                group.startswith("Vector") and not group.startswith("Vector Memory")):
+            continue
+        found.append(fields[2].strip())
     return found
 
 
