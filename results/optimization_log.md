@@ -1,5 +1,22 @@
 # Optimization Log
 
+## 2026-07-20 dKV Owner16 Four-Consumer Full Integration Rejected
+
+- Status: `REJECT_STATIC_RESOURCE`.
+- Hypothesis: four exact owner16 groups could extend the passing resource and
+  lifecycle probes into one full `Mq64/Nk256/D128` dKV kernel, with all 16
+  waves doing unique score/dP/dV/dK work.
+- Build result: branch allocation is `128/128/128/128`, but kernel metadata
+  is private468B, SGPR88, VGPR128, VGPR spill971. LDS remains 131072B and the
+  static native matrix-path/topology gate passes.
+- Root cause: the focused probe omitted complete-FA transient live ranges.
+  Persistent K/V plus dK/dV accumulation fit, but score/dP operands,
+  softmax/dS fragments, page-control state and output state do not fit in
+  the remaining 32 VGPR per role.
+- Decision: stop before PMD correctness/perf, remove the failed canonical
+  code, and preserve only this evidence. M128 `64/32/32` remains the exact
+  tail-free control; it does not by itself create three full consumers.
+
 ## 2026-07-20 dKV Owner16 Four-Consumer Lifecycle Gate
 
 - Status: `ACCEPT_OWNERSHIP_LIFECYCLE_GATE`.

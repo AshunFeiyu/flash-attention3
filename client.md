@@ -1,5 +1,19 @@
 # Client
 
+## 2026-07-20 Owner16 Four-Consumer Full-Kernel Verdict
+
+- Reject the current `Mq64/Nk256` four-heavy-group integration at the static
+  resource gate: all four branches consume their full 128-VGPR windows, yet
+  the complete kernel still emits `468B` private storage and `971` VGPR
+  spills. No correctness/performance claim is allowed.
+- The focused resource/lifecycle probes are still useful instruction and
+  ownership proofs; they were insufficient predictors of the complete FA
+  live range.
+- Keep M128 `C0=64,C1=32,C2=32` as the exact no-tail control. It is not a
+  physical 1P3C schedule: owner16 maps it to eight heavy waves. A future
+  physical remap must preserve exact MMAC and fit the complete live set,
+  including transient matrix sources and the store epilogue.
+
 ## 2026-07-20 Owner16 Four-Consumer Canonical Contract
 
 - `M128=64+32+32` remains the exact tail-free control, not a true physical

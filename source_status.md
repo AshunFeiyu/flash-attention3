@@ -1,5 +1,25 @@
 # Source Status
 
+## 2026-07-20 dKV Owner16 Four-Consumer Full Integration Rejected
+
+Status: `REJECT_STATIC_RESOURCE`; canonical performance source remains the
+accepted exact-work M192 branch, with M128 `64/32/32` retained as the
+tail-free control.
+
+- The full `Mq64/Nk256/D128` four-group kernel compiled with four symmetric
+  `128 VGPR` WDRA branches, but metadata reported `private_segment=468B` and
+  `vgpr_spill_count=971`. No correctness or PMD performance run was admitted.
+- The resource and lifecycle probes remain valid focused evidence. They do
+  not include the complete simultaneous score/dP, softmax/dS, dV/dK source,
+  double-page control, and final-store live ranges of the FA kernel.
+- This rejects the present four-heavy-group mapping, not M128. The exact
+  M128 split `64+32+32` still removes the tail and passes all hard gates, but
+  native owner16 granularity maps it to `4+2+2=8` heavy waves rather than
+  three full four-wave consumers.
+- Do not increase four symmetric role windows above 128: their per-SIMD sum
+  is already `4*128=512`. Any retry must first reduce the complete-kernel
+  peak live set on paper and in ASM, not merely enlarge WDRA metadata.
+
 ## 2026-07-20 dKV Owner16 Four-Consumer Lifecycle Gate
 
 Status: `ACCEPT_OWNERSHIP_LIFECYCLE_GATE`; full FA integration pending.
