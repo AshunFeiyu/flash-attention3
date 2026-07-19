@@ -1,5 +1,26 @@
 # Source Status
 
+## 2026-07-19 dQ Next-N32 Head Prefetch Rejected
+
+Status: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- The candidate kept the canonical `Mq128/Nk128/D128` 2P+2C topology,
+  formula DAG, matrix-read count, MMAC count, and ABarrier ownership. It moved
+  the next N32 D0/D1 score+dP reads under the current dQ tail MMAC.
+- S128/S1024 correctness, private/spill/scratch0, and bank0 passed. S1024
+  `waitLgkmCounter` improved `16,181.25 -> 14,022.25` (`-13.34%`).
+- The loop-carried operand state fragmented static MMAC islands
+  `72 -> 129`, raised singleton islands `8 -> 58`, added
+  `5,808 VALU` and `784 SCA`, and regressed ticks
+  `24,585,015 -> 24,666,005` (`+0.329%`). MMAC active fell
+  `33.3848% -> 32.7367%`.
+- Reject this source form and skip fullperf. The valid lesson is narrower:
+  LDS-wait hiding is useful only when implemented without loop-carried VGPR
+  moves/control that break the compact MMAC island.
+- Evidence: workbook sheet `159_DQ_NextN32Prefetch`; remote runs
+  `/zys/shaobo_runs/dq_next_n32_head_prefetch_a6_s128/`
+  and `/zys/shaobo_runs/dq_next_n32_head_prefetch_a6_s1024/`.
+
 ## 2026-07-19 Canonical dQ M128 Two-Producer Restore
 
 Status: `ACCEPT_CANONICAL_GOVERNANCE_RESTORE`.

@@ -1,5 +1,18 @@
 # Client
 
+## 2026-07-19 dQ Next-N32 Prefetch Verdict
+
+- The canonical M128 2P2C dQ path was tested with next-N32 score/dP head reads
+  issued under the current dQ tail MMAC. It passed S128/S1024 correctness,
+  no-spill/private/scratch, and bank0.
+- The intended local mechanism worked: `waitLgkm` fell `13.34%` and coissue
+  success rose `10.49%`. The implementation nevertheless regressed S1024
+  ticks `0.329%` because MMAC runs fragmented `72 -> 129`, while VALU/SCA rose
+  `8.52%/1.88%`; MMAC active fell `0.6481 pp`.
+- Decision: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`. Do not carry
+  matrix operands through the runtime N32 loop. A retry must use a fixed,
+  compile-time pair schedule that preserves compact MMAC islands before PMD.
+
 ## Mission
 
 Build clean Shaobo FA3 BWD kernels in the FA3 FWD style.  The current preserved

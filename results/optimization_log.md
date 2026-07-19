@@ -14552,3 +14552,24 @@ Status: `ACCEPT_CANONICAL_GOVERNANCE_RESTORE`.
   `/zys/shaobo_runs/dq_mq128_restore_a6_s1024_fullperf/`
   `dq_correctness_20260719_154801`; shared archive
   `/共享/shaobo/perf/20260719_154801_dq_mq128_restore_a6_h1s1024_sqc7_fullperf`.
+
+## 2026-07-19 dQ Next-N32 Head Prefetch Rejected
+
+- Hypothesis: reuse dead current-N32 score/dP operand space to issue the next
+  N32 D0/D1 transpose reads under current dQ D2/D3 MMAC, preserving the exact
+  M128 2P2C DAG, 400 matrix reads, 768 static MMAC, and PageUsed ledger.
+- Static/resource gates passed (`8/173/193/9`, private/spill/scratch0), and
+  S128/S1024 correctness passed with bank0. PMD HEAD1694 used the accepted old
+  LLVM a6 compiler and SQ7.
+- Result: kernel ticks `24,585,015 -> 24,666,005` (`+0.329%`), MMAC active
+  `33.384755% -> 32.736682%`, waitLgkm
+  `16,181.25 -> 14,022.25` (`-13.34%`), barrier
+  `47,387.25 -> 46,706.25`, and coissue success/fail
+  `15,623/13,813 -> 17,262/14,897`.
+- Root cause: carrying the prefetched head through the unrolled N32 loop
+  increased static VALU `1,684 -> 2,092` and SALU `821 -> 935`; dynamic VALU
+  rose `68,144 -> 73,952` and SCA `41,772 -> 42,556`. MMAC runs fragmented
+  `72 -> 129`, with singleton runs `8 -> 58`.
+- Decision: `REJECT_STATS_TICKS_REGRESSION_SOURCE_RESTORED`; no fullperf/xcu.
+  The next legal retry must specialize a fixed N32 pair at compile time and
+  prove island preservation in ASM before PMD.
