@@ -9024,3 +9024,25 @@ Status: `ACCEPT_FOCUSED_INSTRUCTION_CONTROL`; canonical performance is pending.
 - Evidence:
   `/zys/shaobo_runs/dkv_b16_direct_store_probe_builtin/`
   `run_20260719_104409`.
+
+## 2026-07-19 dKV C1 Canonical Performance Rejected
+
+Status: `REJECT_PERF_VALID_FUNCTION`; canonical source restored to FP32 output.
+
+- Full-kernel FP16 output is numerically valid at S384 and S768 and retains
+  private/spill/scratch0, exact MMOP73,728, bank0, and the native
+  MLS/BPS+`ds_read_matrix`+MMAC path.
+- The S768 output data-cycle counter improves `12,288 -> 6,144`, but the
+  compiler emits enough FP32-to-FP16 conversion work to raise dynamic VALU
+  `80,272 -> 81,904`.
+- Against the accepted latest-pair control, ticks regress
+  `35,707,035 -> 35,834,435` (`+0.357%`) and aggregate MMAC active falls
+  `43.7836% -> 43.6662%`.  C1 therefore does not address the current critical
+  path despite reducing output bandwidth.
+- ABarrier entry initialization is not implicated: canonical dKV already uses
+  the Wiki-required init visibility and pre-invalidate synchronization.  The
+  latest compiler route separately emits explicit WDRA init through
+  `SHAOBO_RUN_ON_MODEL=1`; these contracts must remain distinct.
+- Evidence:
+  `/zys/shaobo_runs/dkv_b16_direct_canonical_s768/`
+  `dkv_mmac_correctness_20260719_105832`.

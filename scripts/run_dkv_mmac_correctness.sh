@@ -23,6 +23,10 @@ python3 scripts/check_symbol_metadata_gate.py \
 case_id="dkv_mmac_correctness_$(date +%Y%m%d_%H%M%S)"
 case_dir="${SHAOBO_RUN_ROOT}/${case_id}"
 mkdir -p "${case_dir}"
+if [[ -n "${PMD_CONFIG_SEED:-}" ]]; then
+  mkdir -p "${case_dir}/m5out"
+  cp "${PMD_CONFIG_SEED}" "${case_dir}/m5out/config.ini"
+fi
 
 case_script="${case_dir}/run_case.sh"
 cat > "${case_script}" <<EOF

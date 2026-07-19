@@ -14387,3 +14387,25 @@ Status: `ACCEPT_PROBE`; canonical performance A/B pending.
   one-hypothesis branch and compare real dKV correctness, output bytes, ticks,
   and SQTT store bubbles against the accepted FP32 baseline.  Do not mix C2 or
   barrier changes into that branch.
+
+## 2026-07-19 dKV Output C1 Canonical A/B
+
+Status: `REJECT_PERF_VALID_FUNCTION`; restore the FP32 oracle epilogue.
+
+- The canonical A/B changed only dK/dV output dtype and store packing.  Tile,
+  MMAC work, role ownership, ABarrier protocol, and all matrix reads remained
+  unchanged.  S384 and S768 correctness pass with FP16 rounding; S768 dK/dV
+  relative L2 errors are `0.00230629 / 0.000396918`.
+- Hard gates pass: private/spill/scratch0, exact MMOP73,728, bank0, and the
+  native matrix path is unchanged.  Output data cycles halve
+  `12,288 -> 6,144`, but scalar FP32-to-FP16 packing raises dynamic VALU
+  `80,272 -> 81,904`.
+- Same-shape S768 kernel ticks regress `35,707,035 -> 35,834,435` (`+0.357%`)
+  and aggregate MMAC active falls `43.7836% -> 43.6662%`.  Successful
+  coissue also falls `22,104 -> 21,819`.
+- The direct FP16 path remains valid functional evidence, but it is not a
+  performance promotion.  Restore the FP32 control and inspect FWD/compiler
+  output for a native packed conversion before reopening this hypothesis.
+- Evidence:
+  `/zys/shaobo_runs/dkv_b16_direct_canonical_s768/`
+  `dkv_mmac_correctness_20260719_105832`.

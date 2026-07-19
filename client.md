@@ -3758,3 +3758,17 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - S768 nevertheless regressed `23,364,250 -> 25,837,175` ticks (`+10.58%`)
   and reduced coissue to `10,942/9,761`.  The experiment is rejected and its
   source removed; canonical dQ again has one K/V producer and one Filled token.
+
+## 2026-07-19 dKV FP16 Direct-Store Verdict
+
+- Canonical FP16 dK/dV output passes S384/S768 correctness and all resource,
+  native-instruction, and bank0 gates.  It halves output data cycles, but adds
+  `1,632` dynamic VALU conversions at S768.
+- Same-work ticks regress `35,707,035 -> 35,834,435` (`+0.357%`) and MMAC
+  active falls `43.7836% -> 43.6662%`; the FP16 epilogue is therefore valid
+  functionally but rejected as the current performance route.
+- Restore the accepted FP32 oracle epilogue.  Reopen FP16 only after static
+  ASM proves a native packed-conversion sequence with fewer VALU instructions.
+- ABarrier init and WDRA init are separate contracts.  The canonical dKV
+  ABarrier lifecycle already matches the DCU Wiki; the LLVM `7b796991` route
+  gets explicit WDRA init only through `SHAOBO_RUN_ON_MODEL=1`.
