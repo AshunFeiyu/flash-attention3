@@ -14350,3 +14350,40 @@ Status: `REJECT_SPLIT_FILLED_CONTROL_AND_READINESS_COST`; source restored.
 - Separate Filled generations solve the protocol legality problem but add
   readiness/control work and reduce useful overlap.  Reject consumer-assisted
   V prefetch for this tile and restore the canonical single producer path.
+
+## 2026-07-19 dKV Output C2 Minimal Matrix-Store Probe
+
+Status: `OBSERVE_BLOCKED_PMD_OR_LAYOUT_CONTRACT`; no canonical source change.
+
+- Hypothesis: the previous B16 matrix-store failure came from omitted ABarrier
+  initialization or from reusing the LDS page across several stores.
+- The probe was reduced to one MLS-direct control store and one writer-chain
+  store.  It uses the official HCU builtin and the Wiki-documented ABarrier
+  lifecycle, including entry init visibility and pre-invalidate convergence.
+- Static gates pass: writer1, store2, ABarrier init/seq/arrive/wait/inv
+  `1/2/2/2/1`, ebarrier sync3, trap0, private0, spill0, bank0.
+- Result: the control still has exactly 240 mismatches and first fails at
+  row17/col0; the writer chain has 503 mismatches.  Therefore ABarrier init is
+  necessary but does not explain the partial write, and the old multi-store
+  overwrite hypothesis is rejected.
+- Decision: keep C2 isolated, register PMD-005, and implement C1 packed FP16
+  direct global store as the next valid output-epilogue comparison.
+
+## 2026-07-19 dKV Output C1 Packed-FP16 Direct-Store Control
+
+Status: `ACCEPT_PROBE`; canonical performance A/B pending.
+
+- Implemented the real owner16 coordinate contract without matrix-store:
+  64 lanes cover `16x128`, FP32 values are packed four-at-a-time to FP16, and
+  each lane issues eight 64-bit vector stores.
+- Latest compiler static result: private0, spill0, VGPR16, eight
+  `global_store_dwordx2`, zero `global_store_dwordx4`, 32 FP32-to-FP16
+  conversions, and no `s_trap`.
+- PMD HEAD1694 result: 2,048/2,048 values exact, `ldsBankConflict=0`, status
+  PASS.  Run root:
+  `/zys/shaobo_runs/dkv_b16_direct_store_probe_builtin/`
+  `run_20260719_104409`.
+- Decision: C1 is the only admitted output-tail candidate.  Integrate it as a
+  one-hypothesis branch and compare real dKV correctness, output bytes, ticks,
+  and SQTT store bubbles against the accepted FP32 baseline.  Do not mix C2 or
+  barrier changes into that branch.

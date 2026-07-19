@@ -38,6 +38,15 @@ evidence are required before any performance claim.
 
 ## Current dKV State
 
+- 2026-07-19 output-epilogue probe: the official B16 matrix-store builtin has
+  now been tested with the full Wiki-documented ABarrier lifecycle.  A single
+  32x16 store still commits only rows0..16 on PMD.  Missing barrier init is
+  ruled out; see PMD-005.  The packed-FP16 direct-store control now passes
+  2,048/2,048 elements with eight `global_store_dwordx2`, so it is the next
+  isolated canonical A/B.  `__builtin_hcu_wdra_init` is a separate,
+  compiler-versioned WDRA entry contract and must not be conflated with
+  `s_abarrier_init`.
+
 - Latest accepted micro-optimization keeps score/dP operand-register
   ping-pong and uses one SGPR LDS base plus four immediate offsets per
   transpose-read packet.  It keeps consumer windows `221/240` with no

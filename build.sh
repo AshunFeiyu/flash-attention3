@@ -59,12 +59,17 @@ if [[ "${SHAOBO_RUN_ON_MODEL:-0}" == "1" ]]; then
 fi
 
 SHAOBO_FLAGS=(
-  -mllvm -support-768-vgprs=true
-  -mllvm -vgpr-greedy-alloc-mode=local-wave
   -mllvm -disallow-uniform-vmed3-combine=true
   -mllvm -stream-unfolded-args-in-metadata
   -mllvm -disable-machine-sink
 )
+if [[ "${SHAOBO_DISABLE_WDRA_FLAGS:-0}" != "1" ]]; then
+  SHAOBO_FLAGS=(
+    -mllvm -support-768-vgprs=true
+    -mllvm -vgpr-greedy-alloc-mode=local-wave
+    "${SHAOBO_FLAGS[@]}"
+  )
+fi
 
 echo "target gfx${TARGET_GFX}"
 echo "toolchain ${TOOLCHAIN_NOTE}"

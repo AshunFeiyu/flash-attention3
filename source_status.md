@@ -8984,3 +8984,43 @@ Status: `REJECT_SPLIT_FILLED_TICKS_REGRESSION`; canonical source restored.
   translate into pipeline overlap; the extra Filled lifecycle is net cost.
 - Remove the experiment from the active route.  Reopen consumer-assisted BPS
   only with a topology that removes an ownership epoch rather than adding one.
+
+## 2026-07-19 dKV B16 Matrix-Store Entry Contract Is Not The Root Cause
+
+Status: `OBSERVE_PMD_OR_UNDOCUMENTED_MATRIX_STORE_CONTRACT`; canonical dKV is
+unchanged.
+
+- The latest compiler exposes only `__builtin_hcu_s_abarrier_init` for
+  ABarrier initialization.  DCU Wiki requires init visibility before use and
+  synchronization before invalidation; the focused probe now implements the
+  full `init/sync/seq/store/arrive/wait/sync/inv` lifecycle.
+- A single official `matrix_store_32x16_b16` still writes only rows 0..16 of a
+  32x16 control tile: 240/512 row-major elements remain wrong, with the first
+  failure at row17/col0.  PMD exits normally, private/spill/scratch are zero,
+  `s_trap=0`, and `ldsBankConflict=0`.
+- This rules out missing ABarrier init and multi-store page reuse as causes.
+  It does not yet distinguish a PMD partial-store defect from an undocumented
+  descriptor/source-layout ABI.
+- C2 matrix-store integration remains blocked.  C1 was therefore isolated as
+  packed FP16 direct vector global stores; its passing result is recorded in
+  the next section.
+- Evidence: PMD-005 in `docs/perf_model_pmd_compiler_issues.md` and remote run
+  `/zys/shaobo_runs/dkv_b16_matrix_store_probe_builtin_single_reclass/`
+  `run_20260719_103901`.
+
+## 2026-07-19 dKV C1 Packed-FP16 Direct Store Passes
+
+Status: `ACCEPT_FOCUSED_INSTRUCTION_CONTROL`; canonical performance is pending.
+
+- The focused kernel uses the exact owner16 dKV output mapping: one 64-lane
+  wave owns `16x128`, and each lane emits eight contiguous four-half vectors.
+- PMD validates all 2,048 elements exactly.  ASM has eight
+  `global_store_dwordx2`, no `global_store_dwordx4`, 32 FP32-to-FP16
+  conversions, no trap, private0/spill0, and bank0.
+- This separates the two output choices cleanly: C1 is supported and correct;
+  C2 matrix-store remains blocked by PMD-005.  The next experiment may replace
+  only the real canonical dKV epilogue/output type with C1 and compare against
+  the accepted FP32-output tag using same-shape ticks and SQTT.
+- Evidence:
+  `/zys/shaobo_runs/dkv_b16_direct_store_probe_builtin/`
+  `run_20260719_104409`.

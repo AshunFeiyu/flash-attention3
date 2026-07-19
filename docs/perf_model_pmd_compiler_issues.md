@@ -1,6 +1,6 @@
 # Shaobo Perf Model PMD And Compiler Issue Registry
 
-Last updated: 2026-07-17
+Last updated: 2026-07-19
 
 This document tracks possible PMD, compiler, and compiler/PMD compatibility
 issues found while validating Shaobo kernels. It is an issue registry, not a
@@ -188,6 +188,77 @@ Long CPU-simulated runs can outlive an SSH/command wrapper. A truncated client
 session is not a PMD hang. Launch long S1024/fullperf runs detached, persist
 `driver.log` and `exit_code`, and require both `exit_code=0` and harness
 `status=success` before parsing the result.
+
+### PMD-005: B16 Matrix Store Writes Only 17 Of 32 Rows
+
+Status: `SUSPECTED PMD/UNDOCUMENTED CONTRACT`; canonical integration blocked.
+
+Environment fingerprint:
+
+```text
+compiler: clang 18.0.0, llvm 7b796991375a79111716e29e6050bd719f46de94
+clang++ sha256: c859dae0b4573361b728a558607ba9e0735d19540670f9443ecc8ea0335de0b0
+PMD: pmd_20260717/core, HEAD1694 family
+libgem5_opt.so sha256: 29fa2020e6bfb399225e206cf7c589ba838ad56b891cb07c97e88029e954bfa5
+```
+
+Minimal trigger:
+
+- one active wave in a 16-wave CTA;
+- one official `__builtin_hcu_matrix_store_32x16_b16` call with `t=1,r=0`;
+- source page produced by matching `matrix_load_32x16_b16`;
+- one ABarrier slot with the documented lifecycle:
+  `init -> whole-CTA ebarrier -> seq -> matrix_store -> arrive -> try_wait ->
+  whole-CTA ebarrier -> inv`;
+- no WDRA flags, no `s_trap`, no spill/private segment, and zero LDS bank
+  conflicts.
+
+Expected behavior: all `32x16=512` FP16 values reach the row-major output.
+
+Observed behavior: rows 0 through 16 are correct and rows 17 through 31 remain
+zero, giving exactly 240 mismatches. The result is unchanged from the
+multi-store probe, so consecutive stores overwriting one another and missing
+ABarrier initialization are both ruled out. The separate
+`ds_write_matrix_format_f16 -> matrix_store` path also fails, with 503
+mismatches beginning at row 0.
+
+Evidence:
+
+- Source: `probes/dkv_b16_matrix_store_probe.cpp`.
+- Runner: `scripts/run_dkv_b16_matrix_store_probe.sh`.
+- Minimal PMD run:
+  `/zys/shaobo_runs/dkv_b16_matrix_store_probe_builtin_single_reclass/`
+  `run_20260719_103901`.
+- Static ASM: `matrix_store_b16=2`, `abarrier_init/seq/arrive/wait/inv=
+  1/2/2/2/1`, `ebarrier_sync=3`, `s_trap=0`.
+- Runner verdict: `FAIL_MATRIX_STORE_CONTROL`, with PMD exit status 0.
+
+Current interpretation:
+
+- `s_abarrier_init` at kernel entry is required by the documented ABarrier
+  contract, but it is not sufficient to make this matrix store correct.
+- The remaining boundary is PMD's `matrix_store_32x16_b16` implementation
+  versus an undocumented descriptor/source-layout requirement. Do not call it
+  a hardware or compiler bug until the PMD/compiler owner confirms the ABI.
+- Keep C2 (`FP16 pack -> ds_write_matrix -> matrix_store`) out of the canonical
+  dKV epilogue. The C1 packed-FP16 direct-global focused control passes; use it
+  as the next canonical performance A/B.
+
+C1 known-good comparison:
+
+- exact dKV owner16 coordinates, `16x128` FP16 output;
+- 2,048/2,048 values correct, no spill/private segment, no trap, bank0;
+- generated hot path contains eight `global_store_dwordx2`, zero
+  `global_store_dwordx4`, and 32 FP32-to-FP16 conversions;
+- run: `/zys/shaobo_runs/dkv_b16_direct_store_probe_builtin/`
+  `run_20260719_104409`.
+
+Owner question:
+
+> With compiler llvm `7b796991`, what descriptor stride and LDS source-layout
+> contract does PMD HEAD1694 require for `matrix_store_32x16_b16`? Why does a
+> single official-builtin store with the documented ABarrier transaction
+> lifecycle commit only the first 17 rows?
 
 ## Compiler And Compiler/PMD Issues
 
