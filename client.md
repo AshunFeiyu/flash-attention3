@@ -1,5 +1,16 @@
 # Client
 
+## Current dKV Decision (2026-07-19)
+
+- Keep the accepted M192 next-M16-prefetch kernel as the canonical source.
+- Do not retry early fp32 global-store overlap inside its MMAC window: the
+  topology already budgets `32 + 3*160 = 512` VGPR per SIMD and the best
+  isolated implementation still spills four VGPR.
+- The next clean experiment is workbook `162_DKV_M128_64_32_32`: M128 removes
+  the S1024 tail, assigns native owner16 work as `4+2+2` heavy waves, and must
+  give the other four waves useful producer/helper work. Compare saturated
+  same-work evidence; do not call it three heavy consumers.
+
 ## 2026-07-19 dQ Three-Consumer Saturation Verdict
 
 - dQ 1P3C is now an accepted topology candidate. The earlier H1/S768 loss was

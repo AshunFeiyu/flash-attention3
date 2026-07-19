@@ -14599,3 +14599,45 @@ Status: `ACCEPT_TOPOLOGY_SATURATED_GATE`; canonical S1024 source is unchanged.
   `dq_correctness_20260719_170844`; candidate
   `/zys/shaobo_runs/dq_3c_saturation_candidate_h12s768/`
   `dq_correctness_20260719_171618`.
+
+## 2026-07-19 dKV Final-M16 Half-Store Rejected At Resource Gate
+
+Status: `REJECT_STATIC_RESOURCE`; canonical source restored before PMD.
+
+- SQTT on the accepted M192 1P3C dKV shows a concentrated 16-instruction
+  fp32 store burst per consumer wave. The slowest C2 sample spans 3,712
+  cycles in stores and about 9,768 cycles from its last MMAC to wave end.
+- The isolated hypothesis stored finalized accumulator groups 0..3 on only
+  the final q tile/final M16, then computed groups 4..7. MMAC count, output
+  bytes, dynamic store count and ABarrier generations were unchanged.
+- Four increasingly scoped schedules all fail the no-spill gate:
+  `private/spill=28/15`, `252/225`, `12/4`, and explicit vector-store
+  `12/6`. The dKV native-path gate otherwise passes.
+- Root cause: M192 1P3C exactly consumes the per-SIMD WDRA budget:
+  producer `32` plus three consumers `160` equals `512` VGPR. Bringing VMEM
+  address/output state into the live second-half MMAC window has no resource
+  headroom. This is a topology limit, not scalar-versus-vector store syntax.
+- Decision: no correctness/perf run for an inadmissible artifact. Restore the
+  accepted next-M16-prefetch source and move to workbook sheet
+  `162_DKV_M128_64_32_32`, where only two heavy MMAC waves per SIMD leave
+  useful helper/store scheduling headroom.
+
+### Skill Candidate
+
+- Trigger / 适用场景: WDRA kernels that try to move an output epilogue into an
+  active MMAC island.
+- Rule / 可复用规则: sum branch VGPR windows per SIMD before coding. If the
+  sum already equals the physical file, include VMEM address operands and
+  still-live later accumulators in the peak ledger; reject early-store
+  overlap when this peak cannot fit without spill.
+- Evidence / 证据: workbook `161_DKV_FinalHalfStore`; LLVM7b static attempts
+  above; canonical `32 + 3*160 = 512` VGPR/SIMD.
+- Boundary / 适用边界: applies when producer and all consumers remain live on
+  the same SIMD. A later ownership phase that provably releases a wave, or a
+  native matrix-store path with a smaller live fragment, can change the
+  budget.
+- Counterexample / 反例或不适用情况: kernels with spare per-SIMD VGPR, fewer
+  heavy waves, or an epilogue after all MMAC operands are dead.
+- Proposed Target / 建议进入哪个 skill 或 reference: project-local Shaobo
+  reference now; propose to `dcu-kernel-optimization` only during a governed
+  skill-consolidation round.

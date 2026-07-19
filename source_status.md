@@ -1,5 +1,17 @@
 # Source Status
 
+## 2026-07-19 dKV M192 Early Half-Store
+
+- Status: `REJECT_STATIC_RESOURCE`; failed source removed.
+- Active dKV source remains equivalent to tag
+  `best/dkv-next-m16-prefetch-20260719` (`f6842b0`) for the kernel body.
+- The final-half store hypothesis preserved the algorithm and instruction
+  counts by design, but every LLVM7b schedule spilled. Best static result was
+  `private_segment=12`, `vgpr_spill_count=4`; therefore PMD was not run.
+- Design/evidence is retained in workbook sheet `161_DKV_FinalHalfStore` and
+  `results/perf_ledger.csv`. The next isolated branch is M128
+  `C0=64/C1=32/C2=32`; it must not be stacked on this rejected source.
+
 ## 2026-07-19 dQ 1P3C Saturated-Grid Gate Accepted
 
 Status: `ACCEPT_TOPOLOGY_SATURATED_GATE`; source remains the clean M128 2P2C
