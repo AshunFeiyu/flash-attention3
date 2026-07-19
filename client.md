@@ -3725,3 +3725,19 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - It failed the schedule/resource-preservation gate before PMD, so the source
   was restored.  The next structural test keeps the original compute body and
   transfers only V-page BPS ownership from producer to consumer1.
+
+## 2026-07-19 dQ Consumer-Assisted V Ownership Gate
+
+- Moving V BPS from the producer to consumer1 preserved exact work and passed
+  correctness when V was loaded immediately before the same page.  It made V
+  the Filled last-arriver, however: ticks regressed
+  `23,364,250 -> 25,983,230` (`+11.21%`), SCA rose
+  `23,844 -> 25,512`, and LDS credit stall rose `7,784 -> 10,573`.
+- A one-page lookahead cannot legally share one BPS-tracked Filled token between
+  independent K and V owners.  The single-tile SQAbar trace left Page0 at
+  `pending=4/expected=8`; consumers waited forever because only one owner made
+  its four arrivals for that generation.
+- The hanging source is removed.  The final topology gate separates KFilled
+  and VFilled generations while retaining one shared Used token.  It is
+  admissible only if it restores all `4+4` arrivals and beats the canonical
+  ticks; otherwise consumer-assisted prefetch is rejected as an architecture.

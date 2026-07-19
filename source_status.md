@@ -8952,3 +8952,21 @@ Status: `REJECT_STATIC_CODEGEN_DRIFT`; canonical source restored.
   scheduling/lifetime boundary.
 - No PMD run was admitted.  Future coissue experiments must leave the compact
   original compute body intact or prove an exact generated schedule first.
+
+## 2026-07-19 dQ Consumer-Assisted V: Combined Filled Rejected
+
+Status: `REJECT_COMBINED_BPS_GENERATION`; source restored.
+
+- The valid current-page form moved four V BPS operations to consumer1 while
+  the producer retained four K BPS operations.  Static resources were
+  private0/spill0/scratch0 with exact MMAC/read/load payload; H1/S384 and
+  H1/S768 correctness passed and bank conflicts remained zero.
+- It serialized page readiness behind consumer1: H1/S768 ticks regressed
+  `23,364,250 -> 25,983,230` (`+11.21%`), SCA became `25,512`, coissue became
+  `13,662/12,419`, and LDS credit stall became `10,573`.
+- The one-step lookahead form hung.  SQAbar recorded Page0 Filled
+  `expected=8` but only four arrivals, leaving `pending=4`; no numerical or
+  performance result is attached to the deadlocked run.
+- Rule: one BPS-tracked ABarrier generation has one sequencing owner.  K and V
+  lookahead from independent roles requires separate KFilled/VFilled tokens;
+  a combined Used token may remain shared.

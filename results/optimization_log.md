@@ -14317,3 +14317,17 @@ Status: `REJECT_STATIC_CODEGEN_DRIFT`; no PMD run.
   for the actual batch.  Restore canonical source.  Test consumer-assisted V
   BPS ownership next because it can create useful skew without rewriting the
   proven fused MMAC body.
+
+## 2026-07-19 dQ Consumer-Assisted V Ownership
+
+Status: `REJECT_COMBINED_FILLED_TOKEN`; source restored.
+
+- Current-page V ownership was correct and exact-work but regressed ticks
+  `23,364,250 -> 25,983,230` (`+11.21%`).  V became the last Filled arrival;
+  SCA and LDS credit stall rose to `25,512` and `10,573`.
+- One-step V lookahead with producer K and consumer1 V sharing the same Filled
+  token deadlocked.  SQAbar showed Page0 at four arrivals out of eight and all
+  consumers blocked on the incomplete generation.
+- This rejects mixed sequencing ownership, not useful lookahead itself.  The
+  last admitted test uses separate KFilled/VFilled tokens and one shared Used
+  token; failure there rejects consumer-assisted prefetch completely.
