@@ -14428,3 +14428,31 @@ Status: `REJECT_STATIC_CODEGEN_EQUIVALENT`; canonical source restored.
 - Do not spend PMD time on the canonical builtin spelling.  Keep the focused
   probe as a compiler-regression gate and return optimization effort to
   ABarrier/readiness and MMAC-island gaps.
+
+## 2026-07-19 dKV Score/dP Read8-Wait0-MMAC16
+
+Status: `REJECT_STATS_FIRST_USE_WAIT`; canonical staged waits restored.
+
+- The experiment changed one schedule only: each M16 score/dP block moved from
+  `8 reads -> wait6/MMAC4 -> wait4/MMAC4 -> wait2/MMAC4 -> wait0/MMAC4` to
+  `8 reads -> wait0 -> MMAC16`. Formula DAG, Mq192/Nk192/D128 tile, one
+  producer plus three consumers, seven ABarrier tokens, LDS addresses, dV/dK
+  scheduling, and exact four-GEMM work remained unchanged.
+- Final ASM proves the intended contiguous sequence. Latest LLVM
+  `7b796991` with explicit WDRA init and `run-on-model` reports branch use
+  `32/158/158/158`; metadata is private0/spill0/scratch0 and real `s_trap=0`.
+- PMD HEAD1694 correctness passes at S384 and S768, MMOP remains exactly
+  `73,728`, dynamic VALU/SCA/LDS/VMEM/FLAT remain
+  `80,272/21,624/44,768/1,728/816`, and LDS bank conflict remains zero.
+- S768 kernel ticks regress from the canonical stats control
+  `35,823,515 -> 36,638,420` (`+2.27%`). Aggregate MMAC active falls
+  `43.1608% -> 42.6444%`, and successful coissue falls
+  `21,792 -> 19,321`.
+- Conclusion: visual MMAC regularity is insufficient. A full `lgkmcnt(0)`
+  exposes all eight matrix reads before useful compute starts and erases the
+  benefit of removing three wait instructions. Do not capture fullperf for
+  this rejected candidate. Preserve exact staged first use; any later long-
+  island retry must use a bounded partial wait backed by a read ledger.
+- Evidence: workbook sheet `155_DKV_ScoreDP_LongIsland`; remote S384/S768 runs
+  `/zys/shaobo_runs/dkv_scoredp_long_mmac16_s384/` and
+  `/zys/shaobo_runs/dkv_scoredp_long_mmac16_s768/`.

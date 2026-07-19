@@ -3782,3 +3782,18 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
   casts to the same packed opcode/count, so the canonical rewrite was rejected
   statically and removed.  Do not retry this spelling without compiler ISA
   evidence that the generated sequence has changed.
+
+## 2026-07-19 Score/dP MMAC16 Scheduling Verdict
+
+- A single isolated A/B changed score/dP from staged first use
+  `lgkmcnt(6/4/2/0) + MMAC4x4` to `lgkmcnt(0) + MMAC16`. The compiler emitted
+  the intended read8/wait0/MMAC16 order with unchanged branch resources and
+  exact work; S384/S768 correctness and bank0 passed.
+- S768 regressed to `36,638,420` ticks and `42.6444%` MMAC active versus the
+  canonical stats control `35,823,515 / 43.1608%`. The clean-looking long
+  island exposed complete LDS first-use latency and reduced successful
+  coissue, so it was rejected without a fullperf capture.
+- Canonical source is restored to staged first use. Keep the accepted best tag
+  `best/dkv-latest-pair-43p78-20260719`; do not retry full wait0. A future
+  partial-island experiment must carry an explicit outstanding-read ledger and
+  retain useful work before all eight reads retire.

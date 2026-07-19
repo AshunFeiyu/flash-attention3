@@ -9064,3 +9064,17 @@ Status: `REJECT_STATIC_CODEGEN_EQUIVALENT`; canonical source restored.
   `/zys/shaobo_runs/dkv_b16_packed_cvt_probe_gate/run_20260719_113043` and remote
   ASM directories `build/dkv_b16_direct_canonical` versus
   `build/dkv_b16_packed_canonical`.
+
+## 2026-07-19 Score/dP Long-Island Status
+
+- `read8 -> wait0 -> MMAC16` is rejected and removed from canonical dKV.
+  S384/S768 correctness, metadata, exact MMOP, and bank0 gates pass, but S768
+  stats regress `35,823,515 -> 36,638,420` ticks and MMAC active falls
+  `43.1608% -> 42.6444%`.
+- The compiler did emit the requested clean MMAC16 island. The regression is
+  therefore a scheduling result: full operand drain exposes first-use LDS
+  latency and lowers useful coissue. Canonical score/dP again uses staged
+  `lgkmcnt(6/4/2/0)` first use.
+- No candidate fullperf was captured. Accepted best remains tag
+  `best/dkv-latest-pair-43p78-20260719` with S768 fullperf
+  `35,707,035` ticks and `43.7836%` MMAC active.
