@@ -9708,3 +9708,18 @@ Status: `REJECT_STATS_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
   long MMAC islands and peer coissue.
 - Candidate source is removed and no S2048/fullperf is admitted. Workbook
   sheet `187_DQ_C1_KNormDeadSlot` and ledger retain the evidence.
+
+## 2026-07-21 dQ Split Startup Latch Boundary
+
+- Canonical dQ remains M128 physical 2P2C with one coarse `QDoLatched`
+  startup release. The split-token candidate separately released the sidecar
+  region before Q/dO so page0 K/V MLS could start earlier.
+- Correctness, exact work, no-spill resources, and bank0 pass. Two candidate
+  S1024 runs average `24,216,465 ticks / 34.3506% active`; two restored-source
+  controls average `24,175,288 / 34.3987%`. Local wait/barrier cycles fall,
+  but extra SCA and synchronization leave mean ticks `0.170%` worse and
+  active `0.0480pp` lower.
+- Candidate source is removed before S2048/fullperf. Do not add further
+  startup ownership tokens. The next dQ hypothesis must remove work from the
+  critical path or improve steady MMAC dependency/coissue while preserving
+  uninterrupted MMAC islands.

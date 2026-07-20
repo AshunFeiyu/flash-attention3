@@ -15314,3 +15314,27 @@ Status: `REJECT_STATS_TICKS_ACTIVE_SOURCE_RESTORED`.
   island. The saved LDS readiness is smaller than the loss of MMAC continuity
   and peer scheduling. Reject before S2048/fullperf; canonical source is
   restored. Evidence: workbook sheet `187_DQ_C1_KNormDeadSlot`.
+
+## 2026-07-21 dQ Split Startup Latch Rejected
+
+Status: `REJECT_STATS_UNSTABLE_TICKS_SOURCE_RESTORED`.
+
+- The experiment kept Mq128/Nk128/D128 physical 2P2C, exact three-GEMM work,
+  C1-early cadence, LDS bytes, matrix instructions, and output ownership.
+  It split the coarse startup release into `SidecarLatched` for page0 and
+  `QDoLatched` for page1, allowing page0 K/V MLS to begin while the remaining
+  Q/dO matrix reads retired.
+- Static gates pass at branch use `8/159/159/9`, SGPR66/VGPR128, and
+  private/spill/scratch0. S128 and two S1024 runs pass correctness with exact
+  MMOP50,688 and bank0.
+- Candidate S1024 results are `24,352,965 ticks / 34.3610% active` and
+  `24,079,965 / 34.3402%`; restored-source controls are
+  `24,632,790 / 34.3552%` and `23,717,785 / 34.4421%`. Candidate versus
+  control means are `24,216,465 / 34.3506%` and
+  `24,175,288 / 34.3987%`. Mean waitLgkm falls `4.48%` and barrier falls
+  `2.07%`, but the extra token adds `888` SCA instructions, ticks regress
+  `0.170%`, and active falls `0.0480pp`.
+- Reject before S2048/fullperf. Restore canonical source and retain only
+  workbook sheet `188_DQ_SplitStartupLatch` plus ledger evidence. This closes
+  the startup-token split: lower wait and slightly higher active are not
+  sufficient when end-to-end ticks do not improve stably.

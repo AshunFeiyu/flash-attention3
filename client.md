@@ -4338,3 +4338,14 @@ Skill Candidate:
 - Future dQ work must preserve uninterrupted score/dP MMAC islands while
   attacking PageFilled readiness or true MMAC dependency. Lower wait alone is
   not a promotion signal.
+
+## 2026-07-21 dQ Split-Latch Decision
+
+- Keep the accepted M128 16-wave physical 2P2C dQ source. Splitting startup
+  ownership into sidecar and Q/dO release tokens is correct and lowers local
+  wait/barrier counters, but paired repeated S1024 means regress ticks
+  `0.170%` and lower active `0.0480pp`.
+- The source is restored before S2048. Do not rescue this direction with more
+  startup tokens or buffering. Continue from the single coarse latch and use
+  S1024/S2048 ticks as the admission gate; MMAC active remains an explanatory
+  pipeline metric rather than a standalone promotion criterion.
