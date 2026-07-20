@@ -15292,3 +15292,25 @@ Status: `ACCEPT_CANONICAL_OPT`.
 - Promote this source as the dKV 2P2C baseline for S1024/S2048. Do not restore
   M192 1P3C tail ownership. Workbook: `186_DKV_C1_SidecarTail`; archive:
   `/共享/shaobo/perf/20260721_010524_dkv_2p2c_c1_sidecar_tail_h1s2048_sqc7_fullperf`.
+
+## 2026-07-21 dQ C1 K-Normal Dead-Slot Prefetch Rejected
+
+Status: `REJECT_STATS_TICKS_ACTIVE_SOURCE_RESTORED`.
+
+- The experiment kept `Mq128/Nk128/D128`, physical 2P2C, exact three-GEMM
+  work, output ownership, LDS bytes, ABarrier tokens and all dynamic
+  instruction counts. C0 remained canonical. C1 advanced the existing
+  normal-K D0/D1 reads under score/dP D2/D3 MMAC and D2/D3 reads under
+  softmax/dS, using dead trans-fragment lifetimes.
+- Static gates pass unchanged at branch use `8/159/159/9`, SGPR65/VGPR128,
+  private/spill/scratch0. S128 and two S1024 runs pass correctness; bank0 and
+  exact MMOP `50,688` remain intact.
+- The local mechanism worked but the kernel regressed. Mean waitLgkm falls
+  `15,541 -> 14,588` (`-6.13%`), while repeated S1024 results are
+  `24,310,650 / 34.0281%` and `24,564,085 / 34.0192%` versus canonical
+  `24,114,090 / 34.2193%`. Mean ticks regress `1.34%` and active falls
+  `0.1956pp`; barrier also rises `1.47%` on average.
+- ASM shows the compiler inserted normal reads inside the score/dP MMAC
+  island. The saved LDS readiness is smaller than the loss of MMAC continuity
+  and peer scheduling. Reject before S2048/fullperf; canonical source is
+  restored. Evidence: workbook sheet `187_DQ_C1_KNormDeadSlot`.

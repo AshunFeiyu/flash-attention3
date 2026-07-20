@@ -4326,3 +4326,15 @@ Skill Candidate:
   active `44.459% -> 45.655%`; correctness/resources/bank gates pass.
 - Continue from this baseline. The next bottleneck is residual ABarrier
   ownership plus MMAC dependency, not tail cleanup or a third consumer.
+
+## 2026-07-21 dQ Dead-Slot Prefetch Result
+
+- Keep S1024/S2048 on 16-wave physical 2P2C. The canonical dQ path remains
+  M128 with C1-early whole-island K-normal scheduling.
+- Splitting C1 normal-K reads across dead score fragment lifetimes is legal
+  and lowers LDS wait, but the compiler interleaves those reads into the score
+  MMAC island. Repeated S1024 ticks regress `1.34%` on average and active falls
+  `0.1956pp`; the source is restored before S2048.
+- Future dQ work must preserve uninterrupted score/dP MMAC islands while
+  attacking PageFilled readiness or true MMAC dependency. Lower wait alone is
+  not a promotion signal.

@@ -9694,3 +9694,17 @@ Status: `REJECT_STATS_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
 - This is the new dKV S1024/S2048 baseline. Residual work must keep physical
   2P2C and attack ABarrier ownership/MMAC dependency with same-shape evidence.
   M192 1P3C and tail-specific ownership remain excluded.
+
+## 2026-07-21 dQ K-Normal Dead-Slot Boundary
+
+- Canonical dQ remains commit `008450c`: M128 physical 2P2C with exact LDS
+  sidecar latch and C1-early whole-island K-normal schedule.
+- A C1-only split normal-K prefetch passed correctness/resources and reduced
+  waitLgkm by `6.13%`, but repeated S1024 ticks regressed by `1.34%` on average
+  and MMAC active fell `0.1956pp`.
+- Compiler ASM placed the early matrix reads inside score/dP MMAC issue runs.
+  This confirms the important boundary: a read is not free merely because its
+  destination fragment is dead-slot compatible; issue placement must preserve
+  long MMAC islands and peer coissue.
+- Candidate source is removed and no S2048/fullperf is admitted. Workbook
+  sheet `187_DQ_C1_KNormDeadSlot` and ledger retain the evidence.
