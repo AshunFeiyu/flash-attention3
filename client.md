@@ -1,5 +1,18 @@
 # Client
 
+## 2026-07-20 Canonical dKV Baseline Lock
+
+- Use only `20dbb81` / `best/dkv-three-m64-lifetimes-20260719` as the dKV
+  performance mainline. It is M192 1P3C with three M64 ownership lifetimes
+  and no causal-invalid or duplicate GEMM work.
+- Locked-toolchain H1/S768 fullperf is `32,990,230` kernel ticks and
+  `41.2191%` MMAC active; all correctness/resource/bank gates pass. Evidence
+  is archived under
+  `/共享/shaobo/perf/20260720_114616_dkv_exact_three_m64_h1s768_sqc7_toolchain_locked_fullperf`.
+- M128 `64/32/32` remains the H1/S1024 exact no-tail control, not the fastest
+  baseline. Never compare its S1024 raw ticks directly with the M192 S768
+  run, and never use the old `43.7836%` causal-invalid result as progress.
+
 ## 2026-07-20 M48 Lookahead Verdict
 
 - Keep the high-address M48 MLS/layout probe (`09419bd`), but reject the full

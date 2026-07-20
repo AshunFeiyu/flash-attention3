@@ -1,5 +1,24 @@
 # Source Status
 
+## 2026-07-20 dKV Canonical Performance Baseline
+
+Status: `ACCEPT_CANONICAL_BASELINE`; kernel source remains unchanged.
+
+- Optimize only from commit `20dbb81`, tag
+  `best/dkv-three-m64-lifetimes-20260719`. This is the current best verified
+  no-redundant-MMAC dKV source: Mq192/Nk192/D128, 1P3C, three M64 ownership
+  lifetimes, and exact four-GEMM causal work at H1/S768.
+- Locked-toolchain fullperf is `32,990,230` kernel ticks and `41.2191%` MMAC
+  active, with MMOP46080, bank0, and private/spill/scratch0. The archived
+  evidence includes stats and XCU detail/wavefront bubbles.
+- Do not promote the historical `43.7836%` trace: it executed causal-invalid
+  triangular MMAC. Do not promote M128 `64/32/32` either: it is the exact
+  H1/S1024 no-tail control, but it reaches only `37.8149%` active and maps to
+  eight physical heavy waves.
+- Next structural work must preserve exact MMOP and attack the measured raw
+  Used plus matrix first-use critical edges. Tile/consumer-count proposals
+  are inadmissible if they add invalid rows merely to raise active share.
+
 ## 2026-07-20 dKV M48 Lookahead Integration Verdict
 
 Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`; the layout probe

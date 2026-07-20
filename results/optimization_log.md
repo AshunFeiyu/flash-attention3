@@ -1,5 +1,28 @@
 # Optimization Log
 
+## 2026-07-20 dKV Exact-Work Baseline Locked
+
+- Status: `ACCEPT_CANONICAL_BASELINE`.
+- The sole dKV optimization source is commit `20dbb81`, tag
+  `best/dkv-three-m64-lifetimes-20260719`: `Mq192/Nk192/D128`, one producer,
+  three heavy M64 consumers, and three physical Q/dO ownership lifetimes.
+  It executes only the required causal score, dP, dV, and dK work. The older
+  `43.7836%` result included causal-invalid MMAC and is not a valid baseline.
+- With locked PMD HEAD1694, compiler LLVM `7b796991` and `SQCIPfLines=7`, the
+  latest H1/S768 fullperf gives `32,990,230` kernel ticks, `41.2191%` MMAC
+  active, exact `MMOP=46,080`, coissue `11,590/9,613`, bank0, and
+  private/spill/scratch0. The same source improves `5.03%` in stats-only A/B
+  versus the old compiler (`34,831,160 -> 33,078,955` kernel ticks).
+- XCU attributes the remaining actionable debt to raw ownership
+  ABarrier-to-XOR (`~16.08%`) and matrix-read first-use waits
+  (`~12.45%` combined normal/trans families). Terminal AllDone is a separate
+  correctness-sensitive exit edge and must not be deleted as a shortcut.
+- The H1/S1024 no-tail control remains M128 logical `64/32/32` at `fcd87aa`;
+  its `37.8149%` active is lower and it has only eight physical heavy waves,
+  so it is not the performance mainline.
+- Evidence:
+  `/共享/shaobo/perf/20260720_114616_dkv_exact_three_m64_h1s768_sqc7_toolchain_locked_fullperf`.
+
 ## 2026-07-20 dKV M48 Head Lookahead Rejected
 
 - Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
