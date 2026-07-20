@@ -1,5 +1,33 @@
 # Optimization Log
 
+## 2026-07-20 dKV M48 Head Lookahead Rejected
+
+- Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
+- The focused layout gate remains valid, but the full M192 integration does
+  not shorten the critical path. S384 and S768 correctness pass; metadata is
+  private0, SGPR69, VGPR128, spill/scratch0, LDS `125,760B`, and bank0.
+- Same-build stats-only S768 kernel ticks regress
+  `33,104,435 -> 33,533,045` (`+1.295%`). Helper fullperf confirms the loss:
+  `33,135,830 -> 33,290,530` (`+0.467%`), with MMAC active
+  `41.1992% -> 41.0779%` and successful coissue `11,457 -> 10,719`.
+- XCU shows why the legal prefetch does not win. Combined current-head and
+  lookahead Used debt falls `93,116 -> 81,612` cycles (`-12.35%`), but
+  `RawMiddleUsed` rises `102,920 -> 116,192`, `RawHeadFilled` rises
+  `90,784 -> 95,000`, aggregate ABarrier-to-XOR rises
+  `504,808 -> 507,696`, and dispatch duration rises `72,828 -> 73,168`.
+  Matrix-read latency is essentially unchanged; SCA rises
+  `15,702 -> 16,616` while exact MMOP stays `46,080`.
+- Decision: preserve probe commit `09419bd` as high-address MLS/layout
+  evidence, preserve rejected implementation commit `fdfe1cd` on its isolated
+  branch, and restore the canonical M192 source. Do not add a token merely to
+  move an ownership wait; a successor must reduce the sum of the protected
+  critical edges and retain coissue.
+- Evidence: candidate
+  `/zys/sb/m48fp/dkv_mmac_correctness_20260720_083110`; baseline
+  `/zys/shaobo_runs/dkv_three_m64_s768_fullperf/`
+  `dkv_mmac_correctness_20260719_222018`; workbook
+  `175_DKV_M48HeadLookahead`.
+
 ## 2026-07-20 dKV M48 Head-Lookahead LDS Gate
 
 - Status: `ACCEPT_LAYOUT_GATE_ONLY`.

@@ -1,5 +1,19 @@
 # Client
 
+## 2026-07-20 M48 Lookahead Verdict
+
+- Keep the high-address M48 MLS/layout probe (`09419bd`), but reject the full
+  pipeline integration (`fdfe1cd`). It passes correctness/resources/bank0
+  yet regresses S768 fullperf ticks `0.467%` and lowers MMAC active
+  `41.1992% -> 41.0779%`.
+- The new lookahead token reduces the intended head Used edge by 12.35%, but
+  shifts latency into middle/head-filled ownership and adds SCA. Do not judge
+  a page-prefetch design by one barrier ID; sum every protected edge and check
+  same-shape ticks plus coissue.
+- Canonical remains tag `best/dkv-three-m64-lifetimes-20260719`. The M128
+  `64/32/32` control remains tail-free but has only eight physical heavy waves;
+  it is not a replacement for the M192 steady topology.
+
 ## 2026-07-20 M48 Head-Lookahead Admission
 
 - The M192 main layout can hold one extra M48 Q/dO/sidecar packet at high LDS

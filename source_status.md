@@ -1,5 +1,25 @@
 # Source Status
 
+## 2026-07-20 dKV M48 Lookahead Integration Verdict
+
+Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`; the layout probe
+remains accepted, while the performance implementation stays only on branch
+`exp/dkv-m48-head-lookahead-20260720` at `fdfe1cd`.
+
+- S384/S768 correctness, native-path, private/spill/scratch, LDS125760 and
+  bank0 gates pass. The experiment preserves exact MMOP and all three M64
+  output owners.
+- Fullperf S768 regresses `33,135,830 -> 33,290,530` ticks (`+0.467%`) and
+  MMAC active `41.1992% -> 41.0779%`; successful coissue falls
+  `11,457 -> 10,719`.
+- XCU proves that ID10 successfully absorbs part of ID3: combined head Used
+  debt falls 12.35%. The gain is displaced into ID5/ID2 and added SCA;
+  aggregate ABarrier-to-XOR and dispatch duration both rise. This is a real
+  ownership redistribution, not latency hiding.
+- Canonical dKV must therefore remain the exact M192 three-M64 source from
+  tag `best/dkv-three-m64-lifetimes-20260719`. Probe commit `09419bd` remains
+  the regression test for the legal high LDS addresses.
+
 ## 2026-07-20 dKV M48 Lookahead Layout Admission
 
 Status: `ACCEPT_LAYOUT_GATE_ONLY`; canonical source is not changed yet.

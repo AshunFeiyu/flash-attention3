@@ -71,6 +71,22 @@ generator hits the `num_phase` mismatch; the model can then consume the seed
 and run the target binary with the matching HEAD1694 library.  Evidence:
 `/zys/shaobo_runs/dkv_owner16_4c_resource_probe_20260720_045244`.
 
+### ENV-003: Fullperf Run-Root Path-Length Overflow
+
+Status: `ENVIRONMENT`; short-path workaround validated.
+
+Two M48 helper/fullperf launches under long roots beginning with
+`/zys/shaobo_runs/dkv_m48_head_lookahead_s768_fullperf...` abort before the
+kernel with `*** buffer overflow detected ***` in `__sprintf_chk` from the
+`hsaKmtOpenKFD` path. The same binary, PMD, compiler, flags, and seeded config
+run successfully under `/zys/sb/m48fp`, producing correctness PASS, stats and
+a valid `.perf`.
+
+Interpret this as a PMD/helper fixed-path-buffer boundary, not a kernel or
+Shaobo instruction failure. Use a short `${SHAOBO_RUN_ROOT}` such as
+`/zys/sb/<case>` for fullperf capture, then archive and rename the completed
+artifacts. Preserve the binary and toolchain fingerprints across the retry.
+
 ## PMD Issues
 
 ### PMD-001: F32 `ds_write_matrix_format` Is Not Decoded
