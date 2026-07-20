@@ -9778,3 +9778,18 @@ Status: `ACCEPT_DQ_ONLY_TOOLCHAIN_SOURCE_UNCHANGED`.
   cross-n_tile prefetch on non-boundary pages only. It must fit branch216,
   preserve complete MMAC islands, and pass the standard correctness/resource/
   bank/ticks gates before S2048 promotion.
+
+## 2026-07-21 dQ Cross-n_tile Half-Source Rejected
+
+Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
+
+- Static gates and S128/S1024 correctness pass unchanged: SGPR60/VGPR128,
+  branch use `8/162/162/9`, exact MMOP50,688, private/spill/scratch0, bank0.
+  ASM confirms eight next-half matrix reads after, not inside, the current
+  score/dP MMAC island.
+- Same-environment S1024 control/candidate are
+  `21,428,225/37.6606%` and `21,999,250/38.1391%` ticks/MMAC active.
+  Although waitLgkm falls `9.36%`, waitVm rises `19.09%` and successful
+  coissue falls `12,744 -> 10,689`; the primary ticks gate regresses `2.665%`.
+- Candidate code is removed and no S2048/fullperf is admitted. Canonical dQ
+  remains source-clean with LLVM47a7/no-pad as its accepted toolchain.

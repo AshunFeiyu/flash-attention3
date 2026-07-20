@@ -15427,3 +15427,23 @@ Status: `OBSERVE_DESIGN_READY_WORKBOOK_FIRST`.
 - Workbook sheet: `191_DQ_CrossNTilePrefetch`. Next order is static ASM and
   branch-use proof, H1/S128 correctness, paired H1/S1024, then S2048/fullperf
   only if admitted.
+
+## 2026-07-21 dQ Cross-n_tile Half-Source Prefetch Rejected
+
+Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
+
+- The implementation preserves physical 2P2C, exact three-GEMM work, LDS,
+  ownership, tokens, waits and dynamic instruction counts. Static resources
+  remain SGPR60/VGPR128 with branch use `8/162/162/9`, no private/spill/
+  scratch. S128/S1024 correctness and bank0 pass.
+- Compiler ASM realizes the intended schedule: an eight-request next-half
+  trans-read island follows the current score/dP MMAC island, with unchanged
+  MMAC/matrix-read island counts and no read inserted inside current MMAC.
+- Paired H1/S1024 control/candidate shader-active ticks are
+  `21,428,225 -> 21,999,250` (`+2.665%`). MMAC active rises
+  `37.6606% -> 38.1391%`, waitLgkm falls `9.36%`, and barrier falls `2.02%`;
+  however waitVm rises `19.09%`, successful coissue falls `16.13%`, MMOP
+  runtime rises `2.10%`, and VOP runtime rises `4.28%`.
+- The hypothesis moves LDS wait but lengthens source lifetime and disrupts
+  peer scheduling. Reject before S2048/fullperf, restore canonical source,
+  and retain the result in workbook sheet `191_DQ_CrossNTilePrefetch`.

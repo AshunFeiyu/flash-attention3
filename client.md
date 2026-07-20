@@ -4396,3 +4396,15 @@ Skill Candidate:
   hypothesis: reuse dead score/dP source slots to prefetch only the next
   n_tile D0/D1 K/V trans fragments. Keep boundary pages canonical and add no
   token, LDS page, wait, duplicate GEMM, or topology change.
+
+## 2026-07-21 dQ Cross-n_tile Prefetch Boundary
+
+- The requested eight-read next-half island is present in ASM, remains outside
+  the current score/dP MMAC island, and keeps all work/resources unchanged.
+  S128/S1024 correctness, bank0, and no-spill gates pass.
+- Paired S1024 rejects it: ticks rise `21,428,225 -> 21,999,250` (`+2.665%`).
+  `waitLgkm` falls `9.36%` and active rises `0.4785pp`, but VM wait rises
+  `19.09%` and successful coissue falls `16.13%`.
+- The source is restored without S2048/fullperf. Do not extend next-source
+  lifetime again; the next schedule must improve first-use readiness and peer
+  overlap together, not trade LGKM wait for VM/coissue debt.
