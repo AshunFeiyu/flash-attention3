@@ -4315,3 +4315,14 @@ Skill Candidate:
 - Keep commit `008450c` as the dQ canonical source. For H1/S1024 and S2048,
   retain physical 2P2C; the only measured 1P3C win is a saturated H12/S768
   topology gate and does not admit M192 tail ownership at these target sizes.
+
+## 2026-07-21 dKV 2P2C Promotion
+
+- Keep the 16-wave M128 physical 2P2C topology for S1024/S2048. The accepted
+  dKV change moves C1 sidecar3 into the score D1-D2 gap using dead source
+  slots; C0, math, ownership, LDS, ABarrier and instruction counts stay fixed.
+- S1024 improves `32.507M -> 31.553M` ticks and active
+  `37.842% -> 38.394%`. S2048 fullperf improves `58.346M -> 56.162M` and
+  active `44.459% -> 45.655%`; correctness/resources/bank gates pass.
+- Continue from this baseline. The next bottleneck is residual ABarrier
+  ownership plus MMAC dependency, not tail cleanup or a third consumer.

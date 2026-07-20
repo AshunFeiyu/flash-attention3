@@ -15265,3 +15265,30 @@ Status: `REJECT_STATS_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
   delay PageUsed and peer-consumer completion.
 - Evidence: workbook `185_DQ_C0_N32PairBatch`; candidate
   `/zys/sb/dq_c0_n32_pair_s1024/dq_correctness_20260721_002458`.
+
+## 2026-07-21 dKV 2P2C C1 Sidecar-Tail Schedule Accepted
+
+Status: `ACCEPT_CANONICAL_OPT`.
+
+- The Mq128/Nk128/D128, 16-wave physical 2P2C DAG, output ownership, MMOP,
+  LDS allocation, ABarrier IDs/counts, producer roles, and C0 schedule are
+  unchanged. C1 alone issues the existing max/invsum/delta LDS packet after
+  score D1, directly into three dead score-source slots, while D2/D3 matrix
+  requests remain in flight.
+- Static gates pass with branch use `8/152/14/152`, configured windows
+  `32/160/160/32`, SGPR52/VGPR96, LDS67,072B, private/spill/scratch0, and no
+  matrix-path fallback. H1/S128, S1024, and S2048 correctness pass; bank0.
+- S1024 improves `32,507,020 -> 31,553,340` ticks (`-2.934%`) and MMAC active
+  `37.8420% -> 38.3937%`. Wait falls `14.85%`, barrier falls `3.67%`, and
+  successful coissue rises `10,531 -> 12,328` with exact instruction counts.
+- Same-environment S2048 fullperf improves `58,345,560 -> 56,162,470` ticks
+  (`-3.742%`) and MMAC active `44.4589% -> 45.6554%`. Sampled SIMD duration
+  falls `114,676 -> 110,580`; MMAC+VALU coissue rises C0 `7.49% -> 8.85%`
+  and C1 `7.57% -> 9.30%`.
+- xcu supports the mechanism: aggregate normal-read-to-wait bubbles fall
+  `810,889 -> 355,108`, while the dominant ABarrier edge also shortens.
+  Some trans-read/wait and MMAC dependency bubbles shift upward, so this is
+  not the final 50% solution.
+- Promote this source as the dKV 2P2C baseline for S1024/S2048. Do not restore
+  M192 1P3C tail ownership. Workbook: `186_DKV_C1_SidecarTail`; archive:
+  `/共享/shaobo/perf/20260721_010524_dkv_2p2c_c1_sidecar_tail_h1s2048_sqc7_fullperf`.

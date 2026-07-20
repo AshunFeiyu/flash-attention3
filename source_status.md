@@ -9679,3 +9679,18 @@ Status: `REJECT_STATS_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
 - Candidate source is deleted; canonical remains commit `008450c`, M128
   physical 2P2C with C1-early cadence and exact three-instruction sidecar
   latch. No S2048/fullperf run is admitted for the rejected candidate.
+
+## 2026-07-21 dKV Physical 2P2C C1 Sidecar-Tail Promoted
+
+- Canonical dKV remains Mq128/Nk128/D128, 16 waves, physical 2P2C. C0 is
+  unchanged; C1 overlaps the existing three sidecar LDS reads with score
+  D2/D3 MMAC by reusing three dead score-source VGPR slots.
+- No formula, MMOP, output ownership, LDS byte, page, ABarrier token, or
+  dynamic instruction count changes. Static resources remain branch use
+  `8/152/14/152`, SGPR52/VGPR96, LDS67,072B, private/spill/scratch0, bank0.
+- S1024 is `31,553,340 ticks / 38.3937% active`; S2048 fullperf is
+  `56,162,470 / 45.6554%`. Both improve the locked controls and pass
+  correctness.
+- This is the new dKV S1024/S2048 baseline. Residual work must keep physical
+  2P2C and attack ABarrier ownership/MMAC dependency with same-shape evidence.
+  M192 1P3C and tail-specific ownership remain excluded.
