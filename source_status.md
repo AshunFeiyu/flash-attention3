@@ -1,5 +1,23 @@
 # Source Status
 
+## 2026-07-20 dKV M48 Lookahead Layout Admission
+
+Status: `ACCEPT_LAYOUT_GATE_ONLY`; canonical source is not changed yet.
+
+- Workbook `175_DKV_M48HeadLookahead` budgets one M48 Q/dO/sidecar packet in
+  the M192 layout's spare LDS.  Peak LDS is `125,760B`, leaving `5,312B`.
+- The focused PMD probe passes normal, transpose, dual-base and sidecar
+  bitwise comparisons with no private segment, spill, scratch, executable
+  trap, or LDS bank conflict.  This removes the high-address MLS/read-layout
+  uncertainty from the proposed schedule.
+- The probe intentionally disables WDRA compiler flags: it has one uniform
+  role and does not call `__builtin_hcu_wdra_init`.  Enabling local-wave on
+  this probe inserted `s_set_vgpr_size` without the WDRA init contract and
+  correctly triggered PMD `vgpr_alloc_mode isn't 1`; that failed run is a
+  tool-usage negative control, not a layout failure.
+- Next: integrate the M48 lookahead on an isolated branch while preserving
+  M192 exact ownership, three full heavy consumers, and terminal `AllDone`.
+
 ## 2026-07-20 dKV Terminal Bubble Attribution
 
 Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`; canonical M192 source is

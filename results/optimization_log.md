@@ -1,5 +1,28 @@
 # Optimization Log
 
+## 2026-07-20 dKV M48 Head-Lookahead LDS Gate
+
+- Status: `ACCEPT_LAYOUT_GATE_ONLY`.
+- Hypothesis: use the 27.5KB slack left by the exact M192 raw layout to stage
+  the next q-loop's first M48 Q/dO/sidecar packet before the producer waits on
+  the current `RawHeadUsed` token.  The proposed peak is `125,760B`, leaving
+  `5,312B` below the 128KB limit while preserving all three M64 consumer
+  owners and exact MMAC work.
+- The focused probe publishes distinct Q and dO values through
+  `matrix_load_32x16_b16 bps lds` into both canonical and high-address
+  lookahead pages, then checks normal, transpose, canonical dual-base reads,
+  and sidecar values bit-for-bit.  All mismatch counts are zero.
+- Static/runtime gates pass: private0, SGPR25, VGPR21, spill/scratch0,
+  BPS14, trans-read12, normal-read4, executable trap0, LDS `125,760B`, and
+  `ldsBankConflict=0` on PMD HEAD1694.
+- This is an address/layout admission gate, not a performance result.  The
+  next experiment must keep terminal `AllDone`, add independent lookahead
+  Filled/Used ownership, and prove same-build S768 correctness and ticks
+  before promotion.
+- Evidence:
+  `/zys/shaobo_runs/dkv_m48_lookahead_layout_probe_20260720/`
+  `mls_page_imm_20260720_080645`; workbook `175_DKV_M48HeadLookahead`.
+
 ## 2026-07-20 dKV FWD-Style Terminal Release Rejected
 
 - Status: `REJECT_CORRECTNESS_SOURCE_RESTORED`.

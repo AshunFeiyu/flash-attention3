@@ -20,68 +20,174 @@ bool hip_ok(hipError_t status, const char* operation) {
     return false;
 }
 
-constexpr int kRows = 16;
-constexpr int kCols = 32;
-constexpr int kPage1Offset = 64 * 1024;
-constexpr int kDoutInPageOffset = 32 * 1024;
-constexpr int kPage0DoutOffset = kDoutInPageOffset;
-constexpr int kPage1DoutOffset = 96 * 1024;
+constexpr int kHeadDim = 128;
+constexpr int kLookaheadRows = 48;
+constexpr int kMBlocks = kLookaheadRows / 16;
+constexpr int kDBlocks = kHeadDim / 32;
+constexpr int kRawBlockBytes = 16 * 32 * sizeof(__half);
+constexpr int kMainQBase = 0;
+constexpr int kMainDoutBase = 192 * kHeadDim * sizeof(__half);
+constexpr int kLookaheadQBase = 2 * 192 * kHeadDim * sizeof(__half);
+constexpr int kLookaheadDoutBase =
+    kLookaheadQBase + kLookaheadRows * kHeadDim * sizeof(__half);
+constexpr int kMainSidecarBase =
+    kLookaheadDoutBase + kLookaheadRows * kHeadDim * sizeof(__half);
+constexpr int kLookaheadSidecarBase =
+    kMainSidecarBase + 3 * 192 * sizeof(float);
+constexpr int kPlannedLdsBytes =
+    kLookaheadSidecarBase + 3 * kLookaheadRows * sizeof(float);
 constexpr int kLdsBytes = 128 * 1024;
+
+static_assert(kMainDoutBase == 49152);
+static_assert(kLookaheadQBase == 98304);
+static_assert(kLookaheadDoutBase == 110592);
+static_assert(kMainSidecarBase == 122880);
+static_assert(kLookaheadSidecarBase == 125184);
+static_assert(kPlannedLdsBytes == 125760);
+static_assert(kPlannedLdsBytes <= kLdsBytes);
+
+constexpr int raw_offset(int m_block, int d_block) {
+    return (m_block * kDBlocks + d_block) * kRawBlockBytes;
+}
 
 struct ProbeResult {
     uint32_t trans_mismatch;
     uint32_t normal_mismatch;
+    uint32_t dual_base_mismatch;
     uint32_t sidecar_mismatch;
-    uint32_t page_base_trans_mismatch;
-    uint32_t page_base_normal_mismatch;
 };
 
 __global__ void dual_view_page_offset_probe(
-    const __half* src,
+    const __half* q,
+    const __half* dout,
     ProbeResult* result) {
 #if defined(__gfx946__) || defined(__gfx92a__)
     __shared__ __half lds[kLdsBytes / sizeof(__half)];
     const uint32_t wave_id = __builtin_hcu_get_wave_id();
+    const int wave_local = static_cast<int>(wave_id & 3u);
     const int lane = static_cast<int>(threadIdx.x % 64);
 
-    if (wave_id == 0) {
-        const ins::Vec4U32 srsrc = ins::prepare_matrix_src(src, kCols);
-        ins::matrix_load_32x16_b16_bps_lds(lds, srsrc, 0);
-        ins::matrix_load_32x16_b16_bps_lds(
-            lds, srsrc, kPage0DoutOffset);
-        ins::matrix_load_32x16_b16_bps_lds(lds, srsrc, kPage1Offset);
-        ins::matrix_load_32x16_b16_bps_lds(lds, srsrc, kPage1DoutOffset);
+    if (wave_id < 4) {
+#pragma unroll
+        for (int m_block = 0; m_block < kMBlocks; ++m_block) {
+            const int block_offset = raw_offset(m_block, wave_local);
+            const __half* q_tile =
+                q + static_cast<int64_t>(m_block * 16) * kHeadDim +
+                wave_local * 32;
+            const __half* dout_tile =
+                dout + static_cast<int64_t>(m_block * 16) * kHeadDim +
+                wave_local * 32;
+            const ins::Vec4U32 q_src =
+                ins::prepare_matrix_src(q_tile, kHeadDim);
+            const ins::Vec4U32 dout_src =
+                ins::prepare_matrix_src(dout_tile, kHeadDim);
+            ins::matrix_load_32x16_b16_bps_lds(
+                lds, q_src, kMainQBase + block_offset);
+            ins::matrix_load_32x16_b16_bps_lds(
+                lds, dout_src, kMainDoutBase + block_offset);
+            ins::matrix_load_32x16_b16_bps_lds(
+                lds, q_src, kLookaheadQBase + block_offset);
+            ins::matrix_load_32x16_b16_bps_lds(
+                lds, dout_src, kLookaheadDoutBase + block_offset);
+        }
         ins::wait_vbcnt0();
     }
     __syncthreads();
 
-    if (wave_id == 0) {
-        float* sidecar = reinterpret_cast<float*>(lds);
-        for (int i = lane; i < 3 * 128; i += 64) {
-            sidecar[i] = static_cast<float>(i + 1) * 0.125f;
+    if (wave_id == 0 && lane < kLookaheadRows) {
+        float* main_sidecar = reinterpret_cast<float*>(
+            reinterpret_cast<char*>(lds) + kMainSidecarBase);
+        float* lookahead_sidecar = reinterpret_cast<float*>(
+            reinterpret_cast<char*>(lds) + kLookaheadSidecarBase);
+#pragma unroll
+        for (int field = 0; field < 3; ++field) {
+            const float value =
+                static_cast<float>(field * kLookaheadRows + lane + 1) *
+                0.125f;
+            main_sidecar[field * 192 + lane] = value;
+            lookahead_sidecar[field * kLookaheadRows + lane] = value;
         }
     }
     __syncthreads();
 
-    if (wave_id == 1) {
-        ins::F16x8 trans0;
-        ins::F16x8 trans1;
-        ins::F16x8 normal0;
-        ins::F16x8 normal1;
-        ins::ds_read_matrix_32x16_trans(lds, kPage1Offset, trans0.f16x8);
-        ins::ds_read_matrix_32x16_trans(
-            lds, kPage1DoutOffset, trans1.f16x8);
-        ins::ds_read_matrix_32x16_normal(lds, kPage1Offset, normal0.f16x8);
-        ins::ds_read_matrix_32x16_normal(
-            lds, kPage1DoutOffset, normal1.f16x8);
-        ins::wait_lgkm(0);
-
-        const uint32_t trans_mismatch =
-            static_cast<uint32_t>(trans0.u64[0] != trans1.u64[0]) +
-            static_cast<uint32_t>(trans0.u64[1] != trans1.u64[1]);
-        const uint32_t normal_mismatch =
-            static_cast<uint32_t>(normal0.u64[0] != normal1.u64[0]) +
-            static_cast<uint32_t>(normal0.u64[1] != normal1.u64[1]);
+    if (wave_id == 4) {
+        uint32_t trans_mismatch = 0;
+        uint32_t normal_mismatch = 0;
+#pragma unroll 1
+        for (int m_block = 0; m_block < kMBlocks; ++m_block) {
+#pragma unroll 1
+            for (int d_block = 0; d_block < kDBlocks; ++d_block) {
+                const int block_offset = raw_offset(m_block, d_block);
+                {
+                    ins::F16x8 main_fragment;
+                    ins::F16x8 lookahead_fragment;
+                    ins::ds_read_matrix_32x16_trans(
+                        lds, kMainQBase + block_offset,
+                        main_fragment.f16x8);
+                    ins::ds_read_matrix_32x16_trans(
+                        lds, kLookaheadQBase + block_offset,
+                        lookahead_fragment.f16x8);
+                    ins::wait_lgkm(0);
+#pragma unroll
+                    for (int word = 0; word < 2; ++word) {
+                        trans_mismatch += static_cast<uint32_t>(
+                            main_fragment.u64[word] !=
+                            lookahead_fragment.u64[word]);
+                    }
+                }
+                {
+                    ins::F16x8 main_fragment;
+                    ins::F16x8 lookahead_fragment;
+                    ins::ds_read_matrix_32x16_trans(
+                        lds, kMainDoutBase + block_offset,
+                        main_fragment.f16x8);
+                    ins::ds_read_matrix_32x16_trans(
+                        lds, kLookaheadDoutBase + block_offset,
+                        lookahead_fragment.f16x8);
+                    ins::wait_lgkm(0);
+#pragma unroll
+                    for (int word = 0; word < 2; ++word) {
+                        trans_mismatch += static_cast<uint32_t>(
+                            main_fragment.u64[word] !=
+                            lookahead_fragment.u64[word]);
+                    }
+                }
+                {
+                    ins::F16x8 main_fragment;
+                    ins::F16x8 lookahead_fragment;
+                    ins::ds_read_matrix_32x16_normal(
+                        lds, kMainQBase + block_offset,
+                        main_fragment.f16x8);
+                    ins::ds_read_matrix_32x16_normal(
+                        lds, kLookaheadQBase + block_offset,
+                        lookahead_fragment.f16x8);
+                    ins::wait_lgkm(0);
+#pragma unroll
+                    for (int word = 0; word < 2; ++word) {
+                        normal_mismatch += static_cast<uint32_t>(
+                            main_fragment.u64[word] !=
+                            lookahead_fragment.u64[word]);
+                    }
+                }
+                {
+                    ins::F16x8 main_fragment;
+                    ins::F16x8 lookahead_fragment;
+                    ins::ds_read_matrix_32x16_normal(
+                        lds, kMainDoutBase + block_offset,
+                        main_fragment.f16x8);
+                    ins::ds_read_matrix_32x16_normal(
+                        lds, kLookaheadDoutBase + block_offset,
+                        lookahead_fragment.f16x8);
+                    ins::wait_lgkm(0);
+#pragma unroll
+                    for (int word = 0; word < 2; ++word) {
+                        normal_mismatch += static_cast<uint32_t>(
+                            main_fragment.u64[word] !=
+                            lookahead_fragment.u64[word]);
+                    }
+                }
+            }
+        }
         if (trans_mismatch != 0) {
             atomicAdd(&result->trans_mismatch, trans_mismatch);
         }
@@ -89,68 +195,89 @@ __global__ void dual_view_page_offset_probe(
             atomicAdd(&result->normal_mismatch, normal_mismatch);
         }
 
-        __half* page0 = lds;
-        __half* page1 = lds + kPage1Offset / sizeof(__half);
-        ins::F16x8 page0_q_trans;
-        ins::F16x8 page0_dout_trans;
-        ins::F16x8 page1_q_trans;
-        ins::F16x8 page1_dout_trans;
-        ins::ds_read_matrix_32x16_trans_imm2<0, kDoutInPageOffset>(
-            page0, page0_q_trans.f16x8, page0_dout_trans.f16x8);
-        ins::ds_read_matrix_32x16_trans_imm2<0, kDoutInPageOffset>(
-            page1, page1_q_trans.f16x8, page1_dout_trans.f16x8);
-
-        ins::F16x8 page0_normal[4];
-        ins::F16x8 page1_normal[4];
-        ins::ds_read_matrix_32x16_normal_imm4<
-            kDoutInPageOffset,
-            kDoutInPageOffset,
-            kDoutInPageOffset,
-            kDoutInPageOffset>(
-            page0, page0_normal[0].f16x8, page0_normal[1].f16x8,
-            page0_normal[2].f16x8, page0_normal[3].f16x8);
-        ins::ds_read_matrix_32x16_normal_imm4<
-            kDoutInPageOffset,
-            kDoutInPageOffset,
-            kDoutInPageOffset,
-            kDoutInPageOffset>(
-            page1, page1_normal[0].f16x8, page1_normal[1].f16x8,
-            page1_normal[2].f16x8, page1_normal[3].f16x8);
+        const __half* lookahead_q =
+            lds + kLookaheadQBase / sizeof(__half);
+        const __half* lookahead_dout =
+            lds + kLookaheadDoutBase / sizeof(__half);
+        ins::F16x8 look_tq0;
+        ins::F16x8 look_td0;
+        ins::F16x8 look_tq1;
+        ins::F16x8 look_td1;
+        ins::ds_read_matrix_32x16_trans_dual_base_imm2<0, kRawBlockBytes>(
+            lookahead_q, lookahead_dout, look_tq0.f16x8,
+            look_td0.f16x8, look_tq1.f16x8, look_td1.f16x8);
         ins::wait_lgkm(0);
-
-        const uint32_t page_base_trans_mismatch =
-            static_cast<uint32_t>(
-                page0_dout_trans.u64[0] != page1_dout_trans.u64[0]) +
-            static_cast<uint32_t>(
-                page0_dout_trans.u64[1] != page1_dout_trans.u64[1]);
-        const uint32_t page_base_normal_mismatch =
-            static_cast<uint32_t>(
-                page0_normal[0].u64[0] != page1_normal[0].u64[0]) +
-            static_cast<uint32_t>(
-                page0_normal[0].u64[1] != page1_normal[0].u64[1]);
-        if (page_base_trans_mismatch != 0) {
-            atomicAdd(
-                &result->page_base_trans_mismatch,
-                page_base_trans_mismatch);
+        uint32_t dual_base_mismatch = 0;
+        {
+            ins::F16x8 expected;
+            ins::ds_read_matrix_32x16_trans(
+                lds, kLookaheadQBase, expected.f16x8);
+            ins::wait_lgkm(0);
+#pragma unroll
+            for (int word = 0; word < 2; ++word) {
+                dual_base_mismatch += static_cast<uint32_t>(
+                    expected.u64[word] != look_tq0.u64[word]);
+            }
         }
-        if (page_base_normal_mismatch != 0) {
-            atomicAdd(
-                &result->page_base_normal_mismatch,
-                page_base_normal_mismatch);
+        {
+            ins::F16x8 expected;
+            ins::ds_read_matrix_32x16_trans(
+                lds, kLookaheadDoutBase, expected.f16x8);
+            ins::wait_lgkm(0);
+#pragma unroll
+            for (int word = 0; word < 2; ++word) {
+                dual_base_mismatch += static_cast<uint32_t>(
+                    expected.u64[word] != look_td0.u64[word]);
+            }
+        }
+        {
+            ins::F16x8 expected;
+            ins::ds_read_matrix_32x16_trans(
+                lds, kLookaheadQBase + kRawBlockBytes,
+                expected.f16x8);
+            ins::wait_lgkm(0);
+#pragma unroll
+            for (int word = 0; word < 2; ++word) {
+                dual_base_mismatch += static_cast<uint32_t>(
+                    expected.u64[word] != look_tq1.u64[word]);
+            }
+        }
+        {
+            ins::F16x8 expected;
+            ins::ds_read_matrix_32x16_trans(
+                lds, kLookaheadDoutBase + kRawBlockBytes,
+                expected.f16x8);
+            ins::wait_lgkm(0);
+#pragma unroll
+            for (int word = 0; word < 2; ++word) {
+                dual_base_mismatch += static_cast<uint32_t>(
+                    expected.u64[word] != look_td1.u64[word]);
+            }
+        }
+        if (dual_base_mismatch != 0) {
+            atomicAdd(&result->dual_base_mismatch, dual_base_mismatch);
         }
 
-        const float* sidecar = reinterpret_cast<const float*>(lds);
+        const float* main_sidecar = reinterpret_cast<const float*>(
+            reinterpret_cast<const char*>(lds) + kMainSidecarBase);
+        const float* lookahead_sidecar = reinterpret_cast<const float*>(
+            reinterpret_cast<const char*>(lds) + kLookaheadSidecarBase);
         uint32_t sidecar_mismatch = 0;
-        for (int i = lane; i < 3 * 128; i += 64) {
-            const float expected = static_cast<float>(i + 1) * 0.125f;
-            sidecar_mismatch += static_cast<uint32_t>(sidecar[i] != expected);
+        if (lane < kLookaheadRows) {
+#pragma unroll
+            for (int field = 0; field < 3; ++field) {
+                sidecar_mismatch += static_cast<uint32_t>(
+                    main_sidecar[field * 192 + lane] !=
+                    lookahead_sidecar[field * kLookaheadRows + lane]);
+            }
         }
         if (sidecar_mismatch != 0) {
             atomicAdd(&result->sidecar_mismatch, sidecar_mismatch);
         }
     }
 #else
-    (void)src;
+    (void)q;
+    (void)dout;
     (void)result;
 #endif
 }
@@ -158,61 +285,65 @@ __global__ void dual_view_page_offset_probe(
 }  // namespace
 
 int main() {
-    std::vector<__half> src(kRows * kCols);
-    for (int i = 0; i < kRows * kCols; ++i) {
-        src[i] = __float2half(static_cast<float>((i % 97) - 48) * 0.03125f);
+    std::vector<__half> q(kLookaheadRows * kHeadDim);
+    std::vector<__half> dout(kLookaheadRows * kHeadDim);
+    for (int i = 0; i < kLookaheadRows * kHeadDim; ++i) {
+        q[i] = __float2half(static_cast<float>((i % 97) - 48) * 0.03125f);
+        dout[i] =
+            __float2half(static_cast<float>((i % 89) - 44) * 0.046875f);
     }
 
-    __half* src_dev = nullptr;
+    __half* q_dev = nullptr;
+    __half* dout_dev = nullptr;
     ProbeResult* result_dev = nullptr;
     ProbeResult result{};
-    if (!hip_ok(
-            hipMalloc(
-                reinterpret_cast<void**>(&src_dev),
-                src.size() * sizeof(__half)),
-            "hipMalloc(src)") ||
+    const size_t bytes = q.size() * sizeof(__half);
+    if (!hip_ok(hipMalloc(reinterpret_cast<void**>(&q_dev), bytes),
+                "hipMalloc(q)") ||
+        !hip_ok(hipMalloc(reinterpret_cast<void**>(&dout_dev), bytes),
+                "hipMalloc(dout)") ||
         !hip_ok(
             hipMalloc(reinterpret_cast<void**>(&result_dev), sizeof(result)),
             "hipMalloc(result)") ||
         !hip_ok(
+            hipMemcpy(q_dev, q.data(), bytes, hipMemcpyHostToDevice),
+            "hipMemcpy(q)") ||
+        !hip_ok(
             hipMemcpy(
-                src_dev, src.data(), src.size() * sizeof(__half),
-                hipMemcpyHostToDevice),
-            "hipMemcpy(src)") ||
+                dout_dev, dout.data(), bytes, hipMemcpyHostToDevice),
+            "hipMemcpy(dout)") ||
         !hip_ok(hipMemset(result_dev, 0, sizeof(result)), "hipMemset(result)")) {
-        (void)hip_ok(hipFree(result_dev), "hipFree(result after setup error)");
-        (void)hip_ok(hipFree(src_dev), "hipFree(src after setup error)");
+        (void)hipFree(result_dev);
+        (void)hipFree(dout_dev);
+        (void)hipFree(q_dev);
         return 1;
     }
 
     hipLaunchKernelGGL(
-        dual_view_page_offset_probe, dim3(1), dim3(128), 0, 0, src_dev,
-        result_dev);
-    if (!hip_ok(hipGetLastError(), "dual_view_page_offset_probe launch") ||
-        !hip_ok(hipDeviceSynchronize(), "hipDeviceSynchronize") ||
-        !hip_ok(
+        dual_view_page_offset_probe, dim3(1), dim3(320), 0, 0, q_dev,
+        dout_dev, result_dev);
+    const bool run_ok =
+        hip_ok(hipGetLastError(), "dual_view_page_offset_probe launch") &&
+        hip_ok(hipDeviceSynchronize(), "hipDeviceSynchronize") &&
+        hip_ok(
             hipMemcpy(
                 &result, result_dev, sizeof(result), hipMemcpyDeviceToHost),
-            "hipMemcpy(result)")) {
-        (void)hip_ok(hipFree(result_dev), "hipFree(result after run error)");
-        (void)hip_ok(hipFree(src_dev), "hipFree(src after run error)");
-        return 1;
-    }
+            "hipMemcpy(result)");
 
-    const bool free_result_ok = hip_ok(hipFree(result_dev), "hipFree(result)");
-    const bool free_src_ok = hip_ok(hipFree(src_dev), "hipFree(src)");
-    const bool free_ok = free_result_ok && free_src_ok;
-    const bool pass = result.trans_mismatch == 0 &&
+    const bool free_ok =
+        hip_ok(hipFree(result_dev), "hipFree(result)") &&
+        hip_ok(hipFree(dout_dev), "hipFree(dout)") &&
+        hip_ok(hipFree(q_dev), "hipFree(q)");
+    const bool pass = run_ok && result.trans_mismatch == 0 &&
                       result.normal_mismatch == 0 &&
-                      result.sidecar_mismatch == 0 &&
-                      result.page_base_trans_mismatch == 0 &&
-                      result.page_base_normal_mismatch == 0;
+                      result.dual_base_mismatch == 0 &&
+                      result.sidecar_mismatch == 0;
     std::printf(
         "dkv_mls_dual_view_page_offset trans_mismatch=%u "
-        "normal_mismatch=%u sidecar_mismatch=%u "
-        "page_base_trans_mismatch=%u page_base_normal_mismatch=%u pass=%d\n",
+        "normal_mismatch=%u dual_base_mismatch=%u sidecar_mismatch=%u "
+        "lds_bytes=%d pass=%d\n",
         result.trans_mismatch, result.normal_mismatch,
-        result.sidecar_mismatch, result.page_base_trans_mismatch,
-        result.page_base_normal_mismatch, pass ? 1 : 0);
+        result.dual_base_mismatch, result.sidecar_mismatch,
+        kPlannedLdsBytes, pass ? 1 : 0);
     return pass && free_ok ? 0 : 1;
 }

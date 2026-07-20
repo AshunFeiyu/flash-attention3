@@ -1,5 +1,20 @@
 # Client
 
+## 2026-07-20 M48 Head-Lookahead Admission
+
+- The M192 main layout can hold one extra M48 Q/dO/sidecar packet at high LDS
+  addresses: peak `125,760B`, slack `5,312B`.
+- Focused PMD validation is bit-exact for normal/trans/dual-base matrix reads
+  and sidecar data, with private/spill/scratch0 and bank0.  Use the probe via
+  `scripts/run_dkv_mls_dual_view_page_offset_probe.sh` before changing this
+  layout or its offsets.
+- This does not replace M128 `64/32/32` as the no-tail control and does not
+  prove a speedup.  Its purpose is to let the producer publish useful next
+  work before `RawHeadUsed` while retaining M192's three full consumers.
+- A uniform instruction probe must compile with WDRA/local-wave disabled;
+  only role-specialized kernels with explicit WDRA init may use dynamic VGPR
+  resize flags.
+
 ## 2026-07-20 dKV Terminal AllDone Boundary
 
 - Do not interpret the full 31.27% ABarrier bubble sum as raw-packet debt.
