@@ -15165,3 +15165,33 @@ Status: `OBSERVE_XCU_READINESS_AND_DEPENDENCY`; no source change.
   MMAC dependency with one minimal hypothesis at a time.
 - Evidence archive:
   `/共享/shaobo/perf/20260720_212508_dq_m128_2p2c_h1s2048_sqc7_fullperf`.
+
+## 2026-07-20 dQ M256 Physical 2P2C Fragment Reuse Rejected
+
+Status: `REJECT_S1024_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
+
+- The candidate kept 16 waves and physical 2P2C, but enlarged the tile to
+  `Mq256/Nk128/D128`. Each consumer wave owned two adjacent M16 rows and reused
+  each K/V fragment across both rows. Dynamic MMOP stayed exact at `50,688`,
+  so the result contains no duplicate score, dP, or dQ GEMM work.
+- Static and numerical gates pass: configured WDRA windows are
+  `P0/C0/C1/P1=8/240/240/24`, measured branch use is `2/230/233/18`, LDS is
+  `131,072B`, and private/spill/scratch are zero. H1/S256 and H1/S1024 causal
+  correctness pass; S1024 relL2 is `0.00208192` and bank conflict is zero.
+- H1/S1024 regresses from the M128 control's `24,300,185` to `43,571,710`
+  kernel ticks (`+79.31%`). MMAC active falls from `34.2341%` to `32.5363%`
+  (`-1.6978pp`). The candidate halves completed WGs `8->4` and active SIMDs
+  `32->16`, which exposes the doubled per-CTA work on this target grid.
+- Fragment reuse itself is real: VALU falls `68,144->48,736`, SCA
+  `41,772->21,408`, LDS instructions `26,352->13,552`, waitLgkm
+  `15,209.5->6,123.25`, and MMAC busy-window rises `57.40%->65.48%`.
+  However, the sequential group0/group1 Q/dO latch doubles barrier cost
+  `44,459.75->88,912.5`; no-V-or-M time rises `108,699->139,427`, and the
+  accepted mixed score/dP stagger weakens (`coissue success 13,697->10,927`,
+  failures `11,734->14,389`).
+- Decision: do not run S2048 for promotion after the S1024 hard failure. Delete
+  candidate source from the canonical route and restore M128 C1-early physical
+  2P2C. Preserve this as evidence that a larger tile only helps if startup
+  ownership is not serialized and the useful MMAC/VALU stagger survives.
+- Evidence: workbook sheet `183_DQ_M256_2P2C`; remote run
+  `/zys/sb/dq_m256_2p2c_validation/dq_correctness_20260720_223211`.

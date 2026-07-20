@@ -4276,3 +4276,16 @@ Skill Candidate:
   producer busy longer.
 - Perf and xcu evidence:
   `/共享/shaobo/perf/20260720_212508_dq_m128_2p2c_h1s2048_sqc7_fullperf`.
+
+## 2026-07-20 2P2C S1024/S2048 Mainline Lock
+
+- Keep dKV and dQ on 16-wave physical 2P2C. Optimize H1/S1024 first and verify
+  H1/S2048 before promotion; do not reintroduce 3C tail ownership.
+- dQ M256 fragment reuse passed correctness/resources but was rejected at
+  S1024 (`24.300M->43.572M` ticks, `34.2341%->32.5363%` MMAC active). The
+  useful instruction-count reduction was outweighed by half as many active
+  WGs/SIMDs and doubled startup barrier cost.
+- Canonical dQ is M128 C1-early. The next edit must preserve exact three-GEMM
+  work and the existing useful stagger, then target one measured
+  matrix-first-use or ABarrier readiness edge. Failed M256 source is removed;
+  workbook sheet `183_DQ_M256_2P2C` is the evidence record.

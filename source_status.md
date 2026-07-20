@@ -9630,3 +9630,18 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   gaps without adding duplicate GEMMs, a third consumer, or tail handling.
 - Archive:
   `/共享/shaobo/perf/20260720_212508_dq_m128_2p2c_h1s2048_sqc7_fullperf`.
+
+## 2026-07-20 dQ M256 2P2C Rejected; M128 Target Restored
+
+- The M256 fragment-reuse candidate is correct, exact-work, bank0, and
+  no-spill, but fails H1/S1024 performance: `43,571,710 ticks / 32.5363%`
+  versus M128 `24,300,185 / 34.2341%`.
+- It reduces VALU/SCA/LDS/read-wait work and raises MMAC busy-window, but halves
+  active WGs/SIMDs and doubles barrier cost through sequential group0/group1
+  startup publication. This is an ownership/topology loss, not duplicate GEMM
+  or a missing matrix instruction.
+- Canonical dQ remains `Mq128/Nk128/D128`, 16-wave physical 2P2C with the
+  accepted C1-early K-normal stagger. S1024 and S2048 are the two required
+  optimization targets; 3C and M256 candidate source are excluded.
+- Detailed design and actual evidence are in workbook sheet
+  `183_DQ_M256_2P2C`.
