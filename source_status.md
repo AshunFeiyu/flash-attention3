@@ -9469,3 +9469,17 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
 - Canonical `src/dkv_kernel.cpp` is untouched.  Integration is now allowed
   only after the full K/V-startup, raw-page, ABarrier-generation and exact
   output-ownership ledger is written into the workbook.
+
+## 2026-07-20 dKV M96x2 Rejected
+
+- Branch `exp/dkv-m96-two-lifetimes-20260720` tested an exact-work `96+96`
+  Q/dO ownership split against the accepted `64+64+64` source.
+- Partial-wave sidecar publication failed S384 correctness. Dynamic sidecar
+  page selection isolated to page1 failure (`S192 PASS`, `S384 FAIL`) with a
+  VGPR-init warning. Compile-time page specialization produced 66 VGPR spills
+  and 120B private segment.
+- The candidate never crossed the hard correctness/resource gate and has no
+  valid performance result. Restore canonical source from commit `20dbb81`.
+- Evidence: workbook `176_DKV_M96x2_Lifetimes`; remote runs
+  `/zys/sb/dkv_m96x2_runs`, `/zys/sb/dkv_m96x2_v2_runs`, and
+  `/zys/sb/dkv_m96x2_v2_s192_runs`.

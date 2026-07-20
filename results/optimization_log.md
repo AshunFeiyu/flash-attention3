@@ -14918,3 +14918,23 @@ Status: `DESIGN_COMPLETE_CANONICAL_INTEGRATION_PENDING`.
   page0-page1-page0 sentinel must prove no ABA or early release.  Full dKV is
   admitted only after `<=128 VGPR`, private/spill/scratch0, bank0 and native
   BPS+matrix-read+MMAC gates pass.
+
+## 2026-07-20 dKV M96 + M96 Ownership Experiment
+
+Status: `REJECT_CORRECTNESS_AND_STATIC_RESOURCE`; canonical baseline unchanged.
+
+- The experiment kept `Mq192/Nk192/D128`, the same four GEMMs, exact MMOP,
+  output ownership, and 1P3C roles. Only the three M64 Q/dO lifetimes were
+  replaced by two M96 lifetimes.
+- A 96-row sidecar slice needs a partial producer wave. That version compiled
+  at the baseline resource level but failed S384 dK/dV correctness.
+- Publishing a full 192-row sidecar into two alternating pages removed the
+  partial wave. The dynamic-page version passed S192 page0 but failed S384
+  when page1 first appeared, with PMD VGPR-init and DS-address warnings.
+- Making both page addresses compile-time constants removed the dynamic
+  address path but raised all consumer branches to the 160-VGPR ceiling and
+  emitted `private_segment=120B`, `vgpr_spill=66`.
+- No ticks or MMAC-active claim is admitted. The exact-work best remains tag
+  `best/dkv-three-m64-lifetimes-20260719`, commit `20dbb81`.
+- Evidence is recorded in workbook sheet `176_DKV_M96x2_Lifetimes` and under
+  `/zys/sb/dkv_m96x2_*`.

@@ -4112,3 +4112,13 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - M128 dKV `64+32+32` remains a no-tail control, not the canonical steady
   pipeline: native owner16 maps it to only eight useful heavy waves.
 - Design evidence: shared workbook sheet `174_DKV_M128_vs_M192Tail`.
+
+## 2026-07-20 M96x2 Decision
+
+- `96+96` ownership was tested without changing GEMM work or output owners.
+- It is rejected before performance: partial-wave sidecar failed correctness;
+  dynamic double-page sidecar failed on page1; static page specialization
+  spilled 66 VGPRs with 120B private segment.
+- Keep dKV canonical at `20dbb81` (`64+64+64`, exact MMOP 46,080). Its
+  accepted H1/S768 fullperf remains 33,135,830 ticks and 41.1992% MMAC active.
+- Full evidence is in workbook sheet `176_DKV_M96x2_Lifetimes` and the ledger.
