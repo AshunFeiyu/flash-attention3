@@ -15092,3 +15092,32 @@ Status: `ACCEPT_CANONICAL_2P2C_BASELINE`.
   add a third consumer or duplicate the three-GEMM chain.
 - Evidence: workbook `112_DQ_2P2C_Targets`; remote run
   `/zys/sb/dq_m128_2p2c_recert_s2048/dq_correctness_20260720_195212`.
+
+## 2026-07-20 dKV M128 2P2C S2048 SQTT Critical-Path Audit
+
+Status: `OBSERVE_XCU_CONSUMER_LOCKSTEP`; no source change.
+
+- Fullperf uses the accepted M128 physical 2P2C binary and passes correctness.
+  The helper perf is archived as
+  `/共享/shaobo/perf/20260720_201438_dkv_m128_2p2c_h1s2048_sqc7_fullperf/`
+  `dkv_m128_2p2c_h1s2048_sqc7.perf`.
+- Aggregate xcu attribution is dominated by
+  `s_abarrier_try_wait -> s_xor_b32`: 37.36%, 6,782,768 cycles over 4,352
+  occurrences. A role-local trace changes the interpretation: the producer
+  owns 27 long `RawUsed` waits totaling 80,161 cycles, while steady consumer
+  `RawFilled` waits are normally only 3 cycles after two startup waits of
+  1,379 and 2,107 cycles.
+- Therefore the producer is waiting for page reuse; the consumers are not
+  starved for published Q/dO in steady state. Adding raw pages only to shorten
+  the producer's active lifetime could raise MMAC-active share without lowering
+  dispatch ticks and is not the next optimization.
+- The measured consumer bottleneck is lockstep issue: each sampled heavy wave
+  emits 3,584 MMAC issues, but MMAC+VALU coissue is only 739/748 bins
+  (`7.49%/7.57%`). Its largest bubbles are MMAC-to-MMAC (30,943 cycles),
+  normal-matrix-read to wait (12,140), wait to MMAC (6,361), and transpose
+  read to wait (4,435).
+- Next design gate: keep physical 2P2C, exact four GEMMs, the fused score+dP
+  chain, early Head/Tail Used release, and the 160-VGPR consumer ceiling. Test
+  only useful-work staggering that lowers S1024 ticks and does not regress
+  S2048. Empty delay, a third consumer, duplicate score/dP, and buffer depth
+  added only to improve the active-share denominator remain forbidden.

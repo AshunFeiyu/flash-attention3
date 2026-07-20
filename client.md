@@ -4231,3 +4231,17 @@ Skill Candidate:
 - Both dKV and dQ now have S1024/S2048 canonical controls. The next code
   change waits for xcu evidence that names the exact ABarrier or first-use
   edge; 3C and tail-specific cleanup remain excluded.
+
+## 2026-07-20 2P2C SQTT Decision
+
+- dKV S2048 xcu resolves the apparent ABarrier contradiction: producers spend
+  a long time waiting for consumers to release the single raw page, but
+  consumers already find each steady Filled generation ready. Producer wait
+  is not evidence that another page will shorten the kernel critical path.
+- The actionable deficit is consumer lockstep. On a sampled SIMD the two heavy
+  waves each execute 3,584 MMAC issues, while useful MMAC+VALU coissue is only
+  7.49% and 7.57%. Matrix-read first-use gaps remain the next secondary target.
+- Keep M128 physical 2P2C for both S1024 and S2048. A candidate is accepted
+  only if exact work, correctness, bank0, and no-spill gates pass and S1024
+  ticks fall without an S2048 regression. Do not count an active-share rise
+  caused only by producer lifetime shortening as a performance win.

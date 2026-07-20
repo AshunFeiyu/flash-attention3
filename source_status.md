@@ -9582,3 +9582,19 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   is `24,300,185 / 34.2341%`. Keep the same physical 2P2C topology for both.
 - The next dQ source experiment must preserve C1-early useful stagger and
   exact three-GEMM work while addressing the shared ABarrier/readiness edge.
+
+## 2026-07-20 dKV 2P2C S2048 SQTT Diagnosis
+
+- Fullperf and xcu confirm that the long aggregate ABarrier attribution belongs
+  primarily to producer waves waiting for `RawUsed`, not to consumer waves
+  waiting for `RawFilled`. After startup, sampled consumer Filled waits are
+  normally 3 cycles; sampled producer Used waits are about 2.7K-3.9K cycles.
+- The consumer critical path remains matrix first-use plus two heavy groups
+  issuing MMAC in lockstep. Sampled MMAC+VALU coissue is only 7.49%/7.57% for
+  the two heavy waves on one SIMD.
+- Do not add a third consumer or extra raw pages merely to shorten producer
+  lifetime. The next source candidate must preserve M128 physical 2P2C and
+  early ownership release while creating a useful MMAC-versus-VALU phase
+  offset that lowers S1024 ticks and does not regress S2048.
+- Archived evidence:
+  `/共享/shaobo/perf/20260720_201438_dkv_m128_2p2c_h1s2048_sqc7_fullperf`.
