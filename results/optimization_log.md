@@ -15243,3 +15243,25 @@ Status: `ACCEPT_CANONICAL_OPT`.
   `/zys/sb/dq_m128_2p2c_control_s2048_fullperf_same_env/dq_correctness_20260720_234655`.
 - Shared archive:
   `/共享/shaobo/perf/20260720_234337_dq_m128_2p2c_sidecar_ds3_h1s2048_sqc7_fullperf`.
+
+## 2026-07-21 dQ C0 N32 Pair Batch Rejected
+
+Status: `REJECT_STATS_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
+
+- The experiment preserved M128 physical 2P2C, exact three-GEMM work, LDS,
+  matrix instructions and ownership tokens. Only C0 grouped two non-boundary
+  N32 score+dP stages before their softmax/dS+dQ finalization; C1 and causal
+  boundaries retained the accepted cadence.
+- Static gates pass at branch use `8/175/159/9`, private/spill/scratch zero.
+  H1/S128 and H1/S1024 correctness pass, MMOP remains `50,688`, and LDS bank
+  conflict remains zero.
+- The local premise partially worked: `waitLgkm` falls `15,541.25 ->
+  14,853.75` (`-4.42%`). The ownership schedule becomes worse: barrier cycles
+  rise `45,401 -> 46,680.25`, coissue success falls `14,332 -> 13,355`, ticks
+  regress `24,114,090 -> 24,673,285` (`+2.319%`), and MMAC active falls
+  `34.2193% -> 33.9961%`.
+- Reject before S2048/fullperf. The candidate source is removed. This proves
+  that reducing one matrix first-use wait is not useful when two N32 epochs
+  delay PageUsed and peer-consumer completion.
+- Evidence: workbook `185_DQ_C0_N32PairBatch`; candidate
+  `/zys/sb/dq_c0_n32_pair_s1024/dq_correctness_20260721_002458`.

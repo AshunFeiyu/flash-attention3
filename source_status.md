@@ -9665,3 +9665,17 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
 - The remaining critical path is still ABarrier ownership/readiness. Do not
   add another sidecar micro-optimization or a third consumer without a new
   XCU-supported hypothesis.
+
+## 2026-07-21 dQ C0 N32 Pair Batch Rejected
+
+Status: `REJECT_STATS_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
+
+- C0-only two-N32 score+dP batching passes S128/S1024 correctness, no-spill
+  resources, exact MMOP and bank0, but S1024 regresses `2.319%` and MMAC
+  active falls `0.2231pp`.
+- Although LDS wait falls `4.42%`, barrier time rises `2.82%` and successful
+  coissue falls by `977`. Delaying two page finalizations lengthens the
+  PageUsed/completion critical edge more than it hides matrix readiness.
+- Candidate source is deleted; canonical remains commit `008450c`, M128
+  physical 2P2C with C1-early cadence and exact three-instruction sidecar
+  latch. No S2048/fullperf run is admitted for the rejected candidate.

@@ -4304,3 +4304,14 @@ Skill Candidate:
 - XCU confirms a shorter dispatch but shows the same dominant ABarrier
   ownership bubble. Next work must isolate that 2P2C first-use/ownership edge;
   do not reintroduce 3C, M256, or more sidecar-only edits.
+
+## 2026-07-21 dQ Pair-Batch Boundary
+
+- Do not batch two C0 N32 score+dP epochs before finalizing softmax/dS+dQ.
+  The candidate is exact-work, correct, no-spill and bank0, and lowers local
+  LDS wait by `4.42%`; nevertheless it delays PageUsed/completion, loses `977`
+  successful coissues, regresses S1024 ticks `2.319%`, and lowers MMAC active
+  `0.2231pp`.
+- Keep commit `008450c` as the dQ canonical source. For H1/S1024 and S2048,
+  retain physical 2P2C; the only measured 1P3C win is a saturated H12/S768
+  topology gate and does not admit M192 tail ownership at these target sizes.
