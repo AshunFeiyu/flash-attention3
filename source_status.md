@@ -9734,3 +9734,16 @@ Status: `REJECT_STATS_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
 - Candidate source is removed before repeat/S2048. Do not split the unrolled
   softmax block to create a read window. Future dQ work needs a whole-block or
   instruction-form improvement that does not duplicate CFG/control.
+
+## 2026-07-21 dKV C0-Late Sidecar Boundary
+
+- Canonical dKV remains commit/tag `f57714f` /
+  `best/dkv-2p2c-c1-sidecar-tail-20260721`: M128 physical 2P2C with C1-only
+  sidecar dead-slot prefetch after score D1 and canonical C0 scheduling.
+- The C0-after-D2 candidate passed static resources and S128/S1024 numerical
+  checks, but repeated S1024 evidence is not admissible: active falls on
+  average, barrier rises, the second run reports `ldsBankConflict=2`, and both
+  runs add unaligned/out-of-LDS `ds_read_b128` warnings absent from canonical.
+- Candidate source is deleted before S2048/fullperf. Preserve C0 as the cadence
+  anchor until a new SQTT-backed hypothesis avoids extending the sidecar LDS
+  address lifetime across score D2.

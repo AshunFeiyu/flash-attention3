@@ -4359,3 +4359,17 @@ Skill Candidate:
 - The candidate is removed before S2048. Do not pursue another split-softmax
   read placement. Preserve C1's accepted whole-block stagger and search for a
   steady critical-path change with no CFG or ownership expansion.
+
+## 2026-07-21 dKV C0-Late Sidecar Boundary
+
+- Keep the accepted C1-only dead-slot sidecar schedule. Moving the same
+  sidecar packet into C0 dead slots after score D2 is mathematically correct
+  and leaves static resources and instruction counts unchanged, but it is not
+  a stable hardware-model path.
+- Two S1024 runs average `31.363M ticks / 38.0943% active` versus canonical
+  `31.553M / 38.3937%`. The small ticks delta is rejected because active
+  falls, barrier rises, one repeat reports `ldsBankConflict=2`, and both runs
+  add LDS address warnings absent from canonical.
+- Do not issue C0 sidecar after D2 again. A future dKV schedule must preserve
+  bank0 and stable LDS address tracking before any elapsed-time improvement is
+  considered. The source has been restored; workbook sheet 190 is evidence.

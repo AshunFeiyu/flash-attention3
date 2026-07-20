@@ -15360,3 +15360,23 @@ Status: `REJECT_TICKS_ACTIVE_CODEGEN_SOURCE_RESTORED`.
 - Reject without repeat/S2048/fullperf. Restore canonical source. The local
   latency-hiding premise worked, but splitting this unrolled softmax block is
   too expensive in generated control and register scheduling.
+
+## 2026-07-21 dKV C0-Late / C1-Early Sidecar Rejected
+
+Status: `REJECT_REPEAT_BANK_ADDRESS_WARNING_SOURCE_RESTORED`.
+
+- The candidate preserved Mq128/Nk128/D128 physical 2P2C, exact four-GEMM
+  work, output ownership, LDS bytes, ABarrier ledger, producer work and all
+  dynamic instruction counts. C1 kept the accepted sidecar issue after score
+  D1; C0 issued the same packet after D2 into three dead score-source slots.
+- Static gates stayed unchanged at branch use `8/152/14/152`, SGPR52/VGPR96,
+  LDS67,072B and private/spill/scratch0. S128 and two S1024 runs pass numerical
+  correctness with exact MMOP73,728.
+- S1024 results are `31,202,080 ticks / 38.4202% active / bank0` and
+  `31,524,675 / 37.7684% / bank2`. Their mean is `31,363,378 / 38.0943%`
+  versus accepted `31,553,340 / 38.3937%`: mean ticks fall `0.602%`, but active
+  falls `0.2994pp` and mean barrier rises `1.10%` despite wait falling `6.11%`.
+- Both repeats add `ds_read_b128` unaligned/out-of-LDS address tracking
+  warnings absent from the accepted C1-only binary, and the repeat violates
+  the bank0 hard gate. Reject before S2048/fullperf and restore canonical.
+  Workbook: `190_DKV_C0_LateSidecar`.
