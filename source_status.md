@@ -9793,3 +9793,16 @@ Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
   coissue falls `12,744 -> 10,689`; the primary ticks gate regresses `2.665%`.
 - Candidate code is removed and no S2048/fullperf is admitted. Canonical dQ
   remains source-clean with LLVM47a7/no-pad as its accepted toolchain.
+
+## 2026-07-21 dQ ValuExec0 Handoff Boundary
+
+- Canonical dQ remains Mq128/Nk128/D128 physical 2P2C with LLVM47a7/no-pad.
+  The FWD-style ValuExec0 candidate added a four-wave consumer phase token but
+  did not change matrix work, LDS, source layouts, or output ownership.
+- Correctness/resources/bank pass, but S1024 ticks regress `4.0917%`, active
+  falls `0.0755pp`, successful coissue falls `22.25%`, and low-runnable-wave
+  residency grows `173%`. The token serializes consumers before the leading
+  dQ MMAC island is ready enough to cover the follower's softmax.
+- Candidate source is removed before S2048/fullperf. Do not add a blocking
+  peer-consumer phase token to dQ or dKV without role-local SQTT proof that the
+  leading consumer immediately sustains MMAC and the follower stays runnable.

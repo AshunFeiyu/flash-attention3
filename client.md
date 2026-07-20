@@ -4408,3 +4408,14 @@ Skill Candidate:
 - The source is restored without S2048/fullperf. Do not extend next-source
   lifetime again; the next schedule must improve first-use readiness and peer
   overlap together, not trade LGKM wait for VM/coissue debt.
+
+## 2026-07-21 dQ FWD Handoff Decision
+
+- The exact FWD-style ValuExec0 pattern is not transferable as a mechanical
+  token insertion. It passes correctness and resource gates, but S1024 ticks
+  rise `4.0917%`, active falls slightly, coissue success drops `22.25%`, and
+  low-runnable-wave residency rises `173%`.
+- Keep the canonical source and accepted LLVM47a7/no-pad dQ baseline. A future
+  stagger must preserve runnable peer waves and prove, from role-local SQTT,
+  that the leading consumer reaches a long ready MMAC island before blocking
+  the follower. Do not apply this rejected token to dKV.

@@ -15447,3 +15447,24 @@ Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
 - The hypothesis moves LDS wait but lengthens source lifetime and disrupts
   peer scheduling. Reject before S2048/fullperf, restore canonical source,
   and retain the result in workbook sheet `191_DQ_CrossNTilePrefetch`.
+
+## 2026-07-21 dQ FWD-Style ValuExec0 Handoff Rejected
+
+Status: `REJECT_FORCED_SERIALIZATION_SOURCE_RESTORED`.
+
+- The candidate copied FWD's four-wave consumer handoff: C1 completed
+  softmax/dS, arrived ABarrier6, and entered dQ MMAC while C0 waited before
+  softmax/dS. Boundary N32 stayed canonical. Exact three-GEMM work, LDS,
+  matrix/global requests, and output ownership were unchanged.
+- Static gates pass at SGPR60/VGPR128, branch use `8/162/9/162`, exact
+  MMAC768, private/spill/scratch0. S128/S1024 correctness passes; S1024 has
+  exact MMOP50,688, bank0, and balanced ABarrier6 phases.
+- Paired S1024 shader-active ticks regress `21,428,225 -> 22,305,010`
+  (`+4.0917%`), while MMAC active falls `37.6603% -> 37.5848%`.
+  Successful coissue falls `12,744 -> 9,908` (`-22.25%`), waitLgkm rises
+  `6.83%`, waitVm rises `58.44%`, and the low-runnable-wave counter rises
+  `1,485 -> 4,054`.
+- The token creates forced consumer serialization before C1 sustains a ready
+  dQ MMAC window; it does not reproduce FWD's useful MMAC/VALU conveyor.
+  Reject before S2048/fullperf, restore canonical source, and do not copy this
+  token into dKV. Workbook: `192_DQ_FwdValuPhase`.
