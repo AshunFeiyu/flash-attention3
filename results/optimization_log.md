@@ -15142,3 +15142,26 @@ Status: `REJECT_STATIC_RESOURCE_SOURCE_RESTORED`.
   contract, and gate exactly to `d48464d`. The skip algebra remains a future
   design candidate only if first-use zero seeding can stay local, without
   making every dK/dV accumulator live before the first useful M16.
+
+## 2026-07-20 dQ M128 2P2C S2048 SQTT Critical-Path Audit
+
+Status: `OBSERVE_XCU_READINESS_AND_DEPENDENCY`; no source change.
+
+- The fullperf run passes correctness and keeps the accepted C1-early
+  Mq128/Nk128/D128 physical 2P2C implementation. Fullperf kernel ticks are
+  `42,946,540`; this trace-mode number does not replace the stats-only
+  `44,827,055` control.
+- The selected SIMD window has consumer bubble ratios `49.07%/48.03%` and
+  producer ratios `98.42%/98.55%`. Producer idleness is dominated by page
+  reuse and terminal completion, so it is not evidence for 3C or artificial
+  helper work.
+- Role-local edges are asymmetric in the intended useful-stagger direction:
+  consumer0 `abarrier -> salu_32=9,632` cycles; consumer1
+  `abarrier -> salu_32=3,616` and `MMAC -> MMAC=4,464`. Producer BPS
+  readiness is still material at `7,373/7,577` cycles.
+- The terminal ebarrier bubbles are excluded from the optimization target:
+  only shortening the latest consumer can reduce dispatch completion. Keep
+  the C1-early stagger and attack matrix first-use/BPS readiness or consumer
+  MMAC dependency with one minimal hypothesis at a time.
+- Evidence archive:
+  `/共享/shaobo/perf/20260720_212508_dq_m128_2p2c_h1s2048_sqc7_fullperf`.

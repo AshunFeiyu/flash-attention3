@@ -9611,3 +9611,22 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   to `d48464d`. No failed code or phase switch remains.
 - A future causal skip must preserve first-use accumulator seeding locally or
   use a bounded owner specialization; do not retry early full-accumulator seed.
+
+## 2026-07-20 dQ Physical 2P2C S2048 SQTT Diagnosis
+
+- No source change. Fullperf uses the accepted C1-early M128 physical 2P2C
+  binary and passes H1/S2048 correctness with bank0 and no spill/scratch.
+- A sampled steady window on `xcd0/se3/cu2/simd0` maps slot0/3 to producers
+  and slot1/2 to consumers. Consumer bubble ratios are `49.07%/48.03%`;
+  producer ratios are `98.42%/98.55%` because they wait for page reuse and
+  then for CTA completion.
+- Producer page-reuse wait edges total `41,498/36,846` cycles and BPS
+  `vbcnt` readiness edges total `7,373/7,577` cycles in the window. Consumer0
+  has `9,632` cycles of `abarrier -> salu_32`; consumer1 has `3,616` plus
+  `4,464` cycles of `MMAC -> MMAC` bubbles.
+- The final ebarrier/cbranch bubble is completion imbalance, not removable
+  critical-path work. Keep 2P2C and the accepted stagger. The next source
+  hypothesis must shorten consumer first-use/readiness or MMAC dependency
+  gaps without adding duplicate GEMMs, a third consumer, or tail handling.
+- Archive:
+  `/共享/shaobo/perf/20260720_212508_dq_m128_2p2c_h1s2048_sqc7_fullperf`.

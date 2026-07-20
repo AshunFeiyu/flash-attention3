@@ -4256,3 +4256,23 @@ Skill Candidate:
   full dK/dV accumulator set is not activated before the first useful block.
 - Design and static evidence are in workbook `181_DKV_CausalM16Skip`; failed
   source is deleted.
+
+## 2026-07-20 dQ 2P2C S2048 SQTT Decision
+
+- The sampled SIMD confirms the intended physical roles: slot0/slot3 are the
+  two producers and slot1/slot2 are the two symmetric heavy consumers.
+- In the steady window, consumer bubble ratios are `49.07%/48.03%`. Producer
+  bubble ratios are `98.42%/98.55%`, but their dominant waits are page-reuse
+  waits and terminal convergence; they do not by themselves prove consumer
+  starvation or justify a third consumer.
+- Consumer0 exposes `9,632` cycles of `abarrier -> salu_32`; consumer1 exposes
+  `3,616` cycles of that edge plus `4,464` cycles of `MMAC -> MMAC`. Producer
+  BPS readiness contributes `7,373/7,577` cycles of
+  `s_cmp_lg_u32 -> s_waitcnt_vbcnt` in the sampled window.
+- Preserve the accepted C1-early stagger and M128 physical 2P2C. Ignore the
+  final ebarrier wait as an optimization target unless the latest heavy
+  consumer is shortened. Next candidates must reduce consumer first-use or
+  readiness bubbles and improve both target lengths, not merely keep a
+  producer busy longer.
+- Perf and xcu evidence:
+  `/共享/shaobo/perf/20260720_212508_dq_m128_2p2c_h1s2048_sqc7_fullperf`.
