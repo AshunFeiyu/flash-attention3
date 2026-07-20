@@ -4177,3 +4177,30 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
   `0.2%`, fullperf regressed `1.192%`; xcu showed matrix-read waits grow
   `8.143%`. Canonical source remains `20dbb81`; see workbook sheet
   `178_DKV_ReleasePrio`.
+
+## 2026-07-20 Canonical 2P2C Target
+
+- Optimize dKV and dQ for tail-free `S1024/S2048` with physical M128 2P2C.
+  Keep 1P3C/M192 only as topology evidence; do not add its M64 tail path to
+  canonical code.
+- dQ stays on C1-early K-normal scheduling. The C0-early A/B regresses
+  H1/S1024 ticks `3.27%` and MMAC active `0.997pp`; failed source is removed.
+- Always export `CANONICAL_DQ=1` and verify PMD reports
+  `wg size=(1024,1,1)`. A `wg=128` launch has only two ABarrier participants
+  and is not a performance result.
+
+Skill Candidate:
+
+- Trigger / 适用场景: a WDRA/ABarrier executable has multiple launcher modes.
+- Rule / 可复用规则: gate observed PMD workgroup size and participating wave
+  count before parsing ticks; source launch attributes do not fix a legacy
+  host-selected block size.
+- Evidence / 证据: canonical dQ uses `wg=1024`, 16 waves and about 24.3M
+  ticks; missing `CANONICAL_DQ=1` launched `wg=128`, two waves and exceeded
+  19B ticks while waiting on impossible ABarrier counts.
+- Boundary / 适用边界: applies to executables exposing multiple launch or
+  diagnostic paths.
+- Counterexample / 反例或不适用情况: a focused two-wave probe whose ABarrier
+  counts are deliberately designed for that block size.
+- Proposed Target / 建议进入哪个 skill 或 reference: project-local `shaobo`
+  run-on-model preflight reference during the next consolidation round.

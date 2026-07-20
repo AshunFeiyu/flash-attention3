@@ -15028,3 +15028,26 @@ Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
 - Decision: delete the candidate source and preserve only sheet
   `178_DKV_ReleasePrio`, PMD/xcu evidence, and this log. Priority lowering at
   the ownership edge moves rather than removes the critical path.
+
+## 2026-07-20 dQ C0-Early K-Read Stagger Rejected
+
+Status: `REJECT_STATS_TICKS_AND_ACTIVE_REGRESSION_SOURCE_RESTORED`.
+
+- Design basis: retain canonical `Mq128/Nk128/D128`, 16-wave physical 2P2C,
+  exact three GEMMs, Q/dO latch, K/V page ledger and output ownership. Swap
+  only which consumer issues the existing K-normal reads before softmax.
+- Static and numerical gates pass: roles `8/159/159/9`, SGPR65/VGPR128,
+  private/spill/scratch0, H1/S128 and H1/S1024 causal PASS,
+  `dq_rel_l2=0.00208192`, and `ldsBankConflict=0`.
+- Fresh H1/S1024 C1-early control is `24,300,185` kernel ticks and
+  `34.2341%` MMAC active. C0-early is `25,095,070` ticks and `33.2370%`
+  active: ticks regress `3.27%`, active falls `0.997pp`.
+- Decision: restore C1-early source and keep M128 2P2C. Reversing the causal
+  role skew lengthens the exact-work critical path instead of improving
+  MMAC/VALU overlap.
+- Run-contract audit: `CANONICAL_DQ=1` is mandatory. Omitting it launches
+  `wg=128` (two waves) for a 16-wave ABarrier kernel and creates invalid
+  multi-billion model ticks; those runs are excluded before metric parsing.
+- Evidence: workbook `111_DQ_C0KReadStagger`; candidate
+  `/zys/sb/dq_c0_stagger_s1024_r1/dq_correctness_20260720_174934`; control
+  `/zys/sb/dq_c1_exact_canonical_s1024_r1/dq_correctness_20260720_192113`.

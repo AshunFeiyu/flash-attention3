@@ -9540,3 +9540,17 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   an `8.143%` matrix-read-wait increase that outweighs the `0.963%` raw bubble
   reduction. Evidence is remote under `/zys/sb/release_prio_s768_fullperf/`
   and workbook sheet `178_DKV_ReleasePrio`.
+
+## 2026-07-20 S1024/S2048 2P2C Target Lock
+
+- dQ remains the accepted `Mq128/Nk128/D128`, 16-wave physical 2P2C source
+  from `best/dq-c1-kread-stagger-20260720`. The opposite C0-early schedule is
+  rejected: `24,300,185 -> 25,095,070` ticks and
+  `34.2341% -> 33.2370%` MMAC active at canonical H1/S1024.
+- dKV target is the tail-free M128 physical 2P2C route for S1024/S2048. M192
+  1P3C remains saturated steady-state evidence only; its M64 remainder is not
+  admitted into the target canonical path.
+- Mandatory dQ launch contract: `CANONICAL_DQ=1`, `wg=1024`, 16 waves. Reject
+  a run before metrics if PMD reports `wg=128` or two ABarrier waves.
+- Shared evidence: `112_DQ_2P2C_Targets`, `180_DKV_2P2C_Targets`, and the
+  completed dQ A/B sheet `111_DQ_C0KReadStagger`.
