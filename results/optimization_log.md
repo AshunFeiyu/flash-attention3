@@ -15051,3 +15051,26 @@ Status: `REJECT_STATS_TICKS_AND_ACTIVE_REGRESSION_SOURCE_RESTORED`.
 - Evidence: workbook `111_DQ_C0KReadStagger`; candidate
   `/zys/sb/dq_c0_stagger_s1024_r1/dq_correctness_20260720_174934`; control
   `/zys/sb/dq_c1_exact_canonical_s1024_r1/dq_correctness_20260720_192113`.
+
+## 2026-07-20 dKV M128 Physical 2P2C Baseline Accepted
+
+Status: `ACCEPT_CANONICAL_2P2C_BASELINE`.
+
+- Canonical target is now tail-free `Mq128/Nk128/D128`, 16 waves, physical
+  2P2C for both S1024 and S2048. The two heavy groups own exact output work;
+  score and dP are not duplicated.
+- Roles are producer K+Q, consumer0, consumer1, producer V+dO+sidecar.
+  Configured WDRA windows are `32/160/160/32`; actual branch use is
+  `8/152/14/152`. Metadata is private/spill/scratch0 and LDS is 67,072 B.
+- H1/S1024 passes with dK/dV relL2 `0.0025563/0.000337571`, bank0,
+  `32,507,020` kernel ticks and `37.8420%` MMAC active.
+- H1/S2048 passes with dK/dV relL2 `0.00535305/0.000360253`, bank0,
+  `58,721,845` kernel ticks and `44.4427%` MMAC active.
+- The `+6.6008pp` active-share gain at S2048 proves the steady MMAC body is
+  healthier than the startup/ownership epochs. The next structural target is
+  ABarrier/page readiness and first-use wait, not a third consumer.
+- M192 1P3C remains historical saturation evidence only. Its M64-tail and
+  asymmetric ownership are not admitted to the S1024/S2048 canonical path.
+- Evidence: workbook `180_DKV_2P2C_Targets`; remote runs
+  `/zys/sb/dkv_m128_2p2c_recert_s1024/dkv_mmac_correctness_20260720_193811`
+  and `/zys/sb/dkv_m128_2p2c_recert_s2048/dkv_mmac_correctness_20260720_194006`.

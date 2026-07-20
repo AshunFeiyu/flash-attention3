@@ -4204,3 +4204,18 @@ Skill Candidate:
   counts are deliberately designed for that block size.
 - Proposed Target / 建议进入哪个 skill 或 reference: project-local `shaobo`
   run-on-model preflight reference during the next consolidation round.
+
+## 2026-07-20 dKV 2P2C Recertification
+
+- Canonical dKV is the clean `Mq128/Nk128/D128`, 16-wave physical 2P2C
+  implementation restored from `fcd87aa`; 1P3C is no longer a target branch.
+- S1024: `32,507,020` kernel ticks, `37.8420%` MMAC active, correctness PASS,
+  bank0, private/spill/scratch0.
+- S2048: `58,721,845` kernel ticks, `44.4427%` MMAC active, correctness PASS,
+  bank0, private/spill/scratch0.
+- Optimize both target lengths. S1024 is sensitive to fixed ownership cost;
+  S2048 exposes steady-state scheduling. A candidate must improve ticks at
+  one target without breaking the other, and its SQTT mechanism must explain
+  the result.
+- Next: establish the matching dQ S2048 baseline, then capture dKV/dQ xcu
+  evidence before choosing the next ABarrier/readiness change.

@@ -9554,3 +9554,19 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   a run before metrics if PMD reports `wg=128` or two ABarrier waves.
 - Shared evidence: `112_DQ_2P2C_Targets`, `180_DKV_2P2C_Targets`, and the
   completed dQ A/B sheet `111_DQ_C0KReadStagger`.
+
+## 2026-07-20 dKV Physical 2P2C Source Restored And Recertified
+
+- Canonical dKV files now match known exact-work source `fcd87aa`:
+  `include/dkv_contract.h`, `src/dkv_kernel.cpp`, and the dKV static gate.
+- Tile and topology are `Mq128/Nk128/D128`, 16 waves, physical 2P2C. Roles
+  are producer K+Q, two symmetric heavy consumers, and producer
+  V+dO+sidecar. There is no 1P3C dispatch path in this canonical source.
+- Static gates: configured WDRA `32/160/160/32`, branch use
+  `8/152/14/152`, LDS67,072 B, SGPR52, VGPR96, private0, spill0, scratch0.
+  Main operands remain MLS/BPS + `ds_read_matrix` + MMAC.
+- Correctness and bank0 pass at H1/S128, H1/S1024, and H1/S2048. Accepted
+  stats are `32,507,020 ticks / 37.8420% active` at S1024 and
+  `58,721,845 ticks / 44.4427% active` at S2048.
+- Next source change must be one evidence-backed 2P2C hypothesis. Do not
+  reintroduce 3C, tail cleanup, duplicate score/dP, or a phase selector.
