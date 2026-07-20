@@ -4219,3 +4219,15 @@ Skill Candidate:
   the result.
 - Next: establish the matching dQ S2048 baseline, then capture dKV/dQ xcu
   evidence before choosing the next ABarrier/readiness change.
+
+## 2026-07-20 dQ 2P2C S2048 Recertification
+
+- The accepted C1-early dQ binary passes canonical H1/S2048 with
+  `44,827,055` kernel ticks, `40.5607%` MMAC active, correctness PASS, bank0,
+  and private/spill/scratch0.
+- Fresh S1024 control is `24,300,185` ticks and `34.2341%` active. The
+  `+6.3265pp` S2048 gain confirms fixed ownership/readiness overhead rather
+  than insufficient MMAC work is the immediate 2P2C limiter.
+- Both dKV and dQ now have S1024/S2048 canonical controls. The next code
+  change waits for xcu evidence that names the exact ABarrier or first-use
+  edge; 3C and tail-specific cleanup remain excluded.

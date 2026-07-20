@@ -15074,3 +15074,21 @@ Status: `ACCEPT_CANONICAL_2P2C_BASELINE`.
 - Evidence: workbook `180_DKV_2P2C_Targets`; remote runs
   `/zys/sb/dkv_m128_2p2c_recert_s1024/dkv_mmac_correctness_20260720_193811`
   and `/zys/sb/dkv_m128_2p2c_recert_s2048/dkv_mmac_correctness_20260720_194006`.
+
+## 2026-07-20 dQ M128 Physical 2P2C S2048 Baseline Accepted
+
+Status: `ACCEPT_CANONICAL_2P2C_BASELINE`.
+
+- Reused the accepted C1-early binary exactly; only S changed from 1024 to
+  2048. PMD confirms `grid=16384`, `wg=1024`, and all 16 ABarrier waves.
+- Numerical gate passes with dQ relL2 `0.00475324`, L2 ratio exactly 1,
+  no nonfinite values and bank0. Resource metadata remains
+  private/spill/scratch0.
+- S2048 is `44,827,055` kernel ticks, `MMOP=199,680`, and `40.5607%` MMAC
+  active. The fresh S1024 control is `24,300,185` ticks and `34.2341%`, so
+  steady-state active improves `6.3265pp`.
+- This agrees with dKV: 2P2C becomes healthier as fixed startup/page ownership
+  is amortized. The next experiment must remove or hide readiness cost, not
+  add a third consumer or duplicate the three-GEMM chain.
+- Evidence: workbook `112_DQ_2P2C_Targets`; remote run
+  `/zys/sb/dq_m128_2p2c_recert_s2048/dq_correctness_20260720_195212`.

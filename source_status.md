@@ -9570,3 +9570,15 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   `58,721,845 ticks / 44.4427% active` at S2048.
 - Next source change must be one evidence-backed 2P2C hypothesis. Do not
   reintroduce 3C, tail cleanup, duplicate score/dP, or a phase selector.
+
+## 2026-07-20 dQ Physical 2P2C S2048 Recertified
+
+- The accepted dQ C1-early binary SHA is
+  `161c921416e851f6be1180510b2ca64c6fbf890f6f59efb59d646e40b6a498a2`.
+  No source or binary change was made for the S2048 measurement.
+- PMD launch is canonical: `grid=16384`, `wg=1024`, 16 waves. Correctness
+  passes with relL2 `0.00475324`; bank0 and private/spill/scratch0 remain.
+- S2048 baseline is `44,827,055 ticks / 40.5607% MMAC active`; S1024 control
+  is `24,300,185 / 34.2341%`. Keep the same physical 2P2C topology for both.
+- The next dQ source experiment must preserve C1-early useful stagger and
+  exact three-GEMM work while addressing the shared ABarrier/readiness edge.
