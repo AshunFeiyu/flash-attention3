@@ -19,6 +19,25 @@ Status: `ACCEPT_CANONICAL_BASELINE`; kernel source remains unchanged.
   Used plus matrix first-use critical edges. Tile/consumer-count proposals
   are inadmissible if they add invalid rows merely to raise active share.
 
+## 2026-07-20 dKV D2/D3 Read-Before-Wait Rejected
+
+Status: `REJECT_STATS_UNSTABLE_AVG_REGRESSION_SOURCE_RESTORED`; canonical
+source and gate are unchanged.
+
+- The candidate moved the existing four D2/D3 normal matrix reads before the
+  D0/D1 readiness wait and changed that wait from `lgkmcnt(0)` to
+  `lgkmcnt(4)`. Formula, exact MMOP, tile, ownership, barrier/read/MMAC counts,
+  and output ownership were unchanged.
+- Static resources remained `31/156/156/156`, private/spill/scratch0. H1/S384
+  and H1/S768 correctness passed with exact MMOP46080 and bank0.
+- Two same-flags S768 A/B pairs disagreed: candidate versus control was
+  `33,338,305 vs 33,496,190` ticks (`-0.471%`) and
+  `33,237,750 vs 32,967,935` (`+0.818%`). Mean ticks regress `0.168%`; mean
+  MMAC active falls `41.0939% -> 41.0236%`.
+- This schedule only redistributes a sub-percent readiness delay; it does not
+  reduce the dominant raw ownership edge. Candidate source was deleted. Use
+  workbook sheet `179_DKV_D23ReadBeforeWait` as the negative control.
+
 ## 2026-07-20 dKV M48 Lookahead Integration Verdict
 
 Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`; the layout probe

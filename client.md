@@ -13,6 +13,31 @@
   baseline. Never compare its S1024 raw ticks directly with the M192 S768
   run, and never use the old `43.7836%` causal-invalid result as progress.
 
+## 2026-07-20 D2/D3 Read-Before-Wait Negative Control
+
+- Moving D2/D3 reads before the D0/D1 wait is resource-clean and correct, but
+  two same-flags A/B pairs reverse direction. Mean S768 ticks regress `0.168%`
+  and mean MMAC active falls `0.070` percentage points. The code was deleted;
+  canonical remains `20dbb81`.
+- Do not infer a stable optimization from one sub-percent PMD pair. Repeat in
+  reverse order and compare average ticks plus active share before paying for
+  helper fullperf/XCU.
+
+Skill Candidate:
+
+- Trigger / 适用场景: PMD same-shape candidate shows a sub-percent win.
+- Rule / 可复用规则: run at least a second reversed A/B pair; promote to
+  fullperf only when direction and the relevant pipeline metric agree.
+- Evidence / 证据: `dkv-d23-read-before-wait`, workbook sheet 179; pair 1
+  `-0.471%`, pair 2 `+0.818%`, mean `+0.168%` regression.
+- Boundary / 适用边界: applies to deterministic model comparisons near normal
+  scheduling variation; correctness/resource gates still run first.
+- Counterexample / 反例或不适用情况: large structural wins or correctness
+  failures do not need repeated microbenchmark admission before rejection.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` experiment-admission reference during the next
+  controlled skill consolidation; do not modify the public skill now.
+
 ## 2026-07-20 M48 Lookahead Verdict
 
 - Keep the high-address M48 MLS/layout probe (`09419bd`), but reject the full

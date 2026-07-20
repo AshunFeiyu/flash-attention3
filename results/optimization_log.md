@@ -23,6 +23,32 @@
 - Evidence:
   `/共享/shaobo/perf/20260720_114616_dkv_exact_three_m64_h1s768_sqc7_toolchain_locked_fullperf`.
 
+## 2026-07-20 dKV D2/D3 Read-Before-Wait Rejected
+
+- Status: `REJECT_STATS_UNSTABLE_AVG_REGRESSION_SOURCE_RESTORED`.
+- Hypothesis: after softmax/dS, issue the existing D2/D3 normal reads before
+  the D0/D1 first-use wait, then use `lgkmcnt(4)` to retire only the four older
+  D0/D1 requests. D2/D3 should mature under the following D0/D1 MMAC8 island.
+- The implementation changed no formula, tile, role, VGPR window, ABarrier,
+  read/MMAC count, or output owner. Static gates stayed
+  `31/156/156/156`, private/spill/scratch0. S384/S768 correctness passed with
+  MMOP46080 and `ldsBankConflict=0`.
+- Same-flags S768 pair 1 favored the candidate
+  `33,496,190 -> 33,338,305` ticks (`-0.471%`), but pair 2 reversed to
+  `32,967,935 -> 33,237,750` (`+0.818%`). Across both pairs, candidate mean
+  ticks regress `0.168%`; mean MMAC active falls
+  `41.0939% -> 41.0236%`. Mean wait changes only `10,730.13 -> 10,726.75`
+  and barrier `33,778.50 -> 33,693.63`, too small to move the critical path.
+- Decision: reject without helper fullperf, delete candidate source and restore
+  `20dbb81`. The next candidate must target raw ownership directly rather than
+  move four matrix requests around an unchanged ownership boundary.
+- Evidence: candidate roots
+  `/zys/sb/d23_read_before_wait_s768/` and
+  `/zys/sb/d23_read_before_wait_s768_repeat/`; controls
+  `/zys/sb/d23_read_before_wait_control_s768/` and
+  `/zys/sb/d23_read_before_wait_control_s768_repeat/`; workbook
+  `179_DKV_D23ReadBeforeWait`.
+
 ## 2026-07-20 dKV M48 Head Lookahead Rejected
 
 - Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
