@@ -4245,3 +4245,14 @@ Skill Candidate:
   only if exact work, correctness, bank0, and no-spill gates pass and S1024
   ticks fall without an S2048 regression. Do not count an active-share rise
   caused only by producer lifetime shortening as a performance win.
+
+## 2026-07-20 Causal M16 Skip Decision
+
+- Uniform diagonal M16 pruning has a valid algorithmic upper bound, but the
+  tested global accumulator seed is not a legal implementation. It spills at
+  both consumer160 and consumer168 and was rejected before correctness/perf.
+- Do not increase the WDRA window further. Keep the 2P2C baseline unchanged.
+  If causal pruning returns, retain local first-use MMAC zero seeding so the
+  full dK/dV accumulator set is not activated before the first useful block.
+- Design and static evidence are in workbook `181_DKV_CausalM16Skip`; failed
+  source is deleted.

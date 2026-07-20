@@ -15121,3 +15121,24 @@ Status: `OBSERVE_XCU_CONSUMER_LOCKSTEP`; no source change.
   only useful-work staggering that lowers S1024 ticks and does not regress
   S2048. Empty delay, a third consumer, duplicate score/dP, and buffer depth
   added only to improve the active-share denominator remain forbidden.
+
+## 2026-07-20 dKV 2P2C Uniform Causal M16 Skip Rejected At Resource Gate
+
+Status: `REJECT_STATIC_RESOURCE_SOURCE_RESTORED`.
+
+- Workbook sheet `181_DKV_CausalM16Skip` derived a wave-uniform diagonal skip:
+  for owner N16 block `n` and Q M16 block `m`, `m<n` is wholly causal-invalid,
+  `m=n` needs the existing lane mask, and `m>n` is fully valid. The predicate
+  is wave-uniform and is distinct from the rejected lane-divergent branch.
+- The draft preserved M128 physical 2P2C, all barrier IDs/counts, LDS bytes,
+  output ownership, and native matrix instructions. To avoid a dynamic
+  first-valid accumulator case, it seeded all eight dV and eight dK
+  accumulators once with zero-input MMAC.
+- Arithmetic upper bound was attractive: after seed overhead, expected MMOP
+  was `67,584` at S1024 (`-8.33%`) and `266,240` at S2048 (`-4.41%`). It did
+  not cross the static gate. Consumer160 generated `216B` private segment and
+  `210` VGPR spills; consumer168 still generated `196B` and `185` spills.
+- Decision: do not raise WDRA again and do not run PMD. Restore source,
+  contract, and gate exactly to `d48464d`. The skip algebra remains a future
+  design candidate only if first-use zero seeding can stay local, without
+  making every dK/dV accumulator live before the first useful M16.

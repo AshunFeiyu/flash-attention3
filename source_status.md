@@ -9598,3 +9598,16 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   offset that lowers S1024 ticks and does not regress S2048.
 - Archived evidence:
   `/共享/shaobo/perf/20260720_201438_dkv_m128_2p2c_h1s2048_sqc7_fullperf`.
+
+## 2026-07-20 Uniform Causal M16 Skip Static Reject
+
+- The wave-uniform M16 skip design is recorded in workbook sheet
+  `181_DKV_CausalM16Skip`; it was not admitted to PMD.
+- The implementation's global zero-input MMAC seed made all dK/dV
+  accumulators live early. Consumer windows at 160 produced private216B and
+  vgpr_spill210; a bounded 168-window audit still produced private196B and
+  vgpr_spill185.
+- Canonical source, WDRA32/160/160/32, and the original static gate are restored
+  to `d48464d`. No failed code or phase switch remains.
+- A future causal skip must preserve first-use accumulator seeding locally or
+  use a bounded owner specialization; do not retry early full-accumulator seed.
