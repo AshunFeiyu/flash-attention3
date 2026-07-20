@@ -4349,3 +4349,13 @@ Skill Candidate:
   startup tokens or buffering. Continue from the single coarse latch and use
   S1024/S2048 ticks as the admission gate; MMAC active remains an explanatory
   pipeline metric rather than a standalone promotion criterion.
+
+## 2026-07-21 dQ Mid-Softmax Read Decision
+
+- Keep the canonical C0 softmax block intact. Moving its K-normal read between
+  ds0 and ds1 lowers local LDS wait, but the compiler expands control and adds
+  `1,056` VALU plus `1,056` SCA instructions. S1024 ticks regress `1.729%`
+  and active falls `0.9087pp`; PMD also reports new VGPR-init warnings.
+- The candidate is removed before S2048. Do not pursue another split-softmax
+  read placement. Preserve C1's accepted whole-block stagger and search for a
+  steady critical-path change with no CFG or ownership expansion.

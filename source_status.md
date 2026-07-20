@@ -9723,3 +9723,14 @@ Status: `REJECT_STATS_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
   startup ownership tokens. The next dQ hypothesis must remove work from the
   critical path or improve steady MMAC dependency/coissue while preserving
   uninterrupted MMAC islands.
+
+## 2026-07-21 dQ Mid-Softmax Read Boundary
+
+- C0-only K-normal read placement between ds0/ds1 softmax halves is correct,
+  exact-work, bank0, and no-spill, and ASM keeps the read outside MMAC islands.
+- It nevertheless regresses S1024 ticks `1.729%` and active `0.9087pp`.
+  Compiler expansion adds `1,056` VALU and `1,056` SCA instructions, raises
+  barrier debt, and introduces PMD VGPR-init tracking warnings.
+- Candidate source is removed before repeat/S2048. Do not split the unrolled
+  softmax block to create a read window. Future dQ work needs a whole-block or
+  instruction-form improvement that does not duplicate CFG/control.

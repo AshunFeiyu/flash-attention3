@@ -15338,3 +15338,25 @@ Status: `REJECT_STATS_UNSTABLE_TICKS_SOURCE_RESTORED`.
   workbook sheet `188_DQ_SplitStartupLatch` plus ledger evidence. This closes
   the startup-token split: lower wait and slightly higher active are not
   sufficient when end-to-end ticks do not improve stably.
+
+## 2026-07-21 dQ C0 Mid-Softmax K-Normal Read Rejected
+
+Status: `REJECT_TICKS_ACTIVE_CODEGEN_SOURCE_RESTORED`.
+
+- The candidate preserved M128 physical 2P2C, exact three-GEMM work, all LDS
+  pages/tokens, C1's accepted early-read cadence, and output ownership. C0
+  alone moved its existing K-normal matrix read8 between the ds0 and ds1
+  scalar softmax/dS halves.
+- ASM confirms the intended placement outside both score/dP and dQ MMAC
+  islands. Static gates pass at branch use `8/162/159/9`, SGPR65/VGPR128,
+  private/spill/scratch0. S128/S1024 correctness pass with exact MMOP50,688
+  and bank0.
+- S1024 is `24,593,205 ticks / 33.4899% active` versus the recent
+  restored-source mean `24,175,288 / 34.3987%`: ticks regress `1.729%` and
+  active falls `0.9087pp`. WaitLgkm falls `4.79%`, but barrier rises `6.74%`
+  and compiler CFG expansion adds `1,056` VALU plus `1,056` SCA instructions.
+  PMD also emits four nonfatal VGPR read-before-write tracking warnings absent
+  from canonical.
+- Reject without repeat/S2048/fullperf. Restore canonical source. The local
+  latency-hiding premise worked, but splitting this unrolled softmax block is
+  too expensive in generated control and register scheduling.
