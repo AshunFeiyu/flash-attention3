@@ -9645,3 +9645,7 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   optimization targets; 3C and M256 candidate source are excluded.
 - Detailed design and actual evidence are in workbook sheet
   `183_DQ_M256_2P2C`.
+- Restored M128 source and fresh a6 binary are recertified at H1/S1024:
+  correctness PASS, `24,260,145 ticks / 34.1000%`, exact MMOP50,688, bank0,
+  and private/spill/scratch0. This aligns with the locked control and closes
+  the M256 rollback.

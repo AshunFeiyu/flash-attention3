@@ -15195,3 +15195,22 @@ Status: `REJECT_S1024_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
   ownership is not serialized and the useful MMAC/VALU stagger survives.
 - Evidence: workbook sheet `183_DQ_M256_2P2C`; remote run
   `/zys/sb/dq_m256_2p2c_validation/dq_correctness_20260720_223211`.
+
+## 2026-07-20 dQ M128 Physical 2P2C Restore Recertified
+
+Status: `ACCEPT_CANONICAL_RESTORE`.
+
+- M256 source was removed from the active route. The restored source again
+  builds `Mq128/Nk128/D128`, one `QDoFilled/QDoLatched` startup generation,
+  and WDRA windows `40/216/216/40`; measured branch use is `8/159/159/9`.
+- Old LLVM `a6a6eb6616ab...` rebuild passes the dQ source/ASM gate and symbol
+  metadata gate with SGPR65, VGPR128, private/spill/scratch0. H1/S1024 causal
+  correctness passes with relL2 `0.00208192` and bank0.
+- Fresh PMD result is `24,260,145` kernel ticks, exact MMOP `50,688`, and
+  `34.1000%` MMAC active. The locked control is `24,300,185 / 34.2341%`;
+  `-0.16%` ticks and `-0.1341pp` active are aligned run variation.
+- Canonical branch is `opt/2p2c-s1024-s2048-20260720`. Future source changes
+  start from this restored M128 physical 2P2C implementation and must validate
+  S1024 first, then S2048.
+- Evidence:
+  `/zys/sb/dq_m128_2p2c_restore_recert/dq_correctness_20260720_225954`.

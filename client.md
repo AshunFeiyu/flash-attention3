@@ -4289,3 +4289,6 @@ Skill Candidate:
   work and the existing useful stagger, then target one measured
   matrix-first-use or ABarrier readiness edge. Failed M256 source is removed;
   workbook sheet `183_DQ_M256_2P2C` is the evidence record.
+- Fresh restored-source recertification is `24,260,145 ticks / 34.1000%` at
+  H1/S1024 with correctness, exact work, bank0, and no spill. Continue from
+  branch `opt/2p2c-s1024-s2048-20260720`.
