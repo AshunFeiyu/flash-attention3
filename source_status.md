@@ -9747,3 +9747,34 @@ Status: `REJECT_STATS_TICKS_AND_ACTIVE_SOURCE_RESTORED`.
 - Candidate source is deleted before S2048/fullperf. Preserve C0 as the cadence
   anchor until a new SQTT-backed hypothesis avoids extending the sidecar LDS
   address lifetime across score D2.
+
+## 2026-07-21 dQ LLVM47a7 Canonical Toolchain
+
+Status: `ACCEPT_DQ_ONLY_TOOLCHAIN_SOURCE_UNCHANGED`.
+
+- Canonical dQ source remains Mq128/Nk128/D128, 16-wave physical 2P2C with
+  exact three-GEMM work and the accepted three-DS sidecar latch. No source
+  phase or failed layout path is added.
+- Build with LLVM `47a7d59a80a4313d0c33d4667c3c8573604d0dbc`,
+  `SHAOBO_RUN_ON_MODEL=0`, `SHAOBO_EXPLICIT_WDRA_INIT=1`, and
+  `-mllvm -turn-off-wdra-trap-handler=no-pad`. Static metadata is SGPR60,
+  VGPR128, branch use `8/162/162/9` inside `40/216/216/40`, and
+  private/spill/scratch0.
+- H1/S1024 fullperf: correctness PASS, exact MMOP50,688, bank0,
+  `21,715,330 ticks / 37.749296% active`, versus the prior accepted
+  `24,114,090 / 34.219254%`.
+- H1/S2048 fullperf: correctness PASS, exact MMOP199,680, bank0,
+  `38,870,195 ticks / 45.356456% active`, versus
+  `43,161,300 / 40.788411%`. Dynamic VALU falls
+  `257,536 -> 163,488`; static `v_mov_b32_e32` falls `216 -> 24`.
+- The same compiler regresses dKV S1024 to `32,005,155 ticks /
+  37.817133%`, so dKV retains the Jul18 compiler and accepted commit/tag
+  `f57714f` / `best/dkv-2p2c-c1-sidecar-tail-20260721`.
+- Role-local xcu corrects the aggregate diagnosis: critical heavy-consumer
+  gaps are wait->MMAC68,153, normal-read->wait67,148, ABarrier59,405,
+  setprio->wait53,514, trans-read issue51,308 and MMAC dependency47,323
+  cycles. Producer PageUsed waits are not the direct consumer critical path.
+- Next source edit is workbook sheet `191_DQ_CrossNTilePrefetch`: half-source
+  cross-n_tile prefetch on non-boundary pages only. It must fit branch216,
+  preserve complete MMAC islands, and pass the standard correctness/resource/
+  bank/ticks gates before S2048 promotion.

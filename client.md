@@ -4373,3 +4373,26 @@ Skill Candidate:
 - Do not issue C0 sidecar after D2 again. A future dKV schedule must preserve
   bank0 and stable LDS address tracking before any elapsed-time improvement is
   considered. The source has been restored; workbook sheet 190 is evidence.
+
+## 2026-07-21 dQ LLVM47a7 Promotion And Next Experiment
+
+- Keep kernel topology and source at Mq128/Nk128/D128 physical 2P2C. Build dQ
+  with LLVM commit `47a7d59a`, `SHAOBO_RUN_ON_MODEL=0`, explicit WDRA init,
+  and `-mllvm -turn-off-wdra-trap-handler=no-pad`.
+- This compiler is a dQ-only promotion: S1024 improves
+  `24,114,090 -> 21,715,330` ticks and active `34.2193% -> 37.7493%`;
+  S2048 improves `43,161,300 -> 38,870,195` and
+  `40.7884% -> 45.3565%`. It removes the static `v_mov_b32` chain
+  (`216 -> 24`) and lowers dynamic VALU at S2048 by `36.52%` while keeping
+  exact MMOP, correctness, bank0, and private/spill/scratch0.
+- Do not switch dKV to this compiler: its S1024 ticks regress `1.43%` and
+  active falls `0.577pp`. Compiler promotion is kernel-specific evidence, not
+  a repository-wide assumption.
+- Role-local xcu shows the dQ heavy-consumer critical path is operand
+  readiness (`ds_read_matrix -> wait -> MMAC`) plus MMAC dependency. Most
+  aggregate PageUsed ABarrier cycles belong to producer waiting and overlap
+  useful consumer work.
+- Workbook sheet `191_DQ_CrossNTilePrefetch` defines the next single
+  hypothesis: reuse dead score/dP source slots to prefetch only the next
+  n_tile D0/D1 K/V trans fragments. Keep boundary pages canonical and add no
+  token, LDS page, wait, duplicate GEMM, or topology change.

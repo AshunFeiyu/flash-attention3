@@ -15380,3 +15380,50 @@ Status: `REJECT_REPEAT_BANK_ADDRESS_WARNING_SOURCE_RESTORED`.
   warnings absent from the accepted C1-only binary, and the repeat violates
   the bank0 hard gate. Reject before S2048/fullperf and restore canonical.
   Workbook: `190_DKV_C0_LateSidecar`.
+
+## 2026-07-21 dQ LLVM47a7 Toolchain Promoted
+
+Status: `ACCEPT_DQ_ONLY_TOOLCHAIN_SOURCE_UNCHANGED`.
+
+- The source DAG, Mq128/Nk128/D128 physical 2P2C topology, exact three-GEMM
+  MMOP, LDS pages, ABarrier ledger, and output ownership are unchanged.
+- Build contract: LLVM commit `47a7d59a80a4313d0c33d4667c3c8573604d0dbc`,
+  `SHAOBO_RUN_ON_MODEL=0`, explicit WDRA init, and
+  `-mllvm -turn-off-wdra-trap-handler=no-pad`. Static gates pass at
+  SGPR60/VGPR128, branch use `8/162/162/9`, private/spill/scratch0.
+- H1/S1024 fullperf improves `24,114,090 -> 21,715,330` ticks (`-9.92%`)
+  and `34.219254% -> 37.749296%` MMAC active (`+3.530pp`) with exact
+  MMOP50,688, correctness PASS, and bank0.
+- H1/S2048 fullperf improves `43,161,300 -> 38,870,195` ticks (`-9.94%`)
+  and `40.788411% -> 45.356456%` active (`+4.568pp`). VALU falls
+  `257,536 -> 163,488`; SCA is essentially unchanged. Static instruction
+  comparison explains the win: `v_mov_b32_e32 216 -> 24`, while MMAC and
+  matrix-read counts remain exact.
+- Do not promote this compiler for dKV. Its S1024 result regresses
+  `31,553,340 -> 32,005,155` ticks and active falls
+  `38.393708% -> 37.817133%`; dKV stays on the Jul18 compiler.
+- New dQ S2048 perf archive:
+  `/共享/shaobo/perf/20260721_045231_dq_toolchain47a7_nopad_2p2c_h1s2048_sqc7_fullperf`.
+
+## 2026-07-21 dQ Cross-n_tile Half-Source Design
+
+Status: `OBSERVE_DESIGN_READY_WORKBOOK_FIRST`.
+
+- Role-local xcu separates aggregate producer idle from the heavy-consumer
+  path. The direct consumer opportunity is the repeated
+  `ds_read_matrix -> wait -> first score MMAC` edge, followed by MMAC and
+  EXP dependencies; adding ownership tokens is not justified.
+- The candidate keeps the canonical boundary path. On non-boundary K128
+  pages, after current score/dP consumes K/V trans fragments, it reuses dead
+  source slots to read only next n_tile D0/D1 K/V trans fragments. The current
+  dQ `wait0` retires those reads; the next loop issues D2/D3 and runs D0/D1
+  MMAC while the second half matures.
+- Estimated extra peak is about32 VGPR, fitting the nominal branch slack
+  `162 -> <=216`; full64-VGPR double-source retention is explicitly rejected.
+  No new token, LDS byte, wait, GEMM, output, or producer task is allowed.
+- Prior negative boundaries are built into the gate: no matrix read inside
+  the current score/dP MMAC island, no softmax CFG split, no startup token
+  split, and no causal-boundary prefetch.
+- Workbook sheet: `191_DQ_CrossNTilePrefetch`. Next order is static ASM and
+  branch-use proof, H1/S128 correctness, paired H1/S1024, then S2048/fullperf
+  only if admitted.
