@@ -9516,3 +9516,8 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   `31/160/160/160` and emitted 40B private segment plus 27 VGPR spills.
   Candidate source was deleted without PMD execution; workbook evidence is
   sheet `177_DKV_SlotRecycle`.
+- `exp/dkv-release-priority-20260720` is also rejected and restored. It passes
+  resources and correctness, but fullperf ticks regress `+1.192%`; xcu shows
+  an `8.143%` matrix-read-wait increase that outweighs the `0.963%` raw bubble
+  reduction. Evidence is remote under `/zys/sb/release_prio_s768_fullperf/`
+  and workbook sheet `178_DKV_ReleasePrio`.

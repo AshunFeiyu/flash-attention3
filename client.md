@@ -4147,3 +4147,8 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
   `177_DKV_SlotRecycle` but rejected at static gate: branch consumers reached
   160 VGPR and metadata emitted 40B private segment plus 27 VGPR spills.
   Failed code is not retained in the canonical source.
+- Moving the existing priority drop to immediately after `RawUsed` is also a
+  rejected experiment. Although two stats-only A/B pairs improved about
+  `0.2%`, fullperf regressed `1.192%`; xcu showed matrix-read waits grow
+  `8.143%`. Canonical source remains `20dbb81`; see workbook sheet
+  `178_DKV_ReleasePrio`.

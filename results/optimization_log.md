@@ -14981,3 +14981,24 @@ Status: `REJECT_STATIC_RESOURCE`; canonical source restored.
 - Decision: reject before correctness or PMD timing, remove candidate code,
   and retain only workbook sheet `177_DKV_SlotRecycle` plus this ledger entry.
   The next experiment must not increase the consumer live set.
+
+## 2026-07-20 RawUsed Release Priority Experiment Rejected
+
+Status: `REJECT_FULLPERF_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Hypothesis: consumer priority2 delays the newly awakened producer after a
+  Head/Middle/Tail `RawUsed` release. Move the existing `lower_priority()`
+  before the already-resident D2/D3 MMAC, without adding instructions or
+  changing work, reads, barriers, resources, or ownership.
+- Static/correctness gates pass: roles `31/156/156/156`, private/spill/scratch0,
+  exact `MMOP=46,080`, bank0, H1/S384 and H1/S768 numerical PASS.
+- Two stats-only same-flag A/B pairs favored the candidate by `0.176%` and
+  `0.236%`, but the required fullperf result regressed
+  `32,990,230 -> 33,383,350` ticks (`+1.192%`).
+- xcu explains the rejection: raw ownership cycles improve only
+  `500,460 -> 495,640` (`-0.963%`) and MMAC gap improves `-0.977%`, while
+  normal+trans matrix-read waits grow `387,585 -> 419,152` (`+8.143%`) and
+  terminal wait grows `470,296 -> 485,798` (`+3.296%`).
+- Decision: delete the candidate source and preserve only sheet
+  `178_DKV_ReleasePrio`, PMD/xcu evidence, and this log. Priority lowering at
+  the ownership edge moves rather than removes the critical path.
