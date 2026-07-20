@@ -9819,3 +9819,15 @@ Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
 - Candidate source is removed before S2048/fullperf. Do not reintroduce this
   C1 sidecar priority hole; future scheduling changes must improve same-shape
   ticks and active together, not coissue count in isolation.
+
+## 2026-07-21 dQ Low Dependent-MMAC Priority Boundary
+
+- Canonical dQ remains Mq128/Nk128/D128 physical 2P2C on LLVM47a7/no-pad,
+  with priority2 around both score/dP and dQ MMAC islands.
+- Leaving dependent dQ MMAC at priority0 is correct, exact-work, bank0 and
+  no-spill. S1024 shows a sub-1% mixed micro-signal, but S2048 ticks regress
+  `0.716%` despite active rising `0.2855pp`; waitVm rises `12.75%` and
+  successful coissue falls `7.49%`.
+- Candidate source is removed before fullperf/xcu. Do not remove the dQ-local
+  priority wrapper again unless a structural change first creates a different
+  peer-ready schedule. Best dQ remains `38,870,195 ticks / 45.356456% active`.

@@ -15489,3 +15489,26 @@ Status: `REJECT_TICKS_ACTIVE_SOURCE_RESTORED`.
 - The schedule makes the coissue counter prettier but resumes C1's first-use
   path later. Reject before S2048/fullperf, restore canonical source, and
   retain the boundary in workbook sheet `193_RoleLocalPriority`.
+
+## 2026-07-21 dQ Low Dependent-MMAC Priority Rejected
+
+Status: `REJECT_S2048_TICKS_SOURCE_RESTORED`.
+
+- The candidate removes only the dQ-local `s_setprio 2/0` pair. Score/dP
+  remains priority2; softmax/dS and dependent `dS @ K` stay priority0 until
+  the next score island. Tile, work, ownership, LDS, ABarrier, reads, waits,
+  stores and output are unchanged.
+- LLVM47a7/no-pad emits the intended schedule: static setprio falls `64 -> 32`
+  while MMAC768 and the native matrix path remain exact. Static resources are
+  SGPR60/VGPR128, branch use `8/162/9/162`, private/spill/scratch0. S128,
+  three S1024 runs and S2048 correctness pass with bank0.
+- Three S1024 repeats are only a micro-signal: candidate/control medians are
+  `21,723,065 / 21,879,585` (`-0.715%`) and means are
+  `21,763,408.3 / 21,829,686.7` (`-0.304%`), with candidate active higher by
+  `0.0834pp`; pairwise tick signs are not stable.
+- S2048 rejects the schedule: `39,856,635 -> 40,141,920` ticks (`+0.716%`)
+  while active rises `45.200206% -> 45.485718%`. WaitVm rises `12.75%` and
+  successful coissue falls `7.49%`; lower LGKM/barrier debt does not shorten
+  completion.
+- Reject before fullperf/xcu archive and restore the canonical dQ priority2
+  wrapper. Workbook sheet `193_RoleLocalPriority` holds the complete result.

@@ -4430,3 +4430,14 @@ Skill Candidate:
   that coissue count is explanatory evidence, not the promotion target: a
   priority hole is useful only when the resumed first-use and barrier path
   also finish earlier.
+
+## 2026-07-21 dQ Dependent-MMAC Priority Decision
+
+- Keep priority2 around the canonical dQ MMAC island. Removing that wrapper
+  leaves score/dP high and dQ low exactly as designed, but the three-run
+  S1024 micro-gain does not scale: S2048 ticks regress `0.716%` while active
+  rises `0.2855pp`.
+- The source is restored before fullperf. Here the higher active share comes
+  with `+12.75%` VM wait and `-7.49%` successful coissue, so it is not higher
+  throughput. Revisit priority only together with a structural change that
+  changes which peer work is genuinely ready.
