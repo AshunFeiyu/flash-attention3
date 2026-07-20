@@ -14961,3 +14961,23 @@ Status: `REJECT_CORRECTNESS_AND_STATIC_RESOURCE`; canonical baseline unchanged.
   `best/dkv-three-m64-lifetimes-20260719`, commit `20dbb81`.
 - Evidence is recorded in workbook sheet `176_DKV_M96x2_Lifetimes` and under
   `/zys/sb/dkv_m96x2_*`.
+
+## 2026-07-20 Score-Source Slot Recycling Rejected
+
+Status: `REJECT_STATIC_RESOURCE`; canonical source restored.
+
+- Baseline: exact-work `20dbb81`, `Mq192/Nk192/D128`, one producer plus three
+  symmetric M64 consumer lifetimes, exact dispatch `MMOP=46,080`.
+- Hypothesis: after score/dP first-use, overwrite the same Q/dO source object
+  with current-M16 dV/dK normal fragments. This preserved formulas, reads,
+  MMAC count, ABarrier topology and output ownership on paper.
+- Implementation kept sidecar after score so its 12 VGPR did not enter the
+  score peak. D0/D1 normal reads were issued under score D2/D3; D2/D3 reads
+  were intended to mature under softmax/dS.
+- Static result: LLVM branch usage rose from `31/156/156/156` to
+  `31/160/160/160`; metadata emitted `private_segment=40B` and
+  `vgpr_spill=27`. The compiler did not realize the C++ overwrite as physical
+  slot co-coloring.
+- Decision: reject before correctness or PMD timing, remove candidate code,
+  and retain only workbook sheet `177_DKV_SlotRecycle` plus this ledger entry.
+  The next experiment must not increase the consumer live set.

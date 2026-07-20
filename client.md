@@ -4135,3 +4135,15 @@ Skill Candidate: use dependency-DAG order to create real peer-wave stagger
 - Keep dKV canonical at `20dbb81` (`64+64+64`, exact MMOP 46,080). Its
   accepted H1/S768 fullperf remains 33,135,830 ticks and 41.1992% MMAC active.
 - Full evidence is in workbook sheet `176_DKV_M96x2_Lifetimes` and the ledger.
+
+## 2026-07-20 Current Exact-Work dKV Baseline
+
+- Use only `best/dkv-three-m64-lifetimes-20260719` (`20dbb81`) as the dKV
+  performance baseline. The older 43.78% active artifact includes extra
+  causal-invalid whole-tile MMAC and is not an exact-work comparison.
+- Latest locked-toolchain H1/S768 result: `32,990,230 kernel ticks`,
+  `41.2191% MMAC active`, `MMOP=46,080`, bank0, no private/spill/scratch.
+- Score-source slot recycling was designed in workbook sheet
+  `177_DKV_SlotRecycle` but rejected at static gate: branch consumers reached
+  160 VGPR and metadata emitted 40B private segment plus 27 VGPR spills.
+  Failed code is not retained in the canonical source.

@@ -9502,3 +9502,17 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
 - Evidence: workbook `176_DKV_M96x2_Lifetimes`; remote runs
   `/zys/sb/dkv_m96x2_runs`, `/zys/sb/dkv_m96x2_v2_runs`, and
   `/zys/sb/dkv_m96x2_v2_s192_runs`.
+
+## 2026-07-20 Exact dKV Baseline And Slot-Recycle Decision
+
+- Canonical exact-work dKV remains tag
+  `best/dkv-three-m64-lifetimes-20260719`, commit `20dbb81`.
+- Locked-toolchain H1/S768 fullperf is `kernel_ticks=32,990,230`,
+  `MMAC active=41.2191%`, exact `MMOP=46,080`, bank0, roles
+  `31/156/156/156`, private/spill/scratch0.
+- Perf archive:
+  `/共享/shaobo/perf/20260720_114616_dkv_exact_three_m64_h1s768_sqc7_toolchain_locked_fullperf`.
+- `exp/dkv-score-slot-recycle-20260720` is a static reject. It reached
+  `31/160/160/160` and emitted 40B private segment plus 27 VGPR spills.
+  Candidate source was deleted without PMD execution; workbook evidence is
+  sheet `177_DKV_SlotRecycle`.
