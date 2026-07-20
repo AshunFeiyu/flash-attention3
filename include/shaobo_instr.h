@@ -31,6 +31,33 @@ union F32x4 {
 };
 
 template <int ByteOffset1, int ByteOffset2>
+__device__ __forceinline__ void ds_read_b32_lds_imm3(
+    const float* lds,
+    float& value0,
+    float& value1,
+    float& value2) {
+    static_assert(ByteOffset1 >= 0 && ByteOffset1 < (1 << 20) &&
+                      ByteOffset2 >= 0 && ByteOffset2 < (1 << 20),
+                  "LDS sidecar offset must fit ds_read_b32");
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const uint32_t lds_addr =
+        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(lds));
+    asm volatile(
+        "ds_read_b32 %0, %3 offset:0\n\t"
+        "ds_read_b32 %1, %3 offset:%4\n\t"
+        "ds_read_b32 %2, %3 offset:%5\n"
+        : "=v"(value0), "=v"(value1), "=v"(value2)
+        : "v"(lds_addr), "n"(ByteOffset1), "n"(ByteOffset2)
+        : "memory");
+#else
+    (void)lds;
+    value0 = 0.0f;
+    value1 = 0.0f;
+    value2 = 0.0f;
+#endif
+}
+
+template <int ByteOffset1, int ByteOffset2>
 __device__ __forceinline__ void ds_read_b128_lds_imm3(
     const float* lds,
     Vec4F32& frag0,

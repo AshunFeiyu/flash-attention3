@@ -4292,3 +4292,15 @@ Skill Candidate:
 - Fresh restored-source recertification is `24,260,145 ticks / 34.1000%` at
   H1/S1024 with correctness, exact work, bank0, and no spill. Continue from
   branch `opt/2p2c-s1024-s2048-20260720`.
+
+## 2026-07-20 Accepted dQ Sidecar Cleanup
+
+- Keep the same 16-wave M128 physical 2P2C design. The accepted source only
+  compacts the consumer LDS sidecar latch to three exact DS reads before the
+  existing eight matrix reads and one LDS readiness wait.
+- Same-build results: S1024 `24,260,145 -> 24,114,090` ticks; S2048 exact
+  fullperf `43,607,200 -> 43,161,300`. Correctness, exact MMOP, bank0, and
+  private/spill/scratch0 all pass.
+- XCU confirms a shorter dispatch but shows the same dominant ABarrier
+  ownership bubble. Next work must isolate that 2P2C first-use/ownership edge;
+  do not reintroduce 3C, M256, or more sidecar-only edits.

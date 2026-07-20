@@ -15214,3 +15214,32 @@ Status: `ACCEPT_CANONICAL_RESTORE`.
   S1024 first, then S2048.
 - Evidence:
   `/zys/sb/dq_m128_2p2c_restore_recert/dq_correctness_20260720_225954`.
+
+## 2026-07-20 dQ 2P2C Exact LDS Sidecar Latch Accepted
+
+Status: `ACCEPT_CANONICAL_OPT`.
+
+- Topology, tile, math, MMAC count, C1-early stagger, LDS allocation, and
+  ABarrier ledger are unchanged. The only source change replaces three
+  compiler-generated consumer sidecar loads with an exact
+  `3 x ds_read_b32 -> 8 x ds_read_matrix -> 1 x lgkm wait` startup island.
+- Static gates pass with branch use `8/159/159/9`, windows
+  `40/216/216/40`, SGPR65/VGPR128, and private/spill/scratch0. The main matrix
+  path remains MLS/BPS + `ds_read_matrix` + MMAC; correctness and bank0 pass.
+- H1/S1024 improves `24,260,145 -> 24,114,090` kernel ticks (`-0.602%`) and
+  MMAC active `34.1000% -> 34.2193%` (`+0.1192pp`). FLAT falls `752->560`,
+  VALU `68,144->67,312`, with exact MMOP `50,688`.
+- H1/S2048 stats-only improves `44,827,055 -> 44,131,360` ticks (`-1.552%`)
+  and active `40.5607% -> 40.7182%`. Exact same-environment fullperf A/B is
+  `43,607,200 -> 43,161,300` ticks (`-1.0225%`) and
+  `40.6921% -> 40.7884%` active.
+- XCU agrees on the small end-to-end improvement: dispatch duration
+  `95,644 -> 94,664`, average active waves `149.19 -> 150.27`. The dominant
+  `s_abarrier_try_wait -> s_xor_b32` edge remains; waitLgkm/barrier do not
+  improve. This is accepted instruction cleanup, not a solved conveyor.
+- Evidence is in workbook sheet `184_DQ_VectorSidecar`; remote candidate
+  `/zys/sb/dq_m128_2p2c_sidecar_ds3_s2048_fullperf_valid/dq_correctness_20260720_234337`
+  and control
+  `/zys/sb/dq_m128_2p2c_control_s2048_fullperf_same_env/dq_correctness_20260720_234655`.
+- Shared archive:
+  `/共享/shaobo/perf/20260720_234337_dq_m128_2p2c_sidecar_ds3_h1s2048_sqc7_fullperf`.

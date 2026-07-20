@@ -9649,3 +9649,19 @@ Status: `ACCEPT_RESOURCE_GATE_CANONICAL_NOT_YET_CHANGED`.
   correctness PASS, `24,260,145 ticks / 34.1000%`, exact MMOP50,688, bank0,
   and private/spill/scratch0. This aligns with the locked control and closes
   the M256 rollback.
+
+## 2026-07-20 dQ Canonical 2P2C Sidecar Read Cleanup
+
+- Canonical source remains Mq128/Nk128/D128, 16-wave physical 2P2C with the
+  accepted C1-early stagger. No third consumer, extra tail ownership, or
+  duplicate GEMM is present.
+- Consumer sidecar latch now issues exactly three `ds_read_b32` operations,
+  then the existing eight Q/dO `ds_read_matrix` operations, then one
+  `s_waitcnt lgkmcnt(0)`. Ordinary DS is restricted to the three scalar
+  sidecar fields; all matrix operands retain the native matrix path.
+- The change is accepted at both required targets: S1024
+  `24.260M->24.114M` ticks and S2048 fullperf `43.607M->43.161M`, with exact
+  work, correctness, bank0, and no resource regression.
+- The remaining critical path is still ABarrier ownership/readiness. Do not
+  add another sidecar micro-optimization or a third consumer without a new
+  XCU-supported hypothesis.

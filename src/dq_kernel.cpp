@@ -666,14 +666,13 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
     dq_wait_qdo_filled<Bar>(qdo_filled_phase);
 
     constexpr int SidecarRows = DqLdsLayout<Tile>::kSidecarRows;
-    const int sidecar_vec_base = local_row & ~3;
-    const int sidecar_vec_idx = local_row & 3;
-    const volatile float* sidecar = dq_sidecar_lds<Tile>(lds);
-    const float row_max = sidecar[sidecar_vec_base + sidecar_vec_idx];
-    const float row_sum =
-        sidecar[SidecarRows + sidecar_vec_base + sidecar_vec_idx];
-    const float row_delta =
-        sidecar[2 * SidecarRows + sidecar_vec_base + sidecar_vec_idx];
+    constexpr int SidecarFieldBytes = SidecarRows * sizeof(float);
+    const float* sidecar = dq_sidecar_lds<Tile>(lds);
+    float row_max;
+    float row_sum;
+    float row_delta;
+    ins::ds_read_b32_lds_imm3<SidecarFieldBytes, 2 * SidecarFieldBytes>(
+        sidecar + local_row, row_max, row_sum, row_delta);
 
     ins::F16x8 q_reg[KBlocks];
     ins::F16x8 dout_reg[KBlocks];
