@@ -4419,3 +4419,14 @@ Skill Candidate:
   stagger must preserve runnable peer waves and prove, from role-local SQTT,
   that the leading consumer reaches a long ready MMAC island before blocking
   the follower. Do not apply this rejected token to dKV.
+
+## 2026-07-21 dKV C1 Priority-Hole Decision
+
+- Keep the accepted dKV C1 sidecar-tail schedule unchanged. Lowering priority
+  after its sidecar reads and raising it at score D2 preserves exact work and
+  raises successful coissue `2.45%`, but repeated S1024 ticks regress
+  `0.4883%` and MMAC active falls `0.14898pp`.
+- The source is restored before S2048/fullperf. This is a concrete reminder
+  that coissue count is explanatory evidence, not the promotion target: a
+  priority hole is useful only when the resumed first-use and barrier path
+  also finish earlier.

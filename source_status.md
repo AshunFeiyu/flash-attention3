@@ -9806,3 +9806,16 @@ Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
 - Candidate source is removed before S2048/fullperf. Do not add a blocking
   peer-consumer phase token to dQ or dKV without role-local SQTT proof that the
   leading consumer immediately sustains MMAC and the follower stays runnable.
+
+## 2026-07-21 dKV C1 Sidecar Priority-Hole Boundary
+
+- Canonical dKV remains commit/tag `f57714f` /
+  `best/dkv-2p2c-c1-sidecar-tail-20260721`, with its accepted C1-only sidecar
+  dead-slot prefetch and no extra priority transition around that island.
+- The priority-hole candidate is exact-work, correct, bank0 and no-spill, but
+  repeated S1024 means regress ticks `0.4883%` and active `0.14898pp` while
+  waitLgkm/barrier debt rises. Its `2.45%` successful-coissue increase is not
+  on a shorter critical path.
+- Candidate source is removed before S2048/fullperf. Do not reintroduce this
+  C1 sidecar priority hole; future scheduling changes must improve same-shape
+  ticks and active together, not coissue count in isolation.

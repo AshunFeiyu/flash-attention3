@@ -15468,3 +15468,24 @@ Status: `REJECT_FORCED_SERIALIZATION_SOURCE_RESTORED`.
   dQ MMAC window; it does not reproduce FWD's useful MMAC/VALU conveyor.
   Reject before S2048/fullperf, restore canonical source, and do not copy this
   token into dKV. Workbook: `192_DQ_FwdValuPhase`.
+
+## 2026-07-21 dKV C1 Sidecar Priority Hole Rejected
+
+Status: `REJECT_TICKS_ACTIVE_SOURCE_RESTORED`.
+
+- The candidate changes only C1 scheduling: after the existing sidecar read
+  island it executes `s_setprio 0`, keeps the existing `lgkmcnt(5)` boundary,
+  then executes `s_setprio 2` immediately before score D2 MMAC. No matrix
+  work, read, wait, token, LDS byte, output ownership, or topology changes.
+- Static gates pass unchanged at SGPR52/VGPR96, branch use
+  `8/152/14/152`, private/spill/scratch0, MMAC1028, matrix-read610,
+  `ds_read_b128`98, ABarrier57 and wait281. S128 correctness passes and the
+  matrix path remains bank0.
+- Two S1024 controls average `31,637,742.5 ticks / 38.366526% active`; two
+  candidates average `31,792,215 / 38.2175465%`. Ticks regress `0.4883%`
+  and active falls `0.14898pp` despite successful coissue rising
+  `12,183.5 -> 12,482` (`+2.45%`). WaitLgkm and barrier debt rise about
+  `1.56%` and `0.99%` respectively.
+- The schedule makes the coissue counter prettier but resumes C1's first-use
+  path later. Reject before S2048/fullperf, restore canonical source, and
+  retain the boundary in workbook sheet `193_RoleLocalPriority`.
