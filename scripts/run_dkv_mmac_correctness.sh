@@ -20,6 +20,8 @@ python3 scripts/check_symbol_metadata_gate.py \
   --asm "${ASM}" \
   --symbol-regex "fa3_bwd_dkv_kernel"
 
+BIN_ABS="$(realpath "${BIN}")"
+
 case_id="dkv_mmac_correctness_$(date +%Y%m%d_%H%M%S)"
 case_dir="${SHAOBO_RUN_ROOT}/${case_id}"
 mkdir -p "${case_dir}"
@@ -32,16 +34,16 @@ case_script="${case_dir}/run_case.sh"
 cat > "${case_script}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-cd ${repo_dir}
+cd ${case_dir}
 export HSA_TOOLS_LIB="${HSA_TOOLS_LIB:-}"
 export B="\${B:-1}"
 export H="\${H:-1}"
 export S="\${S:-128}"
 export D="\${D:-128}"
 export CAUSAL="\${CAUSAL:-1}"
-echo "PMD_BINARY=${BIN}"
-sha256sum "${BIN}"
-exec "${BIN}" --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
+echo "PMD_BINARY=${BIN_ABS}"
+sha256sum "${BIN_ABS}"
+exec "${BIN_ABS}" --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL}
 EOF
 chmod +x "${case_script}"
 

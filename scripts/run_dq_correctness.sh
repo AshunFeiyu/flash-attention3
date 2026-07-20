@@ -23,6 +23,8 @@ python3 scripts/check_dq_kernel_gate.py \
   --contract include/dq_contract.h \
   --asm "${DQ_ASM}"
 
+DQ_BIN_ABS="$(realpath "${DQ_BIN}")"
+
 case_id="dq_correctness_$(date +%Y%m%d_%H%M%S)"
 case_dir="${SHAOBO_RUN_ROOT}/${case_id}"
 mkdir -p "${case_dir}"
@@ -35,7 +37,7 @@ case_script="${case_dir}/run_case.sh"
 cat > "${case_script}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-cd ${repo_dir}
+cd ${case_dir}
 export HSA_TOOLS_LIB="${HSA_TOOLS_LIB:-}"
 export B="\${B:-1}"
 export H="\${H:-1}"
@@ -45,9 +47,9 @@ export CAUSAL="\${CAUSAL:-1}"
 export CANONICAL_DQ="\${CANONICAL_DQ:-0}"
 export DQ_DIAG_STORE="\${DQ_DIAG_STORE:-0}"
 export DQ_TILES_PER_DISPATCH="\${DQ_TILES_PER_DISPATCH:-0}"
-echo "PMD_BINARY=${repo_dir}/${DQ_BIN}"
-sha256sum "${repo_dir}/${DQ_BIN}"
-exec "${repo_dir}/${DQ_BIN}" --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL} --canonical=\${CANONICAL_DQ} --diag-store=\${DQ_DIAG_STORE} --tiles-per-dispatch=\${DQ_TILES_PER_DISPATCH}
+echo "PMD_BINARY=${DQ_BIN_ABS}"
+sha256sum "${DQ_BIN_ABS}"
+exec "${DQ_BIN_ABS}" --B=\${B} --H=\${H} --S=\${S} --D=\${D} --causal=\${CAUSAL} --canonical=\${CANONICAL_DQ} --diag-store=\${DQ_DIAG_STORE} --tiles-per-dispatch=\${DQ_TILES_PER_DISPATCH}
 EOF
 chmod +x "${case_script}"
 
