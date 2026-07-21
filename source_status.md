@@ -10106,3 +10106,18 @@ Status: `REJECT / CANONICAL RESTORED`.
 - The branch tip restores the canonical producer schedule. The focused
   VBCNT4 probe remains valid instruction evidence, but this ownership graph
   is not a useful operator integration.
+
+## 2026-07-21 dQ Cross-Page Role Stagger Closed
+
+Status: `REJECT / CANONICAL RESTORED`.
+
+- Experiment commit `887c869` changes only C1 full-tile traversal to
+  `1,0,3,2`; formula, tile, MMAC/read counts, source-layout ABI and ABarrier
+  IDs remain exact. S128/S384/repeated S1024 correctness, bank and resource
+  gates pass on locked LLVM47a7/PMD HEAD1694.
+- S1024 median ticks regress `22.282%`, MMAC active falls `4.2973pp`, barrier
+  grows `49.8980%`, and successful coissue falls `19.5209%`.
+- The canonical `PageUsed` token is CTA-wide, not consumer-group-local. Two
+  groups starting on different pages half-complete both tokens and relock the
+  producer. Do not retry cross-page consumer skew without independently
+  releasable per-group ownership tokens.

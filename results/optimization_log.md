@@ -15847,3 +15847,22 @@ Status: `REJECT_TAIL_READINESS_REGRESSION_SOURCE_RESTORED`.
   wait for current Tail after every Head. Prefetching Head(t+1) cannot repay
   the new immediate readiness debt. Reject before fullperf and restore early
   Tail publication.
+
+## 2026-07-21 dQ C1 Full-Tile Pair Reversal Rejected
+
+Status: `REJECT_CTA_WIDE_PAGEUSED_RELOCK_SOURCE_RESTORED`.
+
+- Candidate preserves exact `Mq128/Nk128/D128` work and changes only the C1
+  full-tile order from `0,1,2,3` to `1,0,3,2`; C0 and the causal boundary are
+  unchanged. Static counts remain MMAC768, matrix-read400, matrix-load16 and
+  ABarrier48, with SGPR60/VGPR128 and private/spill/scratch0.
+- H1/S128, H1/S384 and all six H1/S1024 A/B runs pass correctness with exact
+  MMOP50,688 and bank0. Median ticks regress `20,836,725 -> 25,479,545`
+  (`+22.282%`), and MMAC active falls `37.9400% -> 33.6427%` (`-4.2973pp`).
+- Barrier grows `49.8980%`, successful coissue falls `19.5209%`, and noVorM
+  grows `32.3797%`. The role skew therefore creates ownership debt rather
+  than useful MMAC/VALU cover.
+- Root cause: each physical page's `PageUsed` token needs all eight consumer
+  arrivals. Starting C0 on page0 and C1 on page1 leaves both tokens at 4/8,
+  so neither producer can refill until the consumers swap pages. Reject
+  before S2048/fullperf and restore the canonical same-page schedule.

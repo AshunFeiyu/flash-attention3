@@ -4727,3 +4727,23 @@ Skill Candidate:
   effect.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo` WASP/ABarrier reference during consolidation.
+
+### Skill Candidate: Prove Page-Release Scope Before Cross-Page Role Skew
+
+- Trigger / 适用场景: symmetric consumer groups are intentionally assigned
+  different physical LDS pages to create useful MMAC/VALU phase skew.
+- Rule / 可复用规则: derive the Filled/Used arrival ledger before changing
+  traversal order. Each page must be independently releasable by the group
+  that consumes it; a CTA-wide Used token makes different-page scheduling
+  half-complete every token and can relock the entire producer pipeline.
+- Evidence / 证据: dQ commit `887c869`, workbook 207, locked LLVM47a7/PMD
+  HEAD1694; exact work and correctness pass, but S1024 ticks regress
+  `22.282%`, active falls `4.2973pp`, barrier grows `49.8980%`, and noVorM
+  grows `32.3797%`.
+- Boundary / 适用边界: applies when a token needs arrivals from consumer
+  groups that are no longer consuming the same page in the same epoch.
+- Counterexample / 反例或不适用情况: per-WG or per-consumer page ownership
+  has independent Used tokens, or page release is not required before the
+  next useful generation can be issued.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo` ABarrier/WASP ownership reference during consolidation.
