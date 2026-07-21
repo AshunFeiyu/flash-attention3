@@ -607,6 +607,19 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
     }
 }
 
+template <int ConsumerGroup>
+__device__ __forceinline__ int dq_full_k_tile_for_sequence(
+    int sequence,
+    int full_k_tiles) {
+    static_assert(ConsumerGroup == 0 || ConsumerGroup == 1,
+                  "dQ full-tile order requires a canonical consumer group");
+    if constexpr (ConsumerGroup == 0) {
+        return sequence;
+    }
+    const int paired_tiles = full_k_tiles & ~1;
+    return sequence ^ static_cast<int>(sequence < paired_tiles);
+}
+
 template <typename Tile, typename Bar, bool UsePageBarriers, int ConsumerGroup>
 __device__ __forceinline__ void dq_compute_pages_from_latched(
     const __half* __restrict__ lds,
@@ -624,8 +637,11 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
     int& filled_phase1,
     const ins::F32x4& mmac_zero,
     ins::F32x4 (&dq_reg)[8]) {
+    const int full_k_tiles = active_k_tiles > 0 ? active_k_tiles - 1 : 0;
 #pragma clang loop unroll(disable)
-    for (int kt = 0; kt + 1 < active_k_tiles; ++kt) {
+    for (int sequence = 0; sequence < full_k_tiles; ++sequence) {
+        const int kt = dq_full_k_tile_for_sequence<ConsumerGroup>(
+            sequence, full_k_tiles);
         dq_compute_pages_from_latched<
             Tile, Bar, UsePageBarriers, ConsumerGroup, false>(
             lds, q_base_tile, local_m16, row_max, row_sum, row_delta,

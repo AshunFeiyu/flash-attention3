@@ -78,6 +78,16 @@ def main() -> int:
             r"dq_read_k_normal_pair<Tile>[\s\S]{0,220}"
             r"dq_update_from_ds_pair<Tile>",
             failures, "missing_c0_canonical_late_knorm_path")
+    require(source,
+            r"dq_full_k_tile_for_sequence[\s\S]{0,700}"
+            r"paired_tiles\s*=\s*full_k_tiles\s*&\s*~1[\s\S]{0,300}"
+            r"sequence\s*\^\s*static_cast<int>\(sequence\s*<\s*paired_tiles\)",
+            failures, "missing_c1_full_tile_pair_reverse")
+    require(source,
+            r"full_k_tiles\s*=\s*active_k_tiles\s*>\s*0\s*\?\s*"
+            r"active_k_tiles\s*-\s*1\s*:\s*0[\s\S]{0,1300}"
+            r"ConsumerGroup,\s*true>[\s\S]{0,400}active_k_tiles\s*-\s*1",
+            failures, "missing_boundary_last_after_pair_reverse")
     forbid(source,
            r"ins::lower_priority\(\);[\s\S]{0,260}"
            r"if constexpr \(ConsumerGroup == 1\)[\s\S]{0,220}"
