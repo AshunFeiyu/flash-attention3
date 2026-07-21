@@ -4808,3 +4808,24 @@ Skill Candidate:
   duplicate work, or independent VALU fully covers the first-use latency.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo` scheduling heuristics reference during consolidation.
+
+### Skill Candidate: Price an Alias-Lifetime Split Against Its New Token
+
+- Trigger / 适用场景: an LDS page aliases a small startup sidecar and a large
+  streamed operand, and an early-release token could start the stream before
+  the rest of the startup tile is consumed.
+- Rule / 可复用规则: quantify both the overlap window and the added
+  wait/arrive work. Do not add an ABarrier merely because the alias can be
+  released earlier; promotion requires the reduced readiness wait to exceed
+  the new barrier/SCA debt in repeated same-build A/B.
+- Evidence / 证据: dQ commit `5346659`, workbook 211, locked
+  LLVM47a7/PMD HEAD1694. The intended `DS3 + matrix8 + wait8` order passes
+  correctness and lowers wait `0.0232pp`, but S1024 ticks regress `4.4577%`,
+  barrier rises `0.7915pp`, SCA grows by 888, and active falls `0.4653pp`.
+- Boundary / 适用边界: applies to short startup alias windows with an
+  otherwise unchanged steady double-buffer loop.
+- Counterexample / 反例或不适用情况: the token is already available, the
+  released region enables a full steady-state stage, or the new handoff
+  removes a larger synchronization epoch instead of splitting it.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo` LDS-alias/ABarrier reference during consolidation.

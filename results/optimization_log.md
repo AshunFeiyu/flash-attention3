@@ -15934,3 +15934,26 @@ Status: `REJECT_FIRST_USE_WAIT_AND_VOP_DEBT_SOURCE_RESTORED`.
   stage still reaches its operand at an exposed first-use wait. Static island
   regularity is not a performance proof. Reject before S2048/fullperf and
   restore the canonical source.
+
+## 2026-07-22 dQ Sidecar Early-Release Page0 Prefetch Rejected
+
+Status: `REJECT_EXTRA_STARTUP_TOKEN_DEBT_SOURCE_RESTORED`.
+
+- Latest-toolchain SQTT showed large startup/ownership bubbles, so the
+  candidate keeps the exact Mq128/Nk128/D128 16-wave 2P2C algorithm and
+  splits only sidecar readiness. Consumers issue sidecar DS3 before Q/dO
+  matrix8, retire the prefix at `lgkmcnt(8)`, publish SidecarLatched ID6,
+  then complete Q/dO and publish QDoLatched. Producers may load page0 after
+  ID6; page1 remains gated by full Q/dO latch.
+- LLVM47a7 emits the intended `DS3 -> matrix8 -> wait8 -> arrive6 -> wait0`
+  order. LDS stays 128KB, role usage stays `8/162/9/194`, SGPR rises only
+  `60 -> 61`, and private/spill/scratch0 passes. H1/S128, H1/S384 and all
+  six H1/S1024 A/B runs pass with exact MMOP/VALU/LDS/VMEM/FLAT and bank0.
+- Three-run S1024 median ticks regress `21,118,370 -> 22,059,765`
+  (`+4.4577%`). MMAC active falls `0.4653pp`, successful coissue falls
+  `3.3024%`, and barrier rises `0.7915pp`. LGKM wait falls only `0.0232pp`;
+  dynamic SCA grows `42,124 -> 43,012`.
+- The proposed data overlap exists but is too short to repay an additional
+  startup ABarrier handshake. Reject before S2048/fullperf and restore the
+  canonical six-token lifecycle. The next ownership change must reuse an
+  existing token or remove an epoch, not split one into two.

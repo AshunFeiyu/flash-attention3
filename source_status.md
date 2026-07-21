@@ -10170,3 +10170,20 @@ Status: `REJECT / CANONICAL RESTORED`.
 - The candidate exposes first-use LDS latency and adds split P/dS VOP work.
   Do not equate prettier ASM islands with a hidden dependency chain; any next
   schedule must pre-age operands without adding live state or ownership debt.
+
+## 2026-07-22 dQ Sidecar Early-Release Experiment Closed
+
+Status: `REJECT / CANONICAL RESTORED`.
+
+- Experiment commit `5346659` reuses dQ barrier ID6 to publish sidecar after
+  `lgkmcnt(8)`, allowing page0 K/V MLS to overlap the remaining Q/dO matrix
+  reads. Page1, exact three-GEMM work and output ownership stay canonical.
+- Latest locked LLVM47a7/PMD HEAD1694 gates pass: role usage
+  `8/162/9/194`, SGPR61/VGPR128, private/spill/scratch0, S128/S384/repeated
+  S1024 correctness, exact instruction-family work and bank0.
+- S1024 median ticks regress `4.4577%`, MMAC active falls `0.4653pp`, barrier
+  rises `0.7915pp`, and successful coissue falls `3.3024%`; the intended
+  LGKM reduction is only `0.0232pp`.
+- The extra handoff costs more than the page0 startup overlap. Keep the
+  canonical QDo latch and seek a design that removes or reuses ownership
+  epochs rather than adding another ABarrier.
