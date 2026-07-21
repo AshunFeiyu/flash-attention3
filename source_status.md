@@ -10217,3 +10217,18 @@ Status: `REJECT / RESTORE CANONICAL`.
 - Restore both `src/dkv_kernel.cpp` and the temporary static-gate contract.
   The canonical dKV baseline remains S1024 `31,703,035 / 38.450598%` and
   S2048 `56,527,835 / 45.360179%` on the unified latest toolchain.
+
+## 2026-07-22 dQ All-Wave Startup Experiment Closed
+
+Status: `REJECT / RESTORE CANONICAL`.
+
+- Experiment commit `a175ac3` preserves exact BPS32, three GEMMs, LDS128KB,
+  sidecar data, page tokens and dQ ownership while all 16 waves publish one
+  M32 Q/dO slice collectively through QDoFilled ID4 count16.
+- Latest compiler resources and all correctness/bank gates pass. Repeated
+  S1024 median ticks regress `2.0905%`, MMAC active falls `0.363928pp`, SCA
+  grows824 and successful coissue falls `4.2837%` despite lower LGKM/barrier
+  shares. S2048/fullperf is skipped.
+- Restore canonical producer-only Q/dO startup. The next dQ experiment may
+  alter causal M16 ownership without touching startup or steady instruction
+  work, but must remain a separate workbook-first branch.

@@ -4877,3 +4877,25 @@ Skill Candidate:
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `dcu-kernel-optimization` resource-ledger reference during a serialized
   consolidation pass; do not edit the public skill from this task.
+
+### Skill Candidate: Startup Load Balance Must Preserve Role Entry Cadence
+
+- Trigger / 适用场景: producer startup work is redistributed to otherwise idle
+  consumer waves without changing total bytes, MLS requests or the steady
+  compute DAG.
+- Rule / 可复用规则: account for per-wave completion waits and collective
+  arrivals, then measure the transition into the first steady page. Lower
+  startup wait counters are insufficient if consumer-side setup reduces peer
+  coissue or delays the first sustained MMAC island.
+- Evidence / 证据: dQ commit `a175ac3`, workbook 214, LLVM47a7/PMD1694. BPS32,
+  dynamic MMOP/VALU/LDS/VMEM/FLAT, resources, correctness and bank0 are exact.
+  LGKM/barrier shares fall, but S1024 ticks regress `2.0905%`, active falls
+  `0.363928pp`, SCA grows824 and coissue success falls `4.2837%`.
+- Boundary / 适用边界: one-time CTA startup redistribution where consumers
+  immediately enter a tightly staggered steady pipeline.
+- Counterexample / 反例或不适用情况: the consumer work replaces an existing
+  wait/arrive, does not add completion bookkeeping, or remains fully outside
+  the first steady role's scheduler/scoreboard lifetime.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` producer/consumer startup evidence reference in a
+  serialized consolidation pass; no public skill edit from this task.

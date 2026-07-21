@@ -16004,3 +16004,27 @@ Status: `REJECT_RESOURCE_GATE_SOURCE_RESTORE_REQUIRED`.
   branch-local gate together; a future issue-ahead design must either shorten
   another live range first or prefetch only after proving a peak-liveness
   reduction in generated metadata.
+
+## 2026-07-22 dQ All-Wave Q/dO Startup Rejected
+
+Status: `REJECT_TICKS_ACTIVE_SOURCE_RESTORE_REQUIRED`.
+
+- Workbook 214 redistributes the exact same 32 Q/dO MLS+BPS calls from eight
+  producer waves issuing four each to all 16 waves issuing two each. Four
+  disjoint M32 slices cover Q/dO exactly once. QDoFilled remains ID4 but its
+  expected arrivals change `8 -> 16`; sidecar, QDoLatched and steady K/V page
+  ownership remain canonical.
+- Latest LLVM47a7 preserves static MMAC768, matrix-read406, MLS18, wait0=60,
+  role usage `8/162/9/194`, SGPR60/VGPR128 and private/spill/scratch0.
+  Branch-local ABarrier instructions grow48->50 and vbcnt4->6.
+- H1/S128, H1/S384 and all six paired S1024 runs pass numerical correctness;
+  dynamic MMOP50,688, VALU44,864, LDS26,352, VMEM1,408, FLAT560 and bank0 are
+  exact. SCA grows `42,124 -> 42,948` from the extra handoffs.
+- Three-run S1024 median ticks regress `24,486,280 -> 24,998,155`
+  (`+2.0905%`), active falls `37.919312% -> 37.555384%`, and successful
+  coissue falls `16,131 -> 15,440`. LGKM and barrier shares fall, proving the
+  startup wait was shortened, but the role transition into steady compute is
+  less efficient and dominates the net result.
+- Reject before S2048/fullperf. Restore source and experiment gate; do not make
+  heavy consumers participate in Q/dO publication without removing equivalent
+  handoff work or preserving the accepted steady role-entry cadence.
