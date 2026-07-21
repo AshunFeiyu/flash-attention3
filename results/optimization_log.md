@@ -16095,8 +16095,34 @@ Status: `ACCEPT_TOOLCHAIN_GOVERNANCE`; no kernel source change.
 
 - The fail-closed route now supplies the audited PMD config seed by default and
   unconditionally requires the latest compiler, PMD, `GPU_CHIP=sb`, SQ7 and a
-  non-empty seed. This prevents PMD from silently regenerating an incompatible
-  config and producing an environment error during a kernel A/B.
+  non-empty seed. PMD still attempts config generation; when that attempt fails
+  with the known `ASTCA ... num_phase` error, the lock guarantees fallback to
+  the audited copied seed instead of admitting an unknown generated config.
 - Build fingerprints now record the seed path and SHA256 beside compiler, hipcc,
   PMD, WDRA and target information. Kernel performance remains tied to the
   previously measured LLVM47a7/HEAD1694 baseline.
+
+## 2026-07-22 dKV C0 Split-Sidecar Aging Promoted
+
+Status: `ACCEPT_CANONICAL_MICRO_SCHEDULE`; the 50% MMAC-active goal remains open.
+
+- The exact four-GEMM `Mq128/Nk128/D128` physical-2P2C DAG, producers, seven
+  ABarrier IDs, LDS 67,072B and output ownership are unchanged. C0 alone issues
+  max/invsum after score D0 and delta after score D1 into dead source slots,
+  while preserving the ordered LDS retirement proof before normal D01 reads.
+- LLVM47a7 emits SGPR52/VGPR96, role use `8/152/14/160`, private/spill/scratch0,
+  MMAC1028, matrix-read610 and ABarrier57. H1/S128, H1/S384 and all twelve paired
+  S1024/S2048 runs pass correctness with exact dynamic work and bank0.
+- Three-run median ticks improve at both steady lengths: S1024
+  `31,613,400 -> 31,119,270` (`-1.5630%`) and S2048
+  `56,402,255 -> 55,759,340` (`-1.1399%`).
+- Valid H1/S2048 fullperf improves canonical `56,527,835 -> 55,536,390` ticks
+  (`-1.7540%`) and active `45.360179% -> 45.441267%`. XCU reports dispatch
+  duration `123,728 -> 122,060`, aggregate `s_waitcnt` latency down `10.61%`,
+  heavy 64-cycle no-MMAC bins `196 -> 146`, and MMAC-vs-VALU bins `323 -> 404`.
+- Promote commit `d2d5bdd`. This is a request-age/coissue improvement, not a
+  structural solution: no-VM remains about 35%, ownership/XOR is unchanged and
+  active is still below 50%. The next hypothesis must attack those debts without
+  adding normal-fragment live state, requests, GEMMs or ownership tokens.
+- Archived perf, stats, XCU CSV and workbook preview under shared
+  `shaobo/perf/20260722_051808_dkv_c0_split_sidecar_h1s2048_sqc7_u47_fullperf`.

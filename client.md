@@ -1,5 +1,41 @@
 # Client
 
+## 2026-07-22 dKV Canonical Advances To C0 Split-Sidecar Aging
+
+- Promote commit `d2d5bdd` as the current dKV micro-schedule baseline. It keeps
+  exact four-GEMM work and the canonical 2P2C ownership graph, but ages C0's
+  independent sidecar fragments in dead score-source slots without changing
+  normal matrix reads or adding an ABarrier token.
+- Latest locked LLVM47a7 + PMD HEAD1694 paired medians improve S1024 by `1.563%`
+  and S2048 by `1.140%`. Valid S2048 fullperf improves ticks by `1.754%` and
+  active by `0.0811pp`; correctness, exact work, bank0 and no-spill gates pass.
+- XCU proves the mechanism: `s_waitcnt` latency falls `10.61%`, no-MMAC bins
+  fall `196 -> 146`, and useful MMAC-vs-VALU bins rise `323 -> 404`. The next
+  dKV work must target remaining no-VM/ownership debt; dQ remains on its accepted
+  canonical source until its own latest-toolchain SQTT hypothesis is designed.
+- Shared evidence is archived at
+  `shaobo/perf/20260722_051808_dkv_c0_split_sidecar_h1s2048_sqc7_u47_fullperf`;
+  workbook sheet 217 is already written back to the shared design workbook.
+
+Skill Candidate:
+
+- Trigger / 适用场景: count-based LDS FIFO scheduling leaves small independent
+  sidecar reads on the critical path beside matrix MMAC.
+- Rule / 可复用规则: issue only small sidecar requests into source fields already
+  dead for the current GEMM, and prove oldest-first retirement at every
+  `lgkmcnt(N)` before implementation. Require exact-work paired runs and SQTT.
+- Evidence / 证据: commit `d2d5bdd`, workbook 217, LLVM47a7/PMD1694, S1024 ticks
+  `-1.563%`, S2048 paired `-1.140%`, valid fullperf `-1.754%`, wait latency
+  `-10.61%`, bank0 and no spill/private/scratch.
+- Boundary / 适用边界: small sidecar fragments with dead operand slots and queue
+  headroom. This does not authorize normal-fragment prefetch, extra tokens, or
+  symmetric role changes.
+- Counterexample / 反例或不适用情况: normal D23 prefetch spilled; C0-after-D2
+  caused bank conflicts; C1 family grouping reduced coissue and lost ticks.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo` instruction-readiness reference in a serialized consolidation pass.
+  Do not edit a public skill from this project task.
+
 ## 2026-07-22 Compiler Route Is Single-Source
 
 - Canonical dKV, dQ and focused probes now fail closed unless clang SHA256 is

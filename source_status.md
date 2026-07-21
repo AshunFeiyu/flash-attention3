@@ -1,5 +1,25 @@
 # Source Status
 
+## 2026-07-22 dKV C0 Split-Sidecar Canonical Promotion
+
+Status: `ACCEPT_CANONICAL_MICRO_SCHEDULE`; source commit `d2d5bdd`.
+
+- Canonical dKV remains exact `Mq128/Nk128/D128`, 16 waves, physical 2P2C and
+  four GEMMs. Only C0 sidecar issue age changes; C1, producers, ABarrier IDs,
+  LDS 67,072B, matrix reads, output ownership and stores remain unchanged.
+- Latest compiler LLVM47a7 emits SGPR52/VGPR96, role use `8/152/14/160`,
+  private/spill/scratch0. Correctness passes H1/S128, H1/S384 and twelve paired
+  S1024/S2048 runs with exact dynamic work and `ldsBankConflict=0`.
+- Paired medians improve S1024 ticks `1.563%` and S2048 `1.140%`. Valid fullperf
+  artifact `2971147_fa3_bwd_wasp_clean.perf` improves the locked canonical by
+  `1.754%` to `55,536,390` ticks; MMAC active is `45.441267%`.
+- XCU attributes the gain to earlier useful sidecar retirement: aggregate
+  `s_waitcnt` latency falls `10.61%`, no-MMAC bins fall and MMAC/VALU overlap
+  rises. The ownership graph is unchanged, so this is accepted as a micro
+  baseline rather than evidence that the >=50% objective is complete.
+- Perf/XCU evidence is archived at shared
+  `shaobo/perf/20260722_051808_dkv_c0_split_sidecar_h1s2048_sqc7_u47_fullperf`.
+
 ## 2026-07-22 Unified Latest-Compiler Audit
 
 Status: `ACCEPT_FAIL_CLOSED_COMPILER_ROUTE`; kernels unchanged.
