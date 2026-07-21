@@ -15537,3 +15537,32 @@ Status: `REJECT_EXTRA_VALU_TICKS_ACTIVE_SOURCE_RESTORED`.
   bottleneck remains real, but the next solution must reorder existing MMAC
   work without adding reduction arithmetic. Workbook sheet
   `195_DKV_PartialAcc` retains the design and result boundary.
+
+## 2026-07-21 dKV C1 Post-Softmax Operand Read Rejected
+
+Status: `REJECT_EXPOSED_LDS_DEPENDENCY_SOURCE_RESTORED`.
+
+- The candidate preserved canonical M128 physical 2P2C, exact four-GEMM work,
+  output ownership, LDS, ABarrier generations, all read/store counts and all
+  dynamic instruction families. It moved only C1's existing D0/D1 Q+dO
+  normal-read island from before softmax/dS to after softmax/dS.
+- Static resources and correctness pass: SGPR52/VGPR96, branch use
+  `8/152/14/152` inside `32/160/160/32`, private/spill/scratch0, H1/S128 and
+  H1/S1024 causal PASS, exact MMOP73,728, VALU60,752, SCA38,048, LDS45,200,
+  VMEM2,560, FLAT1,096, and bank0.
+- Same-environment H1/S1024 control/candidate are
+  `31,547,425 / 33,640,880 ticks` (`+6.6359%`) and
+  `38.443812% / 37.027105% MMAC active` (`-1.4167pp`). WaitLgkm rises
+  `34.2354%`, barrier debt `10.4435%`, no-V-or-M time `9.6463%`, and
+  successful coissue falls `22.2007%`.
+- dQ role-local SQTT explains the failure. Each normal-K island contains eight
+  reads. C0 places no independent VALU between its last read and first-use
+  wait/MMAC (`read->wait` median158 cycles); C1 places about36 softmax/dS VALU
+  there, with the first VALU usually4 cycles after the read and the last VALU
+  4 cycles before the wait. C0 softmax VALU coissues with peer MMAC1,457 times,
+  while C1 does so only256 times: current dQ overlap is useful but one-way.
+- Reject before S2048/fullperf and restore canonical source. Both consumers
+  must issue source reads before independent MMAC/VALU coverage; future phase
+  skew must use different useful prefetch distances, not a deliberately late
+  read that exposes first-use LDS latency. Workbook sheet
+  `196_DKV_C1_PostSfmRead` holds the design and result.

@@ -9844,3 +9844,21 @@ Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
   measured MMAC dependency by adding accumulator reductions; the next
   candidate must change only the order of existing work and preserve dynamic
   MMOP/VALU/SCA/LDS/VMEM/FLAT.
+
+## 2026-07-21 dKV Late-Read Boundary And dQ Role Diagnosis
+
+- Canonical dKV remains commit/tag `f57714f` /
+  `best/dkv-2p2c-c1-sidecar-tail-20260721`; the C1 post-softmax D0/D1 read
+  candidate has been removed from source.
+- The candidate is exact-work, correct, bank0 and no-spill, but one paired
+  H1/S1024 comparison regresses `31,547,425 -> 33,640,880 ticks` (`+6.6359%`)
+  and active `38.443812% -> 37.027105%`. WaitLgkm rises `34.2354%`, barrier
+  `10.4435%`, no-V-or-M `9.6463%`, and successful coissue falls `22.2007%`.
+- Role-local dQ SQTT confirms why. C0 implements
+  `MMAC -> softmax/dS VALU -> read8 -> wait -> dQ MMAC`, leaving a median
+  158-cycle read-to-wait hole. C1 implements
+  `MMAC -> read8 -> softmax/dS VALU -> wait -> dQ MMAC`, so the read latency
+  is covered by about36 VALU instructions.
+- The next legal schedule must hide operand readiness for both consumers and
+  preserve cross-consumer phase separation with different useful prefetch
+  distances. It may not create skew by exposing one role's LDS dependency.

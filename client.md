@@ -4450,3 +4450,16 @@ Skill Candidate:
 - The source is restored and the failed code is not retained. Future MMAC
   dependency work must use complementary ordering of the existing MMACs, not
   extra accumulators or reduction instructions.
+
+## 2026-07-21 Read-Before-Independent-Work Invariant
+
+- Keep dKV canonical. Moving C1's D0/D1 operand reads after softmax preserves
+  exact work and correctness but regresses S1024 ticks `6.6359%` and MMAC
+  active `1.4167pp`; waitLgkm rises `34.24%`. The source is restored.
+- dQ SQTT proves the scheduling rule: C1's `read8 -> about36 softmax/dS VALU
+  -> wait -> MMAC` hides LDS latency, while C0's `VALU -> read8 -> wait ->
+  MMAC` exposes a median158-cycle readiness hole.
+- Do not use a late read to create consumer skew. Both consumers need early
+  reads followed by independent MMAC/VALU; role staggering must come from
+  different useful prefetch distances while preserving complete instruction
+  islands and exact work.
