@@ -310,7 +310,7 @@ __device__ __forceinline__ void dq_store_m16_full_d_to_global(
     }
 }
 
-template <typename Tile>
+template <typename Tile, int BeginDblock, int EndDblock>
 __device__ __forceinline__ void dq_read_k_normal_pair(
     const __half* __restrict__ lds,
     int page,
@@ -318,11 +318,13 @@ __device__ __forceinline__ void dq_read_k_normal_pair(
     ins::F16x8 (&k_norm0)[Tile::kHeadDim / 32],
     ins::F16x8 (&k_norm1)[Tile::kHeadDim / 32]) {
     constexpr int MatrixBlockBytes = DqLdsLayout<Tile>::kMatrixBlockBytes;
+    static_assert(BeginDblock >= 0 && BeginDblock < EndDblock);
+    static_assert(EndDblock <= Tile::kHeadDim / 32);
     const __half* k_lds =
         lds + DqLdsLayout<Tile>::kPageKBase(page) / sizeof(__half);
 
 #pragma unroll
-    for (int d_block = 0; d_block < Tile::kHeadDim / 32; ++d_block) {
+    for (int d_block = BeginDblock; d_block < EndDblock; ++d_block) {
         const int block = n_tile * (Tile::kHeadDim / 32) + d_block;
         ins::ds_read_matrix_normal_pair(
             k_lds, block * MatrixBlockBytes,
@@ -460,7 +462,7 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
         ins::F16x8 k_norm0[KBlocks];
         ins::F16x8 k_norm1[KBlocks];
         if constexpr (ConsumerGroup == 1) {
-            dq_read_k_normal_pair<Tile>(
+            dq_read_k_normal_pair<Tile, 0, KBlocks>(
                 lds, page, n_tile, k_norm0, k_norm1);
         }
 
@@ -542,6 +544,10 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
         }
         ins::lower_priority();
 
+        if constexpr (ConsumerGroup == 0) {
+            dq_read_k_normal_pair<Tile, 0, KBlocks / 2>(
+                lds, page, n_tile, k_norm0, k_norm1);
+        }
         ins::Vec4F16 ds_vec0;
         ins::Vec4F16 ds_vec1;
         if (!n_tile_full_valid) {
@@ -595,7 +601,7 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
         }
         ins::raise_priority_2();
         if constexpr (ConsumerGroup == 0) {
-            dq_read_k_normal_pair<Tile>(
+            dq_read_k_normal_pair<Tile, KBlocks / 2, KBlocks>(
                 lds, page, n_tile, k_norm0, k_norm1);
         }
         dq_update_from_ds_pair<Tile>(

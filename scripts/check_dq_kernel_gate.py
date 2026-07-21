@@ -69,19 +69,22 @@ def main() -> int:
     require(source,
             r"ins::F16x8 k_norm0\[KBlocks\][\s\S]{0,260}"
             r"if constexpr \(ConsumerGroup == 1\)[\s\S]{0,220}"
-            r"dq_read_k_normal_pair<Tile>[\s\S]{0,520}"
+            r"dq_read_k_normal_pair<Tile,\s*0,\s*KBlocks>[\s\S]{0,520}"
             r"wait_lgkm\(15\)[\s\S]{0,3000}"
             r"wait_lgkm\(8\)",
             failures, "missing_c1_prescore_knorm_request_ledger")
     require(source,
             r"if constexpr \(ConsumerGroup == 0\)[\s\S]{0,220}"
-            r"dq_read_k_normal_pair<Tile>[\s\S]{0,220}"
+            r"dq_read_k_normal_pair<Tile,\s*0,\s*KBlocks / 2>"
+            r"[\s\S]{0,240}ins::Vec4F16 ds_vec0[\s\S]{0,2600}"
+            r"dq_read_k_normal_pair<Tile,\s*KBlocks / 2,\s*KBlocks>"
+            r"[\s\S]{0,220}"
             r"dq_update_from_ds_pair<Tile>",
-            failures, "missing_c0_canonical_late_knorm_path")
+            failures, "missing_c0_split_knorm_request_ledger")
     forbid(source,
            r"ins::lower_priority\(\);[\s\S]{0,260}"
            r"if constexpr \(ConsumerGroup == 1\)[\s\S]{0,220}"
-           r"dq_read_k_normal_pair<Tile>",
+           r"dq_read_k_normal_pair<Tile,",
            failures, "c1_knorm_must_not_follow_score_mmac")
     require(source, r"CANONICAL_DQ", failures,
             "missing_canonical_standalone_switch")
