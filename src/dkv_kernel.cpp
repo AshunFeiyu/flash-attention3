@@ -484,7 +484,36 @@ __device__ __forceinline__ void read_sidecar_owner16_fields(
         sidecar_page + local_m_base, row_max_log2, row_inv_sum, row_delta);
 }
 
-template <typename Tile, int MBlockBase, bool PrefetchSidecar>
+template <typename Tile, int MBlockBase>
+__device__ __forceinline__ void read_sidecar_owner16_head_fields(
+    const float* sidecar_page,
+    int lane_col_group,
+    ins::Vec4F32& row_max_log2,
+    ins::Vec4F32& row_inv_sum) {
+    static_assert(MBlockBase < DkvLdsLayout<Tile>::kRawMBlocksPerMqTile,
+                  "sidecar reads one M16 block");
+    constexpr int kFieldBytes =
+        Tile::kSidecarRows * static_cast<int>(sizeof(float));
+    const int local_m_base = MBlockBase * 16 + lane_col_group * 4;
+    ins::ds_read_b128_lds_imm2<kFieldBytes>(
+        sidecar_page + local_m_base, row_max_log2, row_inv_sum);
+}
+
+template <typename Tile, int MBlockBase>
+__device__ __forceinline__ void read_sidecar_owner16_delta_field(
+    const float* sidecar_page,
+    int lane_col_group,
+    ins::Vec4F32& row_delta) {
+    static_assert(MBlockBase < DkvLdsLayout<Tile>::kRawMBlocksPerMqTile,
+                  "sidecar reads one M16 block");
+    constexpr int kDeltaBytes =
+        2 * Tile::kSidecarRows * static_cast<int>(sizeof(float));
+    const int local_m_base = MBlockBase * 16 + lane_col_group * 4;
+    ins::ds_read_b128_lds_imm1<kDeltaBytes>(
+        sidecar_page + local_m_base, row_delta);
+}
+
+template <typename Tile, int MBlockBase, bool SplitSidecar>
 __device__ __forceinline__ void score_dp_mmac_owner16(
     __half* lds,
     int page,
@@ -508,45 +537,34 @@ __device__ __forceinline__ void score_dp_mmac_owner16(
     ins::raise_priority_2();
     score_dp_mmac_owner16_dblock<0>(
         kv_regs, src.q_d0, src.dout_d0, mmac_zero, score, dp);
-    ins::wait_lgkm(4);
+    if constexpr (SplitSidecar) {
+        // C0 deliberately issues two useful LDS reads before D1. Their
+        // destinations are the dead D0 source slots, so the role stays inside
+        // the existing 160-VGPR window while retaining a phase offset from C1.
+        read_sidecar_owner16_head_fields<Tile, MBlockBase>(
+            sidecar_page, lane_col_group, src.q_d0.f32, src.dout_d0.f32);
+        ins::wait_lgkm(6);
+    } else {
+        ins::wait_lgkm(4);
+    }
     score_dp_mmac_owner16_dblock<1>(
         kv_regs, src.q_d1, src.dout_d1, mmac_zero, score, dp);
-    if constexpr (PrefetchSidecar) {
-        // D0/D1 are dead after their score/dP MMACs. Reuse three physical
-        // source slots so the sidecar request matures under D2/D3 MMAC.
+    if constexpr (SplitSidecar) {
+        read_sidecar_owner16_delta_field<Tile, MBlockBase>(
+            sidecar_page, lane_col_group, src.q_d1.f32);
+    } else {
+        // C1 retains the accepted whole sidecar packet after D1.
         read_sidecar_owner16_fields<Tile, MBlockBase>(
             sidecar_page, lane_col_group, src.q_d0.f32, src.dout_d0.f32,
             src.q_d1.f32);
-        ins::wait_lgkm(5);
-    } else {
-        ins::wait_lgkm(2);
     }
+    ins::wait_lgkm(5);
     score_dp_mmac_owner16_dblock<2>(
         kv_regs, src.q_d2, src.dout_d2, mmac_zero, score, dp);
-    if constexpr (PrefetchSidecar) {
-        ins::wait_lgkm(3);
-    } else {
-        ins::wait_lgkm(0);
-    }
+    ins::wait_lgkm(3);
     score_dp_mmac_owner16_dblock<3>(
         kv_regs, src.q_d3, src.dout_d3, mmac_zero, score, dp);
     ins::lower_priority();
-}
-
-struct Owner16SidecarSources {
-    ins::Vec4F32 row_max_log2;
-    ins::Vec4F32 row_inv_sum;
-    ins::Vec4F32 row_delta;
-};
-
-template <typename Tile, int MBlockBase>
-__device__ __forceinline__ void read_sidecar_owner16(
-    const float* sidecar_page,
-    int lane_col_group,
-    Owner16SidecarSources& src) {
-    read_sidecar_owner16_fields<Tile, MBlockBase>(
-        sidecar_page, lane_col_group, src.row_max_log2, src.row_inv_sum,
-        src.row_delta);
 }
 
 template <bool ApplyCausalMask>
@@ -582,26 +600,6 @@ __device__ __forceinline__ void softmax_ds_owner16(
         p_frag[vec_id] = static_cast<_Float16>(p_val);
         ds_frag[vec_id] = static_cast<_Float16>(ds_val);
     }
-}
-
-template <typename Tile, int MBlockBase, bool ApplyCausalMask>
-__device__ __forceinline__ void softmax_ds_owner16_tile(
-    const ins::F32x4& score,
-    const ins::F32x4& dp,
-    const Owner16SidecarSources& sidecar,
-    int q_m_base,
-    int owner_krow,
-    int lane_col_group,
-    float softmax_scale,
-    float softmax_scale_log2,
-    ins::Vec4F16& p_frag,
-    ins::Vec4F16& ds_frag) {
-    static_assert(MBlockBase < DkvLdsLayout<Tile>::kRawMBlocksPerMqTile,
-                  "softmax/dS consumes one M16 block");
-    softmax_ds_owner16<ApplyCausalMask>(
-        score, dp, sidecar.row_max_log2, sidecar.row_inv_sum,
-        sidecar.row_delta, q_m_base, owner_krow, lane_col_group,
-        softmax_scale, softmax_scale_log2, p_frag, ds_frag);
 }
 
 struct Owner16DvDkSources {
@@ -754,7 +752,7 @@ template <typename Tile,
           int MBlockBase,
           bool FirstAccum,
           bool ApplyCausalMask,
-          bool PrefetchSidecar,
+          bool SplitSidecar,
           bool PrefetchNext,
           bool ReleaseHead,
           bool ReleaseTail>
@@ -778,32 +776,20 @@ __device__ __forceinline__ void consume_m16_owner16_tile(
         ins::F32x4 score;
         ins::F32x4 dp;
         const float* sidecar_page = sidecar_page_ptr<Tile>(lds, page);
-        score_dp_mmac_owner16<Tile, MBlockBase, PrefetchSidecar>(
+        score_dp_mmac_owner16<Tile, MBlockBase, SplitSidecar>(
             lds, page, kv_regs, mmac_zero, score_src, sidecar_page,
             lane_col_group, score, dp);
-        Owner16SidecarSources sidecar;
-        if constexpr (!PrefetchSidecar) {
-            read_sidecar_owner16<Tile, MBlockBase>(
-                sidecar_page, lane_col_group, sidecar);
-        }
         read_owner16_dv_dk_sources<Tile, 0, MBlockBase>(
             lds, page, src_d01);
 
         // The three sidecar requests are oldest. lgkmcnt(4) retires only
         // those requests while D0/D1 Q/dO matrix reads remain in flight.
         ins::wait_lgkm(4);
-        if constexpr (PrefetchSidecar) {
-            softmax_ds_owner16<ApplyCausalMask>(
-                score, dp, score_src.q_d0.f32, score_src.dout_d0.f32,
-                score_src.q_d1.f32, q_tile_base + MBlockBase * 16, owner_krow,
-                lane_col_group, softmax_scale, softmax_scale_log2, p_frag,
-                ds_frag);
-        } else {
-            softmax_ds_owner16_tile<Tile, MBlockBase, ApplyCausalMask>(
-                score, dp, sidecar, q_tile_base + MBlockBase * 16,
-                owner_krow, lane_col_group, softmax_scale,
-                softmax_scale_log2, p_frag, ds_frag);
-        }
+        softmax_ds_owner16<ApplyCausalMask>(
+            score, dp, score_src.q_d0.f32, score_src.dout_d0.f32,
+            score_src.q_d1.f32, q_tile_base + MBlockBase * 16, owner_krow,
+            lane_col_group, softmax_scale, softmax_scale_log2, p_frag,
+            ds_frag);
     }
 
     ins::wait_lgkm(0);
@@ -825,7 +811,7 @@ __device__ __forceinline__ void consume_m16_owner16_tile(
 template <typename Tile,
           typename Wdra,
           bool FirstQTile,
-          bool PrefetchSidecar,
+          bool SplitSidecar,
           int MBlockBase,
           int MBlockEnd>
 __device__ __forceinline__ void consume_q_tile_owner16_blocks(
@@ -851,14 +837,14 @@ __device__ __forceinline__ void consume_q_tile_owner16_blocks(
         MBlockBase + 1 == Tile::kBlockMq / 16;
     constexpr bool kPrefetchNext = MBlockBase + 1 < MBlockEnd;
     consume_m16_owner16_tile<
-        Tile, Wdra, MBlockBase, kFirstAccum, FirstQTile, PrefetchSidecar,
+        Tile, Wdra, MBlockBase, kFirstAccum, FirstQTile, SplitSidecar,
         kPrefetchNext, kReleaseHead, kReleaseTail>(
         lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
         softmax_scale_log2, page, kv_regs, mmac_zero, score_src, dv_acc,
         dk_acc);
     if constexpr (MBlockBase + 1 < MBlockEnd) {
         consume_q_tile_owner16_blocks<
-            Tile, Wdra, FirstQTile, PrefetchSidecar, MBlockBase + 1,
+            Tile, Wdra, FirstQTile, SplitSidecar, MBlockBase + 1,
             MBlockEnd>(
             lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
             softmax_scale_log2, page, kv_regs, mmac_zero, score_src, dv_acc,
@@ -869,7 +855,7 @@ __device__ __forceinline__ void consume_q_tile_owner16_blocks(
 template <typename Tile,
           typename Wdra,
           bool FirstQTile,
-          bool PrefetchSidecar>
+          bool SplitSidecar>
 __device__ __forceinline__ void consume_q_tile_owner16(
     __half* lds,
     int q_tile_base,
@@ -890,7 +876,7 @@ __device__ __forceinline__ void consume_q_tile_owner16(
         lds, page, score_src.q_d0, score_src.dout_d0, score_src.q_d1,
         score_src.dout_d1);
     consume_q_tile_owner16_blocks<
-        Tile, Wdra, FirstQTile, PrefetchSidecar, 0, kHeadMBlocks>(
+        Tile, Wdra, FirstQTile, SplitSidecar, 0, kHeadMBlocks>(
         lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
         softmax_scale_log2, page, kv_regs, mmac_zero, score_src, dv_acc,
         dk_acc);
@@ -899,7 +885,7 @@ __device__ __forceinline__ void consume_q_tile_owner16(
         lds, page, score_src.q_d0, score_src.dout_d0, score_src.q_d1,
         score_src.dout_d1);
     consume_q_tile_owner16_blocks<
-        Tile, Wdra, FirstQTile, PrefetchSidecar, kHeadMBlocks,
+        Tile, Wdra, FirstQTile, SplitSidecar, kHeadMBlocks,
         kTotalMBlocks>(
         lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
         softmax_scale_log2, page, kv_regs, mmac_zero, score_src, dv_acc,
@@ -947,7 +933,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
     ins::F32x4 dk_acc[8];
     if (q_tiles > 0) {
         wait_raw_ready<Wdra::kRawHeadFilled>(raw_head_filled_phase);
-        consume_q_tile_owner16<Tile, Wdra, true, ConsumerGroup == 1>(
+        consume_q_tile_owner16<Tile, Wdra, true, ConsumerGroup == 0>(
             lds, q_base, owner_krow, lane_col_group, softmax_scale,
             softmax_scale_log2, raw_page_for_q_tile<Tile>(0),
             raw_tail_filled_phase, kv_regs, mmac_zero, dv_acc, dk_acc);
@@ -958,7 +944,7 @@ __device__ __forceinline__ void consumer_dkv_mmac_loop(
         const int page = raw_page_for_q_tile<Tile>(q_tile);
         const int q_tile_base = q_base + q_tile * Tile::kBlockMq;
         wait_raw_ready<Wdra::kRawHeadFilled>(raw_head_filled_phase);
-        consume_q_tile_owner16<Tile, Wdra, false, ConsumerGroup == 1>(
+        consume_q_tile_owner16<Tile, Wdra, false, ConsumerGroup == 0>(
             lds, q_tile_base, owner_krow, lane_col_group, softmax_scale,
             softmax_scale_log2, page, raw_tail_filled_phase, kv_regs,
             mmac_zero, dv_acc, dk_acc);

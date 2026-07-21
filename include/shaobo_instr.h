@@ -84,6 +84,48 @@ __device__ __forceinline__ void ds_read_b128_lds_imm3(
 #endif
 }
 
+template <int ByteOffset1>
+__device__ __forceinline__ void ds_read_b128_lds_imm2(
+    const float* lds,
+    Vec4F32& frag0,
+    Vec4F32& frag1) {
+    static_assert(ByteOffset1 >= 0 && ByteOffset1 < (1 << 20),
+                  "LDS sidecar offset must fit ds_read_b128");
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const uint32_t lds_addr =
+        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(lds));
+    asm volatile(
+        "ds_read_b128 %0, %2 offset:0\n\t"
+        "ds_read_b128 %1, %2 offset:%3\n"
+        : "=v"(frag0), "=v"(frag1)
+        : "v"(lds_addr), "n"(ByteOffset1)
+        : "memory");
+#else
+    (void)lds;
+    frag0 = {};
+    frag1 = {};
+#endif
+}
+
+template <int ByteOffset>
+__device__ __forceinline__ void ds_read_b128_lds_imm1(
+    const float* lds,
+    Vec4F32& frag) {
+    static_assert(ByteOffset >= 0 && ByteOffset < (1 << 20),
+                  "LDS sidecar offset must fit ds_read_b128");
+#if defined(__gfx946__) || defined(__gfx92a__)
+    const uint32_t lds_addr =
+        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(lds));
+    asm volatile("ds_read_b128 %0, %1 offset:%2"
+                 : "=v"(frag)
+                 : "v"(lds_addr), "n"(ByteOffset)
+                 : "memory");
+#else
+    (void)lds;
+    frag = {};
+#endif
+}
+
 template <typename Vec>
 __device__ __forceinline__ void zero_vgpr2(Vec& dst) {
 #if defined(__gfx946__) || defined(__gfx92a__)

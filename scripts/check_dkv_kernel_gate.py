@@ -116,11 +116,27 @@ def main() -> int:
             failures, "missing_dual_base_normal_matrix_read")
     require(perf_source, r"ds_read_b128_lds_imm3",
             failures, "missing_sidecar_read3_island")
+    require(perf_source, r"ds_read_b128_lds_imm2",
+            failures, "missing_c0_sidecar_read2_island")
+    require(perf_source, r"ds_read_b128_lds_imm1",
+            failures, "missing_c0_sidecar_read1_island")
     require(perf_source,
-            r"read_sidecar_owner16<Tile,\s*MBlockBase>[\s\S]{0,500}"
-            r"read_owner16_dv_dk_sources<Tile,\s*0,\s*MBlockBase>"
+            r"read_sidecar_owner16_head_fields<Tile,\s*MBlockBase>"
+            r"[\s\S]{0,500}wait_lgkm\(6\)[\s\S]{0,500}"
+            r"read_sidecar_owner16_delta_field<Tile,\s*MBlockBase>"
+            r"[\s\S]{0,500}wait_lgkm\(5\)[\s\S]{0,500}"
+            r"wait_lgkm\(3\)",
+            failures, "missing_c0_split_sidecar_pipeline")
+    require(perf_source,
+            r"read_sidecar_owner16_fields<Tile,\s*MBlockBase>"
+            r"[\s\S]{0,500}wait_lgkm\(5\)[\s\S]{0,500}"
+            r"wait_lgkm\(3\)",
+            failures, "missing_c1_grouped_sidecar_pipeline")
+    require(perf_source,
+            r"score_dp_mmac_owner16<Tile,\s*MBlockBase,\s*SplitSidecar>"
+            r"[\s\S]{0,500}read_owner16_dv_dk_sources<Tile,\s*0,\s*MBlockBase>"
             r"[\s\S]{0,500}wait_lgkm\(4\)[\s\S]{0,500}"
-            r"softmax_ds_owner16_tile[\s\S]{0,700}"
+            r"softmax_ds_owner16[\s\S]{0,700}"
             r"wait_lgkm\(0\)[\s\S]{0,300}"
             r"read_owner16_dv_dk_sources<Tile,\s*2,\s*MBlockBase>"
             r"[\s\S]{0,400}owner16_dv_dk_mmac_from_sources",
