@@ -10154,3 +10154,19 @@ Status: `REJECT / CANONICAL RESTORED`.
 - The candidate is rejected before fullperf. Future C1 skew must reduce
   first-use LDS distance rather than retain another score result while the
   same operand-read queue remains exposed.
+
+## 2026-07-22 dKV C1 Native Mathematical Stage Skew Closed
+
+Status: `REJECT / CANONICAL RESTORED`.
+
+- Experiment commit `0dd9d26` changes only C1 to
+  `score/P/dV/dP/dS/dK`; C0, producer work, ABarrier ownership and exact
+  dynamic MMOP remain canonical. Latest locked LLVM47a7/PMD HEAD1694 gates
+  pass with role usage `8/152/14/156`, private/spill/scratch0, correctness
+  through S384 and repeated S1024, and bank0.
+- Static MMAC islands become longer, but S1024 median ticks regress
+  `9.3441%`, MMAC active falls `2.2048pp`, wait rises `1.1934pp`, and
+  successful coissue falls `13.3695%`.
+- The candidate exposes first-use LDS latency and adds split P/dS VOP work.
+  Do not equate prettier ASM islands with a hidden dependency chain; any next
+  schedule must pre-age operands without adding live state or ownership debt.

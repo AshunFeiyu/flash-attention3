@@ -4787,3 +4787,24 @@ Skill Candidate:
   is not a valid scaling control.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `dcu-kernel-optimization` evidence/promotion reference during consolidation.
+
+### Skill Candidate: Pair Instruction-Island Regularity With First-Use Readiness
+
+- Trigger / 适用场景: a GPU schedule refactor makes MMAC/read islands longer
+  and more regular without changing formula, tile or dynamic MMOP.
+- Rule / 可复用规则: do not promote on static island shape alone. Require
+  first-use LDS wait, VOP work, priority transitions, coissue and ticks to
+  improve together; splitting a dependent GEMM DAG only to make longer
+  islands is inadmissible when operands are not issued earlier.
+- Evidence / 证据: dKV commit `0dd9d26`, workbook 210, locked
+  LLVM47a7/PMD HEAD1694. Static mean MMAC run grows `4.55 -> 5.51`, yet
+  S1024 ticks regress `9.3441%`, active falls `2.2048pp`, wait rises
+  `1.1934pp`, VOP rises `1.3467pp`, and successful coissue falls `13.3695%`;
+  correctness, exact MMOP and bank0 all pass.
+- Boundary / 适用边界: applies when the refactor preserves work and
+  ownership but changes dependent-stage scheduling.
+- Counterexample / 反例或不适用情况: a larger island can win when its
+  operands were genuinely prefetched earlier, it removes real barriers or
+  duplicate work, or independent VALU fully covers the first-use latency.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo` scheduling heuristics reference during consolidation.

@@ -15910,3 +15910,27 @@ Status: `REJECT_STEADY_WAIT_DEBT_SOURCE_RESTORED`.
   operands far enough ahead of first use. It converts short-loop scheduling
   luck into steady LDS wait debt. Do not spend fullperf on this candidate;
   preserve commit `745d2f5` as evidence and restore canonical source.
+
+## 2026-07-22 dKV C1 Native Mathematical Stage Skew Rejected
+
+Status: `REJECT_FIRST_USE_WAIT_AND_VOP_DEBT_SOURCE_RESTORED`.
+
+- C0 remains canonical. C1 changes only its mathematical schedule to
+  `score -> P -> dV -> dP -> dS -> dK`, using native normal/trans
+  `ds_read_matrix` helpers and retaining fp32 P so dS stays numerically
+  identical. Producer work, seven ABarrier IDs, LDS ownership, output
+  ownership and exact four-GEMM work remain unchanged.
+- Locked LLVM47a7 emits longer static MMAC islands: runs fall from 225 to 186
+  and mean run length rises `4.55 -> 5.51`. Role usage is
+  `8/152/14/156`; SGPR52/VGPR96 and private/spill/scratch0 pass. H1/S128,
+  H1/S384 and all six H1/S1024 A/B runs pass correctness with exact
+  MMOP73,728 and `ldsBankConflict=0`.
+- Three-run S1024 median ticks regress `31,607,030 -> 34,560,435`
+  (`+9.3441%`). MMAC active falls `38.4907% -> 36.2859%` (`-2.2048pp`),
+  VOP active rises `1.3467pp`, wait rises `1.1934pp`, barrier rises
+  `0.9086pp`, and successful coissue falls `13.3695%`.
+- Dynamic LDS/VMEM/FLAT/MMOP work is exact, so the loss is scheduling debt:
+  splitting P and dS creates more VOP/priority work and each larger MMAC
+  stage still reaches its operand at an exposed first-use wait. Static island
+  regularity is not a performance proof. Reject before S2048/fullperf and
+  restore the canonical source.
