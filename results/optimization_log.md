@@ -16051,3 +16051,23 @@ Status: `REJECT_S2048_SCALING_SOURCE_RESTORE_REQUIRED`.
 - Reject before fullperf/xcu and restore canonical contiguous ownership.
   Causal row balancing is a short-shape effect, not the structural path to
   50% active; do not continue with another row-order-only variant.
+
+## 2026-07-22 Unified Latest-Compiler Route Hardened
+
+Status: `ACCEPT_TOOLCHAIN_GOVERNANCE`; no kernel source or performance claim.
+
+- Rechecked the canonical rolling repository. `Packages.gz` remains the
+  2026-07-21 03:28:43 GMT build, and clang remains LLVM47a7d59a with SHA256
+  `fddad9d6...`.
+- Removed historical compiler fallbacks from `build.sh`. The build now requires
+  the side-by-side LLVM47a7 root and verifies that the installed ROCm 6.3.3
+  hipcc runtime wrapper dispatches that exact compiler through
+  `HIP_CLANG_PATH`. Compiler and wrapper hashes are stored with every build.
+- A controlled attempt to use the rolling package's hipcc directly compiled
+  device code but failed link with `unable to find library -lamdhip64`; the
+  package root is not a complete runtime. The admitted route is therefore
+  latest compiler plus installed HIP runtime, not a mixed compiler route.
+- Fresh canonical dKV/dQ builds pass static and symbol metadata gates. Their
+  normalized ASM is byte-identical to the previous LLVM47a7 controls; only the
+  nondeterministic `__hip_cuid_*` symbol differs. H1/S128 correctness passes for
+  both kernels under `/zys/sb/audit_unified_latest_correctness`.

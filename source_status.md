@@ -1,5 +1,31 @@
 # Source Status
 
+## 2026-07-22 Unified Latest-Compiler Audit
+
+Status: `ACCEPT_FAIL_CLOSED_COMPILER_ROUTE`; kernels unchanged.
+
+- The rolling perf-model index still reports `Last-Modified: 2026-07-21
+  03:28:43 GMT`; the audited package remains LLVM
+  `47a7d59a80a4313d0c33d4667c3c8573604d0dbc`, clang SHA256
+  `fddad9d6b6a0bc2264d815e97bbc7679fba9268e8f0b71d145acfa466da3b395`.
+- `build.sh` no longer contains the historical LLVM7940/default-ROCm compiler
+  fallbacks. It must resolve the locked side-by-side compiler root, and the
+  installed `/opt/rocm-6.3.3/bin/hipcc` must report the same LLVM commit through
+  `HIP_CLANG_PATH`. Both identities are persisted in
+  `toolchain_fingerprint.txt`.
+- The rolling package root is intentionally not used as the HIP runtime root:
+  it does not contain `libamdhip64.so`. The supported combination is latest
+  compiler/codegen plus the installed ROCm 6.3.3 HIP runtime and locked PMD
+  HEAD1694.
+- Fresh dKV/dQ builds pass canonical gates with SGPR/VGPR `52/96` and
+  `60/128`, private/spill/scratch0. After normalizing the nondeterministic HIP
+  CUID symbol, their ASM SHA256 values exactly match the prior LLVM47a7
+  controls: dKV `2c7e2013...`, dQ `656c6041...`.
+- H1/S128 PMD correctness passes for both kernels under
+  `/zys/sb/audit_unified_latest_correctness`. This is an environment admission
+  result, not a performance promotion; subsequent A/B runs must use this same
+  compiler fingerprint.
+
 ## 2026-07-21 Unified Latest Compiler Baseline
 
 Status: `ACCEPT_UNIFIED_TOOLCHAIN_BASELINE_KEEP_2P2C`.
@@ -10029,6 +10055,9 @@ Status: `REJECT_ROLE_RELOCK_SOURCE_RESTORED`.
   boundaries without changing the accepted intra-N32 cadence.
 
 ## 2026-07-21 Toolchain Refresh And Canonical Locks
+
+Historical record: the per-kernel compiler exception below is superseded by
+`2026-07-21 Unified Latest-Toolchain Enforcement` and the 2026-07-22 audit.
 
 - Latest complete side-by-side root:
   `/zys/shaobo/toolchains/compiler_perf_model_latest_20260721_root`.

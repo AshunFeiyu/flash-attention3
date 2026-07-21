@@ -1,5 +1,22 @@
 # Client
 
+## 2026-07-22 Compiler Route Is Single-Source
+
+- Canonical dKV, dQ and focused probes now fail closed unless clang SHA256 is
+  `fddad9d6...` / LLVM `47a7d59a...`. The old LLVM7940 and default `/opt/rocm`
+  compiler fallbacks were removed from `build.sh`.
+- Continue using `/opt/rocm-6.3.3/bin/hipcc` only as the installed HIP runtime
+  wrapper. `HIP_CLANG_PATH` points at the locked rolling compiler, and both
+  `build.sh` and `scripts/toolchain_preflight.sh` verify that `hipcc --version`
+  resolves LLVM47a7 before proceeding.
+- The rolling package's own hipcc cannot link standalone because that
+  side-by-side root lacks `libamdhip64.so`; this is a runtime packaging
+  boundary, not permission to use its default compiler or an older overlay.
+- Audit evidence: package index timestamp unchanged at `2026-07-21 03:28:43
+  GMT`; dKV/dQ normalized ASM equals the prior LLVM47a7 controls, static gates
+  pass with no spill/private/scratch, and both H1/S128 correctness runs pass in
+  `/zys/sb/audit_unified_latest_correctness`.
+
 ## 2026-07-21 Unified Latest-Compiler Contract
 
 - All new dKV and dQ builds use the rolling perf-model LLVM
@@ -4632,6 +4649,10 @@ Skill Candidate:
   splitting fused MMAC, or adding tokens/work.
 
 ## 2026-07-21 Latest Perf-Model Compiler Refresh
+
+Historical record: the per-kernel selection statement in this section is
+superseded by `Latest Compiler Is The Only Optimization Baseline` and the
+2026-07-22 single-source compiler audit.
 
 - The rolling `perf_model_latest_6.3_ubuntu-22.04` package set was downloaded
   and SHA-verified into a side-by-side root, not overlaid onto `/opt/rocm`:

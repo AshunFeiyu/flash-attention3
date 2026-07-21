@@ -10,44 +10,32 @@ BUILD_DIR="${BUILD_DIR:-build}"
 BIN="${BIN:-${BUILD_DIR}/fa3_bwd_wasp_clean}"
 ASM="${ASM:-${BUILD_DIR}/fa3_bwd_wasp_clean.asm}"
 ROCM_PATH="${ROCM_PATH:-/opt/rocm-6.3.3}"
-DEFAULT_OVERLAY_BIN="/home/zhangyushun/toolchains/zwj_liuchang_llvm_7940/bin"
 
-if [[ "${SHAOBO_REQUIRE_LATEST_COMPILER}" == "1" && -z "${SHAOBO_COMPILER_ROOT:-}" ]]; then
+if [[ -z "${SHAOBO_COMPILER_ROOT:-}" ]]; then
   echo "latest compiler lock cannot resolve ${SHAOBO_LATEST_COMPILER_ROOT}" >&2
   exit 1
 fi
 
-if [[ -n "${SHAOBO_COMPILER_ROOT:-}" ]]; then
-  compiler_rocm="${SHAOBO_COMPILER_ROOT}"
-  if [[ ! -x "${compiler_rocm}/llvm/bin/clang++" ]]; then
-    compiler_rocm="${SHAOBO_COMPILER_ROOT}/opt/rocm-6.3.3"
-  fi
-  if [[ ! -x "${compiler_rocm}/llvm/bin/clang++" ]]; then
-    echo "invalid SHAOBO_COMPILER_ROOT: ${SHAOBO_COMPILER_ROOT}" >&2
-    exit 1
-  fi
-  export HIP_CLANG_PATH="${compiler_rocm}/llvm/bin"
-  export PATH="${compiler_rocm}/bin:${HIP_CLANG_PATH}:${PATH}"
-  export LD_LIBRARY_PATH="${compiler_rocm}/lib:${ROCM_PATH}/lib:${LD_LIBRARY_PATH:-}"
-  CLANGXX="${compiler_rocm}/llvm/bin/clang++"
-  HIPCC="${HIPCC:-${ROCM_PATH}/bin/hipcc}"
-  TOOLCHAIN_NOTE="SHAOBO_COMPILER_ROOT=${compiler_rocm}"
-elif [[ -z "${CLANGXX:-}" ]]; then
-  if [[ -x "${DEFAULT_OVERLAY_BIN}/clang++" ]]; then
-    export HIP_CLANG_PATH="${HIP_CLANG_PATH:-${DEFAULT_OVERLAY_BIN}}"
-    export PATH="${HIP_CLANG_PATH}:${PATH}"
-    export LD_LIBRARY_PATH="${ROCM_PATH}/lib:${LD_LIBRARY_PATH:-}"
-    CLANGXX="${HIP_CLANG_PATH}/clang++"
-    TOOLCHAIN_NOTE="zwj_liuchang_llvm_7940 overlay"
-  else
-    CLANGXX="${ROCM_PATH}/llvm/bin/clang++"
-    TOOLCHAIN_NOTE="${ROCM_PATH}/llvm default"
-  fi
-else
-  TOOLCHAIN_NOTE="CLANGXX override"
+compiler_rocm="${SHAOBO_COMPILER_ROOT}"
+if [[ ! -x "${compiler_rocm}/llvm/bin/clang++" ]]; then
+  compiler_rocm="${SHAOBO_COMPILER_ROOT}/opt/rocm-6.3.3"
 fi
-
-HIPCC="${HIPCC:-hipcc}"
+if [[ ! -x "${compiler_rocm}/llvm/bin/clang++" ]]; then
+  echo "invalid SHAOBO_COMPILER_ROOT: ${SHAOBO_COMPILER_ROOT}" >&2
+  exit 1
+fi
+export HIP_CLANG_PATH="${compiler_rocm}/llvm/bin"
+export PATH="${compiler_rocm}/bin:${HIP_CLANG_PATH}:${PATH}"
+export LD_LIBRARY_PATH="${compiler_rocm}/lib:${ROCM_PATH}/lib:${LD_LIBRARY_PATH:-}"
+CLANGXX="${compiler_rocm}/llvm/bin/clang++"
+# The rolling package root does not include libamdhip64. Use the installed HIP
+# runtime wrapper, but prove below that it dispatches the locked compiler.
+HIPCC="${HIPCC:-${ROCM_PATH}/bin/hipcc}"
+TOOLCHAIN_NOTE="compiler=${compiler_rocm}; runtime=${ROCM_PATH}"
+[[ -x "${HIPCC}" ]] || {
+  echo "invalid HIPCC runtime wrapper: ${HIPCC}" >&2
+  exit 1
+}
 
 mkdir -p "${BUILD_DIR}"
 
@@ -104,11 +92,15 @@ if [[ -n "${HIP_CLANG_PATH:-}" ]]; then
   echo "HIP_CLANG_PATH ${HIP_CLANG_PATH}"
 fi
 shaobo_verify_latest_compiler "${CLANGXX}"
+shaobo_verify_hipcc_uses_latest_compiler "${HIPCC}"
 {
   printf 'compiler_root=%s\n' "${SHAOBO_COMPILER_ROOT:-}"
   printf 'compiler=%s\n' "${CLANGXX}"
   printf 'compiler_llvm_commit=%s\n' "${SHAOBO_LATEST_COMPILER_LLVM_COMMIT}"
   printf 'compiler_sha256=%s\n' "$(shaobo_sha256 "${CLANGXX}")"
+  printf 'hipcc=%s\n' "${HIPCC}"
+  printf 'hipcc_sha256=%s\n' "$(shaobo_sha256 "${HIPCC}")"
+  printf 'hipcc_compiler_llvm_commit=%s\n' "${SHAOBO_LATEST_COMPILER_LLVM_COMMIT}"
   printf 'pmd_root=%s\n' "${SHAOBO_PMD_ROOT:-}"
   printf 'target_gfx=%s\n' "${TARGET_GFX}"
   printf 'wdra_init=%s\n' "${SHAOBO_EXPLICIT_WDRA_INIT}"

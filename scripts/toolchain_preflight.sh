@@ -53,6 +53,11 @@ fi
   echo "set CLANGXX or SHAOBO_COMPILER_ROOT to the audited compiler" >&2
   exit 1
 }
+hipcc="${HIPCC:-${ROCM_PATH}/bin/hipcc}"
+[[ -x "${hipcc}" ]] || {
+  echo "HIPCC runtime wrapper not found: ${hipcc}" >&2
+  exit 1
+}
 
 echo "GPU_CHIP=${GPU_CHIP}"
 echo "GPU_ARGS=${GPU_ARGS}"
@@ -63,9 +68,13 @@ echo "SOC_PATH=${SOC_PATH}"
 echo "PMD_CONFIG_SEED=${PMD_CONFIG_SEED}"
 echo "PMD_RUN_PY=${run_py}"
 echo "COMPILER=${compiler}"
+echo "HIPCC=${hipcc}"
 "${compiler}" --version | sed -n '1,3p'
 hash_file "${compiler}"
 shaobo_verify_latest_compiler "${compiler}"
+HIP_CLANG_PATH="$(dirname "${compiler}")" "${hipcc}" --version | sed -n '1,5p'
+HIP_CLANG_PATH="$(dirname "${compiler}")" shaobo_verify_hipcc_uses_latest_compiler "${hipcc}"
+hash_file "${hipcc}"
 hash_file "${gem5}"
 hash_file "${pmd_lib}"
 hash_file "${soc_gem5}"
