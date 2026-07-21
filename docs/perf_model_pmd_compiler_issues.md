@@ -445,3 +445,27 @@ Validation:
 Rule: "latest compiler installed" and "compiler promoted for every kernel"
 are separate decisions. Promotion requires a same-source, same-PMD,
 same-shape ASM/correctness/performance A/B for each canonical kernel.
+
+## 2026-07-21 Unified Latest-Compiler Resolution
+
+Status: `RESOLVED_FOR_CANONICAL_BUILD`; this supersedes the prior per-kernel
+compiler exception by explicit user policy.
+
+- Locked compiler: LLVM47a7d59a, clang SHA256
+  `fddad9d6b6a0bc2264d815e97bbc7679fba9268e8f0b71d145acfa466da3b395`.
+  `build.sh` and preflight reject any other hash.
+- The extracted package root is not a complete runtime: invoking its hipcc
+  fails at link with `unable to find library -lamdhip64`. Use latest overlay
+  clang but `/opt/rocm-6.3.3/bin/hipcc`, headers and libraries.
+- LLVM47a7 rejects `-mllvm -run-on-model=true`. Its verified WDRA contract is
+  explicit `__builtin_hcu_wdra_init(...)` plus
+  `-mllvm -turn-off-wdra-trap-handler=no-pad`; both dKV and dQ then emit real
+  `s_trap=0`, preserve role-local `s_set_vgpr_size`, pass metadata gates and
+  pass PMD correctness.
+- PMD HEAD1694 still prints `ASTCA has no parameter num_phase` while trying to
+  generate a fresh config. With a SHA-locked `PMD_CONFIG_SEED`, run.py falls
+  back to that existing config and both kernels complete successfully. Treat
+  this as a PMD config-generation ABI issue, not a kernel failure. A non-empty
+  seed remains mandatory in `scripts/toolchain_preflight.sh`.
+- Default run root is now `/zys/sb/fa3b`; longer nested paths can overflow the
+  PMD fake-device path before dispatch.

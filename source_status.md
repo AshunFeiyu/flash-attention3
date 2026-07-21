@@ -1,5 +1,35 @@
 # Source Status
 
+## 2026-07-21 Unified Latest Compiler Baseline
+
+Status: `ACCEPT_UNIFIED_TOOLCHAIN_BASELINE_KEEP_2P2C`.
+
+- User policy supersedes the earlier per-kernel compiler exception: both
+  canonical kernels now build only with LLVM47a7d59a. `scripts/toolchain_lock.sh`
+  records the compiler root, commit and clang SHA256; `build.sh` and
+  `scripts/toolchain_preflight.sh` reject any other clang before compilation.
+- The valid combination is latest overlay clang + installed ROCm 6.3.3
+  hipcc/runtime + explicit `__builtin_hcu_wdra_init(...)` +
+  `-mllvm -turn-off-wdra-trap-handler=no-pad`. The overlay hipcc cannot link
+  because the side-by-side root does not contain `libamdhip64`, and LLVM47a7
+  rejects the historical `-run-on-model=true` option.
+- dKV binary SHA256 is
+  `a240e508d2f5dee41e5aeed6a58eeddbb2ca3f1789629f1003fb597e4f52b34f`;
+  dQ is
+  `09736db944400e9b85da4351035c53e0bd172773131f8a484f5622ba7928863b`.
+  Both ASM files have real trap0, role-local VGPR resize, native matrix paths,
+  private/spill/scratch0 and pass H1/S128 PMD correctness.
+- Fresh stats-only evidence:
+  dKV S1024 `31,703,035 ticks / 38.450598%`, S2048
+  `56,527,835 / 45.360179%`; dQ S1024
+  `20,840,365 / 37.804048%`, S2048
+  `37,643,515 / 46.149692%`. Exact MMOP is respectively
+  `73,728 / 278,528 / 50,688 / 199,680`; all runs report bank0.
+- The top-level 3C audit is closed for S1024/S2048. Exact dKV/dQ 1P3C requires
+  M192, which does not divide either target and saturates the 512-VGPR/SIMD
+  ledger. Canonical source remains M128/N128 physical 2P2C; the next source
+  change must follow latest-toolchain SQTT evidence.
+
 ## 2026-07-21 dQ Dual-Hidden K-Normal Rejected
 
 Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`; source remains accepted

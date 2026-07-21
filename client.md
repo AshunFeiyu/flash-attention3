@@ -1,5 +1,31 @@
 # Client
 
+## 2026-07-21 Unified Latest-Compiler Contract
+
+- All new dKV and dQ builds use the rolling perf-model LLVM
+  `47a7d59a80a4313d0c33d4667c3c8573604d0dbc`; clang SHA256 is
+  `fddad9d6b6a0bc2264d815e97bbc7679fba9268e8f0b71d145acfa466da3b395`.
+  Commit `3da351a` makes this a build-time hash gate rather than a convention.
+- The package is a compiler overlay, not a complete ROCm runtime. Use its
+  clang through `HIP_CLANG_PATH`, but use `/opt/rocm-6.3.3/bin/hipcc` and the
+  container's headers/libraries. LLVM47a7 requires guarded explicit WDRA init
+  plus `-mllvm -turn-off-wdra-trap-handler=no-pad`; its removed
+  `-run-on-model=true` flag must not be used.
+- Locked builds have executable `s_trap=0`. dKV is SGPR52/VGPR96 and dQ is
+  SGPR60/VGPR128; both have private/spill/scratch0 and pass H1/S128 canonical
+  correctness. The dQ runner now defaults to `CANONICAL_DQ=1`, and PMD run
+  roots default to the short `/zys/sb/fa3b` path.
+- Fresh H1/S1024/S2048 baselines are:
+  dKV `31,703,035 / 56,527,835` kernel ticks with
+  `38.4506% / 45.3602%` MMAC active; dQ
+  `20,840,365 / 37,643,515` ticks with `37.8040% / 46.1497%` active.
+  All four runs are exact-MMOP, correctness PASS and bank0.
+- Workbook sheet `202_Unified47a7_3C_Gate` rejects symmetric 1P3C for the
+  fixed S1024/S2048 goal before code: true M192 ownership leaves M64/M128
+  tails and consumes the full `32+3*160=512` VGPR/SIMD budget. Keep canonical
+  M128 physical 2P2C and use latest-toolchain fullperf/xcu to select the next
+  ownership/readiness hypothesis.
+
 ## 2026-07-20 Canonical dKV Baseline Lock
 
 - Use only `20dbb81` / `best/dkv-three-m64-lifetimes-20260719` as the dKV

@@ -15707,3 +15707,33 @@ Status: `REJECT_STATISTICALLY_FLAT_RESOURCE_WAIT_DEBT_SOURCE_RESTORED`.
 - Decision: accept the root as the latest available side-by-side compiler, but
   retain per-kernel locks. dQ uses LLVM47a7; dKV uses LLVM7b796991 until a
   newer compiler beats the measured same-shape dKV baseline.
+## 2026-07-21 Unified LLVM47a7 Baseline And 3C Gate
+
+Status: `ACCEPT_UNIFIED_TOOLCHAIN_BASELINE / DEFER_1P3C_TARGET_SHAPES`.
+
+- Build governance is now executable. Commit `3da351a` locks clang to LLVM
+  `47a7d59a` by SHA256, defaults to explicit WDRA init and the `no-pad` trap
+  handler mode, rejects old compiler hashes, uses the installed ROCm 6.3.3
+  hipcc/runtime, defaults dQ to the canonical path, and warns on unsafe long
+  PMD run roots.
+- The first attempted overlay-only build failed to link `-lamdhip64`; this
+  proved the downloaded root is a compiler overlay rather than a standalone
+  runtime. A test with the historical `-run-on-model=true` flag also failed
+  because LLVM47a7 no longer exposes that option. The audited combination
+  emits real trap0 for both complete binaries.
+- Static and tiny gates pass: dKV SGPR52/VGPR96 and dQ SGPR60/VGPR128, both
+  private/spill/scratch0, native MLS/BPS+matrix-read+MMAC, H1/S128 correctness
+  PASS.
+- Fresh stats-only baselines on PMD HEAD1694/SQ7 are:
+  dKV S1024 `31,703,035 ticks / 38.450598%`, S2048
+  `56,527,835 / 45.360179%`; dQ S1024
+  `20,840,365 / 37.804048%`, S2048
+  `37,643,515 / 46.149692%`. All are exact-MMOP and bank0.
+- Workbook sheet `202_Unified47a7_3C_Gate` re-derives formula DAG, MMAC work,
+  LDS/VGPR/SGPR budgets, output ownership and expected pipeline. True three
+  heavy consumers require M192 and full `32+3*160=512` VGPR/SIMD. S1024 and
+  S2048 leave M64/M128 tails; prior tail routes spilled or added dispatch/MMOP
+  debt. Therefore no 3C code was added for these targets.
+- Keep M128 physical2P2C. At unchanged useful work, S2048 needs about 9.28%
+  dKV or 7.70% dQ critical-path reduction to reach 50% active. Capture fresh
+  fullperf/xcu and attack ownership/readiness rather than consumer count.
