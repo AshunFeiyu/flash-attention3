@@ -1,6 +1,6 @@
 # Shaobo Perf Model PMD And Compiler Issue Registry
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 This document tracks possible PMD, compiler, and compiler/PMD compatibility
 issues found while validating Shaobo kernels. It is an issue registry, not a
@@ -27,23 +27,31 @@ and compare against a known-good artifact or compiler.
 
 ## Current Validated Fingerprint
 
-Current baseline environment on 2026-07-17:
+Current mandatory environment on 2026-07-21:
 
 ```text
 host/container: liuchang / zys1
-repo: /zys/shaobo/fa3_bwd_wasp_7gemm_tomography_20260716
+repo: /zys/shaobo/fa3_bwd_wasp_7gemm_consumer_conveyor_20260717
 GPU_CHIP: sb
-compiler: clang 18.0.0, llvm a6a6eb6616abdd98b6dd72074afad281b47c8c6a
-compiler path: /opt/rocm-6.3.3/llvm/bin/clang++
-PMD layout: /opt/rocm-6.3.3/pmd, flat layout
-PMD run.py timestamp: 2026-06-16 11:00:48 +0800
-PMD run.py sha256: 9c39779bfe9db7e0a1d94d9a13926c3e10301c873e8e4a3184e52179a80ce14a
-PMD libgem5_opt.so sha256: b77e48f1e4fc4b0112e93022180772cd8d1113501897607c9ff38fdd1ed0628f
-PMD gem5.opt sha256: b517f4b384a8641549f385a75c3f6677b353bec95783f520fe2fadf2e0045957
+GPU_ARGS: ['--SQCIPfLines=7']
+compiler: clang 18.0.0, llvm 47a7d59a80a4313d0c33d4667c3c8573604d0dbc
+compiler path: /zys/shaobo/toolchains/compiler_perf_model_latest_20260721_root/opt/rocm-6.3.3/llvm/bin/clang++
+compiler sha256: fddad9d6b6a0bc2264d815e97bbc7679fba9268e8f0b71d145acfa466da3b395
+PMD root: /zys/shaobo/toolchains/pmd_20260717
+PMD core gem5.opt sha256: 4748d40d99414c7be6ab3d2b62bca1f134d3454edec711a6321bdafa237be1e9
+PMD lib/libgem5.so sha256: 29fa2020e6bfb399225e206cf7c589ba838ad56b891cb07c97e88029e954bfa5
+PMD soc gem5.opt sha256: d0c03538753a4b91c2aa3e110cb12f1302b66c891c3ab2d446c85de99fe24524
+WDRA: explicit __builtin_hcu_wdra_init + -mllvm -turn-off-wdra-trap-handler=no-pad
 ```
 
 Refresh this block after every PMD or compiler update. Never compare compiler
 or PMD behavior across fingerprints without saying so explicitly.
+
+The executable gate is `scripts/toolchain_preflight.sh`. A fullperf captured
+with LLVM47a7 but the old default HEAD1668 PMD (`2957138_fa3_bwd_dkv.perf`)
+is classified `ENVIRONMENT` and excluded. Valid replacements are
+`2957276_fa3_bwd_dkv.perf` and `2957578_fa3_bwd_dq.perf`, both generated with
+the fingerprint above.
 
 ### Current Side-By-Side HEAD1694 Launch Contract
 

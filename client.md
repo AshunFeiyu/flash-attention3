@@ -25,6 +25,42 @@
   tails and consumes the full `32+3*160=512` VGPR/SIMD budget. Keep canonical
   M128 physical 2P2C and use latest-toolchain fullperf/xcu to select the next
   ownership/readiness hypothesis.
+- The model side is now locked with the compiler.  Commit `81bee63` defaults
+  to `/zys/shaobo/toolchains/pmd_20260717` and verifies the HEAD1694 core,
+  library, and SOC gem5 hashes before a run.  The first LLVM47a7 fullperf used
+  the old default HEAD1668 PMD and is explicitly rejected; it must never enter
+  A/B comparisons.
+- Valid latest-toolchain H1/S2048 SQTT artifacts are
+  `2957276_fa3_bwd_dkv.perf` and `2957578_fa3_bwd_dq.perf`.  Representative
+  SIMD CSV shows dKV heavy-wave MMAC+VALU coissue near `11%`, while dQ C0/C1
+  are `22.03%/18.58%`.  Producer Raw/Page Used waits dominate aggregate
+  per-wave bubbles, but much of that time overlaps consumer compute.  The
+  actionable consumer debt remains MMAC dependency plus matrix-read first-use
+  readiness and macro relock at ownership boundaries.
+- Workbook sheet `203_Latest47a7_SQTT` is the current environment and SQTT
+  evidence ledger.  Any future dKV/dQ candidate must use its exact compiler,
+  PMD, `GPU_CHIP=sb`, and `SQCIPfLines=7` contract.
+
+Skill Candidate:
+
+- Trigger / 适用场景: a kernel experiment changes or refreshes compiler,
+  PMD, profiler helper, or model package.
+- Rule / 可复用规则: hash-lock compiler and every PMD runtime component
+  before build/run; reject mixed-version perf before interpreting kernel
+  counters. Treat aggregate per-wave producer waits separately from the CTA
+  critical path by drilling into one representative SIMD with xcu.
+- Evidence / 证据: commit `81bee63`; invalid old-PMD artifact
+  `2957138_fa3_bwd_dkv.perf`; valid HEAD1694 artifacts `2957276` and
+  `2957578`; workbook sheet `203_Latest47a7_SQTT`.
+- Boundary / 适用边界: hashes prove environment identity, not kernel
+  correctness or performance. Static, correctness, resource, stats, and SQTT
+  gates remain mandatory.
+- Counterexample / 反例或不适用情况: historical results may remain as
+  explicitly labelled controls, but cannot be compared as a same-toolchain
+  optimization result.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-perf-model.md` during the next controlled skill
+  consolidation; do not edit public skills in this task.
 
 ## 2026-07-20 Canonical dKV Baseline Lock
 

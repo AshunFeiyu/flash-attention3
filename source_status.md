@@ -29,6 +29,19 @@ Status: `ACCEPT_UNIFIED_TOOLCHAIN_BASELINE_KEEP_2P2C`.
   M192, which does not divide either target and saturates the 512-VGPR/SIMD
   ledger. Canonical source remains M128/N128 physical 2P2C; the next source
   change must follow latest-toolchain SQTT evidence.
+- PMD is now part of the executable lock. Commit `81bee63` verifies HEAD1694
+  core `4748d40d...`, library `29fa2020...`, and SOC `d0c03538...` hashes and
+  rejects a mixed PMD before launch. Artifact `2957138_fa3_bwd_dkv.perf` used
+  old HEAD1668 and is invalid evidence.
+- Valid H1/S2048 fullperf/xcu artifacts are
+  `/zys/sb/u47p1694fp_dkv_s2048/.../2957276_fa3_bwd_dkv.perf` and
+  `/zys/sb/u47p1694fp_dq_s2048/.../2957578_fa3_bwd_dq.perf`. dKV aggregate
+  ABarrier-to-XOR is `36.22%`; dQ is `26.67%`. Exact barrier-ID attribution
+  shows producer Raw/Page Used waits dominate those totals, while consumer
+  SQTT still exposes MMAC dependency and matrix-read readiness. Preserve
+  canonical 2P2C until a same-toolchain structural A/B improves ticks.
+- Workbook sheet `203_Latest47a7_SQTT` records the fingerprints, accepted and
+  rejected artifacts, representative SIMD coissue, and promotion gates.
 
 ## 2026-07-21 dQ Dual-Hidden K-Normal Rejected
 

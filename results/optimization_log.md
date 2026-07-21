@@ -15737,3 +15737,33 @@ Status: `ACCEPT_UNIFIED_TOOLCHAIN_BASELINE / DEFER_1P3C_TARGET_SHAPES`.
 - Keep M128 physical2P2C. At unchanged useful work, S2048 needs about 9.28%
   dKV or 7.70% dQ critical-path reduction to reach 50% active. Capture fresh
   fullperf/xcu and attack ownership/readiness rather than consumer count.
+
+## 2026-07-21 Unified LLVM47a7 + HEAD1694 SQTT Refresh
+
+Status: `ACCEPT_ENVIRONMENT_AND_EVIDENCE_LOCK`.
+
+- Commit `81bee63` adds PMD core/library/SOC SHA gates beside the existing
+  clang SHA gate. The first dKV fullperf used old default HEAD1668 and produced
+  `2957138_fa3_bwd_dkv.perf`; this artifact is rejected as environment drift,
+  not interpreted as a kernel result.
+- Valid locked fullperf artifacts are `2957276_fa3_bwd_dkv.perf` and
+  `2957578_fa3_bwd_dq.perf`. Both retain the unified baseline correctness,
+  exact MMOP, private/spill/scratch0, bank0 and canonical M128 physical2P2C
+  source.
+- dKV xcu dispatch duration is `123,728` with `937,968` issues. Aggregate
+  `s_abarrier_try_wait -> s_xor_b32` is `36.22%`; barrier-ID parsing attributes
+  about `5.327M` cycles to producer Raw Head/Tail Used waits. On one
+  representative SIMD the two heavy consumers have only about `11%`
+  MMAC+VALU coissue and still expose MMAC dependency, matrix-read-to-wait and
+  wait-to-MMAC gaps.
+- dQ xcu dispatch duration is `81,960` with `713,528` issues. Aggregate
+  ABarrier-to-XOR is `26.67%`, mostly producer Page0/Page1 Used waits. On one
+  representative SIMD C0/C1 MMAC+VALU coissue is `22.03%/18.58%`; accepted C1
+  pre-score K-normal scheduling remains visible, but C1 softmax/v_exp coverage
+  and N32/page macro relock remain the next structural boundary.
+- Producer per-wave wait totals overlap useful consumer execution and are not
+  equal to CTA critical-path time. Terminal `s_ebarrier_sync` is likewise a
+  tail attribution signal. Future hypotheses must use representative
+  `pipeline/simd/coissue` windows before changing ABarrier counts.
+- Workbook sheet `203_Latest47a7_SQTT` holds the complete contract and
+  promotion order. No source kernel change is promoted by this refresh.
