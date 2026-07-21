@@ -52,6 +52,17 @@ For C0, the `158-cycle` interval contains no independent instruction from that
 wave; the LDS readiness dependency is exposed. For C1, the longer elapsed
 interval is occupied by useful softmax/dS work, so the read latency is hidden.
 
+Aligning all 62 C0 read-to-wait intervals to C1 on the same SIMD shows that
+this is usually a SIMD-level MMAC hole, not merely a local-wave symptom:
+
+- only 32/62 intervals contain any C1 MMAC issue;
+- the median is one C1 MMAC issue per interval;
+- approximate peer-MMAC coverage is only 8% on average and never reaches 50%;
+- the median interval instead contains 26 C1 VALU issues.
+
+Therefore C0 waits for LDS at nearly the same time that C1 executes softmax/
+dS. Both heavy consumers have re-entered a non-MMAC phase together.
+
 The coissue direction is correspondingly asymmetric:
 
 - C0 `v_exp`: `468/496` coissued with peer MMAC.
@@ -121,32 +132,37 @@ an existing MMAC/VALU island, add a token, or move one read late.
 
 ## Next Structural Hypothesis
 
-For dQ, evaluate a C0-only rolling K-normal lookahead within one resident K/V
-page:
+A C0 rolling cross-`n_tile` K-normal ping/pong was audited and rejected before
+implementation. Although an ideal `lgkmcnt(8)` ledger can leave eight next-read
+requests outstanding, the fragment lives across the next score/dP and
+softmax, adds about 32 VGPR peak, does not shorten PageUsed ownership, and is
+substantially equivalent to prior cross-`n_tile` prefetch failures.
+
+The remaining focused hypothesis is instead a C1-only whole-island pre-score
+read:
 
 ```text
-C0 n_tile t:
-  score/dP MMAC
-  softmax/dS
-  wait current D0/D1; dQ D0/D1 MMAC
-  issue read8 for K-normal(t+1) into ping/pong VGPR
-  wait only current D2/D3 while next read remains in flight
-  dQ D2/D3 MMAC
+C0 unchanged:
+  score/dP MMAC -> softmax/dS -> read8 -> wait -> dQ MMAC
 
-C1 n_tile t:
-  score/dP MMAC
-  read8 K-normal(t)
-  softmax/dS
-  dQ MMAC
+C1 candidate:
+  trans read16 + K-normal read8
+  wait to first trans half -> score/dP D0/D1 MMAC
+  wait to second trans half while K-normal remains in flight
+  score/dP D2/D3 MMAC -> softmax/dS -> wait -> dQ MMAC
 ```
 
-The intended property is that both roles hide read latency, but at different
-useful prefetch distances. It preserves exact read/MMAC counts and all
-ABarrier page ownership. The estimated extra C0 buffer is about `32 VGPR`,
-moving branch use from about `162` toward `194`, inside the configured `216`
-window. It must be rejected if compiler liveness exceeds that budget, if
-request-order accounting cannot leave next-read requests outstanding safely,
-or if same-shape ticks/MMAC active do not both improve.
+This does not try to remove C0's local hole. It attempts to advance C1's dQ
+MMAC so that it covers that hole at the SIMD level. Unlike the rejected C1
+dead-slot experiment, no read may split a score/dP MMAC island. Unlike the old
+all-consumer pre-score experiment, only C1 moves, preserving role asymmetry.
+
+Expected C1 branch use is about `187` versus the configured `216` window. The
+candidate is legal only if ASM preserves the `read24 -> MMAC half -> MMAC half`
+structure, exact dynamic work/read counts, no spill/scratch, correctness and
+bank0. Promotion additionally requires a material rise from the current 8%
+C1-MMAC coverage of C0 read holes, together with lower same-shape ticks and
+higher MMAC active.
 
 ## Final Diagnosis
 
