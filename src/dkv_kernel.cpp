@@ -321,75 +321,43 @@ __device__ __forceinline__ void producer_resident_raw_loop(
         wait_resident_used<Wdra>(resident_used_phase);
     }
 
-    if (q_tiles <= 0) {
-        return;
-    }
-
-    constexpr int kHeadMBlocks = Tile::kHeadReadyMq / 16;
-    constexpr int kTotalMBlocks = Tile::kBlockMq / 16;
-    constexpr int kPage = 0;
-
-    seq_raw_ready<Wdra::kRawHeadFilled>();
-    publish_mq_slice<Tile, 0, kHeadMBlocks>(
-        lds, raw_lds_base, raw_base_ptr, row_stride, q_base, kPage,
-        wave_local);
-    if constexpr (PublishSidecar) {
-        publish_sidecar_slice_to_lds<Tile, 0, Tile::kHeadReadyMq>(
-            lds, packed_sidecar, row_base, q_base, seqlen, kPage, wave_local,
-            lane);
-    }
-    ins::wait_vbcnt0();
-    arrive_raw_ready<Wdra::kRawHeadFilled>();
-
-    seq_raw_ready<Wdra::kRawTailFilled>();
-    publish_mq_slice<Tile, kHeadMBlocks, kTotalMBlocks>(
-        lds, raw_lds_base, raw_base_ptr, row_stride, q_base, kPage,
-        wave_local);
-    if constexpr (PublishSidecar) {
-        publish_sidecar_slice_to_lds<
-            Tile, Tile::kHeadReadyMq, Tile::kTailReadyMq>(
-            lds, packed_sidecar, row_base, q_base, seqlen, kPage, wave_local,
-            lane);
-    }
-
-    // Keep Tail(t) in flight while consumers use Head(t). After Head(t) is
-    // released, issue Head(t+1): each producer wave then owns exactly four
-    // older Tail requests and four newer Head requests.
 #pragma clang loop unroll(disable)
-    for (int q_tile = 0; q_tile + 1 < q_tiles; ++q_tile) {
-        wait_raw_used<Wdra::kRawHeadUsed>(raw_head_used_phase);
-        const int next_q_base =
-            q_base + (q_tile + 1) * Tile::kBlockMq;
+    for (int q_tile = 0; q_tile < q_tiles; ++q_tile) {
+        const int page = raw_page_for_q_tile<Tile>(q_tile);
+        const int packet_q_base = q_base + q_tile * Tile::kBlockMq;
+        if (q_tile >= Tile::kRawBuffers) {
+            wait_raw_used<Wdra::kRawHeadUsed>(raw_head_used_phase);
+        }
+        constexpr int kHeadMBlocks = Tile::kHeadReadyMq / 16;
+        constexpr int kTotalMBlocks = Tile::kBlockMq / 16;
         seq_raw_ready<Wdra::kRawHeadFilled>();
         publish_mq_slice<Tile, 0, kHeadMBlocks>(
-            lds, raw_lds_base, raw_base_ptr, row_stride, next_q_base, kPage,
+            lds, raw_lds_base, raw_base_ptr, row_stride, packet_q_base, page,
             wave_local);
         if constexpr (PublishSidecar) {
             publish_sidecar_slice_to_lds<Tile, 0, Tile::kHeadReadyMq>(
-                lds, packed_sidecar, row_base, next_q_base, seqlen, kPage,
+                lds, packed_sidecar, row_base, packet_q_base, seqlen, page,
                 wave_local, lane);
         }
-
-        ins::wait_vbcnt4();
-        arrive_raw_ready<Wdra::kRawTailFilled>();
-        ins::wait_vbcnt0();
+        ins::maybe_wait_bps_vbcnt_before_arrive();
         arrive_raw_ready<Wdra::kRawHeadFilled>();
 
-        wait_raw_used<Wdra::kRawTailUsed>(raw_tail_used_phase);
+        if (q_tile >= Tile::kRawBuffers) {
+            wait_raw_used<Wdra::kRawTailUsed>(raw_tail_used_phase);
+        }
         seq_raw_ready<Wdra::kRawTailFilled>();
         publish_mq_slice<Tile, kHeadMBlocks, kTotalMBlocks>(
-            lds, raw_lds_base, raw_base_ptr, row_stride, next_q_base, kPage,
+            lds, raw_lds_base, raw_base_ptr, row_stride, packet_q_base, page,
             wave_local);
         if constexpr (PublishSidecar) {
             publish_sidecar_slice_to_lds<
                 Tile, Tile::kHeadReadyMq, Tile::kTailReadyMq>(
-                lds, packed_sidecar, row_base, next_q_base, seqlen, kPage,
+                lds, packed_sidecar, row_base, packet_q_base, seqlen, page,
                 wave_local, lane);
         }
+        ins::maybe_wait_bps_vbcnt_before_arrive();
+        arrive_raw_ready<Wdra::kRawTailFilled>();
     }
-
-    ins::wait_vbcnt0();
-    arrive_raw_ready<Wdra::kRawTailFilled>();
 }
 
 struct Owner16KvRegs {

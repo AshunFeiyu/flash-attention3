@@ -15827,3 +15827,23 @@ Status: `ACCEPT_PROBE_WITH_PMD_WARNING`.
   passes. Admit only a reversible dKV issue-ahead experiment; do not promote
   the instruction rule without same-shape correctness, repeated ticks, and
   SQTT evidence.
+
+## 2026-07-21 dKV Cross-Generation VBCNT4 Rejected
+
+Status: `REJECT_TAIL_READINESS_REGRESSION_SOURCE_RESTORED`.
+
+- Candidate keeps exact Mq128/Nk128/D128 physical2P2C work, seven ABarrier
+  IDs, 67,072-byte LDS plan and four GEMMs. Each producer wave combines four
+  old Tail BPS requests with four new Head requests, publishes Tail at
+  `vbcnt4`, then publishes Head at `vbcnt0`.
+- Static gates remain SGPR52/VGPR96, role usage `8/152/14/152`,
+  private/spill/scratch0. S128, S384 and all six S1024 A/B runs pass numerical
+  correctness with exact MMOP73,728 and bank0.
+- Three-run S1024 median ticks regress `31,517,395 -> 33,978,945`
+  (`+7.810%`). MMAC active falls `38.486% -> 36.117%` (`-2.369pp`), while
+  barrier grows `27.279%`. Successful coissue rises `12.720%`, but is not on
+  the shortened critical path.
+- Root cause: delaying `TailFilled(t)` until `HeadUsed(t)` makes the consumer
+  wait for current Tail after every Head. Prefetching Head(t+1) cannot repay
+  the new immediate readiness debt. Reject before fullperf and restore early
+  Tail publication.

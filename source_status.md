@@ -10092,3 +10092,17 @@ Status: `ACCEPT_FOCUSED_PROBE / CANONICAL_UNCHANGED`.
 - Workbook sheet `205_BPS_VBCNT4_Probe` admits one dKV cross-generation A/B.
   Canonical source remains unchanged until that experiment passes repeated
   S1024 ticks and SQTT.
+
+## 2026-07-21 dKV Cross-Generation A/B Closed
+
+Status: `REJECT / CANONICAL RESTORED`.
+
+- Experiment commit `4d31adf` implements the workbook sheet 206 request
+  ledger and passes static, S128, S384, repeated S1024, bank and resource
+  gates on locked LLVM47a7/PMD HEAD1694.
+- S1024 median ticks regress `7.810%`, MMAC active falls `2.369pp`, and
+  barrier active work rises `27.279%`. The candidate is closed before
+  S2048/fullperf.
+- The branch tip restores the canonical producer schedule. The focused
+  VBCNT4 probe remains valid instruction evidence, but this ownership graph
+  is not a useful operator integration.

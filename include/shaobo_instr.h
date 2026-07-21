@@ -481,14 +481,6 @@ __device__ __forceinline__ void wait_vbcnt0() {
 #endif
 }
 
-__device__ __forceinline__ void wait_vbcnt4() {
-#if defined(__gfx946__) || defined(__gfx92a__)
-    __builtin_amdgcn_sched_barrier(0);
-    asm volatile("s_waitcnt_vbcnt 4\n" ::: "memory");
-    __builtin_amdgcn_sched_barrier(0);
-#endif
-}
-
 __device__ __forceinline__ void maybe_wait_bps_vbcnt_before_arrive() {
 #if SHAOBO_BPS_VBCNT_BEFORE_ARRIVE
     wait_vbcnt0();

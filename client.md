@@ -4708,3 +4708,22 @@ Skill Candidate:
   correctness proof relies on which individual request retired.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo` BPS/ABarrier reference during consolidation.
+
+### Skill Candidate: Preserve Current-Packet Readiness While Prefetching
+
+- Trigger / 适用场景: a single LDS page has Head/Tail ownership tokens and a
+  producer wants to overlap Tail(t) with Head(t+1).
+- Rule / 可复用规则: never delay the currently consumed half's Filled token
+  merely to form a larger cross-generation BPS window. A next-generation
+  prefetch is admissible only if current Tail readiness remains no later than
+  control.
+- Evidence / 证据: dKV commit `4d31adf`, workbook 206, locked LLVM47a7/PMD
+  HEAD1694; exact work and correctness pass, but S1024 ticks regress `7.810%`,
+  active falls `2.369pp`, and barrier grows `27.279%`.
+- Boundary / 适用边界: a true second LDS page or independent consumer work
+  may remove the overwrite/readiness edge; re-derive the token ledger there.
+- Counterexample / 反例或不适用情况: the current Tail is not consumed until
+  after the next Head work, or publishing Tail early has no synchronization
+  effect.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo` WASP/ABarrier reference during consolidation.
