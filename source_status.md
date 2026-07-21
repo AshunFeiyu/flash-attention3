@@ -10275,3 +10275,22 @@ Status: `REJECT / RESTORE CANONICAL`.
 - Restore `local_m16 = ConsumerGroup * 4 + wave_local` and its canonical gate.
   Return to a structural dKV/dQ dependency or ownership-epoch hypothesis, not
   another traversal/row permutation.
+
+## 2026-07-22 dKV C1 Family-Sweep Closed
+
+Status: `REJECT / CANONICAL RESTORED`.
+
+- Experiment `1b2a26a` changes only C1 dV/dK MMAC issue order; latest compiler
+  static resources/counts, H1/S128 plus repeated S1024 correctness and bank0 all
+  pass without changing math or ownership.
+- S1024 median ticks regress `0.8710%`, active falls `0.447625pp`, coissue success
+  falls `3.92%`, and barrier share rises despite a small LGKM-wait reduction.
+- Revert `26940f8` restores canonical source. Do not promote grouped destination
+  families merely for prettier assembly; the next dKV experiment must address
+  measured C0 first-use latency without extending consumer liveness.
+
+## 2026-07-22 Toolchain Route Is Fail-Closed
+
+- Canonical build/run now defaults to LLVM47a7, PMD HEAD1694, `GPU_CHIP=sb`,
+  SQ7 and the audited PMD config seed. Missing or mismatched components fail
+  preflight instead of falling back or regenerating model configuration.

@@ -16071,3 +16071,32 @@ Status: `ACCEPT_TOOLCHAIN_GOVERNANCE`; no kernel source or performance claim.
   normalized ASM is byte-identical to the previous LLVM47a7 controls; only the
   nondeterministic `__hip_cuid_*` symbol differs. H1/S128 correctness passes for
   both kernels under `/zys/sb/audit_unified_latest_correctness`.
+
+## 2026-07-22 dKV C1 Family-Sweep MMAC Rejected
+
+Status: `REJECT_TICKS_ACTIVE_SOURCE_RESTORED`.
+
+- Workbook 216 keeps C0 and all ownership/read/wait work canonical. C1 alone
+  groups four dV MMAC updates before four dK updates instead of alternating
+  dV/dK, with exact arithmetic, fragments and output owners.
+- Latest LLVM47a7 emits the intended order with exact MMAC1024, matrix-read544,
+  ABarrier57, SGPR52/VGPR96 and private/spill/scratch0. H1/S128 and six paired
+  S1024 runs pass correctness with exact dynamic work and bank0.
+- Three-run median ticks regress `31,547,425 -> 31,822,245` (`+0.8710%`), MMAC
+  active falls `38.404684% -> 37.957059%`, and successful coissue falls `3.92%`.
+  LGKM wait falls `0.0980pp`, but barrier share rises `0.69154pp`.
+- Static island regularity is not a critical-path win. Revert commit `26940f8`
+  restores canonical pairwise dV/dK order; skip S2048/fullperf and move the next
+  dKV hypothesis to C0 operand aging without extra live state.
+
+## 2026-07-22 PMD Seed Added To The Unified Toolchain Lock
+
+Status: `ACCEPT_TOOLCHAIN_GOVERNANCE`; no kernel source change.
+
+- The fail-closed route now supplies the audited PMD config seed by default and
+  unconditionally requires the latest compiler, PMD, `GPU_CHIP=sb`, SQ7 and a
+  non-empty seed. This prevents PMD from silently regenerating an incompatible
+  config and producing an environment error during a kernel A/B.
+- Build fingerprints now record the seed path and SHA256 beside compiler, hipcc,
+  PMD, WDRA and target information. Kernel performance remains tied to the
+  previously measured LLVM47a7/HEAD1694 baseline.

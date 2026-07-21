@@ -4941,3 +4941,34 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `dcu-kernel-optimization` scaling-validation reference during serialized
   consolidation; do not edit the public skill here.
+
+## 2026-07-22 Unified Latest Toolchain And dKV Family-Sweep Result
+
+- All canonical and experimental builds now fail closed on LLVM `47a7d59a`,
+  PMD HEAD1694, `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']` and the audited
+  PMD config seed. Build fingerprints include the seed path/hash; no older
+  compiler or auto-generated PMD config is an admitted optimization baseline.
+- dKV workbook 216 tested a C1-only dV-family then dK-family MMAC sweep. Exact
+  work/resources/correctness/bank gates pass, but S1024 median ticks regress
+  `0.8710%`, active falls `0.447625pp` and coissue success falls `3.92%`.
+  Commit `26940f8` restores canonical source.
+
+### Skill Candidate: Regular MMAC Islands Must Shorten The Critical Path
+
+- Trigger / 适用场景: independent accumulator updates are reordered to make
+  assembly MMAC islands longer or visually more regular.
+- Rule / 可复用规则: preserve exact work and dependencies, then require repeated
+  same-build ticks plus coissue/barrier evidence. Lower local wait or prettier
+  opcode grouping is insufficient when peer useful issue falls.
+- Evidence / 证据: dKV workbook 216, commit `1b2a26a`, LLVM47a7/PMD1694. Exact
+  counts/resources and correctness pass, but median ticks regress `0.8710%`,
+  active falls `0.447625pp`, coissue success falls `3.92%`, and barrier rises
+  `0.69154pp` despite LGKM wait falling `0.0980pp`.
+- Boundary / 适用边界: schedule-only reordering of independent outputs with
+  unchanged operand reads, ownership and VGPR state.
+- Counterexample / 反例或不适用情况: SQTT identifies destination recurrence as
+  critical and the reorder lowers repeated ticks without increasing operand or
+  ownership bubbles.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` scheduling evidence reference during a serialized
+  consolidation pass; do not edit the public skill from this task.
