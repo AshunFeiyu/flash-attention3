@@ -16126,3 +16126,31 @@ Status: `ACCEPT_CANONICAL_MICRO_SCHEDULE`; the 50% MMAC-active goal remains open
   adding normal-fragment live state, requests, GEMMs or ownership tokens.
 - Archived perf, stats, XCU CSV and workbook preview under shared
   `shaobo/perf/20260722_051808_dkv_c0_split_sidecar_h1s2048_sqc7_u47_fullperf`.
+
+## 2026-07-22 Latest Compiler e0f10535 Baseline Reset
+
+Status: `ACCEPT_TOOLCHAIN_BASELINE_RESET`; no kernel source optimization.
+
+- The rolling package advanced to LLVM `e0f10535...`, clang SHA256
+  `334cb561...`. Index SHA, package SHA and Last-Modified are now part of the
+  fail-closed build fingerprint. PMD HEAD1694, config seed `c22d6a42`, `sb`
+  and SQ7 remain unchanged.
+- dKV/dQ static gates pass with resources `52/96` and `60/128`, no
+  spill/private/scratch, trap0 and unchanged semantic MMAC/read islands.
+  Correctness passes H1/S128, H1/S1024 and H1/S2048 with exact dynamic work and
+  `ldsBankConflict=0`.
+- Interleaved three-run H1/S1024 same-source compiler A/B shows a small
+  regression: dKV median ticks `31,044,195 -> 31,255,770` (`+0.6815%`) and
+  active `38.485870% -> 37.832658%`; dQ ticks
+  `20,987,330 -> 21,361,340` (`+1.7820%`) and active
+  `37.925184% -> 37.774165%`.
+- e0f10535 fullperf baselines are dKV
+  `34,625,955 ticks / 38.538081% active`, coissue `15,453/11,291`, and dQ
+  `24,666,915 / 38.003897%`, coissue `16,205/14,515`; both bank0.
+- XCU top issue gaps are dKV ABarrier ownership `30.35% + 14.89%`; dQ
+  ABarrier ownership `21.35%` plus final ebarrier join `17.56%`. Representative
+  heavy-wave MMAC+VALU coissue is about `13%` for dKV and `21-23%` for dQ.
+- Accept the toolchain reset by policy. All subsequent optimization A/B must
+  build both control and candidate with e0f10535. Workbook 218 and shared
+  archive `20260722_061614_latest_e0f10535_h1s1024_dkv_dq_fullperf` contain
+  the complete evidence.

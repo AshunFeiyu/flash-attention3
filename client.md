@@ -1,5 +1,54 @@
 # Client
 
+## 2026-07-22 Latest Compiler Is Now The Only Optimization Baseline
+
+- The rolling perf-model package advanced after the LLVM47a7 audit. Canonical
+  build and preflight are now locked to LLVM
+  `e0f10535a0d681bcf3885ea2c398cc494bf6e332`, clang SHA256
+  `334cb561ceeaf1499039f6ff2a146e71e6b55b83b80d8d407a77ed27155f6f34`.
+  The package index SHA256, deb SHA256 and Last-Modified timestamp are also
+  recorded in every build fingerprint.
+- PMD remains HEAD1694, the audited config seed remains `c22d6a42`, and runs
+  remain `GPU_CHIP=sb` plus `GPU_ARGS=['--SQCIPfLines=7']`. PMD still attempts
+  config generation and may report `ASTCA ... num_phase`; the seed guarantees
+  the audited fallback rather than suppressing the attempt.
+- Same-source three-run H1/S1024 A/B shows the compiler reset is slightly
+  slower: dKV median ticks `31,044,195 -> 31,255,770` (`+0.6815%`) and dQ
+  `20,987,330 -> 21,361,340` (`+1.7820%`). This is accepted by explicit latest-
+  compiler policy, not recorded as a kernel optimization.
+- New-compiler fullperf baselines are dKV `34,625,955 ticks / 38.538081%`
+  MMAC active and dQ `24,666,915 / 38.003897%`; both are correct, exact-work,
+  bank0 and spill/private/scratch0. Representative MMAC+VALU coissue is about
+  `13%` for dKV consumers and `21-23%` for dQ consumers.
+- XCU keeps the structural diagnosis unchanged. dKV's two largest issue gaps
+  are ABarrier ownership transitions (`30.35% + 14.89%`); dQ has ABarrier
+  ownership (`21.35%`) plus the final CTA join (`17.56%`). All new hypotheses
+  must compare control and candidate with e0f10535; LLVM47a7 numbers are now
+  historical only.
+- Workbook sheet `218_LatestCompiler_e0f` and shared archive
+  `shaobo/perf/20260722_061614_latest_e0f10535_h1s1024_dkv_dq_fullperf`
+  contain the complete provenance, A/B, stats, perf and xcu CSV evidence.
+
+Skill Candidate:
+
+- Trigger / 适用场景: a rolling compiler repository changes while a kernel
+  optimization campaign is active.
+- Rule / 可复用规则: lock index freshness, package hash, compiler commit and
+  compiler binary hash together; run interleaved same-source A/B before any
+  new code hypothesis and reset the control baseline even when the new compiler
+  is slower by policy.
+- Evidence / 证据: workbook 218, e0f10535 fullperf archive, dKV `+0.6815%`
+  and dQ `+1.7820%` same-source median tick deltas, all correctness/resource
+  gates PASS.
+- Boundary / 适用边界: rolling internal toolchains whose package index may
+  mutate. This does not prove compiler quality or authorize mixed-runtime
+  package copying.
+- Counterexample / 反例或不适用情况: an immutable release toolchain already
+  pinned by content digest needs no periodic freshness reset.
+- Proposed Target / 建议进入哪个 skill 或 reference: `shaobo` compiler/PMD
+  reference during a serialized skill consolidation; do not edit a public
+  skill from this task.
+
 ## 2026-07-22 dKV Canonical Advances To C0 Split-Sidecar Aging
 
 - Promote commit `d2d5bdd` as the current dKV micro-schedule baseline. It keeps

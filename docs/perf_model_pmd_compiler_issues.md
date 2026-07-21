@@ -521,3 +521,39 @@ compiler exception by explicit user policy.
   seed remains mandatory in `scripts/toolchain_preflight.sh`.
 - Default run root is now `/zys/sb/fa3b`; longer nested paths can overflow the
   PMD fake-device path before dispatch.
+
+## 2026-07-22 Rolling Compiler Supersedes LLVM47a7
+
+Status: `ACCEPT_TOOLCHAIN_BASELINE_RESET`; this section supersedes the
+2026-07-21 compiler identity while retaining its runtime and PMD rules.
+
+Latest audited package identity:
+
+```text
+index: perf_model_latest_6.3_ubuntu-22.04/Packages.gz
+Last-Modified: 2026-07-22T03:33:27Z
+index SHA256: 351d4166e3ff6dded100f205033af99d1ab42f222fe1a807a6a1fc349033ea1a
+rocm-llvm deb SHA256: bb880ba1477b579a25b9f36772796893dad914a5175fe9278a4616e0bc62808c
+LLVM commit: e0f10535a0d681bcf3885ea2c398cc494bf6e332
+clang SHA256: 334cb561ceeaf1499039f6ff2a146e71e6b55b83b80d8d407a77ed27155f6f34
+extract root: /zys/shaobo/toolchains/compiler_perf_model_latest_20260722_root
+```
+
+Rules:
+
+- Use the installed `/opt/rocm-6.3.3/bin/hipcc` as the runtime wrapper with
+  `HIP_CLANG_PATH` directed to the e0f10535 overlay. The side-by-side package
+  remains a compiler overlay, not a standalone ROCm runtime.
+- `scripts/toolchain_lock.sh` is the source of truth. `build.sh` records the
+  index hash, package hash and timestamp in addition to compiler identity.
+- PMD remains HEAD1694 with the audited config seed. PMD still tries fresh
+  config generation; the known `ASTCA ... num_phase` failure triggers the
+  SHA-checked seed fallback.
+- Same-source H1/S1024 dKV/dQ A/B is mandatory when this rolling index changes.
+  The e0f10535 reset regressed median ticks by `0.6815%` and `1.7820%`
+  respectively, but is accepted by the policy requiring the latest compiler.
+- Do not compare a new kernel candidate on e0f10535 against a control built by
+  LLVM47a7. Historical performance remains useful for diagnosis only.
+
+Validation evidence: workbook `218_LatestCompiler_e0f` and shared archive
+`shaobo/perf/20260722_061614_latest_e0f10535_h1s1024_dkv_dq_fullperf`.

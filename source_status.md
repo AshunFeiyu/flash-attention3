@@ -1,5 +1,33 @@
 # Source Status
 
+## 2026-07-22 LLVM e0f10535 Baseline Reset
+
+Status: `ACCEPT_TOOLCHAIN_BASELINE_RESET`; canonical kernel source unchanged.
+
+- The only admitted compiler is now LLVM
+  `e0f10535a0d681bcf3885ea2c398cc494bf6e332`, clang SHA256
+  `334cb561ceeaf1499039f6ff2a146e71e6b55b83b80d8d407a77ed27155f6f34`.
+  `scripts/toolchain_lock.sh` also pins the rolling index SHA256
+  `351d4166...`, rocm-llvm deb SHA256 `bb880ba1...`, and index timestamp
+  `2026-07-22T03:33:27Z`. `build.sh` writes all of them to the fingerprint.
+- PMD remains locked to HEAD1694 and config seed SHA `c22d6a42`; runtime is
+  still `GPU_CHIP=sb`, SQ7. Preflight, dKV/dQ static gates and correctness at
+  H1/S128, H1/S1024 and H1/S2048 pass with exact work and bank0.
+- e0f10535 resources are dKV SGPR52/VGPR96, roles `8/152/14/152`; dQ
+  SGPR60/VGPR128, roles `8/162/9/194`. Both have private/spill/scratch0,
+  `s_trap=0`, and unchanged MMAC/matrix-read island histograms.
+- Three-run same-source H1/S1024 compiler A/B records dKV median
+  `31,044,195 -> 31,255,770` ticks and dQ
+  `20,987,330 -> 21,361,340`. The regression is accepted only as a toolchain
+  baseline reset; it is not a source promotion or performance claim.
+- Valid e0f10535 H1/S1024 fullperf is dKV
+  `34,625,955 / 38.538081% MMAC active` and dQ
+  `24,666,915 / 38.003897%`. XCU identifies ABarrier ownership as the largest
+  dKV gap and ABarrier plus the final ebarrier join as the largest dQ gaps.
+- Evidence is in workbook 218 and shared archive
+  `shaobo/perf/20260722_061614_latest_e0f10535_h1s1024_dkv_dq_fullperf`.
+  Every later control/candidate pair must use this compiler fingerprint.
+
 ## 2026-07-22 dKV C0 Split-Sidecar Canonical Promotion
 
 Status: `ACCEPT_CANONICAL_MICRO_SCHEDULE`; source commit `d2d5bdd`.
