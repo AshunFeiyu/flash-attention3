@@ -59,6 +59,7 @@ echo "PMD_RUN_PY=${run_py}"
 echo "COMPILER=${compiler}"
 "${compiler}" --version | sed -n '1,3p'
 hash_file "${compiler}"
+shaobo_verify_latest_compiler "${compiler}"
 hash_file "${gem5}"
 hash_file "${pmd_lib}"
 hash_file "${PMD_CONFIG_SEED}"

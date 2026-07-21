@@ -276,6 +276,8 @@ def main() -> int:
         require(asm, r"s_setprio", failures, "asm_missing_s_setprio")
         require(asm, r"fa3_bwd_dkv_kernel", failures,
                 "asm_missing_kernel_symbol")
+        forbid(asm, r"^\s*s_trap\b", failures,
+               "asm_contains_real_wdra_trap")
 
     if failures:
         print("dKV kernel gate: FAIL")

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/toolchain_lock.sh"
+
 export GPU_CHIP="${GPU_CHIP:-sb}"
 export GPU_ARGS="${GPU_ARGS:-['--SQCIPfLines=7']}"
-export SHAOBO_RUN_ROOT="${SHAOBO_RUN_ROOT:-/zys/shaobo_runs/fa3_bwd_wasp_clean}"
+export SHAOBO_RUN_ROOT="${SHAOBO_RUN_ROOT:-/zys/sb/fa3b}"
 export ROCM_PATH="${ROCM_PATH:-/opt/rocm-6.3.3}"
 if [[ -z "${SHAOBO_PMD_ROOT:-}" ]]; then
   if [[ -f "${ROCM_PATH}/core/scripts/run.py" ]]; then
@@ -53,6 +55,9 @@ if [[ "${SHAOBO_REQUIRE_TOOLCHAIN_LOCK:-0}" == "1" ]]; then
 fi
 
 mkdir -p "${SHAOBO_RUN_ROOT}"
+if (( ${#SHAOBO_RUN_ROOT} > 48 )); then
+  echo "warning: long SHAOBO_RUN_ROOT may overflow PMD fake-device paths: ${SHAOBO_RUN_ROOT}" >&2
+fi
 export SHAOBO_RUNPY_STUB_ROOT="${SHAOBO_RUNPY_STUB_ROOT:-/tmp/shaobo_runpy_stub_${BASHPID:-$$}}"
 mkdir -p "${SHAOBO_RUNPY_STUB_ROOT}"
 printf 'def setproctitle(title):\n    return None\n\ndef getproctitle():\n    return "pmd"\n' \
