@@ -58,6 +58,30 @@ def main() -> int:
             "missing_full3gemm_consumer")
     require(source, r"dq_load_sidecar_group", failures,
             "missing_producer_sidecar_lds_staging")
+    require(source, r"dq_load_q_dout_m32", failures,
+            "missing_allwave_qdo_m32_publisher")
+    require(source, r"s_abarrier_init\(Bar::kQDoFilled,\s*16\)", failures,
+            "missing_allwave_qdo_filled_count16")
+    require(source,
+            r"wave_id\s*<\s*4[\s\S]{0,1800}"
+            r"dq_load_q_dout_m32<Tile>\(\s*q,\s*dout,\s*lds,\s*0,",
+            failures, "missing_producer0_qdo_m32_0")
+    require(source,
+            r"wave_id\s*<\s*8[\s\S]{0,900}"
+            r"dq_load_q_dout_m32<Tile>\(\s*q,\s*dout,\s*lds,\s*1,"
+            r"[\s\S]{0,450}dq_arrive_qdo_filled<Bar>\(\)"
+            r"[\s\S]{0,450}dq_consumer_full3gemm_role<Tile,\s*Bar,\s*0>",
+            failures, "missing_consumer0_qdo_m32_1_publish")
+    require(source,
+            r"wave_id\s*<\s*12[\s\S]{0,900}"
+            r"dq_load_q_dout_m32<Tile>\(\s*q,\s*dout,\s*lds,\s*2,"
+            r"[\s\S]{0,450}dq_arrive_qdo_filled<Bar>\(\)"
+            r"[\s\S]{0,450}dq_consumer_full3gemm_role<Tile,\s*Bar,\s*1>",
+            failures, "missing_consumer1_qdo_m32_2_publish")
+    require(source,
+            r"else\s*\{[\s\S]{0,900}"
+            r"dq_load_q_dout_m32<Tile>\(\s*q,\s*dout,\s*lds,\s*3,",
+            failures, "missing_producer1_qdo_m32_3")
     require(source, r"dq_wait_qdo_filled", failures,
             "missing_consumer_qdo_filled_wait")
     require(source, r"dq_arrive_qdo_filled", failures,

@@ -154,39 +154,32 @@ __device__ __forceinline__ void dq_zero_f32x4(ins::F32x4& acc) {
 }
 
 template <typename Tile>
-__device__ __forceinline__ void dq_load_q_dout_group(
+__device__ __forceinline__ void dq_load_q_dout_m32(
     const __half* __restrict__ q,
     const __half* __restrict__ dout,
     __half* __restrict__ lds,
-    int producer_group,
+    int m32,
     int producer_wave,
     int q_base_tile,
     int64_t qkv_base) {
     constexpr int Dim = Tile::kHeadDim;
     constexpr int MatrixBlockBytes = DqLdsLayout<Tile>::kMatrixBlockBytes;
     const int d_base = producer_wave * 32;
+    const int qrow = q_base_tile + m32 * 32;
+    const int lds_offset =
+        DqLdsLayout<Tile>::kQBlockOffset(m32, producer_wave);
 
-    const int m32_base = producer_group * 2;
-#pragma unroll
-    for (int local_m32 = 0; local_m32 < 2; ++local_m32) {
-        const int m32 = m32_base + local_m32;
-        const int qrow = q_base_tile + m32 * 32;
-        const int lds_offset =
-            DqLdsLayout<Tile>::kQBlockOffset(m32, producer_wave);
+    ins::Vec4U32 q_src = ins::prepare_matrix_src(
+        q + qkv_base + static_cast<int64_t>(qrow) * Dim + d_base, Dim);
+    ins::matrix_load_32x32_b16_bps_lds(
+        lds + DqLdsLayout<Tile>::kQBase / sizeof(__half), q_src, lds_offset,
+        true);
 
-        ins::Vec4U32 q_src = ins::prepare_matrix_src(
-            q + qkv_base + static_cast<int64_t>(qrow) * Dim + d_base, Dim);
-        ins::matrix_load_32x32_b16_bps_lds(
-            lds + DqLdsLayout<Tile>::kQBase / sizeof(__half), q_src,
-            lds_offset, true);
-
-        ins::Vec4U32 dout_src = ins::prepare_matrix_src(
-            dout + qkv_base + static_cast<int64_t>(qrow) * Dim + d_base,
-            Dim);
-        ins::matrix_load_32x32_b16_bps_lds(
-            lds + DqLdsLayout<Tile>::kDoutBase / sizeof(__half), dout_src,
-            lds_offset, true);
-    }
+    ins::Vec4U32 dout_src = ins::prepare_matrix_src(
+        dout + qkv_base + static_cast<int64_t>(qrow) * Dim + d_base, Dim);
+    ins::matrix_load_32x32_b16_bps_lds(
+        lds + DqLdsLayout<Tile>::kDoutBase / sizeof(__half), dout_src,
+        lds_offset, true);
 }
 
 template <typename Tile>
@@ -829,7 +822,7 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
         __builtin_hcu_s_abarrier_init(Bar::kPage0Used, 8);
         __builtin_hcu_s_abarrier_init(Bar::kPage1Filled, 8);
         __builtin_hcu_s_abarrier_init(Bar::kPage1Used, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kQDoFilled, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kQDoFilled, 16);
         __builtin_hcu_s_abarrier_init(Bar::kQDoLatched, 8);
     }
     __builtin_hcu_s_ebarrier_sync(0);
@@ -852,7 +845,7 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
         int used_phase0 = 0;
         int used_phase1 = 0;
         int qdo_latched_phase = 0;
-        dq_load_q_dout_group<Tile>(
+        dq_load_q_dout_m32<Tile>(
             q, dout, lds, 0, wave_local, q_base_tile, qkv_base);
         dq_load_sidecar_group<Tile>(
             scores_max, scores_sum, delta, lds, 0, wave_local, lane,
@@ -880,11 +873,19 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
         }
     } else if (wave_id < 8) {
         __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
+        dq_load_q_dout_m32<Tile>(
+            q, dout, lds, 1, wave_local, q_base_tile, qkv_base);
+        ins::maybe_wait_bps_vbcnt_before_arrive();
+        dq_arrive_qdo_filled<Bar>();
         dq_consumer_full3gemm_role<Tile, Bar, 0>(
             lds, dq_out, q_base_tile, seqlen, bh, diag_store,
             softmax_scale, softmax_scale_log2, wave_local);
     } else if (wave_id < 12) {
         __builtin_hcu_s_set_vgpr_size(dq::WdraResourceWindows::kConsumerTargetVgprs);
+        dq_load_q_dout_m32<Tile>(
+            q, dout, lds, 2, wave_local, q_base_tile, qkv_base);
+        ins::maybe_wait_bps_vbcnt_before_arrive();
+        dq_arrive_qdo_filled<Bar>();
         dq_consumer_full3gemm_role<Tile, Bar, 1>(
             lds, dq_out, q_base_tile, seqlen, bh, diag_store,
             softmax_scale, softmax_scale_log2, wave_local);
@@ -894,8 +895,8 @@ fa3_bwd_dq_kernel(const __half* __restrict__ q,
         int used_phase0 = 0;
         int used_phase1 = 0;
         int qdo_latched_phase = 0;
-        dq_load_q_dout_group<Tile>(
-            q, dout, lds, 1, wave_local, q_base_tile, qkv_base);
+        dq_load_q_dout_m32<Tile>(
+            q, dout, lds, 3, wave_local, q_base_tile, qkv_base);
         dq_load_sidecar_group<Tile>(
             scores_max, scores_sum, delta, lds, 1, wave_local, lane,
             q_base_tile, row_base);
