@@ -15808,3 +15808,22 @@ Status: `REJECT_REQUEST_AGE_REGRESSION_SOURCE_RESTORED`.
   no `s_set_vgpr_size` can mask the result. PMD still aborts at the first
   `ds_write_matrix_format ... element:3` opcode (`0xd38b5008`). Classify this
   as `DEFER_PMD_COMPILER_ENCODING`; do not integrate f32 writer into dKV/dQ.
+
+## 2026-07-21 BPS Nonzero VBCNT Threshold Probe
+
+Status: `ACCEPT_PROBE_WITH_PMD_WARNING`.
+
+- A two-wave producer/consumer probe was stress-expanded to 32 ordered BPS
+  requests: prefix `0..23`, group A `24..27`, group B `28..31`. The candidate
+  uses `s_waitcnt_vbcnt 4` before publishing A and `vbcnt 0` before B.
+- LLVM47a7 preserves exact `BPS32`, `wait4=1`, `wait0=1`, and eight matrix
+  reads. Metadata is SGPR16/VGPR7 with private/spill/scratch0. A and B are
+  exact and `ldsBankConflict=0` in candidate, no-wait, and full-wait controls.
+- Candidate kernel ticks are `2,704,520`, no-wait `2,700,880`, and full-wait
+  `2,842,840`. Nonzero wait is `4.865%` faster than a full drain and only
+  `0.135%` slower than no-wait, which rules out PMD silently treating 4 as 0.
+- PMD still warns `S_WAITCNT_VBCNT: vbcnt isn't 0`, and correctness alone does
+  not prove the owner-level FIFO contract because the no-wait control also
+  passes. Admit only a reversible dKV issue-ahead experiment; do not promote
+  the instruction rule without same-shape correctness, repeated ticks, and
+  SQTT evidence.

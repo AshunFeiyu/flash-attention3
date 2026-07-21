@@ -10078,3 +10078,17 @@ Status: `REJECT_STATISTICALLY_FLAT_RESOURCE_WAIT_DEBT_SOURCE_RESTORED`.
   `8/152/14/152` and `8/162/9/194`; both remain private/spill/scratch0.
 - Latest f32 writer recheck remains blocked by PMD opcode `0xd38b5008` after
   WDRA is removed from the uniform probe. Canonical kernels are unchanged.
+
+## 2026-07-21 BPS VBCNT4 Probe Admission
+
+Status: `ACCEPT_FOCUSED_PROBE / CANONICAL_UNCHANGED`.
+
+- New isolated files are `probes/bps_vbcnt_threshold_probe.cpp` and
+  `scripts/run_bps_vbcnt_threshold_probe.sh`; they are not linked into dKV or
+  dQ.
+- The 32-request candidate passes exact A/B data, bank0 and no-spill gates on
+  locked LLVM47a7/PMD HEAD1694. `vbcnt4` avoids the `4.865%` full-drain cost,
+  while PMD's nonzero-VBCNT warning remains an undocumented boundary.
+- Workbook sheet `205_BPS_VBCNT4_Probe` admits one dKV cross-generation A/B.
+  Canonical source remains unchanged until that experiment passes repeated
+  S1024 ticks and SQTT.

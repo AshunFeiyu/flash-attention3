@@ -4690,3 +4690,21 @@ Skill Candidate:
   comparisons.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo` toolchain/perf-model reference during consolidation.
+
+### Skill Candidate: Prove Nonzero BPS Wait Before Pipeline Integration
+
+- Trigger / 适用场景: one producer wave issues two ordered BPS operand groups
+  and wants to publish the older group while the newer group stays in flight.
+- Rule / 可复用规则: count requests per wave, preserve their final ASM order,
+  and compare nonzero `s_waitcnt_vbcnt N` with both no-wait and full-wait
+  controls before changing an operator ownership graph.
+- Evidence / 证据: locked LLVM47a7/PMD HEAD1694 32-request probe; exact A/B,
+  bank0, SGPR16/VGPR7, private/spill/scratch0; wait4 `2,704,520` ticks versus
+  no-wait `2,700,880` and full-wait `2,842,840`; workbook sheet 205.
+- Boundary / 适用边界: PMD warns for nonzero VBCNT and the focused test does
+  not owner-confirm FIFO completion. It only admits a reversible model A/B.
+- Counterexample / 反例或不适用情况: request count/order is compiler-dependent,
+  groups are issued by different waves, unrelated BPS is interleaved, or a
+  correctness proof relies on which individual request retired.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo` BPS/ABarrier reference during consolidation.

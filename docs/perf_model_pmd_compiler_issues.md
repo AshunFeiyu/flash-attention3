@@ -465,6 +465,39 @@ Rule: "latest compiler installed" and "compiler promoted for every kernel"
 are separate decisions. Promotion requires a same-source, same-PMD,
 same-shape ASM/correctness/performance A/B for each canonical kernel.
 
+## PMD-NONZERO-VBCNT-WARNING
+
+Status: `OBSERVED_USABLE_IN_FOCUSED_PROBE / CONTRACT_UNCONFIRMED`.
+
+- First seen: `2026-07-21`.
+- Environment fingerprint: LLVM `47a7d59a`, clang SHA256 `fddad9d6...`, PMD
+  HEAD1694 locked core/lib/SOC hashes.
+- Minimal trigger: one wave issues 32 BPS requests, executes
+  `s_waitcnt_vbcnt 4`, publishes A to a consumer through ABarrier, then uses
+  `vbcnt 0` before publishing B.
+- Expected behavior: wait until at most four BPS requests remain outstanding,
+  without draining the final four.
+- Observed behavior: PMD prints `S_WAITCNT_VBCNT: vbcnt isn't 0`, but completes.
+  Candidate A/B data is exact and bank0.
+- Final ASM evidence: exact BPS32, matrix-read8, wait4 once, wait0 once; no
+  WDRA resize or trap in the focused kernel.
+- Static metadata: SGPR16/VGPR7, private/spill/scratch0.
+- PMD log/run roots:
+  `/zys/sb/vbcnt4_stress_candidate/bps_vbcnt_threshold/run_20260721_195840`,
+  `/zys/sb/vbcnt4_stress_control/bps_vbcnt_threshold/run_20260721_195935`,
+  `/zys/sb/vbcnt4_stress_fullwait/bps_vbcnt_threshold/run_20260721_200505`.
+- Known-good comparison: wait4 kernel ticks `2,704,520`, no-wait `2,700,880`,
+  full-wait `2,842,840`. The `4.865%` gap from full-wait proves PMD does not
+  clamp nonzero VBCNT to zero.
+- Current attribution and confidence: nonzero threshold execution works in
+  this PMD path with medium-high confidence; FIFO retirement semantics remain
+  unconfirmed because no-wait also passes.
+- Workaround: use only in a reversible, exact-count same-wave experiment and
+  retain full correctness/performance/SQTT gates.
+- Owner question / next action: confirm whether BPS completion accounting is
+  FIFO for one wave and whether the warning is informational or indicates an
+  unsupported hardware contract.
+
 ## 2026-07-21 Unified Latest-Compiler Resolution
 
 Status: `RESOLVED_FOR_CANONICAL_BUILD`; this supersedes the prior per-kernel
