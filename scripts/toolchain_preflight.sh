@@ -37,6 +37,12 @@ pmd_lib="${SHAOBO_PMD_ROOT}/lib/libgem5.so"
   exit 1
 }
 
+soc_gem5="${SOC_PATH}/gem5.opt"
+[[ -x "${soc_gem5}" ]] || {
+  echo "PMD SOC gem5.opt not found under ${SOC_PATH}" >&2
+  exit 1
+}
+
 compiler="${CLANGXX:-}"
 if [[ -z "${compiler}" && -n "${SHAOBO_COMPILER_ROOT:-}" ]]; then
   compiler="${SHAOBO_COMPILER_ROOT}/llvm/bin/clang++"
@@ -62,5 +68,7 @@ hash_file "${compiler}"
 shaobo_verify_latest_compiler "${compiler}"
 hash_file "${gem5}"
 hash_file "${pmd_lib}"
+hash_file "${soc_gem5}"
+shaobo_verify_latest_pmd "${gem5}" "${pmd_lib}" "${soc_gem5}"
 hash_file "${PMD_CONFIG_SEED}"
 echo "toolchain_preflight_status=PASS"
