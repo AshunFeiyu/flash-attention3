@@ -154,6 +154,17 @@ Owner question:
 > emitted as `element:3 row:1 col:1` / opcode `0xd38b5007`, and which compiler
 > commit is expected to match that PMD?
 
+Latest locked-toolchain recheck (`2026-07-21`): the failure remains. LLVM
+`47a7d59a` emits the same `element:3 row:1 col:1` f32 writer, encoded as
+`0xd38b5008` in this compiler snapshot. PMD HEAD1694 aborts at that first
+writer with `fatal: Invalid opcode encountered: 0xd38b5008`. A first build
+with local-wave WDRA stopped earlier at `vgpr_alloc_mode isn't 1 when
+s_set_vgpr_size`; rebuilding this uniform one-wave probe with
+`SHAOBO_DISABLE_WDRA_FLAGS=1` removes every `s_set_vgpr_size` and isolates the
+f32 opcode failure. Evidence is under `/zys/sb/u47_pds_f32_probe_nowedra`
+(build: `/zys/sb/u47_pds_f32_probe_build_nowedra`). This strengthens the
+PMD/compiler-encoding attribution and does not change the canonical fallback.
+
 ### PMD-002: WDRA VGPR Init/Free Tracking Or Hidden Role-Exit ABI
 
 Status: `SUSPECTED`.

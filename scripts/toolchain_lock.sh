@@ -67,3 +67,26 @@ shaobo_verify_latest_pmd() {
     return 1
   fi
 }
+
+shaobo_verify_latest_pmd_root() {
+  local root="${1:-${SHAOBO_PMD_ROOT:-}}"
+  local core_gem5 core_lib soc_gem5
+
+  [[ "${SHAOBO_REQUIRE_LATEST_PMD}" == "1" ]] || return 0
+  if [[ -z "${root}" ]]; then
+    echo "latest PMD lock requires SHAOBO_PMD_ROOT" >&2
+    return 1
+  fi
+
+  core_gem5="${root}/core/gem5.opt"
+  [[ -x "${core_gem5}" ]] || core_gem5="${root}/core/build/GCN3_X86/gem5.opt"
+  core_lib="${root}/lib/libgem5.so"
+  [[ -f "${core_lib}" ]] || core_lib="${root}/core/libgem5_opt.so"
+  soc_gem5="${root}/soc/gem5.opt"
+
+  if [[ ! -x "${core_gem5}" || ! -f "${core_lib}" || ! -x "${soc_gem5}" ]]; then
+    echo "latest PMD lock cannot resolve core/lib/soc under ${root}" >&2
+    return 1
+  fi
+  shaobo_verify_latest_pmd "${core_gem5}" "${core_lib}" "${soc_gem5}"
+}

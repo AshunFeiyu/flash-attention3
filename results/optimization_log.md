@@ -15793,3 +15793,18 @@ Status: `REJECT_REQUEST_AGE_REGRESSION_SOURCE_RESTORED`.
   and delete the experiment branch. Raw evidence is under
   `/zys/sb/u47_dq_page_entry_ab`; workbook sheet
   `204_DQ_PageEntryPrime` is closed as REJECT.
+
+## 2026-07-21 Latest Toolchain Hard Lock And F32 Writer Recheck
+
+- `build.sh` now fails before compilation when the audited latest compiler
+  cannot be resolved, verifies clang SHA256, and writes
+  `toolchain_fingerprint.txt` beside every binary. `scripts/env.sh` verifies
+  PMD core/lib/SOC hashes before any run.
+- Remote preflight and fresh dKV/dQ builds pass with LLVM `47a7d59a`, clang
+  SHA256 `fddad9d6...`, PMD HEAD1694 hashes `4748d40d/29fa2020/d0c03538`,
+  `GPU_CHIP=sb`, and SQ instruction prefetch 7. Both static gates remain
+  private/spill/scratch0.
+- The isolated f32 matrix-writer probe was rebuilt without WDRA/local-wave so
+  no `s_set_vgpr_size` can mask the result. PMD still aborts at the first
+  `ds_write_matrix_format ... element:3` opcode (`0xd38b5008`). Classify this
+  as `DEFER_PMD_COMPILER_ENCODING`; do not integrate f32 writer into dKV/dQ.

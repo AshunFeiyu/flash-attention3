@@ -36,6 +36,7 @@ else
 fi
 export LD_LIBRARY_PATH="${SOC_PATH}/libs:${SHAOBO_PMD_ROOT}/lib:${PMD_PATH}:${LD_LIBRARY_PATH:-}"
 export RPY_LIB_PATH="${ROCM_PATH}/lib:${SHAOBO_PMD_ROOT}/lib:${PMD_PATH}:${SOC_PATH}:${SOC_PATH}/libs"
+shaobo_verify_latest_pmd_root "${SHAOBO_PMD_ROOT}"
 export XCU_SIDECAR_ROOT="${XCU_SIDECAR_ROOT:-${SHAOBO_RUN_ROOT}/tools/xcompute-light}"
 export XCU_DEB="${XCU_DEB:-}"
 

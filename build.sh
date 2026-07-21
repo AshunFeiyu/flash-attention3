@@ -12,6 +12,11 @@ ASM="${ASM:-${BUILD_DIR}/fa3_bwd_wasp_clean.asm}"
 ROCM_PATH="${ROCM_PATH:-/opt/rocm-6.3.3}"
 DEFAULT_OVERLAY_BIN="/home/zhangyushun/toolchains/zwj_liuchang_llvm_7940/bin"
 
+if [[ "${SHAOBO_REQUIRE_LATEST_COMPILER}" == "1" && -z "${SHAOBO_COMPILER_ROOT:-}" ]]; then
+  echo "latest compiler lock cannot resolve ${SHAOBO_LATEST_COMPILER_ROOT}" >&2
+  exit 1
+fi
+
 if [[ -n "${SHAOBO_COMPILER_ROOT:-}" ]]; then
   compiler_rocm="${SHAOBO_COMPILER_ROOT}"
   if [[ ! -x "${compiler_rocm}/llvm/bin/clang++" ]]; then
@@ -99,6 +104,16 @@ if [[ -n "${HIP_CLANG_PATH:-}" ]]; then
   echo "HIP_CLANG_PATH ${HIP_CLANG_PATH}"
 fi
 shaobo_verify_latest_compiler "${CLANGXX}"
+{
+  printf 'compiler_root=%s\n' "${SHAOBO_COMPILER_ROOT:-}"
+  printf 'compiler=%s\n' "${CLANGXX}"
+  printf 'compiler_llvm_commit=%s\n' "${SHAOBO_LATEST_COMPILER_LLVM_COMMIT}"
+  printf 'compiler_sha256=%s\n' "$(shaobo_sha256 "${CLANGXX}")"
+  printf 'pmd_root=%s\n' "${SHAOBO_PMD_ROOT:-}"
+  printf 'target_gfx=%s\n' "${TARGET_GFX}"
+  printf 'wdra_init=%s\n' "${SHAOBO_EXPLICIT_WDRA_INIT}"
+  printf 'wdra_trap_handler=%s\n' "${SHAOBO_WDRA_TRAP_HANDLER_MODE}"
+} >"${BUILD_DIR}/toolchain_fingerprint.txt"
 echo "building ${BIN}"
 "${HIPCC}" "${COMMON_FLAGS[@]}" "${EXTRA_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" "${SRC}" -o "${BIN}"
 

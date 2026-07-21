@@ -4662,3 +4662,31 @@ Skill Candidate:
 - The experiment is preserved by commits `14c53bf` and `9f3cf0b`; canonical
   source is restored to the `f57714f`-equivalent dKV path. Do not retry this
   one-page ownership mechanism without a structural readiness change.
+
+## 2026-07-21 Latest Compiler Is The Only Optimization Baseline
+
+- All dKV/dQ builds and probes must use LLVM `47a7d59a` through
+  `scripts/toolchain_lock.sh`; no old per-kernel compiler exception remains.
+- `build.sh` records the compiler/PMD/WDRA fingerprint beside each artifact,
+  and `scripts/env.sh` rejects an unrecognized PMD before simulation.
+- Latest-toolchain f32 matrix-writer revalidation still fails in PMD at opcode
+  `0xd38b5008` even when the unrelated WDRA path is disabled. Keep this route
+  isolated until compiler/PMD owners align the encoding.
+
+### Skill Candidate: Fail-Closed Toolchain Identity
+
+- Trigger / 适用场景: silicon-pre kernel A/B where compiler or PMD codegen can
+  change independently.
+- Rule / 可复用规则: hash-gate compiler and model before build/run and persist
+  their fingerprints with every binary; never repair environment identity in
+  the ledger after profiling.
+- Evidence / 证据: LLVM47a7 clang `fddad9d6...`, PMD HEAD1694
+  `4748d40d/29fa2020/d0c03538`, remote preflight PASS and fresh canonical
+  dKV/dQ static gates on `2026-07-21`.
+- Boundary / 适用边界: hashes identify artifacts, not semantic correctness;
+  correctness and same-shape performance gates remain mandatory.
+- Counterexample / 反例或不适用情况: isolated historical compiler A/B may
+  deliberately unlock the gate, but its results cannot enter canonical
+  comparisons.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo` toolchain/perf-model reference during consolidation.

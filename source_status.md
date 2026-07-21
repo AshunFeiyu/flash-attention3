@@ -10064,3 +10064,17 @@ Status: `REJECT_STATISTICALLY_FLAT_RESOURCE_WAIT_DEBT_SOURCE_RESTORED`.
 - The missing parallel A/B sample was an infrastructure race: all PMD shells
   rewrote one shared `/tmp/codex_runpy_stub/setproctitle.py`. `scripts/env.sh`
   now uses a process-local shim directory.
+
+## 2026-07-21 Unified Latest-Toolchain Enforcement
+
+- Canonical dKV, canonical dQ, and every focused probe now default to LLVM
+  `47a7d59a` only. The accepted clang SHA256 is `fddad9d6...`; PMD must match
+  HEAD1694 core/lib/SOC hashes `4748d40d/29fa2020/d0c03538`.
+- Builds fail closed on compiler mismatch and persist
+  `toolchain_fingerprint.txt`. Runs fail closed on PMD mismatch. The previous
+  dKV old-compiler exception is historical evidence only and is superseded by
+  the user's unified latest-compiler policy.
+- Fresh locked dKV and dQ builds pass their static gates with role usage
+  `8/152/14/152` and `8/162/9/194`; both remain private/spill/scratch0.
+- Latest f32 writer recheck remains blocked by PMD opcode `0xd38b5008` after
+  WDRA is removed from the uniform probe. Canonical kernels are unchanged.
