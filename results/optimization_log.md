@@ -15767,3 +15767,29 @@ Status: `ACCEPT_ENVIRONMENT_AND_EVIDENCE_LOCK`.
   `pipeline/simd/coissue` windows before changing ABarrier counts.
 - Workbook sheet `203_Latest47a7_SQTT` holds the complete contract and
   promotion order. No source kernel change is promoted by this refresh.
+
+## 2026-07-21 dQ C1 Page-Entry Normal Prime Rejected
+
+Status: `REJECT_REQUEST_AGE_REGRESSION_SOURCE_RESTORED`.
+
+- Hypothesis: on only the first N32 of each K/V page, issue C1 normal-K read8
+  before trans16 so useful dQ work creates one page-level role offset. C0 and
+  the remaining three N32 chunks keep their accepted cadence.
+- LLVM47a7 emits the same 84 control branches, 400 matrix reads, 768 MMAC and
+  84 waits as control. Role use is unchanged at `8/162/9/194`; H1/S128 and
+  six H1/S1024 runs pass correctness with exact MMOP50,688,
+  private/spill/scratch0 and bank0.
+- Control kernel ticks are `20,734,805 / 21,741,720 / 20,844,005`; candidate
+  ticks are `22,262,695 / 22,348,690 / 22,465,625`. Medians regress
+  `20,844,005 -> 22,348,690` (`+7.2188%`).
+- Median MMAC active falls `38.0416% -> 37.2324%`; successful coissue falls
+  `16,017 -> 11,979` (`-25.2107%`). Exact work and bank0 rule out work
+  inflation or LDS conflict as the cause.
+- Mechanism: request order becomes normal8+trans16. To make the first half of
+  trans operands ready, `wait8` must retire the eight older normal requests
+  plus the first eight trans requests; `wait0` then drains the remainder.
+  The added request age exposes first-use latency and collapses peer coissue.
+- Decision: reject before S2048/fullperf, restore canonical source and gate,
+  and delete the experiment branch. Raw evidence is under
+  `/zys/sb/u47_dq_page_entry_ab`; workbook sheet
+  `204_DQ_PageEntryPrime` is closed as REJECT.

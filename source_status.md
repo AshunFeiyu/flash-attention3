@@ -43,6 +43,31 @@ Status: `ACCEPT_UNIFIED_TOOLCHAIN_BASELINE_KEEP_2P2C`.
 - Workbook sheet `203_Latest47a7_SQTT` records the fingerprints, accepted and
   rejected artifacts, representative SIMD coissue, and promotion gates.
 
+## 2026-07-21 dQ Page-Entry Normal-Read Prime Rejected
+
+Status: `REJECT_REQUEST_AGE_REGRESSION_SOURCE_RESTORED`.
+
+- Hypothesis: preserve the accepted C0 cadence and prime only C1 `n_tile0` of
+  each K/V page with its existing normal-K read8 before trans16. The useful
+  dQ reads were intended to reset the C0/C1 phase offset once per page without
+  adding MMAC, requests, LDS, ABarrier, output work, or a runtime delay.
+- LLVM47a7 constant-folded the unrolled `n_tile` test. Candidate and control
+  ASM both contain 84 control branches, 400 matrix reads, 768 MMAC and 84
+  waits. Role use remains `8/162/9/194` inside `40/216/216/40`, with
+  private/spill/scratch0. H1/S128 and all six H1/S1024 runs pass correctness,
+  exact MMOP50,688 and bank0.
+- Three-run H1/S1024 medians regress `20,844,005 -> 22,348,690` kernel ticks
+  (`+7.2188%`). MMAC active falls `38.0416% -> 37.2324%`, and successful
+  coissue falls `16,017 -> 11,979` (`-25.2107%`).
+- Request-age proof explains the loss: after normal8+trans16, C1 must retire
+  all eight normal requests before the first trans operands can become the
+  oldest ready score/dP sources. `wait8/0` therefore lengthens trans first-use
+  instead of creating a useful phase offset.
+- Reject before S2048/fullperf. Candidate source and candidate gate were
+  removed locally and remotely; canonical source remains unchanged. Raw runs
+  are under `/zys/sb/u47_dq_page_entry_ab`; workbook sheet
+  `204_DQ_PageEntryPrime` records design and result.
+
 ## 2026-07-21 dQ Dual-Hidden K-Normal Rejected
 
 Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`; source remains accepted

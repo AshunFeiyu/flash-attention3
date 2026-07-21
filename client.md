@@ -41,6 +41,44 @@
   evidence ledger.  Any future dKV/dQ candidate must use its exact compiler,
   PMD, `GPU_CHIP=sb`, and `SQCIPfLines=7` contract.
 
+## 2026-07-21 dQ Page-Entry Request-Age Negative Control
+
+- The C1 page-entry candidate issued its existing normal-K read8 before
+  trans16 only for `n_tile0`. LLVM47a7 folded the unrolled condition and kept
+  static branch/read/MMAC/wait counts and VGPR resources identical to control.
+- Correctness, exact work, bank and resource gates all pass, but three-run
+  H1/S1024 medians regress `20,844,005 -> 22,348,690` ticks (`+7.2188%`).
+  MMAC active falls `38.0416% -> 37.2324%`; successful coissue falls 25.21%.
+- The ordering is wrong for first-use age: normal8 becomes older than trans16,
+  so C1 must retire non-score requests before its first score/dP operands.
+  Preserve the accepted `trans16 -> normal8 -> wait15/8` C1 cadence. Do not
+  use independent work ahead of an operand family unless the wait threshold
+  proves the first consumer operand remains among the retired requests.
+- The source is restored and no fullperf was captured. Evidence is workbook
+  sheet `204_DQ_PageEntryPrime` and remote root
+  `/zys/sb/u47_dq_page_entry_ab`.
+
+Skill Candidate:
+
+- Trigger / 适用场景: moving independent LDS/matrix requests earlier to hide
+  latency around `s_waitcnt lgkmcnt(N)`.
+- Rule / 可复用规则: write the ordered request queue and first-use retirement
+  inequality before editing code. Earlier issue is useful only when the first
+  consumed operand still retires at the intended threshold; otherwise the
+  independent request ages ahead of it and lengthens the critical wait.
+- Evidence / 证据: LLVM47a7 + PMD HEAD1694 dQ page-entry A/B; exact static
+  counts, three-run ticks `+7.2188%`, MMAC active `-0.8092pp`, coissue success
+  `-25.2107%`; workbook sheet `204_DQ_PageEntryPrime`.
+- Boundary / 适用边界: applies to ordered LDS/VMEM request queues whose
+  readiness is controlled by count-based waits. It does not replace ABarrier
+  ownership proof or correctness validation.
+- Counterexample / 反例或不适用情况: an earlier request is beneficial when it
+  is itself first-use, or when enough independent compute retires it without
+  delaying the later critical operand family.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-instruction-readiness.md` in the next controlled
+  skill consolidation; do not edit the public skill in this task.
+
 Skill Candidate:
 
 - Trigger / 适用场景: a kernel experiment changes or refreshes compiler,
