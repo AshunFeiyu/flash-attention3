@@ -15957,3 +15957,27 @@ Status: `REJECT_EXTRA_STARTUP_TOKEN_DEBT_SOURCE_RESTORED`.
   startup ABarrier handshake. Reject before S2048/fullperf and restore the
   canonical six-token lifecycle. The next ownership change must reuse an
   existing token or remove an epoch, not split one into two.
+
+## 2026-07-22 dQ Accumulator Dependency-Distance Sweep Rejected
+
+Status: `REJECT_TICKS_REGRESSION_SOURCE_RESTORED`.
+
+- Candidate changes only `dq_update_from_ds_pair`: each accumulator still
+  receives `ds0*K0` before `ds1*K1`, but all independent `ds0` updates are
+  issued before the matching `ds1` sweep. The same-accumulator recurrence
+  distance grows from one to three intervening MMACs without adding work.
+- Locked LLVM47a7 preserves the intended operand order. Candidate/control
+  both have MMAC768, matrix-read400, identical island histograms and
+  ABarrier48. Static resources stay SGPR60/VGPR128, role usage
+  `8/162/9/194`, private/spill/scratch0.
+- H1/S128, H1/S384 and all six H1/S1024 A/B runs pass correctness. Dynamic
+  MMOP50,688, VALU44,864, SCA42,124, LDS26,352, VMEM1,408, FLAT560 and
+  `ldsBankConflict=0` are exact.
+- Three-run S1024 median ticks regress `20,781,670 -> 20,858,565`
+  (`+0.3700%`). MMAC active rises `37.8893% -> 38.0466%` (`+0.1573pp`),
+  while LGKM and barrier shares fall `0.0434pp/0.3449pp`; however VM wait
+  rises `0.1048pp` and successful coissue falls `0.3860%`.
+- This is a clean example of active share moving opposite to the final metric.
+  The recurrence was not the dominant CTA critical edge; source-fragment
+  readiness and peer issue timing repay the local gain. Reject before
+  S2048/fullperf and restore canonical issue order.

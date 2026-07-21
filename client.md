@@ -4829,3 +4829,28 @@ Skill Candidate:
   removes a larger synchronization epoch instead of splitting it.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo` LDS-alias/ABarrier reference during consolidation.
+
+### Skill Candidate: Do Not Promote MMAC Dependency Reordering On Active Share Alone
+
+- Trigger / 适用场景: independent output accumulators permit legal MMAC
+  reordering that increases the instruction distance between two updates to
+  the same accumulator without changing mathematical work.
+- Rule / 可复用规则: preserve each accumulator's arithmetic order, then require
+  repeated same-build ticks, operand-readiness counters and peer coissue to
+  improve. A higher MMAC active share alone is not promotion evidence because
+  source-fragment consumption order can move wait debt elsewhere.
+- Evidence / 证据: dQ commit `2511598`, workbook 212, locked LLVM47a7/PMD
+  HEAD1694. Static and dynamic work, resources, correctness and bank0 remain
+  exact. S1024 active rises `0.1573pp`, LGKM/barrier shares fall, but median
+  ticks regress `0.3700%`, VM wait rises `0.1048pp`, and successful coissue
+  falls `0.3860%`.
+- Boundary / 适用边界: applies to schedule-only accumulator permutations with
+  unchanged reads, tokens and live objects. A different compiler or a kernel
+  genuinely limited by MMAC recurrence must be remeasured.
+- Counterexample / 反例或不适用情况: the original sequence has a measured
+  same-accumulator scoreboard stall on the critical wave and the reordered
+  sequence lowers both that bubble and end-to-end ticks without increasing
+  operand readiness or register pressure.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` instruction-scheduling evidence section during a
+  serialized consolidation pass.

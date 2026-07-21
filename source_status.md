@@ -10187,3 +10187,20 @@ Status: `REJECT / CANONICAL RESTORED`.
 - The extra handoff costs more than the page0 startup overlap. Keep the
   canonical QDo latch and seek a design that removes or reuses ownership
   epochs rather than adding another ABarrier.
+
+## 2026-07-22 dQ Accumulator-Distance Experiment Closed
+
+Status: `REJECT / CANONICAL RESTORED`.
+
+- Experiment commit `2511598` changes only dQ MMAC ordering inside
+  `dq_update_from_ds_pair`; formula, term order per output, tile, role graph,
+  LDS, ABarrier ownership, matrix reads and stores remain canonical.
+- Latest locked LLVM47a7/PMD HEAD1694 gates pass with role usage
+  `8/162/9/194`, SGPR60/VGPR128, private/spill/scratch0, S128/S384/repeated
+  S1024 correctness, exact dynamic instruction families and bank0.
+- S1024 median ticks regress `0.3700%` even though active rises `0.1573pp`.
+  VM wait rises `0.1048pp` and coissue success falls `0.3860%`; therefore the
+  source-order change does not shorten the kernel critical path.
+- Do not promote accumulator-order edits on MMAC active alone. Preserve the
+  canonical MMAC order and move the next experiment to startup work
+  distribution or output ownership only after a fresh ledger review.
