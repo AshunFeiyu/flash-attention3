@@ -15652,3 +15652,16 @@ Status: `REJECT_DEPENDENCY_FRAGMENTATION_SOURCE_RESTORED`.
 - Decision: reject before S2048/fullperf. Splitting score/dP fragments the
   independent accumulator structure and delays ownership completion; keep
   fused score/dP and obtain stagger only from existing independent work.
+
+## 2026-07-21 dQ C0 Half K-Normal Prefetch Rejected
+
+Status: `REJECT_ROLE_RELOCK_SOURCE_RESTORED`.
+
+- Hypothesis: hide only C0 D0/D1 normal-K readiness under P+dS while keeping
+  D2/D3 late, preserving half of the accepted role offset.
+- Gates pass with exact work and resources. Three-run S1024 medians regress
+  `20,845,825 -> 21,538,790` (`+3.324%`); active is flat
+  `37.9695% -> 37.9294%`, waitLgkm falls `0.2089pp`, but successful coissue
+  falls `23.666%` and barrier rises `0.2271pp`.
+- Decision: reject before S2048/fullperf. C0 late-read timing is a whole-island
+  phase anchor. Preserve it and target the next N32/page readiness boundary.

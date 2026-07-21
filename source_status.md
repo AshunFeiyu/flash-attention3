@@ -9935,3 +9935,27 @@ Status: `REJECT_DEPENDENCY_FRAGMENTATION_SOURCE_RESTORED`.
   materialization and delays ownership completion. The experiment is kept as
   commits `98c1b8d` plus revert `d65860c`; no failed helper remains in the
   canonical source and no S2048/fullperf run is admitted.
+
+## 2026-07-21 dQ C0 Half K-Normal Prefetch Rejected
+
+Status: `REJECT_ROLE_RELOCK_SOURCE_RESTORED`.
+
+- Candidate C0 schedule is fused score/dP -> normal-K D0/D1 read4 -> P+dS ->
+  normal-K D2/D3 read4 -> wait4/dQ D0-D1 -> wait0/dQ D2-D3. C1 remains the
+  accepted pre-score read8 schedule. Formula, MMOP, matrix requests, LDS,
+  ABarrier, ownership and output work are unchanged.
+- Static gates pass: SGPR60/VGPR128, role use `8/162/9/194`,
+  private/spill/scratch0, MMAC768, matrix-read400. S128 and six S1024 A/B runs
+  pass correctness with MMOP50,688, VALU44,864, SCA42,124, LDS26,352,
+  VMEM1,408, FLAT560 and bank0.
+- Three-run candidate ticks are
+  `21,538,790 / 21,486,010 / 21,954,205`; controls are
+  `20,845,825 / 20,925,905 / 20,759,830`. Medians regress
+  `20,845,825 -> 21,538,790` (`+3.324%`).
+- Active changes `37.9695% -> 37.9294%`, successful coissue
+  `16,247 -> 12,402` (`-23.666%`), waitLgkm improves only
+  `5.2211% -> 5.0122%`, and barrier rises `15.9031% -> 16.1303%`.
+- Reject before S2048/fullperf. Commits `aedd586` plus revert `eff58e1`
+  preserve the experiment; canonical source is restored. Moving half the C0
+  read island still relocks roles, so future work must cross N32/page
+  boundaries without changing the accepted intra-N32 cadence.

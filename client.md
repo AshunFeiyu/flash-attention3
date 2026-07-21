@@ -4516,3 +4516,17 @@ Skill Candidate:
   accepted C0-late/C1-pre-score cadence and fused score/dP island. Future
   staggering must move existing independent work without shortening MMAC
   dependency distance or moving the page-release boundary.
+
+## 2026-07-21 dQ C0 Half K-Normal Prefetch Boundary
+
+- Do not move even half of C0's normal-K read island before softmax/dS. The
+  exact `read4 -> VALU -> read4 -> wait4/0 -> dQ` request ledger passes all
+  correctness/resource/bank gates and keeps every dynamic instruction family
+  identical, but repeated S1024 ticks regress `3.324%`.
+- MMAC active is flat (`-0.0400pp`) and waitLgkm improves only `0.2089pp`,
+  while successful coissue falls `23.666%`. This proves the C0 late-read edge
+  is a role-phase anchor, not simply removable LDS latency.
+- Preserve the entire accepted C0-late/C1-pre-score intra-N32 cadence. The next
+  optimization boundary is inter-N32 or inter-page ownership relock: make
+  already-existing next-stage work runnable earlier without moving C0 reads,
+  splitting fused MMAC, or adding tokens/work.
