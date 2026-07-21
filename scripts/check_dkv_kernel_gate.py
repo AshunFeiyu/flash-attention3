@@ -108,7 +108,7 @@ def main() -> int:
             failures, "missing_sidecar_tail_publisher")
     require(perf_source,
             r"wait_raw_ready<Wdra::kRawTailFilled>[\s\S]{0,500}"
-            r"read_score_dp_owner16_dblock_pair<Tile,\s*kHeadMBlocks,\s*0>",
+            r"kHeadMBlocks,\s*kTotalMBlocks",
             failures, "missing_tail_readiness_before_tail_consume")
     require(perf_source, r"ds_read_matrix_32x16_trans_dual_base_imm2",
             failures, "missing_dual_base_trans_matrix_read")
@@ -136,8 +136,7 @@ def main() -> int:
             r"[\s\S]{0,500}wait_lgkm\(4\)",
             failures, "missing_next_m16_score_prefetch")
     require(perf_source,
-            r"\(!PrefetchNext\s*&&\s*!PrefetchNextSidecar\)\s*\|\|"
-            r"\s*\(!ReleaseHead\s*&&\s*!ReleaseTail\)",
+            r"!PrefetchNext\s*\|\|\s*\(!ReleaseHead\s*&&\s*!ReleaseTail\)",
             failures, "missing_prefetch_ownership_boundary_gate")
     require(perf_source, r"arrive_raw_used<Wdra::kRawHeadUsed>\(\)",
             failures, "missing_head_lifetime_release")
