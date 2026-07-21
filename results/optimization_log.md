@@ -15512,3 +15512,28 @@ Status: `REJECT_S2048_TICKS_SOURCE_RESTORED`.
   completion.
 - Reject before fullperf/xcu archive and restore the canonical dQ priority2
   wrapper. Workbook sheet `193_RoleLocalPriority` holds the complete result.
+
+## 2026-07-21 dKV Score/dP Partial Accumulators Rejected
+
+Status: `REJECT_EXTRA_VALU_TICKS_ACTIVE_SOURCE_RESTORED`.
+
+- Role-local SQTT identified `MMAC -> MMAC` dependency bubbles of
+  `22,239/35,022 cycles` in the two heavy consumers. The candidate kept the
+  exact four GEMMs but split score and dP into even/odd accumulator chains,
+  then combined each pair after D3.
+- Static and numerical gates pass: SGPR52/VGPR96, branch use
+  `8/156/14/156` inside `32/160/160/32`, private/spill/scratch0, exact
+  MMOP73,728 and matrix-read45,200, H1/S128 and two clean H1/S1024
+  correctness runs PASS, and bank0.
+- The extra reductions are not free. Dynamic VALU rises
+  `60,752 -> 70,160` (`+9,408`, `+15.49%`); static ASM adds 128
+  `v_pk_add_f32`, six `v_mov_b32_e32`, and four `s_nop` while MMAC/read/wait
+  island counts remain unchanged.
+- Three S1024 controls average `31,622,348 ticks / 38.394122% active`; two
+  clean candidates average `32,282,250 / 36.755085%`. Ticks regress
+  `2.087%` and active falls `1.6390pp`; coissue attempt rate changes only
+  `57.7786% -> 57.8847%`.
+- Reject before S2048/fullperf and restore canonical source. The dependency
+  bottleneck remains real, but the next solution must reorder existing MMAC
+  work without adding reduction arithmetic. Workbook sheet
+  `195_DKV_PartialAcc` retains the design and result boundary.

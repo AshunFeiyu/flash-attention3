@@ -4441,3 +4441,12 @@ Skill Candidate:
   with `+12.75%` VM wait and `-7.49%` successful coissue, so it is not higher
   throughput. Revisit priority only together with a structural change that
   changes which peer work is genuinely ready.
+
+## 2026-07-21 dKV Partial-Accumulator Decision
+
+- Keep the canonical two-chain score/dP implementation. Splitting into four
+  chains increases dependency distance but requires final vector reductions;
+  S1024 ticks rise `2.087%` and MMAC active falls `1.6390pp`.
+- The source is restored and the failed code is not retained. Future MMAC
+  dependency work must use complementary ordering of the existing MMACs, not
+  extra accumulators or reduction instructions.

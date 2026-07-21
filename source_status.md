@@ -9831,3 +9831,16 @@ Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
 - Candidate source is removed before fullperf/xcu. Do not remove the dQ-local
   priority wrapper again unless a structural change first creates a different
   peer-ready schedule. Best dQ remains `38,870,195 ticks / 45.356456% active`.
+
+## 2026-07-21 dKV Partial-Accumulator Boundary
+
+- Canonical dKV remains commit/tag `f57714f` /
+  `best/dkv-2p2c-c1-sidecar-tail-20260721`, M128 physical 2P2C with exact
+  four-GEMM work and the accepted C1 sidecar-tail schedule.
+- Four score/dP partial chains pass correctness, resources and bank0, but add
+  9,408 dynamic VALU instructions. Repeated S1024 means regress ticks
+  `2.087%` and MMAC active `1.6390pp`.
+- Candidate source is removed before S2048/fullperf. Do not address the
+  measured MMAC dependency by adding accumulator reductions; the next
+  candidate must change only the order of existing work and preserve dynamic
+  MMOP/VALU/SCA/LDS/VMEM/FLAT.
