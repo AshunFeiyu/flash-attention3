@@ -56,6 +56,12 @@ def main() -> int:
             "missing_guarded_wdra_init")
     require(source, r"dq_consumer_full3gemm_role", failures,
             "missing_full3gemm_consumer")
+    require(source,
+            r"local_m16\s*=\s*wave_local\s*\*\s*2\s*\+\s*ConsumerGroup",
+            failures, "missing_interleaved_m16_ownership")
+    forbid(source,
+           r"local_m16\s*=\s*ConsumerGroup\s*\*\s*4\s*\+\s*wave_local",
+           failures, "contiguous_m16_ownership_must_not_remain")
     require(source, r"dq_load_sidecar_group", failures,
             "missing_producer_sidecar_lds_staging")
     require(source, r"dq_wait_qdo_filled", failures,
