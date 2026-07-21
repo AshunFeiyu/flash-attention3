@@ -4768,3 +4768,22 @@ Skill Candidate:
   genuinely differ even if both roles consume the same rows.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `dcu-kernel-optimization` pipeline-design reference during consolidation.
+
+### Skill Candidate: Scale-Check Stage Skew Before Promotion
+
+- Trigger / 适用场景: a compile-time consumer stage skew improves a short
+  diagnostic sequence while preserving exact MMOP and correctness.
+- Rule / 可复用规则: rerun the same-build candidate at a longer steady
+  sequence before promotion. Reject when the longer case loses ticks or
+  MMAC active and increases first-use wait, even if the short case wins.
+- Evidence / 证据: dKV commit `745d2f5`, workbook 209, LLVM47a7/PMD HEAD1694.
+  S1024 improves `1.403%` with `+0.5236pp` active, but S2048 regresses
+  `0.285%`, loses `0.1029pp` active and raises LGKM wait `3.233%`.
+- Boundary / 适用边界: the longer case must exercise the same algorithm,
+  tile, ownership graph and toolchain; a different occupancy regime needs a
+  separate interpretation.
+- Counterexample / 反例或不适用情况: the production workload is provably
+  bounded to the short sequence, or the longer case changes causal work and
+  is not a valid scaling control.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` evidence/promotion reference during consolidation.

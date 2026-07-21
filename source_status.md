@@ -10137,3 +10137,20 @@ Status: `REJECT / CANONICAL RESTORED`.
   chunk retains the same stage DAG. The next admissible dKV experiment must
   batch or separate real stages while preserving the one-page ownership
   graph and exact four-GEMM work.
+
+## 2026-07-21 dKV C1 Score-First Stage Skew Closed
+
+Status: `REJECT / CANONICAL RESTORED`.
+
+- Experiment commit `745d2f5` implements workbook 209 with one additional
+  eight-VGPR score/dP result bank only in C1. It keeps producer work, LDS,
+  ABarrier tokens, output ownership and dynamic MMOP exact.
+- Latest locked LLVM47a7/PMD HEAD1694 gates pass: role usage
+  `8/152/14/160`, SGPR52/VGPR96, private/spill/scratch0, correctness through
+  S2048 and bank0.
+- Three-run S1024 median improves `1.403%`, but three-run S2048 median
+  regresses `0.285%`; S2048 active falls `0.1029pp` and LGKM wait rises
+  `3.233%`. The short-loop gain does not scale to steady state.
+- The candidate is rejected before fullperf. Future C1 skew must reduce
+  first-use LDS distance rather than retain another score result while the
+  same operand-read queue remains exposed.

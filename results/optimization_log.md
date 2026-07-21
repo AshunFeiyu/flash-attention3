@@ -15887,3 +15887,26 @@ Status: `REJECT_ROW_ORDER_NOT_STAGE_SKEW_SOURCE_RESTORED`.
   the same `score/dP -> softmax/dS -> dV/dK` stage shape. It therefore cannot
   create structural consumer phase skew. Reject before S2048/fullperf,
   restore canonical, and move the next experiment to real stage batching.
+
+## 2026-07-21 dKV C1 M16 Score-First Stage Skew Rejected
+
+Status: `REJECT_STEADY_WAIT_DEBT_SOURCE_RESTORED`.
+
+- Candidate batches only C1 `score/dP(M0,M1)` and `score/dP(M4,M5)`, reuses
+  one source bank, and then finishes the two canonical softmax/dS/dV/dK
+  stages. C0, producer work, seven ABarrier IDs, 67,072-byte LDS ownership,
+  output ownership and exact four-GEMM work are unchanged.
+- Locked LLVM47a7 emits role use `8/152/14/160`, SGPR52/VGPR96, with
+  private/spill/scratch0. H1/S128, H1/S384, three S1024 pairs and three S2048
+  pairs all pass with identical numerical errors, exact instruction-family
+  counts and `ldsBankConflict=0`.
+- S1024 initially looks useful: median kernel ticks improve
+  `31,944,640 -> 31,496,465` (`-1.403%`) and mean MMAC active rises
+  `37.9764% -> 38.5000%` (`+0.5236pp`). However, LGKM wait rises `2.565%`.
+- S2048 rejects the hypothesis: median ticks regress
+  `56,287,140 -> 56,447,755` (`+0.285%`), mean MMAC active falls
+  `45.5796% -> 45.4767%` (`-0.1029pp`), and LGKM wait rises `3.233%`.
+- The extra score bank changes stage composition but does not move matrix
+  operands far enough ahead of first use. It converts short-loop scheduling
+  luck into steady LDS wait debt. Do not spend fullperf on this candidate;
+  preserve commit `745d2f5` as evidence and restore canonical source.
