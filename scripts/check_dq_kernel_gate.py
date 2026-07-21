@@ -66,6 +66,23 @@ def main() -> int:
             "missing_sidecar_kv_page0_overlay")
     require(source, r"dq_update_from_ds_(?:vec|pair)", failures,
             "missing_vgpr_ds_to_dq_mmac")
+    require(source,
+            r"ins::F16x8 k_norm0\[KBlocks\][\s\S]{0,260}"
+            r"if constexpr \(ConsumerGroup == 1\)[\s\S]{0,220}"
+            r"dq_read_k_normal_pair<Tile>[\s\S]{0,520}"
+            r"wait_lgkm\(15\)[\s\S]{0,3000}"
+            r"wait_lgkm\(8\)",
+            failures, "missing_c1_prescore_knorm_request_ledger")
+    require(source,
+            r"if constexpr \(ConsumerGroup == 0\)[\s\S]{0,220}"
+            r"dq_read_k_normal_pair<Tile>[\s\S]{0,220}"
+            r"dq_update_from_ds_pair<Tile>",
+            failures, "missing_c0_canonical_late_knorm_path")
+    forbid(source,
+           r"ins::lower_priority\(\);[\s\S]{0,260}"
+           r"if constexpr \(ConsumerGroup == 1\)[\s\S]{0,220}"
+           r"dq_read_k_normal_pair<Tile>",
+           failures, "c1_knorm_must_not_follow_score_mmac")
     require(source, r"CANONICAL_DQ", failures,
             "missing_canonical_standalone_switch")
     require(contract, r"using\s+ActiveDqTile\s*=\s*DqTileD128MqNk<128,\s*128>",

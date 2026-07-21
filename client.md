@@ -4463,3 +4463,23 @@ Skill Candidate:
   reads followed by independent MMAC/VALU; role staggering must come from
   different useful prefetch distances while preserving complete instruction
   islands and exact work.
+
+## 2026-07-21 dQ C1 Pre-Score Read Promotion
+
+- Promote the C1-only pre-score K-normal schedule. It preserves exact
+  Mq128/Nk128/D128 physical2P2C work and moves only the existing C1 read8
+  island. S2048 fullperf improves `38,870,195 -> 37,599,835` ticks and
+  `45.356456% -> 45.840219%` MMAC active; correctness, no-spill/scratch and
+  bank0 gates pass.
+- The user-observed source difference is real: C0 exposed
+  `read -> wait -> dQ`, while C1 hid read latency under softmax/dS. The
+  accepted schedule extends C1's read-to-use distance further by placing the
+  read before score/dP.
+- SQTT corrects the causal story. C1 dQ MMAC does not directly fill C0's read
+  holes. C1 reads and VALU are instead covered more often by C0 MMAC, reducing
+  simultaneous LDS-read contention and shrinking C0's median late-read edge
+  from `158` to `86 cycles`.
+- Keep C1 pre-score reads canonical. Remaining work is C1 softmax/`v_exp`
+  coverage and macro readiness/ABarrier relock. Do not retry late reads, extra
+  tokens, empty stagger, split-softmax expansion, or read insertion inside a
+  MMAC island.

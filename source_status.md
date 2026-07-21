@@ -1,5 +1,35 @@
 # Source Status
 
+## 2026-07-21 dQ C1 Pre-Score K-Normal Promotion
+
+Status: `ACCEPT_CANONICAL_SCHEDULE`; dKV is unchanged.
+
+- Preserve exact `Mq128/Nk128/D128`, 16-wave physical 2P2C work and move only
+  C1's existing eight K-normal reads before score/dP. C0 retains its canonical
+  late-read cadence. No GEMM, matrix/global request, ABarrier generation, LDS
+  byte, output owner or external API is added.
+- LLVM47a7/no-pad emits the proved request ledger `read24 -> wait15 -> score
+  half0 -> wait8 -> score half1 -> softmax/dS -> wait4/0 -> dQ`. Static gates
+  pass at SGPR60/VGPR128, role use `8/162/9/194` inside `40/216/216/40`, and
+  private/spill/scratch0. S128, repeated S1024 and S2048 correctness pass with
+  exact MMOP and `ldsBankConflict=0`.
+- S1024 three-run medians improve `22,166,690 -> 20,841,730` ticks
+  (`-5.98%`) and active `37.7548% -> 37.9400%`. S2048 fullperf improves
+  `38,870,195 -> 37,599,835` ticks (`-3.27%`) and active
+  `45.356456% -> 45.840219%`; successful coissue rises `51,175 -> 64,398`.
+- SQTT corrects the original explanation. C1 dQ MMAC does not directly cover
+  C0's late-read holes. Instead, C1 normal reads under peer C0 MMAC rise
+  `0/512 -> 174/512`, C1 VALU under peer MMAC rises `256/2410 -> 642/2410`,
+  and C0's own read-to-wait median falls `158 -> 86 cycles` because the two
+  roles contend less often for the same matrix-read/readiness phase.
+- Residual: both consumers still macro-relock at readiness/ABarrier boundaries;
+  ABarrier-to-XOR remains 27.54% of aggregate issue-gap cycles and C1 `v_exp`
+  has only `18/512` peer-MMAC coverage. The next design must preserve this
+  early-read schedule while targeting C1 softmax coverage and ownership relock.
+- Evidence: workbook sheet `197_DQ_C1_PreScoreKNorm`; fullperf archive
+  `/共享/shaobo/perf/20260721_103717_dq_c1_prescore_knorm_h1s2048_sqc7_fullperf`;
+  perf SHA256 `57a261eafdd9b02e458469ddc8cd59512a321e1fe2b6a5205589b541723f9502`.
+
 ## 2026-07-20 dKV Canonical Performance Baseline
 
 Status: `ACCEPT_CANONICAL_BASELINE`; kernel source remains unchanged.

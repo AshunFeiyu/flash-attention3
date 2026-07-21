@@ -130,7 +130,7 @@ to manufacture consumer skew.
 Therefore the next candidate may not simply make both roles identical, split
 an existing MMAC/VALU island, add a token, or move one read late.
 
-## Next Structural Hypothesis
+## C1 Pre-Score K-Normal Result
 
 A C0 rolling cross-`n_tile` K-normal ping/pong was audited and rejected before
 implementation. Although an ideal `lgkmcnt(8)` ledger can leave eight next-read
@@ -138,8 +138,8 @@ requests outstanding, the fragment lives across the next score/dP and
 softmax, adds about 32 VGPR peak, does not shorten PageUsed ownership, and is
 substantially equivalent to prior cross-`n_tile` prefetch failures.
 
-The remaining focused hypothesis is instead a C1-only whole-island pre-score
-read:
+The focused candidate moved C1's existing K-normal read8 as one whole island
+before score/dP:
 
 ```text
 C0 unchanged:
@@ -152,17 +152,34 @@ C1 candidate:
   score/dP D2/D3 MMAC -> softmax/dS -> wait -> dQ MMAC
 ```
 
-This does not try to remove C0's local hole. It attempts to advance C1's dQ
-MMAC so that it covers that hole at the SIMD level. Unlike the rejected C1
-dead-slot experiment, no read may split a score/dP MMAC island. Unlike the old
-all-consumer pre-score experiment, only C1 moves, preserving role asymmetry.
+ASM preserves `trans read16 + normal read8 -> wait15 -> score/dP half0 ->
+wait8 -> half1 -> softmax/dS -> wait4/0 -> dQ`. Exact dynamic families,
+ownership, ABarrier generations and output stay unchanged. The C1 branch uses
+194 of its configured 216 VGPR window; metadata remains private/spill/scratch0.
 
-Expected C1 branch use is about `187` versus the configured `216` window. The
-candidate is legal only if ASM preserves the `read24 -> MMAC half -> MMAC half`
-structure, exact dynamic work/read counts, no spill/scratch, correctness and
-bank0. Promotion additionally requires a material rise from the current 8%
-C1-MMAC coverage of C0 read holes, together with lower same-shape ticks and
-higher MMAC active.
+H1/S2048 fullperf promotes the schedule:
+
+| Metric | Control | Candidate | Delta |
+|---|---:|---:|---:|
+| kernel ticks | 38,870,195 | 37,599,835 | -3.27% |
+| MMAC active | 45.356456% | 45.840219% | +0.483763pp |
+| successful coissue | 51,175 | 64,398 | +25.84% |
+| waitLgkm | 33,636.5 | 30,504.5 | -9.31% |
+| ABarrier | 101,251.5 | 94,831.75 | -6.34% |
+| no-V-or-M | 271,217 | 259,913 | -4.17% |
+
+The original mechanism was partly wrong. C1 dQ MMAC does not directly fill
+C0's late-read holes: C0 intervals containing peer C1 MMAC fall from 32/62 to
+1/62. Instead, the earlier C1 island puts C1 K-normal reads under C0 MMAC
+(`0/512 -> 174/512`) and puts more C1 VALU under peer MMAC
+(`256/2410 -> 642/2410`). This reduces simultaneous matrix-read contention;
+C0's own read-to-wait median falls from 158 to 86 cycles.
+
+The result is therefore a useful local coissue win, not a fully alternating
+conveyor. At 1024-cycle bins both consumers still contain MMAC in 69 windows
+and only one consumer in 3. Common readiness and ABarrier boundaries continue
+to relock the roles. C1 `v_exp` is still almost uncovered by peer MMAC
+(`18/512`), while C0 reaches `472/496`.
 
 ## Final Diagnosis
 
@@ -175,5 +192,7 @@ parts:
 3. common read/wait/ownership boundaries repeatedly pull both consumers back
    into the same macro phase.
 
-The next optimization must remove the exposed C0 readiness hole without
-destroying the accepted inter-consumer phase relationship.
+The accepted pre-score C1 read schedule must remain canonical. The next
+optimization should target C1 softmax/`v_exp` coverage and macro ABarrier
+relock without moving reads later, adding ownership tokens, splitting MMAC or
+softmax with extra work, or inserting empty delay.

@@ -457,12 +457,25 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
                 v_frag0[d_block].f16x8, v_frag1[d_block].f16x8);
         }
 
+        ins::F16x8 k_norm0[KBlocks];
+        ins::F16x8 k_norm1[KBlocks];
+        if constexpr (ConsumerGroup == 1) {
+            dq_read_k_normal_pair<Tile>(
+                lds, page, n_tile, k_norm0, k_norm1);
+        }
+
         ins::F32x4 qk_acc0;
         ins::F32x4 qk_acc1;
         ins::F32x4 dp_acc0;
         ins::F32x4 dp_acc1;
         ins::raise_priority_2();
-        ins::wait_lgkm(8);
+        if constexpr (ConsumerGroup == 1) {
+            // lgkmcnt is four bits. Retiring one extra request still leaves the
+            // second half of the trans operands and all normal-K reads live.
+            ins::wait_lgkm(15);
+        } else {
+            ins::wait_lgkm(8);
+        }
         qk_acc0.f32 = ins::mmac_f16_lit(
             q_reg[0].f16x4[0], k_frag0[0].f16x4[0], mmac_zero.f32);
         qk_acc1.f32 = ins::mmac_f16_lit(
@@ -504,7 +517,11 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
                     v_frag1[d_block].f16x4[k_half], dp_acc1.f32);
             }
         }
-        ins::wait_lgkm(0);
+        if constexpr (ConsumerGroup == 1) {
+            ins::wait_lgkm(8);
+        } else {
+            ins::wait_lgkm(0);
+        }
 #pragma unroll
         for (int d_block = KBlocks / 2; d_block < KBlocks; ++d_block) {
 #pragma unroll
@@ -524,13 +541,6 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
             }
         }
         ins::lower_priority();
-
-        ins::F16x8 k_norm0[KBlocks];
-        ins::F16x8 k_norm1[KBlocks];
-        if constexpr (ConsumerGroup == 1) {
-            dq_read_k_normal_pair<Tile>(
-                lds, page, n_tile, k_norm0, k_norm1);
-        }
 
         ins::Vec4F16 ds_vec0;
         ins::Vec4F16 ds_vec1;

@@ -15566,3 +15566,40 @@ Status: `REJECT_EXPOSED_LDS_DEPENDENCY_SOURCE_RESTORED`.
   skew must use different useful prefetch distances, not a deliberately late
   read that exposes first-use LDS latency. Workbook sheet
   `196_DKV_C1_PostSfmRead` holds the design and result.
+
+## 2026-07-21 dQ C1 Pre-Score K-Normal Accepted
+
+Status: `ACCEPT_CANONICAL_SCHEDULE`.
+
+- User-observed asymmetry was confirmed in source and role-local SQTT: C0 uses
+  `MMAC -> VALU -> read8 -> wait -> dQ`, while C1 used
+  `MMAC -> read8 -> VALU -> wait -> dQ`. C0 therefore exposed a median
+  158-cycle read-to-wait edge; C1 hid the same dependency under about36
+  softmax/dS VALU instructions.
+- The candidate moves only C1's existing K-normal read8 before score/dP. It
+  keeps Mq128/Nk128/D128 physical2P2C, exact three-GEMM work, ownership, LDS,
+  tokens and all dynamic instruction families. ASM proves
+  `trans16+normal8 -> wait15 -> score half0 -> wait8 -> score half1 ->
+  softmax/dS -> wait4/0 -> dQ`.
+- Static and numerical gates pass: SGPR60/VGPR128, role use
+  `8/162/9/194` within `40/216/216/40`, private/spill/scratch0, S128,
+  repeated S1024 and S2048 correctness PASS, exact MMOP and bank0.
+- Three S1024 medians improve `22,166,690 -> 20,841,730` ticks (`-5.98%`)
+  and active `37.7548% -> 37.9400%`. S2048 fullperf improves
+  `38,870,195 -> 37,599,835` ticks (`-3.27%`) and active
+  `45.356456% -> 45.840219%`; successful coissue rises
+  `51,175 -> 64,398`.
+- SQTT disproves the initial direct-cover story: C1 MMAC coverage inside C0
+  late-read intervals falls from 32/62 to1/62. The actual win is reciprocal
+  useful staging elsewhere: C1 normal reads under C0 MMAC rise
+  `0/512 -> 174/512`, C1 VALU under peer MMAC rises
+  `256/2410 -> 642/2410`, and C0 read-to-wait median falls `158 -> 86`
+  cycles as simultaneous matrix-read contention decreases.
+- Aggregate read-to-wait bubbles fall `287,852 -> 168,396` cycles (-41.5%),
+  wait-to-MMAC falls15.4%, MMAC dependency8.9%, ABarrier3.6%, and terminal
+  ebarrier7.7%. This is a measured local coissue improvement, not a complete
+  alternating conveyor: macro bins remain mostly both-MMAC and C1 `v_exp`
+  coverage is only18/512.
+- Promote this schedule. Next work must preserve C1 pre-score reads and target
+  C1 softmax coverage plus readiness/ABarrier relock without new tokens,
+  empty delay, duplicated work, or fragmented instruction islands.
