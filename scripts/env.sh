@@ -53,6 +53,8 @@ if [[ "${SHAOBO_REQUIRE_TOOLCHAIN_LOCK:-0}" == "1" ]]; then
 fi
 
 mkdir -p "${SHAOBO_RUN_ROOT}"
-mkdir -p /tmp/codex_runpy_stub
-printf 'def setproctitle(title):\n    return None\n' >/tmp/codex_runpy_stub/setproctitle.py
-export PYTHONPATH="/tmp/codex_runpy_stub:${PYTHONPATH:-}"
+export SHAOBO_RUNPY_STUB_ROOT="${SHAOBO_RUNPY_STUB_ROOT:-/tmp/shaobo_runpy_stub_${BASHPID:-$$}}"
+mkdir -p "${SHAOBO_RUNPY_STUB_ROOT}"
+printf 'def setproctitle(title):\n    return None\n\ndef getproctitle():\n    return "pmd"\n' \
+  >"${SHAOBO_RUNPY_STUB_ROOT}/setproctitle.py"
+export PYTHONPATH="${SHAOBO_RUNPY_STUB_ROOT}:${PYTHONPATH:-}"

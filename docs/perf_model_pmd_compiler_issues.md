@@ -396,3 +396,52 @@ Owner question / next action:
 
 An issue may be promoted to `CONFIRMED` only after the reproducer isolates the
 component or the relevant owner confirms the contract.
+
+## 2026-07-21 Rolling Perf-Model Compiler Snapshot
+
+Status: `VALIDATED_SIDE_BY_SIDE`, not a global compiler promotion.
+
+Source index:
+
+```text
+http://10.65.42.71/build2/package/perf_model_latest_6.3_ubuntu-22.04
+Packages.gz Last-Modified: Tue, 21 Jul 2026 03:28:43 GMT
+Packages.gz ETag: 6a5ee76b-4905
+```
+
+Installed snapshot:
+
+```text
+package root: /zys/shaobo/toolchains/compiler_perf_model_latest_20260721_packages
+extract root: /zys/shaobo/toolchains/compiler_perf_model_latest_20260721_root
+compiler: clang 18.0.0, llvm 47a7d59a80a4313d0c33d4667c3c8573604d0dbc
+clang-18 sha256: fddad9d6b6a0bc2264d815e97bbc7679fba9268e8f0b71d145acfa466da3b395
+```
+
+The snapshot contains one SHA-verified package set: `rocm-llvm`,
+`rocm-device-libs`, `comgr`, `hipcc`, and `hip-dev`. Keep these components
+together; do not copy only clang into another ROCm root.
+
+| Package | SHA256 |
+|---|---|
+| `rocm-llvm_18.0.0.dev_amd64.deb` | `757d7daf2ae81d549174b7780108f8f3ae62ad24e25b7441612e62d0c2213e54` |
+| `rocm-device-libs_1.0.0.99999-local_amd64.deb` | `984f92068d00730c1b308ece48754320a1955d7e497115a06b9bb4dac1f7a8cf` |
+| `comgr_2.8.0.99999-local_amd64.deb` | `da5aea9c73cc5646da33fddb043ea855e176e0f4f981a543b0de5bc4e72432ca` |
+| `hipcc_1.1.1.99999-local_amd64.deb` | `49552525341bb018e85900bf69d3d288d36e42a61c1f9010b90b1ebdc3f74975` |
+| `hip-dev_6.3.42133-88df948-local_amd64.deb` | `30947d16af11b4a05ef555dacdc67e1a84cc9cb1de284aba3c5f106b5cf666ba` |
+
+Validation:
+
+- dQ commit `d97684f`: static gates PASS, trap0, private/spill/scratch0,
+  H1/S128 correctness PASS. Target-kernel instructions exactly match the
+  accepted LLVM47a7 build.
+- dKV commit `f57714f`: static gates PASS, trap0, private/spill/scratch0,
+  H1/S128 correctness PASS. Target-kernel instructions exactly match the
+  already measured LLVM47a7 dKV build.
+- Therefore the refresh changes no kernel codegen relative to the Jul20
+  LLVM47a7 snapshot. Keep dQ on LLVM47a7, but keep dKV on LLVM7b796991 because
+  its prior LLVM47a7 S1024 A/B regressed ticks and MMAC active.
+
+Rule: "latest compiler installed" and "compiler promoted for every kernel"
+are separate decisions. Promotion requires a same-source, same-PMD,
+same-shape ASM/correctness/performance A/B for each canonical kernel.

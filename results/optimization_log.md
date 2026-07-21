@@ -15665,3 +15665,45 @@ Status: `REJECT_ROLE_RELOCK_SOURCE_RESTORED`.
   falls `23.666%` and barrier rises `0.2271pp`.
 - Decision: reject before S2048/fullperf. C0 late-read timing is a whole-island
   phase anchor. Preserve it and target the next N32/page readiness boundary.
+
+## 2026-07-21 dKV C1 Cross-Tile Head Prefetch
+
+Status: `REJECT_STATISTICALLY_FLAT_RESOURCE_WAIT_DEBT_SOURCE_RESTORED`.
+
+- Hypothesis: after C1 consumes tail M7 D0/D1, use its dV/dK MMAC island to
+  mature next q-tile head M0 D0/D1, then enter the next loop with score/dP
+  operands already resident. No GEMM, matrix request, token, page, output, or
+  ownership generation is added.
+- Resource gate: the canonical 160-VGPR consumer window spills 17 VGPRs. A
+  176-VGPR window emits role use `8/156/14/176`, SGPR52/VGPR104,
+  private/spill/scratch0, real trap0, and passes all static gates.
+- Correctness: H1/S128 and H1/S384 PASS; S384 exercises the new cross-q-tile
+  edge. Every measured S1024 candidate/control reports exact MMOP73,728 and
+  bank0.
+- Three controls are `31,534,685 / 31,861,375 / 31,711,680` ticks, median
+  `31,711,680`. Two valid candidates are `31,675,280 / 31,696,210`, median
+  `31,685,745`, only `-0.0818%`. Active changes
+  `38.187676% -> 38.235973%` (`+0.0483pp`), wait rises `3.11%`, barrier rises
+  `1.39%`, and successful coissue rises `0.85%`.
+- Decision: reject before S2048/fullperf. The next-head wait/read is moved
+  earlier but not removed from the one-page ownership critical path, while
+  the extra live fragments consume 16 more role-local VGPRs. Experiment and
+  revert commits are `14c53bf` and `9f3cf0b`.
+
+## 2026-07-21 Rolling Compiler Refresh
+
+- Download source:
+  `http://10.65.42.71/build2/package/perf_model_latest_6.3_ubuntu-22.04`.
+  `Packages.gz` headers are Last-Modified `2026-07-21 03:28:43 GMT`, ETag
+  `6a5ee76b-4905`.
+- Package and extracted roots are
+  `/zys/shaobo/toolchains/compiler_perf_model_latest_20260721_packages` and
+  `/zys/shaobo/toolchains/compiler_perf_model_latest_20260721_root`.
+- Complete-root fingerprint: LLVM47a7d59a, clang-18 SHA256
+  `fddad9d6b6a0bc2264d815e97bbc7679fba9268e8f0b71d145acfa466da3b395`.
+  dQ `d97684f` and dKV `f57714f` both pass static gates and H1/S128 PMD
+  correctness. Their target-kernel instruction streams are identical to the
+  prior LLVM47a7 builds.
+- Decision: accept the root as the latest available side-by-side compiler, but
+  retain per-kernel locks. dQ uses LLVM47a7; dKV uses LLVM7b796991 until a
+  newer compiler beats the measured same-shape dKV baseline.

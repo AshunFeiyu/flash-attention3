@@ -9959,3 +9959,40 @@ Status: `REJECT_ROLE_RELOCK_SOURCE_RESTORED`.
   preserve the experiment; canonical source is restored. Moving half the C0
   read island still relocks roles, so future work must cross N32/page
   boundaries without changing the accepted intra-N32 cadence.
+
+## 2026-07-21 Toolchain Refresh And Canonical Locks
+
+- Latest complete side-by-side root:
+  `/zys/shaobo/toolchains/compiler_perf_model_latest_20260721_root`.
+  It contains the rolling `rocm-llvm`, `rocm-device-libs`, `comgr`, `hipcc`,
+  and `hip-dev` package set. Package SHA256 values are recorded in
+  `/zys/shaobo/toolchains/compiler_perf_model_latest_20260721_packages/manifest.tsv`.
+- Compiler fingerprint: clang18, LLVM
+  `47a7d59a80a4313d0c33d4667c3c8573604d0dbc`, clang-18 SHA256
+  `fddad9d6b6a0bc2264d815e97bbc7679fba9268e8f0b71d145acfa466da3b395`.
+- Canonical dQ commit `d97684f` and canonical dKV commit `f57714f` both build
+  and pass H1/S128 PMD correctness with this complete root. The normalized
+  target-kernel instruction streams are byte-for-byte identical to their
+  prior LLVM47a7 builds.
+- Toolchain promotion remains per kernel: dQ uses LLVM47a7; dKV stays on
+  LLVM7b796991 because LLVM47a7 has a measured S1024 regression. A rolling
+  package refresh is not permission to silently change the dKV compiler lock.
+
+## 2026-07-21 dKV C1 Cross-q-Tile Prefetch Status
+
+Status: `REJECT_STATISTICALLY_FLAT_RESOURCE_WAIT_DEBT_SOURCE_RESTORED`.
+
+- Candidate C1 prefetches next q-tile head M0 while current tail M7 dV/dK MMAC
+  is live. It preserves the four-GEMM request ledger and ownership counts.
+- Window160 spills 17 VGPRs. Window176 is clean with role use
+  `8/156/14/176`, SGPR52/VGPR104, private/spill/scratch0, real trap0.
+- H1/S128 and H1/S384 correctness PASS; S384 exercises the cross-boundary
+  path. Repeated H1/S1024 median candidate/control ticks are
+  `31,685,745 / 31,711,680` (`-0.0818%`), active is
+  `38.2360% / 38.1877%` (`+0.0483pp`), wait rises `3.11%`, barrier rises
+  `1.39%`, and successful coissue rises only `0.85%`.
+- Reject before S2048/fullperf. Commits `14c53bf` and `9f3cf0b` retain the
+  evidence while restoring the canonical `f57714f`-equivalent source.
+- The missing parallel A/B sample was an infrastructure race: all PMD shells
+  rewrote one shared `/tmp/codex_runpy_stub/setproctitle.py`. `scripts/env.sh`
+  now uses a process-local shim directory.

@@ -4530,3 +4530,35 @@ Skill Candidate:
   optimization boundary is inter-N32 or inter-page ownership relock: make
   already-existing next-stage work runnable earlier without moving C0 reads,
   splitting fused MMAC, or adding tokens/work.
+
+## 2026-07-21 Latest Perf-Model Compiler Refresh
+
+- The rolling `perf_model_latest_6.3_ubuntu-22.04` package set was downloaded
+  and SHA-verified into a side-by-side root, not overlaid onto `/opt/rocm`:
+  `/zys/shaobo/toolchains/compiler_perf_model_latest_20260721_root`.
+- The refreshed compiler is LLVM `47a7d59a80a4313d0c33d4667c3c8573604d0dbc`;
+  `clang-18` SHA256 is
+  `fddad9d6b6a0bc2264d815e97bbc7679fba9268e8f0b71d145acfa466da3b395`.
+  The rolling index was last modified `2026-07-21 03:28:43 GMT`, ETag
+  `6a5ee76b-4905`.
+- Latest-toolchain dQ and dKV artifacts pass static gates and H1/S128 PMD
+  correctness with no trap, spill, scratch, or private segment. Target-kernel
+  instruction sequences are identical to the previously tested LLVM47a7
+  artifacts, so no new codegen performance claim is implied.
+- Keep compiler selection kernel-specific: dQ remains on LLVM47a7, while dKV
+  remains on LLVM7b796991 because the prior same-shape LLVM47a7 dKV A/B
+  regressed `31,553,340 -> 32,005,155` ticks and active
+  `38.3937% -> 37.8171%`.
+
+## 2026-07-21 dKV Cross-Tile Head Prefetch Rejected
+
+- C1 legally prefetched the next q-tile head M0 under the current tail M7
+  dV/dK MMAC. Correctness, exact MMOP, bank0, and no-spill gates all pass after
+  widening the consumer WDRA window from 160 to 176 VGPR.
+- Repeated H1/S1024 medians are statistically flat:
+  `31,711,680 -> 31,685,745` ticks (`-0.0818%`) and
+  `38.1877% -> 38.2360%` active (`+0.0483pp`). Wait rises `3.11%` and barrier
+  rises `1.39%`, so the larger live range does not shorten the critical path.
+- The experiment is preserved by commits `14c53bf` and `9f3cf0b`; canonical
+  source is restored to the `f57714f`-equivalent dKV path. Do not retry this
+  one-page ownership mechanism without a structural readiness change.
