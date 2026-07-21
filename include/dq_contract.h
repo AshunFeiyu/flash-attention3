@@ -67,7 +67,7 @@ struct DqBarrierLedger {
     static constexpr int kPage1Used = 3;
     static constexpr int kQDoFilled = 4;
     static constexpr int kQDoLatched = 5;
-    static constexpr int kAllDone = 6;
+    static constexpr int kSidecarLatched = 6;
 };
 
 struct OptimizationTargets {
