@@ -143,13 +143,15 @@ def main() -> int:
     require(perf_source, r"arrive_raw_used<Wdra::kRawTailUsed>\(\)",
             failures, "missing_tail_lifetime_release")
     require(perf_source,
-            r"wait_raw_used<Wdra::kRawHeadUsed>[\s\S]{0,2400}"
+            r"wait_raw_used<Wdra::kRawHeadUsed>[\s\S]{0,2200}"
+            r"wait_vbcnt4\(\)[\s\S]{0,300}"
+            r"arrive_raw_ready<Wdra::kRawTailFilled>[\s\S]{0,300}"
+            r"wait_vbcnt0\(\)[\s\S]{0,300}"
             r"arrive_raw_ready<Wdra::kRawHeadFilled>[\s\S]{0,500}"
-            r"wait_raw_used<Wdra::kRawTailUsed>[\s\S]{0,2400}"
-            r"arrive_raw_ready<Wdra::kRawTailFilled>",
-            failures, "missing_split_used_cross_packet_order")
-    require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
-            "missing_q_tile_stream_loop")
+            r"wait_raw_used<Wdra::kRawTailUsed>",
+            failures, "missing_cross_generation_vbcnt4_conveyor")
+    require(perf_source, r"q_tile\s*\+\s*1\s*<\s*q_tiles", failures,
+            "missing_cross_generation_q_tile_loop")
     require(perf_source,
             r"abarrier_try_wait<false>\(Bar::kAllDone",
             failures,
@@ -274,6 +276,8 @@ def main() -> int:
                "asm_d1_wait8_must_not_remain")
         require(asm, r"v_mmac_.*lit", failures, "asm_missing_v_mmac_lit")
         require(asm, r"s_setprio", failures, "asm_missing_s_setprio")
+        require(asm, r"s_waitcnt_vbcnt 4", failures,
+                "asm_missing_selective_vbcnt4")
         require(asm, r"fa3_bwd_dkv_kernel", failures,
                 "asm_missing_kernel_symbol")
         forbid(asm, r"^\s*s_trap\b", failures,
