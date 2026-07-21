@@ -658,7 +658,7 @@ __device__ __forceinline__ void dq_consumer_full3gemm_role(
     constexpr int KBlocks = Dim / 32;
     const int lane = static_cast<int>(threadIdx.x % 64);
     const int lane_mq = lane % 16;
-    const int local_m16 = wave_local * 2 + ConsumerGroup;
+    const int local_m16 = ConsumerGroup * 4 + wave_local;
     const int m32_block = local_m16 / 2;
     const int mhalf_offset = (local_m16 & 1) == 0 ? 0 : 1024;
     const int local_row = local_m16 * 16 + lane_mq;
