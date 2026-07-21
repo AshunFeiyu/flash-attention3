@@ -136,8 +136,24 @@ def main() -> int:
             r"[\s\S]{0,500}wait_lgkm\(4\)",
             failures, "missing_next_m16_score_prefetch")
     require(perf_source,
-            r"!PrefetchNext\s*\|\|\s*\(!ReleaseHead\s*&&\s*!ReleaseTail\)",
-            failures, "missing_prefetch_ownership_boundary_gate")
+            r"!CrossRawBoundary\s*\|\|[\s\S]{0,180}"
+            r"PrefetchNext\s*&&\s*!ReleaseHead\s*&&\s*ReleaseTail[\s\S]{0,100}"
+            r"NextMBlock\s*==\s*0",
+            failures, "missing_tail_to_next_head_boundary_gate")
+    require(perf_source,
+            r"!PrefetchNext\s*\|\|\s*CrossRawBoundary\s*\|\|[\s\S]{0,100}"
+            r"\(!ReleaseHead\s*&&\s*!ReleaseTail\)",
+            failures, "missing_ordinary_prefetch_ownership_gate")
+    require(perf_source,
+            r"PrefetchNextHead\s*&&\s*kReleaseTail[\s\S]{0,240}"
+            r"wait_raw_ready<Wdra::kRawHeadFilled>",
+            failures, "missing_next_head_filled_wait")
+    require(perf_source,
+            r"if\s*\(q_tiles\s*==\s*1\)[\s\S]{0,400}"
+            r"consume_q_tile_owner16<Tile,\s*Wdra,\s*true,\s*true,\s*false>"
+            r"[\s\S]{0,1500}q_tiles\s*-\s*1[\s\S]{0,500}"
+            r"consume_q_tile_owner16<Tile,\s*Wdra,\s*false,\s*true,\s*false>",
+            failures, "missing_final_tile_canonical_guard")
     require(perf_source, r"arrive_raw_used<Wdra::kRawHeadUsed>\(\)",
             failures, "missing_head_lifetime_release")
     require(perf_source, r"arrive_raw_used<Wdra::kRawTailUsed>\(\)",

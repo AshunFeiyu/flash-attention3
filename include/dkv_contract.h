@@ -112,9 +112,9 @@ struct OptimizationTargets {
 
 struct WdraResourceWindows {
     static constexpr int kProducerVgprs = 32;
-    static constexpr int kConsumerVgprs = 160;
-    static constexpr int kConsumerTargetVgprs = 152;
-    static constexpr int kConsumerCeilingVgprs = 160;
+    static constexpr int kConsumerVgprs = 176;
+    static constexpr int kConsumerTargetVgprs = 160;
+    static constexpr int kConsumerCeilingVgprs = 176;
 };
 
 }  // namespace shaobo::fa3::bwd::dkv
