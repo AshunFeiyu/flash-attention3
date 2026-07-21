@@ -102,6 +102,10 @@ shaobo_verify_hipcc_uses_latest_compiler "${HIPCC}"
   printf 'hipcc_sha256=%s\n' "$(shaobo_sha256 "${HIPCC}")"
   printf 'hipcc_compiler_llvm_commit=%s\n' "${SHAOBO_LATEST_COMPILER_LLVM_COMMIT}"
   printf 'pmd_root=%s\n' "${SHAOBO_PMD_ROOT:-}"
+  printf 'pmd_config_seed=%s\n' "${PMD_CONFIG_SEED:-}"
+  if [[ -n "${PMD_CONFIG_SEED:-}" && -s "${PMD_CONFIG_SEED}" ]]; then
+    printf 'pmd_config_seed_sha256=%s\n' "$(shaobo_sha256 "${PMD_CONFIG_SEED}")"
+  fi
   printf 'target_gfx=%s\n' "${TARGET_GFX}"
   printf 'wdra_init=%s\n' "${SHAOBO_EXPLICIT_WDRA_INIT}"
   printf 'wdra_trap_handler=%s\n' "${SHAOBO_WDRA_TRAP_HANDLER_MODE}"
