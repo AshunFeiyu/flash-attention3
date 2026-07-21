@@ -10121,3 +10121,19 @@ Status: `REJECT / CANONICAL RESTORED`.
   groups starting on different pages half-complete both tokens and relock the
   producer. Do not retry cross-page consumer skew without independently
   releasable per-group ownership tokens.
+
+## 2026-07-21 dKV M16 Row-Order Probe Closed
+
+Status: `REJECT / CANONICAL RESTORED`.
+
+- Experiment commit `7f84cbc` implements the workbook 208 compile-time
+  successor ledger without changing producer work, LDS, ABarrier, MMAC/read
+  counts or output ownership. S128/S384/repeated S1024 correctness, bank and
+  resource gates pass on locked LLVM47a7/PMD HEAD1694.
+- S1024 median ticks regress `0.431%`, only one of three samples wins, MMAC
+  active falls `0.6277pp`, barrier grows `4.9874%`, and noVorM grows
+  `3.5714%`.
+- Row/chunk traversal order is not a useful WASP phase boundary when every
+  chunk retains the same stage DAG. The next admissible dKV experiment must
+  batch or separate real stages while preserving the one-page ownership
+  graph and exact four-GEMM work.

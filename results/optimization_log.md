@@ -15866,3 +15866,24 @@ Status: `REJECT_CTA_WIDE_PAGEUSED_RELOCK_SOURCE_RESTORED`.
   arrivals. Starting C0 on page0 and C1 on page1 leaves both tokens at 4/8,
   so neither producer can refill until the consumers swap pages. Reject
   before S2048/fullperf and restore the canonical same-page schedule.
+
+## 2026-07-21 dKV C1 Compile-Time M16 Order Rejected
+
+Status: `REJECT_ROW_ORDER_NOT_STAGE_SKEW_SOURCE_RESTORED`.
+
+- C0 keeps `M0,1,2,3 / M4,5,6,7`; C1 uses
+  `M0,2,1,3 / M4,6,5,7`. Successor prefetch follows the mapped block, M0
+  remains the only first accumulation seed, and M3/M7 retain Head/Tail Used
+  release. Producer, LDS, token graph and dynamic work are unchanged.
+- Whole-ASM counts are identical: MMAC1024, matrix-read577, matrix-load26,
+  wait271 and ABarrier57. Static resources remain SGPR52/VGPR96, role usage
+  `8/152/14/152`, private/spill/scratch0. S128, S384 and all six S1024 A/B
+  runs pass correctness with exact MMOP73,728 and bank0.
+- Median S1024 ticks regress `31,659,810 -> 31,796,310` (`+0.431%`) and only
+  one of three candidate runs wins. MMAC active falls
+  `38.5123% -> 37.8845%` (`-0.6277pp`), barrier grows `4.9874%`, and noVorM
+  grows `3.5714%`; successful coissue is effectively flat (`+0.1108%`).
+- Root cause: the permutation changes row addresses but every M16 still has
+  the same `score/dP -> softmax/dS -> dV/dK` stage shape. It therefore cannot
+  create structural consumer phase skew. Reject before S2048/fullperf,
+  restore canonical, and move the next experiment to real stage batching.

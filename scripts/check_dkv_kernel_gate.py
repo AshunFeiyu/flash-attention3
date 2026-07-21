@@ -108,8 +108,7 @@ def main() -> int:
             failures, "missing_sidecar_tail_publisher")
     require(perf_source,
             r"wait_raw_ready<Wdra::kRawTailFilled>[\s\S]{0,500}"
-            r"ConsumerGroup,\s*FirstQTile,\s*PrefetchSidecar,\s*"
-            r"kHeadMBlocks,\s*0",
+            r"kHeadMBlocks,\s*kTotalMBlocks",
             failures, "missing_tail_readiness_before_tail_consume")
     require(perf_source, r"ds_read_matrix_32x16_trans_dual_base_imm2",
             failures, "missing_dual_base_trans_matrix_read")
@@ -127,25 +126,11 @@ def main() -> int:
             r"[\s\S]{0,400}owner16_dv_dk_mmac_from_sources",
             failures, "missing_sidecar_matrix_softmax_pipeline")
     require(perf_source,
-            r"kReleaseTail\s*=\s*HalfBase\s*==\s*4\s*&&\s*!kPrefetchNext",
+            r"MBlockBase\s*\+\s*1\s*==\s*Tile::kBlockMq\s*/\s*16",
             failures, "missing_tail_release_contract")
     require(perf_source,
-            r"kReleaseHead\s*=\s*HalfBase\s*==\s*0\s*&&\s*!kPrefetchNext",
+            r"MBlockBase\s*\+\s*1\s*==\s*Tile::kHeadReadyMq\s*/\s*16",
             failures, "missing_head_release_contract")
-    require(perf_source, r"struct\s+Owner16MBlockOrder",
-            failures, "missing_compile_time_m16_order")
-    require(perf_source,
-            r"ConsumerGroup\s*==\s*1\s*&&\s*Slot\s*==\s*1[\s\S]{0,80}"
-            r"\?\s*2[\s\S]{0,120}ConsumerGroup\s*==\s*1\s*&&\s*"
-            r"Slot\s*==\s*2\s*\?\s*1",
-            failures, "missing_c1_m16_0213_order")
-    require(perf_source,
-            r"kFirstAccum\s*=\s*FirstQTile\s*&&\s*kMBlockBase\s*==\s*0",
-            failures, "missing_m0_first_accum_contract")
-    require(perf_source,
-            r"Owner16MBlockOrder<ConsumerGroup,\s*HalfBase,\s*kNextSlot>"
-            r"::kMBlock",
-            failures, "missing_mapped_successor_prefetch")
     require(perf_source,
             r"read_score_dp_owner16_dblock_pair<Tile,\s*NextMBlock,\s*0>"
             r"[\s\S]{0,500}wait_lgkm\(4\)",

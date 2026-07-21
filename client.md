@@ -4747,3 +4747,24 @@ Skill Candidate:
   next useful generation can be issued.
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo` ABarrier/WASP ownership reference during consolidation.
+
+### Skill Candidate: Distinguish Address Order From Stage Order
+
+- Trigger / 适用场景: trying to stagger symmetric GPU consumers by changing
+  the order of independent rows, tiles, or chunks.
+- Rule / 可复用规则: a traversal permutation is not a pipeline phase change
+  when every chunk still executes the same instruction-stage DAG. Require a
+  different runnable stage composition, such as batched MMAC versus
+  softmax/VALU, before predicting meaningful cross-wave coissue.
+- Evidence / 证据: dKV commit `7f84cbc`, workbook 208, locked LLVM47a7/PMD
+  HEAD1694; exact work and correctness pass, but S1024 ticks regress `0.431%`,
+  active falls `0.6277pp`, barrier grows `4.9874%`, and only one of three
+  samples wins.
+- Boundary / 适用边界: an address permutation can still matter when it changes
+  cache locality, bank mapping, causal work, or request readiness; those are
+  separate hypotheses and require their own counters.
+- Counterexample / 反例或不适用情况: one role batches two score MMAC blocks
+  while its peer performs softmax/dS, so the stage composition and live set
+  genuinely differ even if both roles consume the same rows.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` pipeline-design reference during consolidation.
