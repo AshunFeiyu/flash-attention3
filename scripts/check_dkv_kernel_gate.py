@@ -118,13 +118,14 @@ def main() -> int:
             failures, "missing_sidecar_read3_island")
     require(perf_source,
             r"read_sidecar_owner16<Tile,\s*MBlockBase>[\s\S]{0,500}"
+            r"read_owner16_dv_dk_source_refs<Tile,\s*2,\s*MBlockBase>"
+            r"[\s\S]{0,500}"
             r"read_owner16_dv_dk_sources<Tile,\s*0,\s*MBlockBase>"
-            r"[\s\S]{0,500}wait_lgkm\(4\)[\s\S]{0,500}"
+            r"[\s\S]{0,500}wait_lgkm\(8\)[\s\S]{0,500}"
             r"softmax_ds_owner16_tile[\s\S]{0,700}"
-            r"wait_lgkm\(0\)[\s\S]{0,300}"
-            r"read_owner16_dv_dk_sources<Tile,\s*2,\s*MBlockBase>"
-            r"[\s\S]{0,400}owner16_dv_dk_mmac_from_sources",
-            failures, "missing_sidecar_matrix_softmax_pipeline")
+            r"wait_lgkm\(0\)[\s\S]{0,400}"
+            r"owner16_dv_dk_mmac_from_sources",
+            failures, "missing_dead_slot_prefetch_pipeline")
     require(perf_source,
             r"MBlockBase\s*\+\s*1\s*==\s*Tile::kBlockMq\s*/\s*16",
             failures, "missing_tail_release_contract")
@@ -270,8 +271,8 @@ def main() -> int:
                 "asm_missing_ds_read_matrix")
         require(asm, r"ds_read_b128", failures,
                 "asm_missing_sidecar_ds_read_b128")
-        forbid(asm, r"s_waitcnt lgkmcnt\(8\)", failures,
-               "asm_d1_wait8_must_not_remain")
+        require(asm, r"s_waitcnt lgkmcnt\(8\)", failures,
+                "asm_missing_dead_slot_prefetch_wait8")
         require(asm, r"v_mmac_.*lit", failures, "asm_missing_v_mmac_lit")
         require(asm, r"s_setprio", failures, "asm_missing_s_setprio")
         require(asm, r"fa3_bwd_dkv_kernel", failures,
