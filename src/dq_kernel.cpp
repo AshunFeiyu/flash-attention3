@@ -374,6 +374,102 @@ __device__ __forceinline__ void dq_update_from_ds_pair(
     }
 }
 
+template <int DBlock, bool ComputeScore, bool ComputeDp, int KBlocks>
+__device__ __forceinline__ void dq_score_dp_mmac_dblock(
+    const ins::F16x8 (&q_reg)[KBlocks],
+    const ins::F16x8 (&dout_reg)[KBlocks],
+    const ins::F16x8 (&k_frag0)[KBlocks],
+    const ins::F16x8 (&k_frag1)[KBlocks],
+    const ins::F16x8 (&v_frag0)[KBlocks],
+    const ins::F16x8 (&v_frag1)[KBlocks],
+    const ins::F32x4& mmac_zero,
+    ins::F32x4& qk_acc0,
+    ins::F32x4& qk_acc1,
+    ins::F32x4& dp_acc0,
+    ins::F32x4& dp_acc1) {
+    static_assert(DBlock >= 0 && DBlock < KBlocks,
+                  "score/dP D block must belong to D128");
+    static_assert(ComputeScore || ComputeDp,
+                  "score/dP MMAC helper must compute useful work");
+#pragma unroll
+    for (int k_half = 0; k_half < 2; ++k_half) {
+        constexpr bool FirstBlock = DBlock == 0;
+        const bool first = FirstBlock && k_half == 0;
+        if constexpr (ComputeScore) {
+            qk_acc0.f32 = ins::mmac_f16_lit(
+                q_reg[DBlock].f16x4[k_half],
+                k_frag0[DBlock].f16x4[k_half],
+                first ? mmac_zero.f32 : qk_acc0.f32);
+            qk_acc1.f32 = ins::mmac_f16_lit(
+                q_reg[DBlock].f16x4[k_half],
+                k_frag1[DBlock].f16x4[k_half],
+                first ? mmac_zero.f32 : qk_acc1.f32);
+        }
+        if constexpr (ComputeDp) {
+            dp_acc0.f32 = ins::mmac_f16_lit(
+                dout_reg[DBlock].f16x4[k_half],
+                v_frag0[DBlock].f16x4[k_half],
+                first ? mmac_zero.f32 : dp_acc0.f32);
+            dp_acc1.f32 = ins::mmac_f16_lit(
+                dout_reg[DBlock].f16x4[k_half],
+                v_frag1[DBlock].f16x4[k_half],
+                first ? mmac_zero.f32 : dp_acc1.f32);
+        }
+    }
+}
+
+__device__ __forceinline__ void dq_score_to_p_pair(
+    bool n_tile_full_valid,
+    int n_tile,
+    int k_base_tile,
+    int lane_n,
+    int qrow,
+    float row_max,
+    float row_sum,
+    float softmax_scale_log2,
+    ins::F32x4& p_acc0,
+    ins::F32x4& p_acc1) {
+#pragma unroll
+    for (int vec_id = 0; vec_id < 4; ++vec_id) {
+        float p0 = exp2f((p_acc0.scalar[vec_id] - row_max) *
+                         softmax_scale_log2) /
+                   row_sum;
+        float p1 = exp2f((p_acc1.scalar[vec_id] - row_max) *
+                         softmax_scale_log2) /
+                   row_sum;
+        if (!n_tile_full_valid) {
+            const int nk0 = n_tile * 32 + lane_n * 4 + vec_id;
+            const int nk1 = nk0 + 16;
+            p0 *= static_cast<float>(k_base_tile + nk0 <= qrow);
+            p1 *= static_cast<float>(k_base_tile + nk1 <= qrow);
+        }
+        p_acc0.scalar[vec_id] = p0;
+        p_acc1.scalar[vec_id] = p1;
+    }
+}
+
+__device__ __forceinline__ void dq_p_dp_to_ds_pair(
+    const ins::F32x4& p_acc0,
+    const ins::F32x4& p_acc1,
+    const ins::F32x4& dp_acc0,
+    const ins::F32x4& dp_acc1,
+    float row_delta,
+    float softmax_scale,
+    ins::Vec4F16& ds_vec0,
+    ins::Vec4F16& ds_vec1) {
+#pragma unroll
+    for (int vec_id = 0; vec_id < 4; ++vec_id) {
+        const float ds_value0 =
+            p_acc0.scalar[vec_id] *
+            (dp_acc0.scalar[vec_id] - row_delta) * softmax_scale;
+        const float ds_value1 =
+            p_acc1.scalar[vec_id] *
+            (dp_acc1.scalar[vec_id] - row_delta) * softmax_scale;
+        ds_vec0[vec_id] = static_cast<_Float16>(ds_value0);
+        ds_vec1[vec_id] = static_cast<_Float16>(ds_value1);
+    }
+}
+
 template <typename Bar>
 __device__ __forceinline__ void dq_wait_page_filled(int page, int& phase0, int& phase1);
 
@@ -476,123 +572,69 @@ __device__ __forceinline__ void dq_compute_pages_from_latched(
         } else {
             ins::wait_lgkm(8);
         }
-        qk_acc0.f32 = ins::mmac_f16_lit(
-            q_reg[0].f16x4[0], k_frag0[0].f16x4[0], mmac_zero.f32);
-        qk_acc1.f32 = ins::mmac_f16_lit(
-            q_reg[0].f16x4[0], k_frag1[0].f16x4[0], mmac_zero.f32);
-        dp_acc0.f32 = ins::mmac_f16_lit(
-            dout_reg[0].f16x4[0], v_frag0[0].f16x4[0], mmac_zero.f32);
-        dp_acc1.f32 = ins::mmac_f16_lit(
-            dout_reg[0].f16x4[0], v_frag1[0].f16x4[0], mmac_zero.f32);
-#pragma unroll
-        for (int k_half = 1; k_half < 2; ++k_half) {
-            qk_acc0.f32 = ins::mmac_f16_lit(
-                q_reg[0].f16x4[k_half], k_frag0[0].f16x4[k_half],
-                qk_acc0.f32);
-            qk_acc1.f32 = ins::mmac_f16_lit(
-                q_reg[0].f16x4[k_half], k_frag1[0].f16x4[k_half],
-                qk_acc1.f32);
-            dp_acc0.f32 = ins::mmac_f16_lit(
-                dout_reg[0].f16x4[k_half], v_frag0[0].f16x4[k_half],
-                dp_acc0.f32);
-            dp_acc1.f32 = ins::mmac_f16_lit(
-                dout_reg[0].f16x4[k_half], v_frag1[0].f16x4[k_half],
-                dp_acc1.f32);
-        }
-#pragma unroll
-        for (int d_block = 1; d_block < KBlocks / 2; ++d_block) {
-#pragma unroll
-            for (int k_half = 0; k_half < 2; ++k_half) {
-                qk_acc0.f32 = ins::mmac_f16_lit(
-                    q_reg[d_block].f16x4[k_half],
-                    k_frag0[d_block].f16x4[k_half], qk_acc0.f32);
-                qk_acc1.f32 = ins::mmac_f16_lit(
-                    q_reg[d_block].f16x4[k_half],
-                    k_frag1[d_block].f16x4[k_half], qk_acc1.f32);
-                dp_acc0.f32 = ins::mmac_f16_lit(
-                    dout_reg[d_block].f16x4[k_half],
-                    v_frag0[d_block].f16x4[k_half], dp_acc0.f32);
-                dp_acc1.f32 = ins::mmac_f16_lit(
-                    dout_reg[d_block].f16x4[k_half],
-                    v_frag1[d_block].f16x4[k_half], dp_acc1.f32);
-            }
+        if constexpr (ConsumerGroup == 1) {
+            dq_score_dp_mmac_dblock<0, true, false>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+            dq_score_dp_mmac_dblock<1, true, false>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+        } else {
+            dq_score_dp_mmac_dblock<0, true, true>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+            dq_score_dp_mmac_dblock<1, true, true>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
         }
         if constexpr (ConsumerGroup == 1) {
             ins::wait_lgkm(8);
         } else {
             ins::wait_lgkm(0);
         }
-#pragma unroll
-        for (int d_block = KBlocks / 2; d_block < KBlocks; ++d_block) {
-#pragma unroll
-            for (int k_half = 0; k_half < 2; ++k_half) {
-                qk_acc0.f32 = ins::mmac_f16_lit(
-                    q_reg[d_block].f16x4[k_half],
-                    k_frag0[d_block].f16x4[k_half], qk_acc0.f32);
-                qk_acc1.f32 = ins::mmac_f16_lit(
-                    q_reg[d_block].f16x4[k_half],
-                    k_frag1[d_block].f16x4[k_half], qk_acc1.f32);
-                dp_acc0.f32 = ins::mmac_f16_lit(
-                    dout_reg[d_block].f16x4[k_half],
-                    v_frag0[d_block].f16x4[k_half], dp_acc0.f32);
-                dp_acc1.f32 = ins::mmac_f16_lit(
-                    dout_reg[d_block].f16x4[k_half],
-                    v_frag1[d_block].f16x4[k_half], dp_acc1.f32);
-            }
+        if constexpr (ConsumerGroup == 1) {
+            dq_score_dp_mmac_dblock<2, true, false>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+            dq_score_dp_mmac_dblock<3, true, false>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+            ins::lower_priority();
+            dq_score_to_p_pair(
+                n_tile_full_valid, n_tile, k_base_tile, lane_n, qrow,
+                row_max, row_sum, softmax_scale_log2, qk_acc0, qk_acc1);
+            ins::raise_priority_2();
+            dq_score_dp_mmac_dblock<0, false, true>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+            dq_score_dp_mmac_dblock<1, false, true>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+            dq_score_dp_mmac_dblock<2, false, true>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+            dq_score_dp_mmac_dblock<3, false, true>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+        } else {
+            dq_score_dp_mmac_dblock<2, true, true>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
+            dq_score_dp_mmac_dblock<3, true, true>(
+                q_reg, dout_reg, k_frag0, k_frag1, v_frag0, v_frag1,
+                mmac_zero, qk_acc0, qk_acc1, dp_acc0, dp_acc1);
         }
         ins::lower_priority();
 
         ins::Vec4F16 ds_vec0;
         ins::Vec4F16 ds_vec1;
-        if (!n_tile_full_valid) {
-#pragma unroll
-            for (int vec_id = 0; vec_id < 4; ++vec_id) {
-                const int nk0 = n_tile * 32 + lane_n * 4 + vec_id;
-                const int krow0 = k_base_tile + nk0;
-                const int valid0 = krow0 <= qrow;
-                const float p0 =
-                    exp2f((qk_acc0.scalar[vec_id] - row_max) *
-                          softmax_scale_log2) /
-                    row_sum;
-                const float ds_value0 =
-                    p0 * (dp_acc0.scalar[vec_id] - row_delta) *
-                    softmax_scale * static_cast<float>(valid0);
-                ds_vec0[vec_id] = static_cast<_Float16>(ds_value0);
-
-                const int nk1 = n_tile * 32 + 16 + lane_n * 4 + vec_id;
-                const int krow1 = k_base_tile + nk1;
-                const int valid1 = krow1 <= qrow;
-                const float p1 =
-                    exp2f((qk_acc1.scalar[vec_id] - row_max) *
-                          softmax_scale_log2) /
-                    row_sum;
-                const float ds_value1 =
-                    p1 * (dp_acc1.scalar[vec_id] - row_delta) *
-                    softmax_scale * static_cast<float>(valid1);
-                ds_vec1[vec_id] = static_cast<_Float16>(ds_value1);
-            }
-        } else {
-#pragma unroll
-            for (int vec_id = 0; vec_id < 4; ++vec_id) {
-                const float p0 =
-                    exp2f((qk_acc0.scalar[vec_id] - row_max) *
-                          softmax_scale_log2) /
-                    row_sum;
-                const float ds_value0 =
-                    p0 * (dp_acc0.scalar[vec_id] - row_delta) *
-                    softmax_scale;
-                ds_vec0[vec_id] = static_cast<_Float16>(ds_value0);
-
-                const float p1 =
-                    exp2f((qk_acc1.scalar[vec_id] - row_max) *
-                          softmax_scale_log2) /
-                    row_sum;
-                const float ds_value1 =
-                    p1 * (dp_acc1.scalar[vec_id] - row_delta) *
-                    softmax_scale;
-                ds_vec1[vec_id] = static_cast<_Float16>(ds_value1);
-            }
+        if constexpr (ConsumerGroup == 0) {
+            dq_score_to_p_pair(
+                n_tile_full_valid, n_tile, k_base_tile, lane_n, qrow,
+                row_max, row_sum, softmax_scale_log2, qk_acc0, qk_acc1);
         }
+        dq_p_dp_to_ds_pair(qk_acc0, qk_acc1, dp_acc0, dp_acc1, row_delta,
+                           softmax_scale, ds_vec0, ds_vec1);
         ins::raise_priority_2();
         if constexpr (ConsumerGroup == 0) {
             dq_read_k_normal_pair<Tile>(
