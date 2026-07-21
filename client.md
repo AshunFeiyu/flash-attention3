@@ -4483,3 +4483,18 @@ Skill Candidate:
   coverage and macro readiness/ABarrier relock. Do not retry late reads, extra
   tokens, empty stagger, split-softmax expansion, or read insertion inside a
   MMAC island.
+
+## 2026-07-21 dQ Dual-Hidden Read Boundary
+
+- Do not move C0's whole K-normal read8 before softmax while retaining C1's
+  pre-score read. The change is exact-work, correct, no-spill and bank0, and
+  reduces waitLgkm `7.43%`; nevertheless repeated S1024 ticks regress
+  `5.752%`.
+- The reason is role-level rather than local: successful coissue falls
+  `46.57%`, barrier rises `4.27%`, and noVorM rises `1.12%`. The exposed C0
+  read edge helps preserve the phase difference that lets C0 softmax overlap
+  C1 MMAC. Removing it makes the consumers more synchronous.
+- Restore and keep `d97684f`. A higher MMAC-active ratio with worse ticks is
+  not a win. The next dQ schedule must preserve C0-late/C1-pre-score cadence
+  and target C1 `v_exp` or ABarrier relock without moving the full C0 read
+  island.

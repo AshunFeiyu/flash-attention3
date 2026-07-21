@@ -1,5 +1,21 @@
 # Source Status
 
+## 2026-07-21 dQ Dual-Hidden K-Normal Rejected
+
+Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`; source remains accepted
+commit `d97684f` and tag `best/dq-c1-prescore-knorm-20260721`.
+
+- Moving only C0's read8 before softmax is static-exact, correct,
+  private/spill/scratch0 and bank0, but three S1024 medians regress
+  `20,938,645 -> 22,143,030` ticks (`+5.752%`).
+- MMAC active rises `0.2916pp` and waitLgkm falls `7.43%`, while successful
+  coissue falls `46.57%`, barrier rises `4.27%`, and noVorM rises `1.12%`.
+  The whole-island move removes a local dependency but also removes useful
+  role skew, so completion gets worse.
+- Do not retry dual-hidden normal-K or make both consumers use a read-before-
+  softmax cadence. Workbook sheet `198_DQ_DualHiddenKNorm` is the evidence;
+  no S2048/fullperf was admitted.
+
 ## 2026-07-21 dQ C1 Pre-Score K-Normal Promotion
 
 Status: `ACCEPT_CANONICAL_SCHEDULE`; dKV is unchanged.

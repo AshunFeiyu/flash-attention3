@@ -181,6 +181,30 @@ and only one consumer in 3. Common readiness and ABarrier boundaries continue
 to relock the roles. C1 `v_exp` is still almost uncovered by peer MMAC
 (`18/512`), while C0 reaches `472/496`.
 
+## Dual-Hidden K-Normal Counterexample
+
+The follow-up kept C1's accepted pre-score read and moved C0's existing
+K-normal read8 from after softmax to immediately before softmax. This removes
+the obvious local `ds_read_matrix -> wait -> dQ MMAC` exposure from both roles
+without changing MMAC, matrix-read, ownership, or output work.
+
+Three-run H1/S1024 medians reject the schedule:
+
+| Metric | Control | Dual-hidden | Delta |
+|---|---:|---:|---:|
+| kernel ticks | 20,938,645 | 22,143,030 | +5.752% |
+| MMAC active | 37.9246% | 38.2163% | +0.2916pp |
+| successful coissue | 16,264 | 8,690 | -46.57% |
+| waitLgkm | 12,562.75 | 11,629.25 | -7.43% |
+| ABarrier | 38,026 | 39,651.25 | +4.27% |
+| no-V-or-M | 103,963 | 105,123 | +1.12% |
+
+This is the key counterexample: lower local LDS wait and slightly higher MMAC
+active do not imply faster completion. The exposed C0 read edge also preserves
+the role phase offset. Removing it synchronizes the consumers, collapses peer
+coissue, and trades one visible dependency hole for a larger CTA-level stall.
+The source was restored to the accepted C1-pre-score schedule before S2048.
+
 ## Final Diagnosis
 
 The user's Wavefronts observation is correct. The remaining performance gap is

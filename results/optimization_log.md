@@ -15603,3 +15603,34 @@ Status: `ACCEPT_CANONICAL_SCHEDULE`.
 - Promote this schedule. Next work must preserve C1 pre-score reads and target
   C1 softmax coverage plus readiness/ABarrier relock without new tokens,
   empty delay, duplicated work, or fragmented instruction islands.
+
+## 2026-07-21 dQ Dual-Hidden K-Normal Rejected
+
+Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
+
+- The candidate kept accepted C1 pre-score K-normal reads and moved only C0's
+  existing read8 from after softmax/dS to immediately after score/dP. The
+  intended flow was C0 `MMAC -> read8 -> VALU -> dQ MMAC` versus C1
+  `read24 -> MMAC -> VALU -> dQ MMAC`, so both roles hid first-use LDS
+  latency while retaining one score-island of prefetch-distance skew.
+- Static gates pass unchanged: MMAC768, matrix-read400 and island histograms
+  are bit-for-bit equal to the accepted source; SGPR60/VGPR128, role use
+  `8/162/9/194`, private/spill/scratch0. S128 and all six S1024 A/B runs pass
+  correctness with exact MMOP50,688, VALU44,864, SCA42,124, LDS26,352,
+  VMEM1,408, FLAT560 and bank0.
+- Three-run S1024 candidate ticks are `22,063,405 / 22,245,405 /
+  22,143,030`; controls are `20,938,645 / 20,894,965 / 21,162,050`.
+  Medians regress `20,938,645 -> 22,143,030` (`+5.752%`).
+- The local signal alone is misleading: active rises
+  `37.9246% -> 38.2163%` and waitLgkm falls `7.43%`, but successful coissue
+  collapses `16,264 -> 8,690` (`-46.57%`), barrier rises `4.27%`, and
+  noVorM rises `1.12%`.
+- Conclusion: C0's exposed read edge is also part of the useful role phase
+  offset. Moving the whole C0 read island before softmax makes the consumers
+  more synchronous and trades a local readiness hole for a much larger loss
+  of peer MMAC/VALU overlap. Reject before S2048/fullperf and restore accepted
+  commit `d97684f`.
+- Boundary: preserve C0-late/C1-pre-score cadence. Future work may target C1
+  `v_exp` coverage or ownership relock by reordering existing MMAC work, but
+  may not retry dual-hidden K-normal, both-consumer early reads, or a rescue
+  softmax split.
