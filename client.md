@@ -4498,3 +4498,21 @@ Skill Candidate:
   not a win. The next dQ schedule must preserve C0-late/C1-pre-score cadence
   and target C1 `v_exp` or ABarrier relock without moving the full C0 read
   island.
+
+## 2026-07-21 dQ C1 Score/P Split Boundary
+
+- Do not split only C1's fused score/dP MMAC into
+  `score -> P -> dP -> dS` to manufacture role staggering. The formulation is
+  mathematically exact and passes S128/S1024 correctness, bank0 and all
+  resource gates, but it changes the scheduler-visible dependency structure.
+- Three paired S1024 runs regress median kernel ticks
+  `20,753,005 -> 22,616,230` (`+8.978%`) and MMAC active
+  `37.9701% -> 36.3908%` (`-1.5793pp`). Exact MMOP/LDS/VMEM/FLAT work stays
+  fixed, while VALU rises `4.743%`, SCA rises `1.443%`, successful coissue
+  falls `22.041%`, and barrier active rises `2.5387pp`.
+- The intended three-way cover did not form. Splitting the fused four-chain
+  score/dP island creates shorter score-only and dP-only dependency chains,
+  adds P materialization work, and delays ownership completion. Preserve the
+  accepted C0-late/C1-pre-score cadence and fused score/dP island. Future
+  staggering must move existing independent work without shortening MMAC
+  dependency distance or moving the page-release boundary.

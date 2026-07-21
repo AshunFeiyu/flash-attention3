@@ -9908,3 +9908,30 @@ Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
 - The next legal schedule must hide operand readiness for both consumers and
   preserve cross-consumer phase separation with different useful prefetch
   distances. It may not create skew by exposing one role's LDS dependency.
+
+## 2026-07-21 dQ C1 Score/P Split Rejected
+
+Status: `REJECT_DEPENDENCY_FRAGMENTATION_SOURCE_RESTORED`.
+
+- The candidate kept exact Mq128/Nk128/D128 physical2P2C work and changed only
+  C1 from fused `score+dP -> P+dS -> dQ` to
+  `score -> P -> dP -> dS -> dQ`. C0 and all LDS pages, ABarrier tokens,
+  global/matrix requests, ownership and output work remained canonical.
+- Static gates pass: SGPR60/VGPR128, role use `8/161/9/185` within
+  `40/216/216/40`, private/spill/scratch0, MMAC768, matrix-read400. S128 and
+  all six S1024 A/B runs pass correctness with MMOP50,688, LDS26,352,
+  VMEM1,408, FLAT560 and bank0.
+- Three-run S1024 candidate ticks are
+  `22,962,030 / 22,224,930 / 22,616,230`; controls are
+  `20,816,705 / 20,753,005 / 20,734,805`. Medians regress
+  `20,753,005 -> 22,616,230` (`+8.978%`).
+- MMAC active falls `37.9701% -> 36.3908%`; VALU rises
+  `44,864 -> 46,992`, SCA `42,124 -> 42,732`, successful coissue
+  `15,857 -> 12,362`, barrier active `15.9297% -> 18.4683%`, and noVorM
+  `43.1158% -> 44.1953%`. WaitLgkm is neutral, so the regression is not a
+  read-latency failure.
+- Conclusion: role staggering cannot be bought by fragmenting the fused
+  score/dP island. The split shortens independent MMAC chains, adds P
+  materialization and delays ownership completion. The experiment is kept as
+  commits `98c1b8d` plus revert `d65860c`; no failed helper remains in the
+  canonical source and no S2048/fullperf run is admitted.

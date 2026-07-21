@@ -15634,3 +15634,21 @@ Status: `REJECT_TICKS_COISSUE_SOURCE_RESTORED`.
   `v_exp` coverage or ownership relock by reordering existing MMAC work, but
   may not retry dual-hidden K-normal, both-consumer early reads, or a rescue
   softmax split.
+
+## 2026-07-21 dQ C1 Score/P Split Rejected
+
+Status: `REJECT_DEPENDENCY_FRAGMENTATION_SOURCE_RESTORED`.
+
+- Hypothesis: retain fused C0, but split C1 into
+  `score MMAC -> P VALU -> dP MMAC -> dS VALU -> dQ MMAC`, so C1 P and dS
+  could alternate with C0 score/dP and dQ MMAC windows without extra GEMM.
+- Gates: S128 and six S1024 A/B correctness PASS; SGPR60/VGPR128,
+  role-use `8/161/9/185`, private/spill/scratch0, bank0, exact MMOP50,688 and
+  unchanged LDS/VMEM/FLAT.
+- Result: median S1024 ticks regress `20,753,005 -> 22,616,230`
+  (`+8.978%`), active falls `37.9701% -> 36.3908%`, successful coissue falls
+  `22.041%`, barrier active rises `2.5387pp`, VALU rises `4.743%`, and SCA
+  rises `1.443%`.
+- Decision: reject before S2048/fullperf. Splitting score/dP fragments the
+  independent accumulator structure and delays ownership completion; keep
+  fused score/dP and obtain stagger only from existing independent work.
