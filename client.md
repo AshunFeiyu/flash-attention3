@@ -4899,3 +4899,24 @@ Skill Candidate:
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `dcu-kernel-optimization` producer/consumer startup evidence reference in a
   serialized consolidation pass; no public skill edit from this task.
+
+### Skill Candidate: Validate Boundary Load Balancing At Steady Scale
+
+- Trigger / 适用场景: output tiles are reassigned across symmetric consumer
+  roles to balance causal or ragged boundary work without changing total math.
+- Rule / 可复用规则: prove a bijective output partition and exact dynamic work,
+  then validate both a short diagnostic shape and the steady target. A short
+  shape can improve because boundary tiles dominate while a long shape loses
+  through collective barrier relock.
+- Evidence / 证据: dQ commit `bd0283f`, workbook 215, LLVM47a7/PMD1694.
+  Static/dynamic work, resources, correctness and bank0 are exact. Alternating
+  M16 ownership improves S1024 ticks `0.3108%` and coissue `3.3609%`, but
+  regresses S2048 ticks `1.0437%` despite flat active and higher coissue.
+- Boundary / 适用边界: causal/ragged kernels with CTA-wide Used completion and
+  a workload mix that changes with sequence length.
+- Counterexample / 反例或不适用情况: output groups release independently, or
+  the production shape has the same boundary-to-steady ratio as the smoke
+  shape and repeated target-shape ticks also improve.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` scaling-validation reference during serialized
+  consolidation; do not edit the public skill here.

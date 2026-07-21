@@ -16028,3 +16028,26 @@ Status: `REJECT_TICKS_ACTIVE_SOURCE_RESTORE_REQUIRED`.
 - Reject before S2048/fullperf. Restore source and experiment gate; do not make
   heavy consumers participate in Q/dO publication without removing equivalent
   handoff work or preserving the accepted steady role-entry cadence.
+
+## 2026-07-22 dQ Interleaved M16 Ownership Rejected At S2048
+
+Status: `REJECT_S2048_SCALING_SOURCE_RESTORE_REQUIRED`.
+
+- Candidate changes only `local_m16`: C0/C1 ownership moves from contiguous
+  `{0,1,2,3}/{4,5,6,7}` to alternating `{0,2,4,6}/{1,3,5,7}`. The row union,
+  output uniqueness, startup, K/V pages, ABarrier counts and accepted
+  C0-late/C1-pre-score K-normal schedule remain exact.
+- LLVM47a7 candidate/control both emit MMAC768, matrix-read406, MLS18,
+  ABarrier48, wait0=60, v_mov108 and branch148. Resources remain
+  `8/162/9/194`, SGPR60/VGPR128, private/spill/scratch0.
+- H1/S128, H1/S384 and twelve paired S1024/S2048 runs all pass correctness;
+  dynamic MMOP/VALU/LDS/VMEM/FLAT are exact and bank conflicts are zero.
+- S1024 candidate wins all three repetitions; median ticks improve
+  `24,597,755 -> 24,521,315` (`-0.3108%`) and successful coissue rises
+  `3.3609%`, though active falls `0.2971pp` and barrier share rises.
+- S2048 reverses the result: median ticks regress `41,196,610 -> 41,626,585`
+  (`+1.0437%`). Active is effectively flat (`+0.0273pp`) and coissue remains
+  higher, but collective PageUsed/barrier debt dominates the steady path.
+- Reject before fullperf/xcu and restore canonical contiguous ownership.
+  Causal row balancing is a short-shape effect, not the structural path to
+  50% active; do not continue with another row-order-only variant.

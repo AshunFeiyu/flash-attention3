@@ -10232,3 +10232,17 @@ Status: `REJECT / RESTORE CANONICAL`.
 - Restore canonical producer-only Q/dO startup. The next dQ experiment may
   alter causal M16 ownership without touching startup or steady instruction
   work, but must remain a separate workbook-first branch.
+
+## 2026-07-22 dQ Interleaved M16 Ownership Closed
+
+Status: `REJECT / RESTORE CANONICAL`.
+
+- Experiment commit `bd0283f` is an exact-work row-ownership permutation;
+  latest compiler static counts/resources, all correctness checks and bank0
+  pass without changing startup or steady instruction families.
+- It improves S1024 median ticks `0.3108%` but regresses S2048 `1.0437%`.
+  Higher coissue in both shapes does not repay increased barrier share at the
+  steady target. Fullperf is skipped by the scaling gate.
+- Restore `local_m16 = ConsumerGroup * 4 + wave_local` and its canonical gate.
+  Return to a structural dKV/dQ dependency or ownership-epoch hypothesis, not
+  another traversal/row permutation.
