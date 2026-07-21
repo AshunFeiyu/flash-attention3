@@ -612,13 +612,10 @@ struct Owner16DvDkSources {
 };
 
 template <typename Tile, int DBlockBase, int MBlockBase>
-__device__ __forceinline__ void read_owner16_dv_dk_source_refs(
+__device__ __forceinline__ void read_owner16_dv_dk_sources(
     __half* lds,
     int page,
-    ins::F16x8& dout_d0,
-    ins::F16x8& dout_d1,
-    ins::F16x8& q_d0,
-    ins::F16x8& q_d1) {
+    Owner16DvDkSources& src) {
     using Layout = DkvLdsLayout<Tile>;
     static_assert(DBlockBase == 0 || DBlockBase == 2,
                   "dV/dK source group must cover two D blocks");
@@ -636,17 +633,8 @@ __device__ __forceinline__ void read_owner16_dv_dk_source_refs(
     const __half* dout_lds = lds + Layout::kDoutBase / sizeof(__half);
 
     ins::ds_read_matrix_32x16_normal_dual_base_imm2<kD0Off, kD1Off>(
-        dout_lds, q_lds, dout_d0.f16x8, dout_d1.f16x8, q_d0.f16x8,
-        q_d1.f16x8);
-}
-
-template <typename Tile, int DBlockBase, int MBlockBase>
-__device__ __forceinline__ void read_owner16_dv_dk_sources(
-    __half* lds,
-    int page,
-    Owner16DvDkSources& src) {
-    read_owner16_dv_dk_source_refs<Tile, DBlockBase, MBlockBase>(
-        lds, page, src.dout_d0, src.dout_d1, src.q_d0, src.q_d1);
+        dout_lds, q_lds, src.dout_d0.f16x8, src.dout_d1.f16x8,
+        src.q_d0.f16x8, src.q_d1.f16x8);
 }
 
 template <bool FirstAccum, int OutIdx, int DHalf>
@@ -677,21 +665,18 @@ template <bool FirstAccum, int OutBase>
 __device__ __forceinline__ void owner16_dv_dk_mmac_four_out(
     const ins::Vec4F16& p_frag,
     const ins::Vec4F16& ds_frag,
-    const ins::F16x8& dout_d0,
-    const ins::F16x8& dout_d1,
-    const ins::F16x8& q_d0,
-    const ins::F16x8& q_d1,
+    const Owner16DvDkSources& src,
     ins::F32x4 (&dv_acc)[8],
     ins::F32x4 (&dk_acc)[8],
     const ins::F16x8& zero_f16) {
     owner16_dv_dk_mmac_one_out<FirstAccum, OutBase + 0, 0>(
-        p_frag, ds_frag, dout_d0, q_d0, dv_acc, dk_acc, zero_f16);
+        p_frag, ds_frag, src.dout_d0, src.q_d0, dv_acc, dk_acc, zero_f16);
     owner16_dv_dk_mmac_one_out<FirstAccum, OutBase + 1, 1>(
-        p_frag, ds_frag, dout_d0, q_d0, dv_acc, dk_acc, zero_f16);
+        p_frag, ds_frag, src.dout_d0, src.q_d0, dv_acc, dk_acc, zero_f16);
     owner16_dv_dk_mmac_one_out<FirstAccum, OutBase + 2, 0>(
-        p_frag, ds_frag, dout_d1, q_d1, dv_acc, dk_acc, zero_f16);
+        p_frag, ds_frag, src.dout_d1, src.q_d1, dv_acc, dk_acc, zero_f16);
     owner16_dv_dk_mmac_one_out<FirstAccum, OutBase + 3, 1>(
-        p_frag, ds_frag, dout_d1, q_d1, dv_acc, dk_acc, zero_f16);
+        p_frag, ds_frag, src.dout_d1, src.q_d1, dv_acc, dk_acc, zero_f16);
 }
 
 template <typename Tile,
@@ -707,6 +692,7 @@ __device__ __forceinline__ void owner16_dv_dk_mmac_from_sources(
     const ins::Vec4F16& p_frag,
     const ins::Vec4F16& ds_frag,
     const Owner16DvDkSources& src_d01,
+    const Owner16DvDkSources& src_d23,
     Owner16ScoreDpSources& next_score_src,
     const ins::F16x8& mmac_zero,
     ins::F32x4 (&dv_acc)[8],
@@ -717,8 +703,7 @@ __device__ __forceinline__ void owner16_dv_dk_mmac_from_sources(
     // island and are retired only at their exact first use below.
     ins::raise_priority_2();
     owner16_dv_dk_mmac_four_out<FirstAccum, 0>(
-        p_frag, ds_frag, src_d01.dout_d0, src_d01.dout_d1, src_d01.q_d0,
-        src_d01.q_d1, dv_acc, dk_acc, mmac_zero);
+        p_frag, ds_frag, src_d01, dv_acc, dk_acc, mmac_zero);
 
     if constexpr (PrefetchNext) {
         read_score_dp_owner16_dblock_pair<Tile, NextMBlock, 0>(
@@ -735,9 +720,7 @@ __device__ __forceinline__ void owner16_dv_dk_mmac_from_sources(
         arrive_raw_used<Wdra::kRawTailUsed>();
     }
     owner16_dv_dk_mmac_four_out<FirstAccum, 4>(
-        p_frag, ds_frag, next_score_src.dout_d2, next_score_src.dout_d3,
-        next_score_src.q_d2, next_score_src.q_d3, dv_acc, dk_acc,
-        mmac_zero);
+        p_frag, ds_frag, src_d23, dv_acc, dk_acc, mmac_zero);
     ins::lower_priority();
 }
 
@@ -803,18 +786,12 @@ __device__ __forceinline__ void consume_m16_owner16_tile(
             read_sidecar_owner16<Tile, MBlockBase>(
                 sidecar_page, lane_col_group, sidecar);
         }
-        // Score/dP has consumed D2/D3. Reuse those dead source slots for the
-        // later dV/dK normal view so both D halves age under softmax/dS.
-        // Sidecar reads stay older than all eight normal-view requests.
-        read_owner16_dv_dk_source_refs<Tile, 2, MBlockBase>(
-            lds, page, score_src.dout_d2, score_src.dout_d3,
-            score_src.q_d2, score_src.q_d3);
         read_owner16_dv_dk_sources<Tile, 0, MBlockBase>(
             lds, page, src_d01);
 
-        // The three sidecar requests are oldest. Keep all eight D0-D3
-        // normal-view requests in flight while softmax/dS executes.
-        ins::wait_lgkm(8);
+        // The three sidecar requests are oldest. lgkmcnt(4) retires only
+        // those requests while D0/D1 Q/dO matrix reads remain in flight.
+        ins::wait_lgkm(4);
         if constexpr (PrefetchSidecar) {
             softmax_ds_owner16<ApplyCausalMask>(
                 score, dp, score_src.q_d0.f32, score_src.dout_d0.f32,
@@ -830,6 +807,9 @@ __device__ __forceinline__ void consume_m16_owner16_tile(
     }
 
     ins::wait_lgkm(0);
+    Owner16DvDkSources src_d23;
+    read_owner16_dv_dk_sources<Tile, 2, MBlockBase>(
+        lds, page, src_d23);
 
     owner16_dv_dk_mmac_from_sources<
         Tile,
@@ -838,7 +818,7 @@ __device__ __forceinline__ void consume_m16_owner16_tile(
         PrefetchNext,
         FirstAccum,
         ReleaseHead,
-        ReleaseTail>(lds, page, p_frag, ds_frag, src_d01, score_src,
+        ReleaseTail>(lds, page, p_frag, ds_frag, src_d01, src_d23, score_src,
                      mmac_zero, dv_acc, dk_acc);
 }
 
