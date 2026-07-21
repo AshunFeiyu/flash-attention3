@@ -15981,3 +15981,26 @@ Status: `REJECT_TICKS_REGRESSION_SOURCE_RESTORED`.
   The recurrence was not the dominant CTA critical edge; source-fragment
   readiness and peer issue timing repay the local gain. Reject before
   S2048/fullperf and restore canonical issue order.
+
+## 2026-07-22 dKV D2/D3 Dead-Slot Prefetch Rejected At Resource Gate
+
+Status: `REJECT_RESOURCE_GATE_SOURCE_RESTORE_REQUIRED`.
+
+- Workbook 213 locks the LLVM47a7/PMD1694 environment, exact Mq128/Nk128/D128
+  physical 2P2C DAG, four GEMMs, 67,072B LDS, six ownership tokens and unique
+  dK/dV output ownership. Only dV/dK D2/D3 normal operand issue time changes.
+- Candidate overwrites the score/dP D2/D3 source fields after their final
+  MMAC use, issues D2/D3 plus D0/D1 before softmax/dS, and changes the bounded
+  sidecar wait from `lgkmcnt(4)` to `lgkmcnt(8)`. Static instruction work stays
+  MMAC1028, matrix-read610 and ABarrier57; wait8 is present 32 times.
+- Latest locked LLVM47a7 reports role use `8/160/14/160`, but the symbol
+  metadata has `vgpr_spill_count=10` and `private_segment_fixed_size=28B`.
+  The hard no-spill/private gate fails before any PMD run.
+- The original lifetime proof was incomplete: the score fragments are
+  semantically dead, but the replacement normal fragments now remain live
+  simultaneously with score/dP, sidecar/softmax output and D0/D1 sources.
+  Dead variable names are not equivalent to spare physical VGPR capacity.
+- Reject without correctness/performance spend. Restore source and the
+  branch-local gate together; a future issue-ahead design must either shorten
+  another live range first or prefetch only after proving a peak-liveness
+  reduction in generated metadata.

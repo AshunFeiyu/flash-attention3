@@ -10204,3 +10204,16 @@ Status: `REJECT / CANONICAL RESTORED`.
 - Do not promote accumulator-order edits on MMAC active alone. Preserve the
   canonical MMAC order and move the next experiment to startup work
   distribution or output ownership only after a fresh ledger review.
+
+## 2026-07-22 dKV Dead-Slot Prefetch Closed At Static Gate
+
+Status: `REJECT / RESTORE CANONICAL`.
+
+- Experiment commit `a65e9cf` uses only LLVM47a7/PMD1694-locked artifacts and
+  preserves exact dKV math, LDS, barrier IDs/counts and output ownership.
+- Codegen confirms the requested `lgkmcnt(8)` schedule, but both consumer
+  branches reach the 160-VGPR WDRA limit and the kernel spills 10 VGPRs with a
+  28-byte private segment. No PMD correctness or performance run is valid.
+- Restore both `src/dkv_kernel.cpp` and the temporary static-gate contract.
+  The canonical dKV baseline remains S1024 `31,703,035 / 38.450598%` and
+  S2048 `56,527,835 / 45.360179%` on the unified latest toolchain.

@@ -4854,3 +4854,26 @@ Skill Candidate:
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `dcu-kernel-optimization` instruction-scheduling evidence section during a
   serialized consolidation pass.
+
+### Skill Candidate: Semantic Dead Slots Are Not A VGPR Budget
+
+- Trigger / 适用场景: an issue-ahead schedule plans to overwrite source
+  fragments after their last mathematical use and assumes this creates free
+  physical VGPR capacity.
+- Rule / 可复用规则: draw the full overlap interval through the intervening
+  VALU/read phases, then require generated branch usage and metadata before
+  running PMD. A dead old value can be replaced in the same C++ object while
+  the new value still lengthens physical liveness and causes spill.
+- Evidence / 证据: dKV commit `a65e9cf`, workbook 213, LLVM47a7. Exact static
+  MMAC/read/barrier work is preserved, but early D2/D3 normal fragments overlap
+  softmax and D0/D1 sources; branch use reaches 160 and metadata reports 10
+  VGPR spills plus a 28-byte private segment.
+- Boundary / 适用边界: WDRA branches already close to their role-local VGPR
+  ceiling. A compiler-proven union/alias or an independently shortened live
+  range may change the result and must be rebuilt.
+- Counterexample / 反例或不适用情况: metadata proves no spill/private growth
+  and the overwritten storage remains the same physical register bank across
+  the complete issue-to-first-use interval.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` resource-ledger reference during a serialized
+  consolidation pass; do not edit the public skill from this task.
