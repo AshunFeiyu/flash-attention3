@@ -129,3 +129,23 @@ PMD VGPR warning 0
 This opens the focused writer gate only. Production promotion still requires
 full FA correctness, unchanged MMOP, no spill, lower same-shape ticks and SQTT
 evidence that atomic debt is hidden rather than merely moved to RawFilled.
+
+The production integration is therefore rejected. It passes causal and
+non-causal S128 plus causal S1024 correctness with bank0 and no spills, but the
+same-shape fullperf improves ticks by only 0.81% and active by 0.0595 points:
+
+```text
+                         control        writer candidate
+kernel_ticks             273,490,490    271,270,545
+useful MMAC active       6.488954%      6.548467%
+ABarrier issue bubbles   51.75%         53.42%
+atomic -> wait bubbles   20.76%         21.15%
+SCA / LDS instructions   74,864/59,808  82,384/62,688
+```
+
+The atomics moved from dQ to producer waves but remained serial before the
+next raw publication, while four additional barriers increased ownership
+debt. The canonical source is restored. The next redesign must first balance
+useful work: two symmetric consumer groups should each own one disjoint N64
+slice and execute their share of all five logical GEMMs, instead of assigning
+four GEMMs to dKV waves and only one GEMM to dQ waves.

@@ -5441,3 +5441,15 @@ Correction, 2026-07-23:
   `/zys/sb/fa3b/layout_probes/fused5_dq_writer_20260723_040101`.
 - Production promotion still requires exact five-GEMM MMOP, CPU golden,
   no spill/private, bank0, lower ticks and xcu proof.
+
+Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
+
+- Candidate fullperf is
+  `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_041505`.
+- Ticks 273.49M -> 271.27M and active 6.489% -> 6.548% do not justify an
+  exact-128KiB path with four extra barriers. XCU shows barrier and atomic
+  shares slightly worsen; the dependency moved to next-raw publication.
+- Keep `probes/fused5_dq_writer_probe.cpp` as reusable evidence, but do not
+  keep the writer in the canonical kernel.
+- Next redesign must repair the 4:1 dKV:dQ useful-work imbalance before
+  another output epilogue optimization.

@@ -10723,3 +10723,17 @@ Status: `ACCEPT_FOCUSED_GATE / PRODUCTION_PENDING`.
   reads/writes and no scalar DS path.
 - Production integration requires sidecar alias plus an explicit all-panel
   dKV latch before page0 overwrite. MMOP must remain 92,160.
+
+Production follow-up: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
+
+- The exact 128 KiB integration passes S128 causal/non-causal and S1024
+  causal correctness, role23/197/58 inside48/240/96, SGPR92/VGPR128,
+  private/spill0, MMOP92160 and bank0.
+- Fullperf `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_041505`
+  measures 271,270,545 ticks and 6.548467% active versus control
+  273,490,490 and 6.488954%.
+- XCU shows ABarrier issue bubbles worsen 51.75% -> 53.42%, atomic-to-wait
+  20.76% -> 21.15%, SCA rises 10.0% and LDS rises 4.8%. Atomics were moved to
+  the raw-publication boundary, not hidden.
+- Do not merge the integration. Retain only the focused writer probe and
+  evidence; restore the persistent-owner canonical source.

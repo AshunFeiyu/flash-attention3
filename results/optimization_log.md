@@ -16495,3 +16495,15 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
   `/zys/sb/fa3b/layout_probes/fused5_dq_writer_20260723_040101`.
 - Next integrate one canonical output-writer path at an exact 128 KiB LDS
   budget. Sidecar must alias output0 and be latched before overwrite.
+
+Production integration result:
+
+- Classification: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
+- Correctness/resource gates all pass, but fullperf ticks improve only 0.81%
+  and active only 0.0595 points. ABarrier issue bubbles worsen to 53.42% and
+  atomic-to-wait remains 21.15%.
+- Moving CAS to producer serializes the next Q/dO publication. Four new
+  output tokens add more scalar/LDS work, so the producer role is busier but
+  the useful MMAC schedule remains fundamentally imbalanced.
+- Restore canonical code. Next top-level candidate is two symmetric heavy
+  N64 consumer groups, each partitioning all five GEMMs without duplication.
