@@ -63,18 +63,19 @@ __device__ __forceinline__ int m16_matrix_offset(int m_block, int d_block) {
            (m_block & 1) * Tile::kWriterPageBytes / 2;
 }
 
-__device__ __forceinline__ int scratch_page_offset(int generation,
-                                                   int n_block) {
+template <int Group>
+__host__ __device__ constexpr int scratch_page_offset(int writer) {
+    static_assert(Group == 0 || Group == 1);
     return LdsLayout::kScratchBase +
-           generation * Tile::kPdsGenerationBytes +
-           n_block * Tile::kWriterPageBytes;
+           (Group * Tile::kWavesPerConsumerGroup + writer) *
+               Tile::kWriterPageBytes;
 }
 
-__device__ __forceinline__ const __half* scratch_generation(
-    const __half* lds, int generation) {
+template <int Group>
+__device__ __forceinline__ const __half* scratch_group(const __half* lds) {
     return reinterpret_cast<const __half*>(
         reinterpret_cast<const char*>(lds) + LdsLayout::kScratchBase +
-        generation * Tile::kPdsGenerationBytes);
+        Group * Tile::kWavesPerConsumerGroup * Tile::kWriterPageBytes);
 }
 
 __device__ __forceinline__ float* sidecar_field(__half* lds, int field) {
@@ -99,7 +100,8 @@ __device__ __forceinline__ void source_slot_qk(int lane,
            (dst_word & 3);
 }
 
-__device__ __forceinline__ void producer_load_resident(
+template <int Group>
+__device__ __forceinline__ void producer_load_resident_group(
     const __half* k,
     const __half* v,
     __half* lds,
@@ -107,7 +109,8 @@ __device__ __forceinline__ void producer_load_resident(
     int k_base,
     int wave_local) {
 #pragma unroll
-    for (int n_block = 0; n_block < kKRowBlocks; ++n_block) {
+    for (int local_block = 0; local_block < 2; ++local_block) {
+        const int n_block = Group * 2 + local_block;
         const int d_base = wave_local * 32;
         const int64_t input =
             tensor_base + static_cast<int64_t>(k_base + n_block * 32) *
@@ -159,55 +162,65 @@ __device__ __forceinline__ void producer_load_raw(
     }
 }
 
-__device__ __forceinline__ void f16_mmac_pair(const Fragment& lhs,
-                                               const Fragment& rhs0,
-                                               const Fragment& rhs1,
-                                               Fragment& out,
-                                               bool first_d_block) {
+__device__ __forceinline__ void f16_mmac_single(const Fragment& lhs,
+                                                 const Fragment& rhs,
+                                                 Fragment& out,
+                                                 bool first_d_block) {
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
-    const ins::Vec4F16 acc0 =
+    const ins::Vec4F16 acc =
         first_d_block ? zero.f16x4[0] : out.f16x4[0];
-    const ins::Vec4F16 acc1 =
-        first_d_block ? zero.f16x4[0] : out.f16x4[1];
     out.f16x4[0] = __builtin_hcu_mmac_16x16x16_f16_lit_lts(
-        lhs.f16x4[0], rhs0.f16x4[0], acc0, 0, 0);
+        lhs.f16x4[0], rhs.f16x4[0], acc, 0, 0);
     out.f16x4[0] = __builtin_hcu_mmac_16x16x16_f16_lit_lts(
-        lhs.f16x4[1], rhs0.f16x4[1], out.f16x4[0], 0, 0);
-    out.f16x4[1] = __builtin_hcu_mmac_16x16x16_f16_lit_lts(
-        lhs.f16x4[0], rhs1.f16x4[0], acc1, 0, 0);
-    out.f16x4[1] = __builtin_hcu_mmac_16x16x16_f16_lit_lts(
-        lhs.f16x4[1], rhs1.f16x4[1], out.f16x4[1], 0, 0);
+        lhs.f16x4[1], rhs.f16x4[1], out.f16x4[0], 0, 0);
+    if (first_d_block) {
+        out.f16x4[1] = zero.f16x4[0];
+    }
 }
 
-// Logical GEMMs 1 and 2: one M16xN32 score/dP panel, computed once.
+// Logical GEMMs 1 and 2: one M16xN16 score/dP panel, computed once.
 __device__ __forceinline__ void score_dp_stage(const __half* lds,
                                                int m_block,
-                                               int n_block,
+                                               int n_owner,
                                                Fragment& score,
                                                Fragment& dp) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
         Fragment q_frag{};
         Fragment dout_frag{};
-        Fragment k0{};
-        Fragment k1{};
-        Fragment v0{};
-        Fragment v1{};
+        Fragment k_frag{};
+        Fragment v_frag{};
         const int q_offset = m16_matrix_offset(m_block, d_block);
-        const int kv_offset = matrix_block_offset(n_block, d_block);
+        const int kv_offset =
+            matrix_block_offset(n_owner >> 1, d_block) +
+            (n_owner & 1) * Tile::kWriterPageBytes / 2;
         ins::ds_read_matrix_32x16_trans(
             lds, LdsLayout::kQBase + q_offset, q_frag.f16x8);
         ins::ds_read_matrix_32x16_trans(
             lds, LdsLayout::kDoutBase + q_offset, dout_frag.f16x8);
-        ins::ds_read_matrix_trans_pair(
-            lds, LdsLayout::kKBase + kv_offset, k0.f16x8, k1.f16x8);
-        ins::ds_read_matrix_trans_pair(
-            lds, LdsLayout::kVBase + kv_offset, v0.f16x8, v1.f16x8);
+        ins::ds_read_matrix_32x16_trans(
+            lds, LdsLayout::kKBase + kv_offset, k_frag.f16x8);
+        ins::ds_read_matrix_32x16_trans(
+            lds, LdsLayout::kVBase + kv_offset, v_frag.f16x8);
         ins::wait_lgkm(0);
-        f16_mmac_pair(q_frag, k0, k1, score, d_block == 0);
-        f16_mmac_pair(dout_frag, v0, v1, dp, d_block == 0);
+        f16_mmac_single(q_frag, k_frag, score, d_block == 0);
+        f16_mmac_single(dout_frag, v_frag, dp, d_block == 0);
     }
+}
+
+template <int RegionBase>
+__device__ __forceinline__ void read_raw_panel_normal(
+    const __half* lds,
+    int m_block,
+    Fragment (&normal)[kMatrixBlocksD]) {
+    const int panel_offset = m16_matrix_offset(m_block, 0);
+    const auto* base = reinterpret_cast<const __half*>(
+        reinterpret_cast<const char*>(lds) + RegionBase +
+        panel_offset);
+    ins::ds_read_matrix_32x16_normal_imm4<0, 2048, 4096, 6144>(
+        base, normal[0].f16x8, normal[1].f16x8, normal[2].f16x8,
+        normal[3].f16x8);
 }
 
 __device__ __forceinline__ void softmax_ds_stage(
@@ -217,7 +230,7 @@ __device__ __forceinline__ void softmax_ds_stage(
     int q_base,
     int m_block,
     int k_base,
-    int n_block,
+    int n_owner,
     int causal,
     float row_max_log2,
     float row_inv_sum,
@@ -232,9 +245,11 @@ __device__ __forceinline__ void softmax_ds_stage(
         int local_k = 0;
         source_slot_qk(lane, word, local_q, local_k);
         const int qrow = q_base + m_block * Tile::kMqPerPanel + local_q;
-        const int krow = k_base + n_block * Tile::kNkPerDkvWave + local_k;
+        const int krow =
+            k_base + n_owner * Tile::kNkPerConsumerWave + local_k;
         const float probability =
-            (!causal || krow <= qrow)
+            (local_k < Tile::kNkPerConsumerWave &&
+             (!causal || krow <= qrow))
                 ? exp2f(static_cast<float>(score.scalar[word]) * scale_log2 -
                         row_max_log2) *
                       row_inv_sum
@@ -246,102 +261,219 @@ __device__ __forceinline__ void softmax_ds_stage(
     }
 }
 
+template <int Group>
+struct DsBarrier {
+    static_assert(Group == 0 || Group == 1);
+    static constexpr int kFilled =
+        Group == 0 ? Bar::kDsFilledG0 : Bar::kDsFilledG1;
+    static constexpr int kUsed =
+        Group == 0 ? Bar::kDsUsedG0 : Bar::kDsUsedG1;
+};
+
+template <int Group>
+__host__ __device__ constexpr int resident_barrier() {
+    return Group == 0 ? Bar::kResidentFilled0 : Bar::kResidentFilled1;
+}
+
 __device__ __forceinline__ void zero_dkv_accumulators(
-    Accumulator (&dv_acc)[16], Accumulator (&dk_acc)[16]) {
+    Accumulator (&dv_acc)[8], Accumulator (&dk_acc)[8]) {
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
 #pragma unroll
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < 8; ++i) {
         dv_acc[i].f32 = zero.f32;
         dk_acc[i].f32 = zero.f32;
     }
 }
 
-// Logical GEMMs 3 and 4: persistent N32 dV/dK ownership across the q-loop.
-__device__ __forceinline__ void update_dv_dk_stage(
+// Logical GEMM 3: consume dO while its four matrix fragments are hot.
+__device__ __forceinline__ void update_dv_stage(
     const Fragment& p_normal,
-    const Fragment& ds_normal,
     const Fragment (&dout_normal)[kMatrixBlocksD],
-    const Fragment (&q_normal)[kMatrixBlocksD],
-    Accumulator (&dv_acc)[16],
-    Accumulator (&dk_acc)[16]) {
+    Accumulator (&dv_acc)[8]) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
 #pragma unroll
-        for (int n_half = 0; n_half < 2; ++n_half) {
-#pragma unroll
-            for (int d_half = 0; d_half < 2; ++d_half) {
-                const int out = n_half * 8 + d_block * 2 + d_half;
-                dv_acc[out].f32 = ins::mmac_f16_lit(
-                    p_normal.f16x4[n_half],
-                    dout_normal[d_block].f16x4[d_half], dv_acc[out].f32);
-                dk_acc[out].f32 = ins::mmac_f16_lit(
-                    ds_normal.f16x4[n_half],
-                    q_normal[d_block].f16x4[d_half], dk_acc[out].f32);
-            }
+        for (int d_half = 0; d_half < 2; ++d_half) {
+            const int out = d_block * 2 + d_half;
+            dv_acc[out].f32 = ins::mmac_f16_lit(
+                p_normal.f16x4[0],
+                dout_normal[d_block].f16x4[d_half], dv_acc[out].f32);
         }
     }
 }
 
-template <int Generation>
-__device__ __forceinline__ void produce_dkv_panel(
+// Logical GEMM 4: consume Q in a separate island so dO is already dead.
+__device__ __forceinline__ void update_dk_stage(
+    const Fragment& ds_normal,
+    const Fragment (&q_normal)[kMatrixBlocksD],
+    Accumulator (&dk_acc)[8]) {
+#pragma unroll
+    for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
+#pragma unroll
+        for (int d_half = 0; d_half < 2; ++d_half) {
+            const int out = d_block * 2 + d_half;
+            dk_acc[out].f32 = ins::mmac_f16_lit(
+                ds_normal.f16x4[0], q_normal[d_block].f16x4[d_half],
+                dk_acc[out].f32);
+        }
+    }
+}
+
+template <int DHalf>
+__device__ __forceinline__ void update_dq_pair(
+    const Fragment (&ds_trans)[2],
+    const Fragment (&k_normal)[2],
+    Accumulator& dq_acc) {
+    static_assert(DHalf == 0 || DHalf == 1);
+#pragma unroll
+    for (int writer = 0; writer < 2; ++writer) {
+        ins::mmac_f16_lit_inplace(dq_acc.f32,
+                                  ds_trans[writer].f16x4[0],
+                                  k_normal[writer].f16x4[DHalf]);
+    }
+}
+
+template <int Group, int Pair, int DHalf>
+__device__ __forceinline__ void update_dq_group_pair(
+    const __half* lds,
+    int d_block,
+    Accumulator& dq_acc) {
+    Fragment ds_trans[2];
+    Fragment k_normal[2];
+    const __half* group_pages = scratch_group<Group>(lds);
+    const auto* k_pair = reinterpret_cast<const __half*>(
+        reinterpret_cast<const char*>(lds) + LdsLayout::kKBase +
+        (Group * 2 + Pair) * kMatrixBlocksD * kMatrixBlockBytes +
+        d_block * kMatrixBlockBytes);
+    constexpr int kPage0 = (Pair * 2 + 0) * Tile::kWriterPageBytes;
+    constexpr int kPage1 = (Pair * 2 + 1) * Tile::kWriterPageBytes;
+    ins::ds_read_matrix_32x16_trans_normal_dual_base_imm2<
+        kPage0, kPage1, 0, Tile::kWriterPageBytes / 2>(
+        group_pages, k_pair, ds_trans[0].f16x8, k_normal[0].f16x8,
+        ds_trans[1].f16x8, k_normal[1].f16x8);
+    ins::wait_lgkm(0);
+    update_dq_pair<DHalf>(ds_trans, k_normal, dq_acc);
+}
+
+template <int Group, int DHalf>
+__device__ __forceinline__ void update_dq_group(
+    const __half* lds,
+    int d_block,
+    Accumulator& dq_acc) {
+    update_dq_group_pair<Group, 0, DHalf>(lds, d_block, dq_acc);
+    update_dq_group_pair<Group, 1, DHalf>(lds, d_block, dq_acc);
+}
+
+__device__ __forceinline__ void atomic_store_dq_d16(
+    float* dq,
+    int64_t tensor_base,
+    int q_base,
+    int m_block,
+    int d_owner,
+    int lane,
+    const Accumulator& dq_acc) {
+    const int row = q_base + m_block * Tile::kMqPerPanel + (lane & 15);
+    const int col = d_owner * Tile::kHeadDimPerConsumerWave +
+                    (lane >> 4) * 4;
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+        atomicAdd(dq + tensor_base +
+                      static_cast<int64_t>(row) * Tile::kHeadDim + col + i,
+                  dq_acc.scalar[i]);
+    }
+}
+
+template <int Group>
+__device__ __forceinline__ void consume_symmetric_panel(
     const __half* lds,
     __half* mutable_lds,
+    float* dq,
+    int64_t tensor_base,
     int q_base,
     int m_block,
     int k_base,
-    int n_block,
+    int owner,
     int causal,
     float softmax_scale,
     int lane,
-    Accumulator (&dv_acc)[16],
-    Accumulator (&dk_acc)[16]) {
-    static_assert(Generation == 0 || Generation == 1);
-    constexpr int kFilled =
-        Generation == 0 ? Bar::kDsFilled0 : Bar::kDsFilled1;
-    const int sidecar_row = m_block * Tile::kMqPerPanel + (lane & 15);
-    const float row_max_log2 = sidecar_field(mutable_lds, 0)[sidecar_row];
-    const float row_inv_sum = sidecar_field(mutable_lds, 1)[sidecar_row];
-    const float row_delta = sidecar_field(mutable_lds, 2)[sidecar_row];
+    int& filled_phase,
+    Accumulator (&dv_acc)[8],
+    Accumulator (&dk_acc)[8]) {
+    static_assert(Group == 0 || Group == 1);
+    constexpr int kFilled = DsBarrier<Group>::kFilled;
+    constexpr int kUsed = DsBarrier<Group>::kUsed;
+    const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
+    const int d_owner = n_owner;
+    const int d_block = d_owner >> 1;
+    const int d_half = d_owner & 1;
 
     Fragment score{};
     Fragment dp{};
     Fragment p{};
     Fragment ds{};
-    score_dp_stage(lds, m_block, n_block, score, dp);
-    softmax_ds_stage(score, dp, lane, q_base, m_block, k_base, n_block,
-                     causal, row_max_log2, row_inv_sum, row_delta,
-                     softmax_scale, p, ds);
+    score_dp_stage(lds, m_block, n_owner, score, dp);
+    const int sidecar_row =
+        m_block * Tile::kMqPerPanel + (lane & 15);
+    softmax_ds_stage(
+        score, dp, lane, q_base, m_block, k_base, n_owner, causal,
+        sidecar_field(mutable_lds, 0)[sidecar_row],
+        sidecar_field(mutable_lds, 1)[sidecar_row],
+        sidecar_field(mutable_lds, 2)[sidecar_row], softmax_scale, p, ds);
 
-    const int page = scratch_page_offset(Generation, n_block);
-    ins::abarrier_seq<false>(kFilled);
+    const int page = scratch_page_offset<Group>(owner);
     ins::ds_write_matrix_32x16_trans_f16(p.f16x8, mutable_lds, page);
     ins::wait_lgkm(0);
     Fragment p_normal{};
     ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
     ins::wait_lgkm(0);
 
+    {
+        Fragment dout_normal[kMatrixBlocksD];
+        read_raw_panel_normal<LdsLayout::kDoutBase>(lds, m_block,
+                                                    dout_normal);
+        ins::wait_lgkm(0);
+        update_dv_stage(p_normal, dout_normal, dv_acc);
+    }
+
+    ins::abarrier_seq<false>(kFilled);
     ins::ds_write_matrix_32x16_trans_f16(ds.f16x8, mutable_lds, page);
     ins::wait_lgkm(0);
-    Fragment ds_normal{};
-    ins::ds_read_matrix_32x16_normal(lds, page, ds_normal.f16x8);
 
-    Fragment q_normal[kMatrixBlocksD];
-    Fragment dout_normal[kMatrixBlocksD];
-#pragma unroll
-    for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
-        const int raw_offset = m16_matrix_offset(m_block, d_block);
-        ins::ds_read_matrix_32x16_normal(
-            lds, LdsLayout::kQBase + raw_offset,
-            q_normal[d_block].f16x8);
-        ins::ds_read_matrix_32x16_normal(
-            lds, LdsLayout::kDoutBase + raw_offset,
-            dout_normal[d_block].f16x8);
+    {
+        Fragment ds_normal{};
+        Fragment q_normal[kMatrixBlocksD];
+        ins::ds_read_matrix_32x16_normal(lds, page, ds_normal.f16x8);
+        read_raw_panel_normal<LdsLayout::kQBase>(lds, m_block, q_normal);
+        ins::wait_lgkm(0);
+        update_dk_stage(ds_normal, q_normal, dk_acc);
     }
-    ins::wait_lgkm(0);
-    update_dv_dk_stage(p_normal, ds_normal, dout_normal, q_normal, dv_acc,
-                       dk_acc);
+
     ins::abarrier_arrive_cnt<false>(kFilled, 1);
+    int peer_phase = filled_phase;
+    ins::abarrier_try_wait<true>(kFilled, filled_phase);
+    constexpr int kPeerGroup = 1 - Group;
+    constexpr int kPeerFilled = DsBarrier<kPeerGroup>::kFilled;
+    constexpr int kPeerUsed = DsBarrier<kPeerGroup>::kUsed;
+    ins::abarrier_try_wait<true>(kPeerFilled, peer_phase);
+
+    Accumulator dq_acc{};
+    ins::F16x8 dq_zero;
+    ins::zero_f16x8(dq_zero);
+    dq_acc.f32 = dq_zero.f32;
+    if (d_half == 0) {
+        update_dq_group<Group, 0>(lds, d_block, dq_acc);
+        ins::abarrier_arrive_cnt<false>(kUsed, 1);
+        update_dq_group<kPeerGroup, 0>(lds, d_block, dq_acc);
+        ins::abarrier_arrive_cnt<false>(kPeerUsed, 1);
+    } else {
+        update_dq_group<Group, 1>(lds, d_block, dq_acc);
+        ins::abarrier_arrive_cnt<false>(kUsed, 1);
+        update_dq_group<kPeerGroup, 1>(lds, d_block, dq_acc);
+        ins::abarrier_arrive_cnt<false>(kPeerUsed, 1);
+    }
+    atomic_store_dq_d16(dq, tensor_base, q_base, m_block, d_owner, lane,
+                        dq_acc);
 }
 
 __device__ __forceinline__ void store_dkv_outputs(
@@ -349,39 +481,36 @@ __device__ __forceinline__ void store_dkv_outputs(
     float* dv,
     int64_t tensor_base,
     int k_base,
-    int n_block,
+    int n_owner,
     int lane,
-    const Accumulator (&dk_acc)[16],
-    const Accumulator (&dv_acc)[16]) {
+    const Accumulator (&dk_acc)[8],
+    const Accumulator (&dv_acc)[8]) {
+    const int row = k_base + n_owner * Tile::kNkPerConsumerWave +
+                    (lane & 15);
 #pragma unroll
-    for (int n_half = 0; n_half < 2; ++n_half) {
-        const int row = k_base + n_block * Tile::kNkPerDkvWave +
-                        n_half * 16 + (lane & 15);
+    for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
 #pragma unroll
-        for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
-#pragma unroll
-            for (int d_half = 0; d_half < 2; ++d_half) {
-                const int out = n_half * 8 + d_block * 2 + d_half;
-                const int col = d_block * 32 + d_half * 16 +
-                                (lane >> 4) * 4;
-                auto* dk_ptr = reinterpret_cast<ins::Vec4F32*>(
-                    dk + tensor_base + static_cast<int64_t>(row) *
-                                               Tile::kHeadDim +
-                    col);
-                auto* dv_ptr = reinterpret_cast<ins::Vec4F32*>(
-                    dv + tensor_base + static_cast<int64_t>(row) *
-                                               Tile::kHeadDim +
-                    col);
-                *dk_ptr = dk_acc[out].f32;
-                *dv_ptr = dv_acc[out].f32;
-            }
+        for (int d_half = 0; d_half < 2; ++d_half) {
+            const int out = d_block * 2 + d_half;
+            const int col =
+                d_block * 32 + d_half * 16 + (lane >> 4) * 4;
+            auto* dk_ptr = reinterpret_cast<ins::Vec4F32*>(
+                dk + tensor_base +
+                static_cast<int64_t>(row) * Tile::kHeadDim + col);
+            auto* dv_ptr = reinterpret_cast<ins::Vec4F32*>(
+                dv + tensor_base +
+                static_cast<int64_t>(row) * Tile::kHeadDim + col);
+            *dk_ptr = dk_acc[out].f32;
+            *dv_ptr = dv_acc[out].f32;
         }
     }
 }
 
-__device__ __forceinline__ void run_dkv_owner(
+template <int Group>
+__device__ __forceinline__ void run_consumer_group(
     const __half* lds,
     __half* mutable_lds,
+    float* dq,
     float* dk,
     float* dv,
     int64_t tensor_base,
@@ -390,143 +519,42 @@ __device__ __forceinline__ void run_dkv_owner(
     int q_tile_count,
     int causal,
     float softmax_scale,
-    int n_block,
+    int owner,
     int lane) {
-    Accumulator dv_acc[16];
-    Accumulator dk_acc[16];
+    Accumulator dv_acc[8];
+    Accumulator dk_acc[8];
     zero_dkv_accumulators(dv_acc, dk_acc);
     int raw_phase = 0;
-    int used_phase0 = 0;
-    int used_phase1 = 0;
-
+    int filled_phase = 0;
+    int used_phase = 0;
 #pragma clang loop unroll(disable)
     for (int qi = 0; qi < q_tile_count; ++qi) {
         ins::abarrier_try_wait<true>(Bar::kRawFilled, raw_phase);
         const int q_base = (q_tile_begin + qi) * Tile::kMq;
         if (qi != 0) {
-            ins::abarrier_try_wait<true>(Bar::kDsUsed0, used_phase0);
+            ins::abarrier_try_wait<true>(DsBarrier<Group>::kUsed, used_phase);
         }
-        produce_dkv_panel<0>(lds, mutable_lds, q_base, 0, k_base, n_block,
-                             causal, softmax_scale, lane, dv_acc, dk_acc);
-        if (qi != 0) {
-            ins::abarrier_try_wait<true>(Bar::kDsUsed1, used_phase1);
-        }
-        produce_dkv_panel<1>(lds, mutable_lds, q_base, 1, k_base, n_block,
-                             causal, softmax_scale, lane, dv_acc, dk_acc);
-        ins::abarrier_try_wait<true>(Bar::kDsUsed0, used_phase0);
-        produce_dkv_panel<0>(lds, mutable_lds, q_base, 2, k_base, n_block,
-                             causal, softmax_scale, lane, dv_acc, dk_acc);
-        ins::abarrier_try_wait<true>(Bar::kDsUsed1, used_phase1);
-        produce_dkv_panel<1>(lds, mutable_lds, q_base, 3, k_base, n_block,
-                             causal, softmax_scale, lane, dv_acc, dk_acc);
+        consume_symmetric_panel<Group>(
+            lds, mutable_lds, dq, tensor_base, q_base, 0, k_base, owner,
+            causal, softmax_scale, lane, filled_phase, dv_acc, dk_acc);
+        ins::abarrier_try_wait<true>(DsBarrier<Group>::kUsed, used_phase);
+        consume_symmetric_panel<Group>(
+            lds, mutable_lds, dq, tensor_base, q_base, 1, k_base, owner,
+            causal, softmax_scale, lane, filled_phase, dv_acc, dk_acc);
+        ins::abarrier_try_wait<true>(DsBarrier<Group>::kUsed, used_phase);
+        consume_symmetric_panel<Group>(
+            lds, mutable_lds, dq, tensor_base, q_base, 2, k_base, owner,
+            causal, softmax_scale, lane, filled_phase, dv_acc, dk_acc);
+        ins::abarrier_try_wait<true>(DsBarrier<Group>::kUsed, used_phase);
+        consume_symmetric_panel<Group>(
+            lds, mutable_lds, dq, tensor_base, q_base, 3, k_base, owner,
+            causal, softmax_scale, lane, filled_phase, dv_acc, dk_acc);
         ins::abarrier_arrive_cnt<false>(Bar::kRawUsed, 1);
     }
 
-    store_dkv_outputs(dk, dv, tensor_base, k_base, n_block, lane, dk_acc,
+    const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
+    store_dkv_outputs(dk, dv, tensor_base, k_base, n_owner, lane, dk_acc,
                       dv_acc);
-}
-
-__device__ __forceinline__ void atomic_store_dq_d32(
-    float* dq,
-    int64_t tensor_base,
-    int q_base,
-    int m_block,
-    int d_block,
-    int lane,
-    const Accumulator (&dq_acc)[2]) {
-    const int row = q_base + m_block * Tile::kMqPerPanel + (lane & 15);
-#pragma unroll
-    for (int d_half = 0; d_half < 2; ++d_half) {
-        const int col = d_block * Tile::kHeadDimPerDqWave + d_half * 16 +
-                        (lane >> 4) * 4;
-#pragma unroll
-        for (int i = 0; i < 4; ++i) {
-            atomicAdd(dq + tensor_base +
-                          static_cast<int64_t>(row) * Tile::kHeadDim + col + i,
-                      dq_acc[d_half].scalar[i]);
-        }
-    }
-}
-
-// Logical GEMM 5: one D32 owner consumes all four N32 dS pages.
-template <int Generation>
-__device__ __forceinline__ void consume_dq_panel(
-    const __half* lds,
-    float* dq,
-    int64_t tensor_base,
-    int q_base,
-    int m_block,
-    int d_block,
-    int lane,
-    int& filled_phase) {
-    static_assert(Generation == 0 || Generation == 1);
-    constexpr int kFilled =
-        Generation == 0 ? Bar::kDsFilled0 : Bar::kDsFilled1;
-    constexpr int kUsed =
-        Generation == 0 ? Bar::kDsUsed0 : Bar::kDsUsed1;
-    ins::abarrier_try_wait<true>(kFilled, filled_phase);
-
-    Fragment ds[4];
-    const __half* generation = scratch_generation(lds, Generation);
-    ins::ds_read_matrix_32x16_trans_imm4<
-        0 * Tile::kWriterPageBytes, 1 * Tile::kWriterPageBytes,
-        2 * Tile::kWriterPageBytes, 3 * Tile::kWriterPageBytes>(
-        generation, ds[0].f16x8, ds[1].f16x8, ds[2].f16x8,
-        ds[3].f16x8);
-
-    Fragment k0[4];
-    Fragment k1[4];
-#pragma unroll
-    for (int n_block = 0; n_block < 4; ++n_block) {
-        ins::ds_read_matrix_normal_pair(
-            lds, LdsLayout::kKBase + matrix_block_offset(n_block, d_block),
-            k0[n_block].f16x8, k1[n_block].f16x8);
-    }
-    ins::wait_lgkm(0);
-    ins::abarrier_arrive_cnt<false>(kUsed, 1);
-
-    ins::F16x8 zero;
-    ins::zero_f16x8(zero);
-    Accumulator dq_acc[2];
-    dq_acc[0].f32 = zero.f32;
-    dq_acc[1].f32 = zero.f32;
-#pragma unroll
-    for (int n_block = 0; n_block < 4; ++n_block) {
-#pragma unroll
-        for (int d_half = 0; d_half < 2; ++d_half) {
-            dq_acc[d_half].f32 = ins::mmac_f16_lit(
-                ds[n_block].f16x4[0], k0[n_block].f16x4[d_half],
-                dq_acc[d_half].f32);
-            dq_acc[d_half].f32 = ins::mmac_f16_lit(
-                ds[n_block].f16x4[1], k1[n_block].f16x4[d_half],
-                dq_acc[d_half].f32);
-        }
-    }
-    atomic_store_dq_d32(dq, tensor_base, q_base, m_block, d_block, lane,
-                        dq_acc);
-}
-
-__device__ __forceinline__ void run_dq_owner(const __half* lds,
-                                             float* dq,
-                                             int64_t tensor_base,
-                                             int q_tile_begin,
-                                             int q_tile_count,
-                                             int d_block,
-                                             int lane) {
-    int filled_phase0 = 0;
-    int filled_phase1 = 0;
-#pragma clang loop unroll(disable)
-    for (int qi = 0; qi < q_tile_count; ++qi) {
-        const int q_base = (q_tile_begin + qi) * Tile::kMq;
-        consume_dq_panel<0>(lds, dq, tensor_base, q_base, 0, d_block, lane,
-                            filled_phase0);
-        consume_dq_panel<1>(lds, dq, tensor_base, q_base, 1, d_block, lane,
-                            filled_phase1);
-        consume_dq_panel<0>(lds, dq, tensor_base, q_base, 2, d_block, lane,
-                            filled_phase0);
-        consume_dq_panel<1>(lds, dq, tensor_base, q_base, 3, d_block, lane,
-                            filled_phase1);
-    }
 }
 
 }  // namespace
@@ -546,24 +574,25 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
                      int causal,
                      float softmax_scale) {
 #if defined(SHAOBO_EXPLICIT_WDRA_INIT)
-    __builtin_hcu_wdra_init(Wdra::kProducerVgprs, Wdra::kDkvVgprs,
-                            Wdra::kDqVgprs);
+    __builtin_hcu_wdra_init(Wdra::kProducerVgprs, Wdra::kConsumer0Vgprs,
+                            Wdra::kConsumer1Vgprs);
 #endif
 #if defined(__gfx946__) || defined(__gfx92a__)
     __shared__ __align__(2048) __half lds[LdsLayout::kBytes / sizeof(__half)];
     const int wave = static_cast<int>(__builtin_hcu_get_wave_id());
     if (wave == 0) {
-        __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kResidentFilled0, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kResidentFilled1, 4);
         __builtin_hcu_s_abarrier_init(Bar::kRawFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kRawUsed, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kDsFilled0, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kDsUsed0, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kDsFilled1, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kDsUsed1, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kRawUsed, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kDsFilledG0, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kDsUsedG0, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kDsFilledG1, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kDsUsedG1, 8);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
-    if (wave < Tile::kDkvWaveBegin) {
+    if (wave < Tile::kConsumer0WaveBegin) {
         __builtin_hcu_s_set_vgpr_size(Wdra::kProducerVgprs);
         const int wave_local = wave & 3;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
@@ -575,10 +604,16 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int64_t row_base = static_cast<int64_t>(bh) * seqlen;
         const int64_t tensor_base = row_base * Tile::kHeadDim;
 
-        ins::abarrier_seq<false>(Bar::kResidentFilled);
-        producer_load_resident(k, v, lds, tensor_base, k_base, wave_local);
+        ins::abarrier_seq<false>(Bar::kResidentFilled0);
+        producer_load_resident_group<0>(k, v, lds, tensor_base, k_base,
+                                        wave_local);
         ins::maybe_wait_bps_vbcnt_before_arrive();
-        ins::abarrier_arrive_cnt<false>(Bar::kResidentFilled, 1);
+        ins::abarrier_arrive_cnt<false>(Bar::kResidentFilled0, 1);
+        ins::abarrier_seq<false>(Bar::kResidentFilled1);
+        producer_load_resident_group<1>(k, v, lds, tensor_base, k_base,
+                                        wave_local);
+        ins::maybe_wait_bps_vbcnt_before_arrive();
+        ins::abarrier_arrive_cnt<false>(Bar::kResidentFilled1, 1);
 
         int raw_used_phase = 0;
         for (int qi = 0; qi < q_tile_count; ++qi) {
@@ -596,9 +631,9 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         if (q_tile_count != 0) {
             ins::abarrier_try_wait<true>(Bar::kRawUsed, raw_used_phase);
         }
-    } else if (wave < Tile::kDqWaveBegin) {
-        __builtin_hcu_s_set_vgpr_size(Wdra::kDkvVgprs);
-        const int n_block = wave - Tile::kDkvWaveBegin;
+    } else if (wave < Tile::kConsumer1WaveBegin) {
+        __builtin_hcu_s_set_vgpr_size(Wdra::kConsumer0Vgprs);
+        const int owner = wave - Tile::kConsumer0WaveBegin;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int bh = static_cast<int>(blockIdx.y) * heads +
                        static_cast<int>(blockIdx.x);
@@ -608,12 +643,13 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int64_t tensor_base =
             static_cast<int64_t>(bh) * seqlen * Tile::kHeadDim;
         int resident_phase = 0;
-        ins::abarrier_try_wait<true>(Bar::kResidentFilled, resident_phase);
-        run_dkv_owner(lds, lds, dk, dv, tensor_base, k_base, q_tile_begin,
-                      q_tile_count, causal, softmax_scale, n_block, lane);
+        ins::abarrier_try_wait<true>(resident_barrier<0>(), resident_phase);
+        run_consumer_group<0>(lds, lds, dq, dk, dv, tensor_base, k_base,
+                              q_tile_begin, q_tile_count, causal,
+                              softmax_scale, owner, lane);
     } else {
-        __builtin_hcu_s_set_vgpr_size(Wdra::kDqVgprs);
-        const int d_block = wave - Tile::kDqWaveBegin;
+        __builtin_hcu_s_set_vgpr_size(Wdra::kConsumer1Vgprs);
+        const int owner = wave - Tile::kConsumer1WaveBegin;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int bh = static_cast<int>(blockIdx.y) * heads +
                        static_cast<int>(blockIdx.x);
@@ -623,20 +659,22 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int64_t tensor_base =
             static_cast<int64_t>(bh) * seqlen * Tile::kHeadDim;
         int resident_phase = 0;
-        ins::abarrier_try_wait<true>(Bar::kResidentFilled, resident_phase);
-        run_dq_owner(lds, dq, tensor_base, q_tile_begin, q_tile_count, d_block,
-                     lane);
+        ins::abarrier_try_wait<true>(resident_barrier<1>(), resident_phase);
+        run_consumer_group<1>(lds, lds, dq, dk, dv, tensor_base, k_base,
+                              q_tile_begin, q_tile_count, causal,
+                              softmax_scale, owner, lane);
     }
 
     __builtin_hcu_s_ebarrier_sync(0);
     if (wave == 0) {
-        __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
+        __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled0);
+        __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled1);
         __builtin_hcu_s_abarrier_inv(Bar::kRawFilled);
         __builtin_hcu_s_abarrier_inv(Bar::kRawUsed);
-        __builtin_hcu_s_abarrier_inv(Bar::kDsFilled0);
-        __builtin_hcu_s_abarrier_inv(Bar::kDsUsed0);
-        __builtin_hcu_s_abarrier_inv(Bar::kDsFilled1);
-        __builtin_hcu_s_abarrier_inv(Bar::kDsUsed1);
+        __builtin_hcu_s_abarrier_inv(Bar::kDsFilledG0);
+        __builtin_hcu_s_abarrier_inv(Bar::kDsUsedG0);
+        __builtin_hcu_s_abarrier_inv(Bar::kDsFilledG1);
+        __builtin_hcu_s_abarrier_inv(Bar::kDsUsedG1);
     }
 #else
     (void)dout;

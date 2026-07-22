@@ -16525,3 +16525,35 @@ Production integration result:
   `/zys/sb/fa3b/layout_probes/fused5_symmetric_n16_ds_20260723_044005`.
 - Promote the topology to production next. Do not add a phase switch; rewrite
   the one canonical kernel and preserve exact five-GEMM work.
+## 2026-07-23 - Symmetric N16 production integration
+
+- Classification: `ACCEPT_EXACT_WORK_SPILL_FREE_TICKS_BARRIER_IMPROVED`.
+- Two symmetric four-wave consumer groups now partition all five GEMMs exactly.
+  Every wave owns one N16 dK/dV fragment and one globally unique D16 dQ
+  fragment. Dynamic H1/S1024 MMOP remains exactly 92,160.
+- The first production draft indexed `k_normal[writer].f16x4[d_half]` with a
+  runtime half selector. LLVM materialized the source fragment in private
+  memory. Compile-time `DHalf=0/1` branches remove that dynamic register index:
+  branch use is `8/114/114`, SGPR97/VGPR128, private/spill/scratch0.
+- D32 partial dQ ownership is rejected. It is correct and bank0 but doubles
+  FP32 CAS output traffic; ticks rise to 393,187,340 and active falls to
+  4.562237%.
+- One fully consumed dS generation plus dedicated sidecar uses 115,456 B LDS
+  and eight ABarrier IDs. H1/S128 causal/non-causal and H1/S1024 causal pass;
+  dK/dV relative-L2 are `2.77289e-4 / 4.61692e-4`.
+- Fullperf improves the previous persistent-owner checkpoint by 6.01%:
+  `273,490,490 -> 256,493,510` kernel ticks. MMAC active rises only
+  `6.488954% -> 6.791259%`, so the 50% goal remains open.
+- XCU window evidence rejects waitcnt micro-tuning as the next move. Aggregate
+  issue gaps are ABarrier-to-XOR 37.18%, atomic-CAS-to-wait 26.46%, and atomic
+  scalar setup-to-wait 9.48%. On one representative SIMD, the producer wave is
+  about 99.8% bubble on RawUsed and both consumers are about 96.9% bubble;
+  MMAC+VALU coissue is only 5.44%.
+- Evidence:
+  `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_054758` and
+  `/zys/sb/fa3b/xcu_outputs/5gemm_symmetric_d16_singlepage_s1024_20260723_window`.
+- Next design gate: retain all four M16 dS fragments in consumer VGPRs, then
+  publish them in one batch after dKV accumulation. Reuse dead V plus raw
+  Q/dO LDS for the 64 KiB padded dS set, reducing per-panel cross-group
+  ownership to one publish/consume epoch. Atomics require a separate ownership
+  solution; moving unchanged CAS work between roles is already rejected.

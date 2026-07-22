@@ -10758,3 +10758,30 @@ Status: `ACCEPT_NATIVE_SYMMETRIC_GATE / PRODUCTION_INTEGRATION_OPEN`.
 - This closes the native layout, token and role-budget blockers. Production
   may replace the 4:1 dKV:dQ role split with two symmetric N64 groups while
   retaining exactly five logical GEMMs and fixed gen0/gen1 calls.
+## 2026-07-23 Symmetric N16 Canonical Baseline
+
+Status: `ACCEPT_EXACT_WORK_SPILL_FREE / PERFORMANCE_TARGET_OPEN`.
+
+- The canonical source is a 12-wave M64/N128/D128 fused five-GEMM kernel:
+  waves0-3 publish resident K/V and raw Q/dO, waves4-7 and waves8-11 are
+  symmetric four-wave consumer groups.
+- Every consumer owns N16 dK/dV persistently and a globally unique D16 dQ
+  partial. Score and dP are computed once. H1/S1024 causal issues exactly
+  92,160 useful MMOP.
+- Static gate: WDRA `32/176/176`, branch use `8/114/114`, SGPR97/VGPR128,
+  private segment0, scratch0, spill0, LDS115,456 B. Main matrices use native
+  matrix load/read/write/MMAC, with bank0 and no scalar/gather workaround.
+- Correctness passes H1/S128 causal/non-causal and H1/S1024 causal. Fullperf is
+  256,493,510 kernel ticks and 6.791259% MMAC active, a 6.01% tick improvement
+  over the previous 273,490,490 checkpoint.
+- XCU proves the remaining structure is not ready for local wait edits:
+  ABarrier ownership accounts for 37.18% of issue gaps and the software-CAS dQ
+  epilogue plus waits for about 35.94%. Representative producer/consumer waves
+  spend 99.8%/96.9% of the selected window in bubbles.
+- Current fullperf:
+  `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_054758`.
+- Current XCU evidence:
+  `/zys/sb/fa3b/xcu_outputs/5gemm_symmetric_d16_singlepage_s1024_20260723_window`.
+- Next source change must batch all four M16 dS publications into one ownership
+  epoch and must preserve exact MMOP, unique output owners and no-spill gates.
+  It is not permitted to reintroduce D32 duplicate dQ partials.

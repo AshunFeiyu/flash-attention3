@@ -5465,3 +5465,25 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   tensors plus dQ/dK MMAC are exact; SGPR32/VGPR128, private/spill0, bank0.
 - The production change must keep one canonical path, exactly five logical
   GEMMs, no duplicate score/dP and no scalar/permutation layout workaround.
+## 2026-07-23 Symmetric D16 Baseline And Next Structural Gate
+
+- The clean branch now has a correct, spill-free symmetric implementation:
+  producer waves0-3 plus two identical consumer groups waves4-7/8-11. Each
+  consumer owns N16 dK/dV and unique D16 dQ; exact work is 1,280 MMAC per
+  M64/N128/D128 tile.
+- A compiler spill that looked like WDRA pressure was actually dynamic register
+  sub-fragment indexing. Replace runtime `fragment[d_half]` with compile-time
+  `DHalf` specialization before raising VGPR windows.
+- Accepted fullperf is 256,493,510 ticks / 6.791259% active, bank0 and
+  private/spill/scratch0. It is faster than the prior checkpoint by 6.01% but
+  is not close to the 50% target.
+- XCU identifies two structural debts: per-M16 dS ownership handshakes and the
+  dQ software-CAS epilogue. The selected SIMD window reports 5.44% MMAC+VALU
+  coissue; producer RawUsed and consumer atomic waits dominate.
+- Do not spend the next round deleting arbitrary waitcnts. The next admitted
+  hypothesis is a batch-publish design: retain four dS fragments per consumer,
+  finish dKV over M64, recycle dead V plus Q/dO LDS into 64 KiB of dS source
+  pages, then perform one dQ consumption epoch.
+- Evidence lives under
+  `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_054758` and
+  `/zys/sb/fa3b/xcu_outputs/5gemm_symmetric_d16_singlepage_s1024_20260723_window`.
