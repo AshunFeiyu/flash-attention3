@@ -5221,9 +5221,10 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
 - Focused source: `probes/ds_matrix_reg_roundtrip_probe.cpp`.
 - Runner: `scripts/run_ds_matrix_reg_roundtrip_probe.sh`.
 - Current PMD result: none of 20 writer/reader combinations returns an
-  arbitrary register fragment unchanged in the same lane/word slots. m32
-  paths are mostly a deterministic remap but contain eight `0xfefe` poison
-  slots while PMD marks the instructions as testing.
+  arbitrary register fragment unchanged in the same lane/word slots. With
+  LDS byte offset zero, all 12 matching m32 combinations are complete
+  deterministic permutations; the previous eight poison slots came from an
+  invalid `offset:16` probe invocation.
 - Do not infer production correctness from register identity. A native FA path
   must use the documented MMAC-output/operand layout contract and pass the
   dense CPU-oracle probe.

@@ -23,27 +23,26 @@ ordinary `ds_read_b*`, permutation, gather, or production FA code.
 
 ## Result
 
-Run: `/zys/sb/fa3b/layout_probes/ds_matrix_reg_roundtrip_20260722_200230`.
+Corrected run:
+`/zys/sb/fa3b/layout_probes/ds_matrix_reg_roundtrip_20260722_201613`.
 
 - Transport passes: PMD exits normally, metadata is SGPR16/VGPR13 with no
   private segment or spill, and `ldsBankConflict=0`.
 - ASM has exactly four matrix writers, two normal readers, three transpose
   readers, no MMAC, no scalar matrix read, and no permutation instruction.
 - No pair is a same-lane/same-word identity: `identity_pairs=0/20`.
-- No pair is a complete 512-word bijection on this PMD:
-  `permutation_pairs=0/20`.
-- The m32 readers recover 504 unique source words and return `0xfefe` poison
-  for eight destination slots. The m16 readers expose only 256 source words
-  for this m32 source shape and return poison in the other 256 slots.
+- All 12 combinations using a matching m32 reader are complete 512-word
+  permutations: `permutation_pairs=12/20`.
+- The m16 readers expose only 256 source words for this m32 source shape and
+  return poison in the other 256 slots, so they are shape-mismatched readers.
 - PMD prints `ds_write_matrix : testing` and
   `ds_read_matrix_trans : testing` warnings.
 
 Representative normal/normal result:
 
 ```text
-identity_mismatch=511 identity_pass=0
-unmapped=8 duplicate=0 missing=8 permutation_pass=0
-lane56..63 word7 include PMD poison 0xfefe
+identity_mismatch=510 identity_pass=0
+unmapped=0 duplicate=0 missing=0 permutation_pass=1
 ```
 
 ## Interpretation
@@ -54,11 +53,15 @@ The writer source contract and reader destination contract are matrix-layout
 contracts, normally tied to MMAC output/operand layouts. Most recovered words
 show a deterministic lane/word redistribution, not random data corruption.
 
-The eight poison words mean this PMD run cannot prove a complete native
-roundtrip even as a permutation. Treat that as a compiler/PMD contract question
-because the model itself marks these instructions as testing. Do not use this
-probe alone to reject a documented MMAC-output writer/reader pairing; validate
-that exact semantic chain with a dense CPU oracle.
+An earlier run incorrectly passed `16` as the builtin LDS byte offset. Its ASM
+contained `offset:16`, skipped eight FP16 words and returned eight `0xfefe`
+poison slots. With the required byte offset `0`, all matching m32 paths are
+complete permutations. This correction is a probe bug fix, not a hardware or
+PMD behavior change.
+
+Do not use raw register identity to reject a documented MMAC-output
+writer/reader pairing; validate that exact semantic chain with a dense CPU
+oracle.
 
 ## Reproduce
 
@@ -67,4 +70,3 @@ cd /zys/shaobo/fa3_bwd_wasp_clean
 GPU_CHIP=sb GPU_ARGS="['--SQCIPfLines=7']" \
   scripts/run_ds_matrix_reg_roundtrip_probe.sh
 ```
-

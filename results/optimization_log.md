@@ -16273,17 +16273,18 @@ Decision: `REJECT_CURRENT_NATIVE_F16_ROUTE / HARD_GATE_CLOSED`.
 
 ## 2026-07-22 Raw Register DS-Matrix Roundtrip
 
-Decision: `OBSERVE_NO_IDENTITY / ESCALATE_PMD_POISON`.
+Decision: `OBSERVE_NO_IDENTITY / COMPLETE_M32_PERMUTATION`.
 
 - Added a minimal one-wave probe with unique raw FP16 source bits and no MMAC,
   ABarrier, cross-wave ownership, scalar LDS read, permutation or FA indexing.
 - Swept four f16 writer forms and five normal/trans reader forms. All 20 pairs
   fail strict same-lane/same-word identity.
-- For m32 readers, 504/512 outputs are unique members of the source set and
-  eight are `0xfefe`; for m16 readers, 256/512 are source members and 256 are
-  poison. This is deterministic layout redistribution plus model poison, not
-  evidence that the original FA formulas are wrong.
+- The first run passed builtin byte offset 16 and therefore skipped exactly
+  eight FP16 words. After correcting the offset to zero, all 12 matching m32
+  reader combinations are complete 512-word permutations. m16 readers expose
+  only 256/512 source members because their shape does not match the m32 page.
 - Static and PMD transport gates pass: SGPR16/VGPR13, private/spill0, bank0,
-  `simTicks=4,986,800`. PMD emits explicit matrix-instruction testing warnings.
-- Keep the probe isolated. Escalate the exact writer source-layout and reader
-  destination-layout contract, and validate any answer with the dense oracle.
+  `simTicks=4,981,340`. PMD emits explicit matrix-instruction testing warnings.
+- Keep the probe isolated. Raw lane identity is the wrong semantic gate;
+  validate the exact writer-source and reader-destination contracts with the
+  dense oracle.

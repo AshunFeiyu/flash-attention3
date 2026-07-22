@@ -10445,18 +10445,22 @@ Status: `BLOCKED_CURRENT_COMPILER_PMD_CONTRACT`; production source unchanged.
 
 ## 2026-07-22 Register-To-LDS Roundtrip Isolated
 
-Status: `OBSERVE_LAYOUT_REMAP_AND_PMD_POISON`; production source unchanged.
+Status: `OBSERVE_COMPLETE_LAYOUT_REMAP`; production source unchanged.
 
 - Added a one-wave bitwise probe for
   `A-reg -> f16 ds_write_matrix -> LDS -> normal/trans ds_read_matrix -> A1-reg`.
 - All 20 writer/reader builtin combinations execute with SGPR16/VGPR13,
   private/spill/scratch0, no scalar matrix reads or permutations, and bank0.
-- No pair returns the same lane/word fragment. m32 readers recover 504 unique
-  source words but expose eight `0xfefe` poison slots; m16 readers recover 256
-  words for this m32 source shape. PMD labels both matrix paths as testing.
+- No pair returns the same lane/word fragment. After correcting the builtin
+  byte offset from 16 to 0, all 12 matching m32 reader combinations recover a
+  complete 512-word permutation. m16 readers recover only 256 words because
+  they do not match this m32 source shape.
 - Evidence:
-  `/zys/sb/fa3b/layout_probes/ds_matrix_reg_roundtrip_20260722_200230` and
+  `/zys/sb/fa3b/layout_probes/ds_matrix_reg_roundtrip_20260722_201613` and
   `results/ds_matrix_reg_roundtrip_20260722.md`.
 - This proves the naive register-identity assumption false on the current
   model. It does not replace the dense semantic MMAC oracle for a documented
   writer/reader pairing.
+- The rejected `200230` run used `offset:16` and is invalid evidence. The
+  builtin parameter is an LDS byte offset; pass zero when the pointer already
+  names the page base.

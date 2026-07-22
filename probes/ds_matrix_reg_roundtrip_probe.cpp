@@ -45,19 +45,19 @@ __device__ __forceinline__ void write_fragment(
     switch (writer) {
         case 0:
             __builtin_hcu_ds_write_matrix_format_f16(
-                fragment, lds, 16, 2, 1, 0, 0);
+                fragment, lds, 0, 2, 1, 0, 0);
             break;
         case 1:
             __builtin_hcu_ds_write_matrix_format_f16(
-                fragment, lds, 16, 2, 1, 1, 0);
+                fragment, lds, 0, 2, 1, 1, 0);
             break;
         case 2:
             __builtin_hcu_ds_write_matrix_format_f16(
-                fragment, lds, 16, 2, 1, 0, 1);
+                fragment, lds, 0, 2, 1, 0, 1);
             break;
         default:
             __builtin_hcu_ds_write_matrix_format_f16(
-                fragment, lds, 16, 2, 1, 1, 1);
+                fragment, lds, 0, 2, 1, 1, 1);
             break;
     }
 }
@@ -66,19 +66,19 @@ __device__ __forceinline__ Vec8F16 read_fragment(int reader, _Float16* lds) {
     switch (reader) {
         case 0:
             return __builtin_hcu_ds_read_matrix_format_f16(
-                lds, 16, 2, 1, 0);
+                lds, 0, 2, 1, 0);
         case 1:
             return __builtin_hcu_ds_read_matrix_format_f16(
-                lds, 16, 2, 1, 1);
+                lds, 0, 2, 1, 1);
         case 2:
             return __builtin_hcu_ds_read_matrix_trans_format_f16(
-                lds, 16, 2, 1, 0);
+                lds, 0, 2, 1, 0);
         case 3:
             return __builtin_hcu_ds_read_matrix_trans_format_f16(
-                lds, 16, 1, 2, 0);
+                lds, 0, 1, 2, 0);
         default:
             return __builtin_hcu_ds_read_matrix_trans_format_f16(
-                lds, 16, 1, 2, 1);
+                lds, 0, 1, 2, 1);
     }
 }
 
