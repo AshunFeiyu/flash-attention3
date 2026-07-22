@@ -38,13 +38,14 @@ awk '
   /^[[:space:]]*ds_write_matrix_format/ { write += 1 }
   /^[[:space:]]*ds_read_matrix_trans_format/ { read_t += 1 }
   /^[[:space:]]*v_mmac_/ { mmac += 1 }
+  /^[[:space:]]*v_mmac_16x16x16_f16/ { mmac_f16_out += 1 }
   /^[[:space:]]*ds_read_b/ { scalar_read += 1 }
   /^[[:space:]]*ds_(m|b)permute/ { permute += 1 }
   /permlane/ { permlane += 1 }
   END {
-    printf("asm_gate mls=%d writer=%d read_t=%d mmac=%d scalar_read=%d permute=%d permlane=%d\n",
-           mls, write, read_t, mmac, scalar_read, permute, permlane)
-    if (mls < 2 || write < 1 || read_t < 1 || mmac < 16 ||
+    printf("asm_gate mls=%d writer=%d read_t=%d mmac=%d mmac_f16_out=%d scalar_read=%d permute=%d permlane=%d\n",
+           mls, write, read_t, mmac, mmac_f16_out, scalar_read, permute, permlane)
+    if (mls < 2 || write < 1 || read_t < 1 || mmac < 16 || mmac_f16_out < 16 ||
         scalar_read != 0 || permute != 0 || permlane != 0) exit 1
   }
 ' "${ASM_ABS}"

@@ -5312,3 +5312,16 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
   writer-reader ABIs; best mismatch is `384/512`.
 - Keep the canonical FA path unchanged. The next isolated test is the native
   FP16-output MMAC C/D form, not a runtime permute/gather workaround.
+
+## 2026-07-22 Native FP16 MMAC Matrix Handoff
+
+- The FP16-output HCU MMAC closes the source-slot existence question. With
+  `qT/kT`, `lit=0`, `lts=0`, a trans matrix writer followed by the trans m32
+  reader reproduces the expected coordinates exactly for both N and M pairs.
+- This is an instruction ABI result, not permission to lower score/dP
+  accumulation precision. The canonical 5-GEMM kernel remains unchanged.
+- The next focused gate is a dense numeric
+  `FP16 MMAC -> trans writer -> trans reader -> downstream MMAC` chain and an
+  explicit comparison against the FP32 score/dP plus dS accuracy requirement.
+- Evidence: `results/ds_matrix_mmac_source_abi_20260722.md`, remote run
+  `/zys/sb/fa3b/layout_probes/dq_source_slot_20260722_225346`.

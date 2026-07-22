@@ -16362,3 +16362,20 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
   private segment, no ordinary matrix read or permute, bank conflict `0`.
 - Next hypothesis: FP16-output MMAC C/D may match the FP16 writer source ABI;
   test it before any FA integration.
+
+## 2026-07-22 - Native FP16 MMAC writer-source ABI
+
+- Classification: `ACCEPT_F16_C_NATIVE_SOURCE_MATCH / OBSERVE_NUMERIC_GATE`.
+- Added the HCU FP16-output MMAC to the existing exhaustive source-slot probe.
+- Found exact `0/512` native contracts for adjacent-N and adjacent-M pairs:
+  - `qT_kT_lit0_lts0 -> trans writer -> trans_m32_alt0 reader`;
+  - `qT_kT_lit0_lts1 -> trans writer -> normal_m32_alt0 reader`.
+- PMD run:
+  `/zys/sb/fa3b/layout_probes/dq_source_slot_20260722_225346`.
+- Static gate: SGPR31/VGPR85, private/spill0, bank0, ordinary DS read0,
+  permute/permlane0. The asm contains 384 native FP16-output MMACs.
+- Conclusion: the Shaobo native matrix chain exists; the earlier failure was
+  specifically FP32-C lane-local downcast versus writer source ownership.
+- Remaining gate: prove dense dS numeric semantics and downstream MMAC use.
+  Do not replace production FP32 score/dP accumulation solely from this
+  coordinate-layout result.

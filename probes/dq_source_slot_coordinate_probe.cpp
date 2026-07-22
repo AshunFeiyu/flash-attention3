@@ -25,7 +25,8 @@ constexpr int kKBase = kQBase + kKBlocks * kMatrixBlockHalfs;
 constexpr int kDsBase = kKBase + kKBlocks * kMatrixBlockHalfs;
 constexpr int kBaseModes = 16;
 constexpr int kPairKinds = 2;
-constexpr int kModes = kBaseModes * kPairKinds;
+constexpr int kOutputKinds = 2;
+constexpr int kModes = kBaseModes * kPairKinds * kOutputKinds;
 constexpr int kLdsHalfs = kDsBase + kBaseModes * 1024;
 constexpr int kWordsPerLane = 8;
 
@@ -49,6 +50,19 @@ __device__ __forceinline__ ins::Vec4F32 mmac_mode(
         lhs, rhs, acc, Lit, Lts);
 #else
     return __builtin_hcu_mmac_f32_16x16x16_f16(lhs, rhs, acc);
+#endif
+}
+
+template <int Lit, int Lts>
+__device__ __forceinline__ ins::Vec4F16 mmac_mode_f16(
+    ins::Vec4F16 lhs, ins::Vec4F16 rhs, ins::Vec4F16 acc) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    return __builtin_hcu_mmac_16x16x16_f16_lit_lts(
+        lhs, rhs, acc, Lit, Lts);
+#else
+    (void)lhs;
+    (void)rhs;
+    return acc;
 #endif
 }
 
@@ -113,6 +127,9 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
     Acc4 acc0{};
     Acc4 acc1{};
     Acc4 acc_m1{};
+    ins::Vec4F16 acc16_0{};
+    ins::Vec4F16 acc16_1{};
+    ins::Vec4F16 acc16_m1{};
     ins::wait_lgkm(0);
     acc0.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[0],
                                      k_frag0[0].f16x4[0], zero.f32);
@@ -120,6 +137,12 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
                                      k_frag1[0].f16x4[0], zero.f32);
     acc_m1.f32 = mmac_mode<kLit, kLts>(q_reg_m1[0].f16x4[0],
                                        k_frag0[0].f16x4[0], zero.f32);
+    acc16_0 = mmac_mode_f16<kLit, kLts>(q_reg[0].f16x4[0],
+                                         k_frag0[0].f16x4[0], acc16_0);
+    acc16_1 = mmac_mode_f16<kLit, kLts>(q_reg[0].f16x4[0],
+                                         k_frag1[0].f16x4[0], acc16_1);
+    acc16_m1 = mmac_mode_f16<kLit, kLts>(q_reg_m1[0].f16x4[0],
+                                          k_frag0[0].f16x4[0], acc16_m1);
 #pragma unroll
     for (int k_half = 1; k_half < 2; ++k_half) {
         acc0.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[k_half],
@@ -129,6 +152,13 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
         acc_m1.f32 = mmac_mode<kLit, kLts>(
             q_reg_m1[0].f16x4[k_half], k_frag0[0].f16x4[k_half],
             acc_m1.f32);
+        acc16_0 = mmac_mode_f16<kLit, kLts>(
+            q_reg[0].f16x4[k_half], k_frag0[0].f16x4[k_half], acc16_0);
+        acc16_1 = mmac_mode_f16<kLit, kLts>(
+            q_reg[0].f16x4[k_half], k_frag1[0].f16x4[k_half], acc16_1);
+        acc16_m1 = mmac_mode_f16<kLit, kLts>(
+            q_reg_m1[0].f16x4[k_half], k_frag0[0].f16x4[k_half],
+            acc16_m1);
     }
 #pragma unroll
     for (int d_block = 1; d_block < kKBlocks; ++d_block) {
@@ -143,6 +173,15 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
             acc_m1.f32 = mmac_mode<kLit, kLts>(
                 q_reg_m1[d_block].f16x4[k_half],
                 k_frag0[d_block].f16x4[k_half], acc_m1.f32);
+            acc16_0 = mmac_mode_f16<kLit, kLts>(
+                q_reg[d_block].f16x4[k_half],
+                k_frag0[d_block].f16x4[k_half], acc16_0);
+            acc16_1 = mmac_mode_f16<kLit, kLts>(
+                q_reg[d_block].f16x4[k_half],
+                k_frag1[d_block].f16x4[k_half], acc16_1);
+            acc16_m1 = mmac_mode_f16<kLit, kLts>(
+                q_reg_m1[d_block].f16x4[k_half],
+                k_frag0[d_block].f16x4[k_half], acc16_m1);
         }
     }
 
@@ -150,12 +189,20 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
     const int dump_base = (Mode * kWaveSize + lane) * kWordsPerLane;
     const int mpair_base =
         ((kBaseModes + Mode) * kWaveSize + lane) * kWordsPerLane;
+    const int f16_npair_base =
+        ((2 * kBaseModes + Mode) * kWaveSize + lane) * kWordsPerLane;
+    const int f16_mpair_base =
+        ((3 * kBaseModes + Mode) * kWaveSize + lane) * kWordsPerLane;
 #pragma unroll
     for (int i = 0; i < 4; ++i) {
         acc_dump[dump_base + i] = acc0.f[i];
         acc_dump[dump_base + 4 + i] = acc1.f[i];
         acc_dump[mpair_base + i] = acc0.f[i];
         acc_dump[mpair_base + 4 + i] = acc_m1.f[i];
+        acc_dump[f16_npair_base + i] = static_cast<float>(acc16_0[i]);
+        acc_dump[f16_npair_base + 4 + i] = static_cast<float>(acc16_1[i]);
+        acc_dump[f16_mpair_base + i] = static_cast<float>(acc16_0[i]);
+        acc_dump[f16_mpair_base + 4 + i] = static_cast<float>(acc16_m1[i]);
         natural.h[i] = static_cast<_Float16>(acc0.f[i]);
         natural.h[4 + i] = static_cast<_Float16>(acc1.f[i]);
     }
@@ -332,7 +379,11 @@ const char* mode_name(int mode) {
 }
 
 const char* pair_name(int mode) {
-    return mode < kBaseModes ? "N_pair" : "M_pair";
+    return ((mode / kBaseModes) & 1) == 0 ? "N_pair" : "M_pair";
+}
+
+const char* output_name(int mode) {
+    return mode < 2 * kBaseModes ? "f32_C_downcast" : "f16_C";
 }
 
 bool summarize_acc(const std::vector<float>& acc_dump, int mode) {
@@ -346,7 +397,7 @@ bool summarize_acc(const std::vector<float>& acc_dump, int mode) {
             const int idx = mode_base + lane * kWordsPerLane + word;
             const bool ok = decode_qk(acc_dump[idx],
                                       q, k);
-            const bool m_pair = mode >= kBaseModes;
+            const bool m_pair = ((mode / kBaseModes) & 1) != 0;
             const int identity_q =
                 (m_pair && word >= 4 ? 16 : 0) + (lane & 15);
             const int identity_k =
@@ -358,9 +409,10 @@ bool summarize_acc(const std::vector<float>& acc_dump, int mode) {
         }
     }
     std::printf(
-        "source_slot_coordinate_acc_summary mode=%d pair=%s name=%s "
+        "source_slot_coordinate_acc_summary mode=%d output=%s pair=%s name=%s "
         "identity_errors=%d identity_pass=%d\n",
-        mode, pair_name(mode), mode_name(mode), identity_errors,
+        mode, output_name(mode), pair_name(mode), mode_name(mode),
+        identity_errors,
         identity_errors == 0 ? 1 : 0);
     return identity_errors == 0;
 }
@@ -391,7 +443,7 @@ bool summarize_exact_writer_abi(const std::vector<float>& acc_dump, int mode) {
                     const int src_index =
                         mode_base + src_lane * kWordsPerLane + src_word;
                     const bool ok = decode_qk(acc_dump[src_index], q, k);
-                    const bool m_pair = mode >= kBaseModes;
+                    const bool m_pair = ((mode / kBaseModes) & 1) != 0;
                     const int expected_q =
                         (m_pair && dst_word >= 4 ? 16 : 0) +
                         (dst_lane & 15);
@@ -409,17 +461,20 @@ bool summarize_exact_writer_abi(const std::vector<float>& acc_dump, int mode) {
             if (errors == 0) {
                 exact = true;
                 std::printf(
-                    "source_slot_exact_match mode=%d pair=%s name=%s writer=%s "
+                    "source_slot_exact_match mode=%d output=%s pair=%s "
+                    "name=%s writer=%s "
                     "reader=%s source_slot_exact_pass=1\n",
-                    mode, pair_name(mode), mode_name(mode), writer_names[writer],
+                    mode, output_name(mode), pair_name(mode), mode_name(mode),
+                    writer_names[writer],
                     reader_names[reader]);
             }
         }
     }
     std::printf(
-        "source_slot_exact_summary mode=%d pair=%s name=%s best_errors=%d "
+        "source_slot_exact_summary mode=%d output=%s pair=%s name=%s "
+        "best_errors=%d "
         "best_writer=%s best_reader=%s source_slot_exact_pass=%d\n",
-        mode, pair_name(mode), mode_name(mode), best_errors,
+        mode, output_name(mode), pair_name(mode), mode_name(mode), best_errors,
         writer_names[best_writer],
         reader_names[best_reader], exact ? 1 : 0);
     return exact;

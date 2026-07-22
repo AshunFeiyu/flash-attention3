@@ -10558,3 +10558,23 @@ Status: `OBSERVE_NO_F32_C_NATIVE_SOURCE_MATCH`.
 - This rejects only `FP32 MMAC C -> lane-local FP16 downcast -> writer` as the
   missing native bridge. It does not reject matrix writer transport or unified
   LDS swizzle. Next probe targets the HCU FP16-output MMAC C/D form.
+
+## 2026-07-22 Native FP16 MMAC -> Matrix Writer ABI PASS
+
+Status: `ACCEPT_F16_C_NATIVE_SOURCE_MATCH / FA_SEMANTICS_PENDING`.
+
+- Extended the same source-slot probe with
+  `__builtin_hcu_mmac_16x16x16_f16_lit_lts`; no new production path was added.
+- The exact hardware-measured writer/reader permutations find zero-error
+  contracts for both adjacent-N and adjacent-M fragment pairs:
+  `qT_kT_lit0_lts0 -> trans writer -> trans_m32_alt0 reader`, and
+  `qT_kT_lit0_lts1 -> trans writer -> normal_m32_alt0 reader`.
+- PMD evidence:
+  `/zys/sb/fa3b/layout_probes/dq_source_slot_20260722_225346`.
+  Metadata is `SGPR31/VGPR85`, private/spill0, bank0; ordinary matrix-path DS
+  read and permutation counts are zero.
+- This proves the native instruction-layout chain exists. It does not yet
+  prove that FP32 score/dP plus softmax/dS can enter the FP16 writer ABI without
+  a conversion, nor that FP16 accumulation meets FA numeric accuracy.
+- Next gate is one dense semantic chain using the exact lit0/lts0 trans pair,
+  followed by a downstream MMAC and CPU oracle.

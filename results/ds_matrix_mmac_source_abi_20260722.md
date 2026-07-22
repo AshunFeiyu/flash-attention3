@@ -2,7 +2,7 @@
 
 Date: 2026-07-22
 
-Status: `OBSERVE_NO_F32_C_NATIVE_SOURCE_MATCH`
+Status: `ACCEPT_F16_C_NATIVE_SOURCE_MATCH / F32_TO_DS_SEMANTIC_PENDING`
 
 ## Question
 
@@ -69,10 +69,54 @@ MLS output share the Shaobo LDS swizzle. Unified LDS swizzle does not imply
 that an FP32 MMAC C fragment, after a lane-local cast, already has the writer's
 input register ownership.
 
-## Next Native Test
+## FP16-Output MMAC Follow-up
 
-Test the HCU FP16-output MMAC form
-`__builtin_hcu_mmac_16x16x16_f16_lit_lts`. Its C/D register ABI may pair with
-the FP16 matrix writer even though FP32-C plus lane-local downcast does not.
-This remains a focused instruction probe; do not add runtime permute/gather to
-the FA main path.
+The same probe was extended with the native HCU FP16-output MMAC form:
+
+`__builtin_hcu_mmac_16x16x16_f16_lit_lts`
+
+PMD run:
+
+`/zys/sb/fa3b/layout_probes/dq_source_slot_20260722_225346`
+
+The exhaustive source-slot audit found eight exact native combinations. The
+minimal distinct contracts are:
+
+- `qT_kT_lit0_lts0 -> trans writer -> trans_m32_alt0 reader`
+- `qT_kT_lit0_lts1 -> trans writer -> normal_m32_alt0 reader`
+
+Both contracts pass for adjacent-N and adjacent-M fragment pairs with
+`mismatch=0/512`. Writer `alt0` and `alt1` have the same register source ABI,
+so each distinct contract appears twice.
+
+Static/resource evidence:
+
+- `SGPR=31`, `VGPR=85`
+- private segment `0`
+- SGPR/VGPR spill `0/0`
+- `ldsBankConflict=0`
+- `v_mmac_16x16x16_f16=384`
+- ordinary `ds_read_b*=0`, permute/permlane `0/0`
+
+## Revised Interpretation
+
+The native chain exists. The cleanest proven register-layout contract is:
+
+```text
+FP16-output MMAC(qT, kT, lit=0, lts=0)
+  -> ds_write_matrix_format_f16(trans)
+  -> ds_read_matrix_trans_format_f16(m32x16, alt0)
+```
+
+This closes the instruction-layout existence question, but it does not yet
+close the FA dS handoff. Production score and dP normally use FP32
+accumulation, followed by FP32 softmax/dS arithmetic and an FP16 conversion.
+The previously tested lane-local conversion from FP32 C does not have this
+writer source ABI. The next focused semantic test must therefore prove one of
+these without runtime permutation:
+
+1. the final dS arithmetic can remain in the FP16-output MMAC source slots; or
+2. a native instruction mode converts the FP32 dS ownership into that ABI.
+
+Do not integrate the FP16 MMAC path into the canonical FA kernel until its
+numeric error and downstream MMAC semantics pass a dense CPU oracle.
