@@ -16318,3 +16318,18 @@ Decision: `REJECT_TOOLCHAIN_PROMOTION`.
 - Evidence and exact hashes are in
   `results/pmd_head1698_update_audit_20260722.md`; issue classification is
   PMD-006 in `docs/perf_model_pmd_compiler_issues.md`.
+
+## 2026-07-22 DS Matrix Writer Physical-Page Isolation
+
+Decision: `ACCEPT_INSTRUCTION_TRANSPORT`.
+
+- Replaced `matrix_store` with a complete physical LDS page dump using
+  `ds_read_b128` plus ordinary global stores.
+- Four f16 writer modes each preserve all 512 unique source labels exactly
+  once; no values are missing, duplicated or unexpected.
+- Static gate: matrix-write4, raw-read2, global-store2, matrix-load/read/store0,
+  MMAC0, permutation0; SGPR14/VGPR10 and private/spill0.
+- `raw_dump_bank=96` is expected probe instrumentation cost and is not a
+  production bank gate.
+- Result narrows PMD-005 to matrix-store/descriptor handling. It does not
+  resolve the independent MMAC-output writer-source layout contract.

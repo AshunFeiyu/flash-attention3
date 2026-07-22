@@ -336,6 +336,22 @@ Owner question:
   SGPR18/VGPR4, private/spill0, 100,352-byte LDS and bank0. This rules out the
   earlier offset misuse and any single `t/r` choice as explanations.
 
+2026-07-22 writer-only isolation:
+
+- `probes/ds_matrix_write_lds_dump_probe.cpp` removes MLS, matrix readers and
+  matrix-store. It writes 512 unique FP16 values with each of the four writer
+  modes, scans the complete 2 KiB page using ordinary `ds_read_b128`, and
+  returns the bits with global stores.
+- All four modes preserve all 512 labels exactly once, with 512 poison slots
+  left untouched. Metadata is SGPR14/VGPR10 with no private segment or spill.
+- This clears `ds_write_matrix_format_f16` as the value-loss point on the
+  current model. PMD-005 remains specifically a matrix-store/descriptor
+  boundary, while MMAC-output-to-writer source-layout semantics remain a
+  separate compiler contract question.
+- Evidence: `/zys/sb/fa3b/layout_probes/`
+  `ds_matrix_write_lds_dump_20260722_214911` and
+  `results/ds_matrix_write_lds_dump_20260722.md`.
+
 ### PMD-006: HEAD1698 Core Package Has An Internal Config ABI Mismatch
 
 Status: `CONFIRMED PMD PACKAGE COMPATIBILITY / NOT PROMOTED`.

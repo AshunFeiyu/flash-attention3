@@ -5275,3 +5275,16 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `shaobo/references/shaobo-perf-model.md` during the next serialized skill
   consolidation; do not edit the public skill from this task.
+
+## 2026-07-22 DS Matrix Writer-Only Probe
+
+- Source: `probes/ds_matrix_write_lds_dump_probe.cpp`.
+- Runner: `scripts/run_ds_matrix_write_lds_dump_probe.sh`.
+- Exact path is `A-reg -> ds_write_matrix_format_f16 -> LDS -> ds_read_b128 ->
+  global_store -> CPU`; there is no matrix-store or matrix reader.
+- All four f16 writer modes preserve 512/512 unique values. This clears the
+  writer transport on LLVM `e0f10535` plus PMD HEAD1694.
+- Keep the conclusion narrow: matrix-store remains blocked by PMD-005, and an
+  MMAC result still needs a separately proven writer-source semantic layout.
+- Evidence: `results/ds_matrix_write_lds_dump_20260722.md` and remote run
+  `/zys/sb/fa3b/layout_probes/ds_matrix_write_lds_dump_20260722_214911`.

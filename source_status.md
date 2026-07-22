@@ -10499,3 +10499,24 @@ Status: `REJECT_TOOLCHAIN_PROMOTION / PACKAGE_ABI_MISMATCH`.
   mismatch.
 - Full evidence: `results/pmd_head1698_update_audit_20260722.md` and PMD-006 in
   `docs/perf_model_pmd_compiler_issues.md`.
+
+## 2026-07-22 DS Matrix Writer Isolated PASS
+
+Status: `ACCEPT_INSTRUCTION_TRANSPORT`; production source unchanged.
+
+- Added a single-wave writer-only probe for `A-reg -> f16 ds_write_matrix ->
+  LDS -> ds_read_b128 -> global_store -> CPU`.
+- All normal/trans and alt0/alt1 writer modes preserve all 512 unique FP16
+  labels exactly once. The other 512 positions in the 2 KiB page remain
+  poisoned.
+- ASM contains four matrix writers, two raw page reads and two global stores;
+  it contains no MLS, matrix reader/store, MMAC, permutation, ABarrier or
+  WDRA. Metadata is SGPR14/VGPR10, private/spill/scratch0.
+- The observed 96 bank conflicts belong to the deliberate raw b128 page scan,
+  not to a production matrix path.
+- Evidence: `/zys/sb/fa3b/layout_probes/`
+  `ds_matrix_write_lds_dump_20260722_214911` and
+  `results/ds_matrix_write_lds_dump_20260722.md`.
+- Conclusion: do not blame the f16 matrix writer for PMD-005. Matrix-store or
+  its descriptor contract remains the global-output blocker; MMAC source
+  layout remains a separate semantic gate.
