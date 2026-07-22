@@ -10679,3 +10679,24 @@ the atomic-heavy correctness baseline.
   pair scheduling removes the copy while retaining the ordinary MMAC builtin.
 - Next: rewrite only `src/fused_bwd_kernel.cpp` around persistent dK/dV owners
   and four D32 dQ owners; preserve exactly five GEMMs.
+
+## 2026-07-23 Persistent-Owner Production Checkpoint
+
+Status: `ACCEPT_CORRECT_OWNERSHIP_CHECKPOINT / PERFORMANCE_NOT_PROMOTED`.
+
+- The single canonical kernel now uses waves0-3 as producer, waves4-7 as four
+  persistent N32 dKV owners, and waves8-11 as four D32 dQ owners. The old
+  symmetric partial-output consumer path has been removed.
+- dK/dV each remain in 16 FP32 MMAC accumulators per dKV wave across the full
+  q-loop and store once. dQ emits one necessary D32 atomic contribution per K
+  tile. Dynamic H1/S1024 MMOP is exactly 92,160, so score/dP are not repeated.
+- Static gate: branch use `8/188/60` inside WDRA `24/240/96`, SGPR90/VGPR120,
+  LDS115,456 B, private/spill0. The main matrix path remains native.
+- Causal and non-causal H1/S128 pass; causal H1/S1024 passes with dQ/dK/dV
+  relative-L2 `2.276e-4 / 2.773e-4 / 4.617e-4`, bank0.
+- H1/S1024 improves from the atomic correctness baseline's roughly 3.075B
+  ticks to 277,547,270 kernel ticks, but useful MMAC active is only 6.336%.
+  Wait shares are VM26.503%, LGKM3.366%, barrier53.192%.
+- The checkpoint is correct and structurally admitted, not the performance
+  target. Next use fullperf/xcu to attribute the seven ownership tokens before
+  changing arithmetic or tile size.

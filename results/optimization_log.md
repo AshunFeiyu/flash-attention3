@@ -16463,3 +16463,18 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
   copy, branch usage256 and eight VGPR spills. Fixed gen0/gen1 pair scheduling
   lowers use to136; the MMAC builtin itself is not the cause.
 - Production source remains unchanged until this evidence commit is fixed.
+
+## 2026-07-23 - Persistent output-owner canonical rewrite
+
+- Classification: `ACCEPT_CORRECT_OWNERSHIP_CHECKPOINT / PERF_REDESIGN_OPEN`.
+- Replaced symmetric atomic partial consumers with four N32 dKV owners and
+  four D32 dQ owners in the single canonical kernel. Exact useful work remains
+  five GEMMs and 92,160 dynamic MMOP at causal H1/S1024.
+- dK/dV direct-store once after persistent accumulation; dQ keeps only the
+  mathematically required cross-K-tile atomic contribution.
+- H1/S128 causal/non-causal and H1/S1024 causal all pass CPU golden. Static
+  result is role8/188/60, SGPR90/VGPR120, LDS115,456 B, private/spill0, bank0.
+- H1/S1024 kernel ticks fall about 11.1x versus the atomic correctness
+  baseline, to 277,547,270. Active6.336%, waitVm26.503%, waitLgkm3.366% and
+  barrier53.192% show ownership serialization is now the dominant debt.
+- Evidence: `/zys/sb/fa3b/5gemm_owner_rewrite_s1024_c1_20260723_033032`.

@@ -37,9 +37,9 @@ struct LdsLayout {
     static constexpr int kBytes = kSidecarBase + Tile::kSidecarBytes;
 
     static_assert(kQBytes == 16 * 1024 && kKBytes == 32 * 1024,
-                  "fused input tiles must retain their matrix sizes");
+                  "fused input tile sizes changed");
     static_assert(kBytes == Tile::kPlannedLdsBytes,
-                  "implementation and contract LDS ledgers must agree");
+                  "implementation and contract LDS ledgers disagree");
 };
 
 union Fragment {
@@ -60,12 +60,21 @@ __device__ __forceinline__ int matrix_block_offset(int row_block,
 
 __device__ __forceinline__ int m16_matrix_offset(int m_block, int d_block) {
     return matrix_block_offset(m_block >> 1, d_block) +
-           (m_block & 1) * 1024;
+           (m_block & 1) * Tile::kWriterPageBytes / 2;
 }
 
-__device__ __forceinline__ int scratch_page_offset(int consumer_index) {
+__device__ __forceinline__ int scratch_page_offset(int generation,
+                                                   int n_block) {
     return LdsLayout::kScratchBase +
-           consumer_index * Tile::kWriterPageBytes;
+           generation * Tile::kPdsGenerationBytes +
+           n_block * Tile::kWriterPageBytes;
+}
+
+__device__ __forceinline__ const __half* scratch_generation(
+    const __half* lds, int generation) {
+    return reinterpret_cast<const __half*>(
+        reinterpret_cast<const char*>(lds) + LdsLayout::kScratchBase +
+        generation * Tile::kPdsGenerationBytes);
 }
 
 __device__ __forceinline__ float* sidecar_field(__half* lds, int field) {
@@ -150,12 +159,11 @@ __device__ __forceinline__ void producer_load_raw(
     }
 }
 
-__device__ __forceinline__ void f16_mmac_pair(
-    const Fragment& lhs,
-    const Fragment& rhs0,
-    const Fragment& rhs1,
-    Fragment& out,
-    bool first_d_block) {
+__device__ __forceinline__ void f16_mmac_pair(const Fragment& lhs,
+                                               const Fragment& rhs0,
+                                               const Fragment& rhs1,
+                                               Fragment& out,
+                                               bool first_d_block) {
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
     const ins::Vec4F16 acc0 =
@@ -172,13 +180,12 @@ __device__ __forceinline__ void f16_mmac_pair(
         lhs.f16x4[1], rhs1.f16x4[1], out.f16x4[1], 0, 0);
 }
 
-// Logical GEMMs 1 and 2. Each wave computes one M16xN32 panel exactly once.
-__device__ __forceinline__ void score_dp_stage(
-    const __half* lds,
-    int m_block,
-    int n_block,
-    Fragment& score,
-    Fragment& dp) {
+// Logical GEMMs 1 and 2: one M16xN32 score/dP panel, computed once.
+__device__ __forceinline__ void score_dp_stage(const __half* lds,
+                                               int m_block,
+                                               int n_block,
+                                               Fragment& score,
+                                               Fragment& dp) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
         Fragment q_frag{};
@@ -224,8 +231,8 @@ __device__ __forceinline__ void softmax_ds_stage(
         int local_q = 0;
         int local_k = 0;
         source_slot_qk(lane, word, local_q, local_k);
-        const int qrow = q_base + m_block * 16 + local_q;
-        const int krow = k_base + n_block * 32 + local_k;
+        const int qrow = q_base + m_block * Tile::kMqPerPanel + local_q;
+        const int krow = k_base + n_block * Tile::kNkPerDkvWave + local_k;
         const float probability =
             (!causal || krow <= qrow)
                 ? exp2f(static_cast<float>(score.scalar[word]) * scale_log2 -
@@ -239,149 +246,142 @@ __device__ __forceinline__ void softmax_ds_stage(
     }
 }
 
-__device__ __forceinline__ Accumulator mmac_once(ins::Vec4F16 lhs,
-                                                 ins::Vec4F16 rhs) {
+__device__ __forceinline__ void zero_dkv_accumulators(
+    Accumulator (&dv_acc)[16], Accumulator (&dk_acc)[16]) {
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
-    Accumulator out{};
-    out.f32 = ins::mmac_f16_lit(lhs, rhs, zero.f32);
-    return out;
-}
-
-__device__ __forceinline__ void atomic_store_n16_d16(
-    float* out,
-    int64_t tensor_base,
-    int n_base,
-    int d_base,
-    int lane,
-    const Accumulator& acc) {
-    const int row = n_base + (lane & 15);
-    const int col = d_base + (lane >> 4) * 4;
 #pragma unroll
-    for (int i = 0; i < 4; ++i) {
-        atomicAdd(out + tensor_base + static_cast<int64_t>(row) *
-                                      Tile::kHeadDim +
-                      col + i,
-                  acc.scalar[i]);
+    for (int i = 0; i < 16; ++i) {
+        dv_acc[i].f32 = zero.f32;
+        dk_acc[i].f32 = zero.f32;
     }
 }
 
-// Logical GEMM 3: P^T @ dO. The initial canonical path emits M16 partials.
-__device__ __forceinline__ void dv_stage(
-    const __half* lds,
+// Logical GEMMs 3 and 4: persistent N32 dV/dK ownership across the q-loop.
+__device__ __forceinline__ void update_dv_dk_stage(
     const Fragment& p_normal,
-    float* dv,
-    int64_t tensor_base,
-    int q_m_block,
-    int n_base,
-    int lane) {
-#pragma unroll
-    for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
-        Fragment dout_normal{};
-        ins::ds_read_matrix_32x16_normal(
-            lds, LdsLayout::kDoutBase +
-                     m16_matrix_offset(q_m_block, d_block),
-            dout_normal.f16x8);
-        ins::wait_lgkm(0);
-#pragma unroll
-        for (int n_half = 0; n_half < 2; ++n_half) {
-#pragma unroll
-            for (int d_half = 0; d_half < 2; ++d_half) {
-                atomic_store_n16_d16(
-                    dv, tensor_base, n_base + n_half * 16,
-                    d_block * 32 + d_half * 16, lane,
-                    mmac_once(p_normal.f16x4[n_half],
-                              dout_normal.f16x4[d_half]));
-            }
-        }
-    }
-}
-
-__device__ __forceinline__ void update_dq_acc(
-    const Fragment& ds_trans,
-    const Fragment& k0,
-    const Fragment& k1,
-    int d_block,
-    bool first_panel,
-    Accumulator (&dq_acc)[8]) {
-#pragma unroll
-    for (int d_half = 0; d_half < 2; ++d_half) {
-        const int out = d_block * 2 + d_half;
-        ins::F16x8 zero;
-        ins::zero_f16x8(zero);
-        ins::Vec4F32 acc = first_panel ? zero.f32 : dq_acc[out].f32;
-        acc = ins::mmac_f16_lit(ds_trans.f16x4[0],
-                               k0.f16x4[d_half], acc);
-        dq_acc[out].f32 = ins::mmac_f16_lit(
-            ds_trans.f16x4[1], k1.f16x4[d_half], acc);
-    }
-}
-
-// Logical GEMMs 4 and 5 consume the same native dS page in normal/trans views.
-__device__ __forceinline__ void dk_dq_stage(
-    const __half* lds,
     const Fragment& ds_normal,
-    const Fragment& ds_trans,
-    float* dk,
-    int64_t tensor_base,
-    int q_m_block,
-    int n_block,
-    int n_base,
-    int lane,
-    bool first_panel,
-    Accumulator (&dq_acc)[8]) {
+    const Fragment (&dout_normal)[kMatrixBlocksD],
+    const Fragment (&q_normal)[kMatrixBlocksD],
+    Accumulator (&dv_acc)[16],
+    Accumulator (&dk_acc)[16]) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
-        Fragment q_normal{};
-        Fragment k0{};
-        Fragment k1{};
-        ins::ds_read_matrix_32x16_normal(
-            lds, LdsLayout::kQBase + m16_matrix_offset(q_m_block, d_block),
-            q_normal.f16x8);
-        ins::ds_read_matrix_normal_pair(
-            lds, LdsLayout::kKBase + matrix_block_offset(n_block, d_block),
-            k0.f16x8, k1.f16x8);
-        ins::wait_lgkm(0);
-        update_dq_acc(ds_trans, k0, k1, d_block, first_panel, dq_acc);
 #pragma unroll
         for (int n_half = 0; n_half < 2; ++n_half) {
 #pragma unroll
             for (int d_half = 0; d_half < 2; ++d_half) {
-                atomic_store_n16_d16(
-                    dk, tensor_base, n_base + n_half * 16,
-                    d_block * 32 + d_half * 16, lane,
-                    mmac_once(ds_normal.f16x4[n_half],
-                              q_normal.f16x4[d_half]));
+                const int out = n_half * 8 + d_block * 2 + d_half;
+                dv_acc[out].f32 = ins::mmac_f16_lit(
+                    p_normal.f16x4[n_half],
+                    dout_normal[d_block].f16x4[d_half], dv_acc[out].f32);
+                dk_acc[out].f32 = ins::mmac_f16_lit(
+                    ds_normal.f16x4[n_half],
+                    q_normal[d_block].f16x4[d_half], dk_acc[out].f32);
             }
         }
     }
 }
 
-__device__ __forceinline__ void atomic_store_dq(
-    float* dq,
-    int64_t tensor_base,
+template <int Generation>
+__device__ __forceinline__ void produce_dkv_panel(
+    const __half* lds,
+    __half* mutable_lds,
     int q_base,
     int m_block,
+    int k_base,
+    int n_block,
+    int causal,
+    float softmax_scale,
     int lane,
-    const Accumulator (&dq_acc)[8]) {
-    const int row = q_base + m_block * 16 + (lane & 15);
+    Accumulator (&dv_acc)[16],
+    Accumulator (&dk_acc)[16]) {
+    static_assert(Generation == 0 || Generation == 1);
+    constexpr int kFilled =
+        Generation == 0 ? Bar::kDsFilled0 : Bar::kDsFilled1;
+    const int sidecar_row = m_block * Tile::kMqPerPanel + (lane & 15);
+    const float row_max_log2 = sidecar_field(mutable_lds, 0)[sidecar_row];
+    const float row_inv_sum = sidecar_field(mutable_lds, 1)[sidecar_row];
+    const float row_delta = sidecar_field(mutable_lds, 2)[sidecar_row];
+
+    Fragment score{};
+    Fragment dp{};
+    Fragment p{};
+    Fragment ds{};
+    score_dp_stage(lds, m_block, n_block, score, dp);
+    softmax_ds_stage(score, dp, lane, q_base, m_block, k_base, n_block,
+                     causal, row_max_log2, row_inv_sum, row_delta,
+                     softmax_scale, p, ds);
+
+    const int page = scratch_page_offset(Generation, n_block);
+    ins::abarrier_seq<false>(kFilled);
+    ins::ds_write_matrix_32x16_trans_f16(p.f16x8, mutable_lds, page);
+    ins::wait_lgkm(0);
+    Fragment p_normal{};
+    ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
+    ins::wait_lgkm(0);
+
+    ins::ds_write_matrix_32x16_trans_f16(ds.f16x8, mutable_lds, page);
+    ins::wait_lgkm(0);
+    Fragment ds_normal{};
+    ins::ds_read_matrix_32x16_normal(lds, page, ds_normal.f16x8);
+
+    Fragment q_normal[kMatrixBlocksD];
+    Fragment dout_normal[kMatrixBlocksD];
 #pragma unroll
-    for (int d_half = 0; d_half < 8; ++d_half) {
-        const int col = d_half * 16 + (lane >> 4) * 4;
+    for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
+        const int raw_offset = m16_matrix_offset(m_block, d_block);
+        ins::ds_read_matrix_32x16_normal(
+            lds, LdsLayout::kQBase + raw_offset,
+            q_normal[d_block].f16x8);
+        ins::ds_read_matrix_32x16_normal(
+            lds, LdsLayout::kDoutBase + raw_offset,
+            dout_normal[d_block].f16x8);
+    }
+    ins::wait_lgkm(0);
+    update_dv_dk_stage(p_normal, ds_normal, dout_normal, q_normal, dv_acc,
+                       dk_acc);
+    ins::abarrier_arrive_cnt<false>(kFilled, 1);
+}
+
+__device__ __forceinline__ void store_dkv_outputs(
+    float* dk,
+    float* dv,
+    int64_t tensor_base,
+    int k_base,
+    int n_block,
+    int lane,
+    const Accumulator (&dk_acc)[16],
+    const Accumulator (&dv_acc)[16]) {
 #pragma unroll
-        for (int i = 0; i < 4; ++i) {
-            atomicAdd(dq + tensor_base + static_cast<int64_t>(row) *
-                                          Tile::kHeadDim +
-                          col + i,
-                      dq_acc[d_half].scalar[i]);
+    for (int n_half = 0; n_half < 2; ++n_half) {
+        const int row = k_base + n_block * Tile::kNkPerDkvWave +
+                        n_half * 16 + (lane & 15);
+#pragma unroll
+        for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
+#pragma unroll
+            for (int d_half = 0; d_half < 2; ++d_half) {
+                const int out = n_half * 8 + d_block * 2 + d_half;
+                const int col = d_block * 32 + d_half * 16 +
+                                (lane >> 4) * 4;
+                auto* dk_ptr = reinterpret_cast<ins::Vec4F32*>(
+                    dk + tensor_base + static_cast<int64_t>(row) *
+                                               Tile::kHeadDim +
+                    col);
+                auto* dv_ptr = reinterpret_cast<ins::Vec4F32*>(
+                    dv + tensor_base + static_cast<int64_t>(row) *
+                                               Tile::kHeadDim +
+                    col);
+                *dk_ptr = dk_acc[out].f32;
+                *dv_ptr = dv_acc[out].f32;
+            }
         }
     }
 }
 
-template <int ConsumerGroup>
-__device__ __forceinline__ void consumer_loop(
+__device__ __forceinline__ void run_dkv_owner(
     const __half* lds,
-    float* dq,
+    __half* mutable_lds,
     float* dk,
     float* dv,
     int64_t tensor_base,
@@ -390,65 +390,142 @@ __device__ __forceinline__ void consumer_loop(
     int q_tile_count,
     int causal,
     float softmax_scale,
-    int wave_local,
+    int n_block,
     int lane) {
-    static_assert(ConsumerGroup == 0 || ConsumerGroup == 1,
-                  "fused consumer group must be 0 or 1");
+    Accumulator dv_acc[16];
+    Accumulator dk_acc[16];
+    zero_dkv_accumulators(dv_acc, dk_acc);
     int raw_phase = 0;
-    const int consumer_index = ConsumerGroup * 4 + wave_local;
-    const int scratch_offset = scratch_page_offset(consumer_index);
+    int used_phase0 = 0;
+    int used_phase1 = 0;
 
+#pragma clang loop unroll(disable)
     for (int qi = 0; qi < q_tile_count; ++qi) {
         ins::abarrier_try_wait<true>(Bar::kRawFilled, raw_phase);
-        const int q_tile = q_tile_begin + qi;
-        const int q_base = q_tile * Tile::kMq;
-        const int m_block = wave_local;
-        const int local_q = lane & 15;
-        const int sidecar_row = m_block * 16 + local_q;
-        const float row_max_log2 = sidecar_field(
-            const_cast<__half*>(lds), 0)[sidecar_row];
-        const float row_inv_sum = sidecar_field(
-            const_cast<__half*>(lds), 1)[sidecar_row];
-        const float row_delta = sidecar_field(
-            const_cast<__half*>(lds), 2)[sidecar_row];
-        Accumulator dq_acc[8];
-#pragma unroll
-        for (int panel = 0; panel < Tile::kPanelsPerConsumer; ++panel) {
-            const int n_block = ConsumerGroup * 2 + panel;
-            const int n_base = k_base + n_block * Tile::kNkPerPanel;
-            Fragment score{};
-            Fragment dp{};
-            Fragment p{};
-            Fragment ds{};
-            score_dp_stage(lds, m_block, n_block, score, dp);
-            softmax_ds_stage(score, dp, lane, q_base, m_block, k_base,
-                             n_block, causal, row_max_log2, row_inv_sum,
-                             row_delta, softmax_scale, p, ds);
-
-            ins::ds_write_matrix_32x16_trans_f16(
-                p.f16x8, const_cast<__half*>(lds), scratch_offset);
-            ins::wait_lgkm(0);
-            Fragment p_normal{};
-            ins::ds_read_matrix_32x16_normal(
-                lds, scratch_offset, p_normal.f16x8);
-            ins::wait_lgkm(0);
-            dv_stage(lds, p_normal, dv, tensor_base, m_block, n_base, lane);
-
-            ins::ds_write_matrix_32x16_trans_f16(
-                ds.f16x8, const_cast<__half*>(lds), scratch_offset);
-            ins::wait_lgkm(0);
-            Fragment ds_normal{};
-            Fragment ds_trans{};
-            ins::ds_read_matrix_32x16_normal(
-                lds, scratch_offset, ds_normal.f16x8);
-            ins::ds_read_matrix_32x16_trans(
-                lds, scratch_offset, ds_trans.f16x8);
-            ins::wait_lgkm(0);
-            dk_dq_stage(lds, ds_normal, ds_trans, dk, tensor_base, m_block,
-                        n_block, n_base, lane, panel == 0, dq_acc);
+        const int q_base = (q_tile_begin + qi) * Tile::kMq;
+        if (qi != 0) {
+            ins::abarrier_try_wait<true>(Bar::kDsUsed0, used_phase0);
         }
-        atomic_store_dq(dq, tensor_base, q_base, m_block, lane, dq_acc);
+        produce_dkv_panel<0>(lds, mutable_lds, q_base, 0, k_base, n_block,
+                             causal, softmax_scale, lane, dv_acc, dk_acc);
+        if (qi != 0) {
+            ins::abarrier_try_wait<true>(Bar::kDsUsed1, used_phase1);
+        }
+        produce_dkv_panel<1>(lds, mutable_lds, q_base, 1, k_base, n_block,
+                             causal, softmax_scale, lane, dv_acc, dk_acc);
+        ins::abarrier_try_wait<true>(Bar::kDsUsed0, used_phase0);
+        produce_dkv_panel<0>(lds, mutable_lds, q_base, 2, k_base, n_block,
+                             causal, softmax_scale, lane, dv_acc, dk_acc);
+        ins::abarrier_try_wait<true>(Bar::kDsUsed1, used_phase1);
+        produce_dkv_panel<1>(lds, mutable_lds, q_base, 3, k_base, n_block,
+                             causal, softmax_scale, lane, dv_acc, dk_acc);
         ins::abarrier_arrive_cnt<false>(Bar::kRawUsed, 1);
+    }
+
+    store_dkv_outputs(dk, dv, tensor_base, k_base, n_block, lane, dk_acc,
+                      dv_acc);
+}
+
+__device__ __forceinline__ void atomic_store_dq_d32(
+    float* dq,
+    int64_t tensor_base,
+    int q_base,
+    int m_block,
+    int d_block,
+    int lane,
+    const Accumulator (&dq_acc)[2]) {
+    const int row = q_base + m_block * Tile::kMqPerPanel + (lane & 15);
+#pragma unroll
+    for (int d_half = 0; d_half < 2; ++d_half) {
+        const int col = d_block * Tile::kHeadDimPerDqWave + d_half * 16 +
+                        (lane >> 4) * 4;
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            atomicAdd(dq + tensor_base +
+                          static_cast<int64_t>(row) * Tile::kHeadDim + col + i,
+                      dq_acc[d_half].scalar[i]);
+        }
+    }
+}
+
+// Logical GEMM 5: one D32 owner consumes all four N32 dS pages.
+template <int Generation>
+__device__ __forceinline__ void consume_dq_panel(
+    const __half* lds,
+    float* dq,
+    int64_t tensor_base,
+    int q_base,
+    int m_block,
+    int d_block,
+    int lane,
+    int& filled_phase) {
+    static_assert(Generation == 0 || Generation == 1);
+    constexpr int kFilled =
+        Generation == 0 ? Bar::kDsFilled0 : Bar::kDsFilled1;
+    constexpr int kUsed =
+        Generation == 0 ? Bar::kDsUsed0 : Bar::kDsUsed1;
+    ins::abarrier_try_wait<true>(kFilled, filled_phase);
+
+    Fragment ds[4];
+    const __half* generation = scratch_generation(lds, Generation);
+    ins::ds_read_matrix_32x16_trans_imm4<
+        0 * Tile::kWriterPageBytes, 1 * Tile::kWriterPageBytes,
+        2 * Tile::kWriterPageBytes, 3 * Tile::kWriterPageBytes>(
+        generation, ds[0].f16x8, ds[1].f16x8, ds[2].f16x8,
+        ds[3].f16x8);
+
+    Fragment k0[4];
+    Fragment k1[4];
+#pragma unroll
+    for (int n_block = 0; n_block < 4; ++n_block) {
+        ins::ds_read_matrix_normal_pair(
+            lds, LdsLayout::kKBase + matrix_block_offset(n_block, d_block),
+            k0[n_block].f16x8, k1[n_block].f16x8);
+    }
+    ins::wait_lgkm(0);
+    ins::abarrier_arrive_cnt<false>(kUsed, 1);
+
+    ins::F16x8 zero;
+    ins::zero_f16x8(zero);
+    Accumulator dq_acc[2];
+    dq_acc[0].f32 = zero.f32;
+    dq_acc[1].f32 = zero.f32;
+#pragma unroll
+    for (int n_block = 0; n_block < 4; ++n_block) {
+#pragma unroll
+        for (int d_half = 0; d_half < 2; ++d_half) {
+            dq_acc[d_half].f32 = ins::mmac_f16_lit(
+                ds[n_block].f16x4[0], k0[n_block].f16x4[d_half],
+                dq_acc[d_half].f32);
+            dq_acc[d_half].f32 = ins::mmac_f16_lit(
+                ds[n_block].f16x4[1], k1[n_block].f16x4[d_half],
+                dq_acc[d_half].f32);
+        }
+    }
+    atomic_store_dq_d32(dq, tensor_base, q_base, m_block, d_block, lane,
+                        dq_acc);
+}
+
+__device__ __forceinline__ void run_dq_owner(const __half* lds,
+                                             float* dq,
+                                             int64_t tensor_base,
+                                             int q_tile_begin,
+                                             int q_tile_count,
+                                             int d_block,
+                                             int lane) {
+    int filled_phase0 = 0;
+    int filled_phase1 = 0;
+#pragma clang loop unroll(disable)
+    for (int qi = 0; qi < q_tile_count; ++qi) {
+        const int q_base = (q_tile_begin + qi) * Tile::kMq;
+        consume_dq_panel<0>(lds, dq, tensor_base, q_base, 0, d_block, lane,
+                            filled_phase0);
+        consume_dq_panel<1>(lds, dq, tensor_base, q_base, 1, d_block, lane,
+                            filled_phase1);
+        consume_dq_panel<0>(lds, dq, tensor_base, q_base, 2, d_block, lane,
+                            filled_phase0);
+        consume_dq_panel<1>(lds, dq, tensor_base, q_base, 3, d_block, lane,
+                            filled_phase1);
     }
 }
 
@@ -469,20 +546,24 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
                      int causal,
                      float softmax_scale) {
 #if defined(SHAOBO_EXPLICIT_WDRA_INIT)
-    __builtin_hcu_wdra_init(Wdra::kProducerVgprs, Wdra::kConsumerVgprs,
-                            Wdra::kConsumerVgprs);
+    __builtin_hcu_wdra_init(Wdra::kProducerVgprs, Wdra::kDkvVgprs,
+                            Wdra::kDqVgprs);
 #endif
 #if defined(__gfx946__) || defined(__gfx92a__)
-    __shared__ __align__(256) __half lds[LdsLayout::kBytes / sizeof(__half)];
+    __shared__ __align__(2048) __half lds[LdsLayout::kBytes / sizeof(__half)];
     const int wave = static_cast<int>(__builtin_hcu_get_wave_id());
     if (wave == 0) {
         __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 4);
         __builtin_hcu_s_abarrier_init(Bar::kRawFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kRawUsed, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kRawUsed, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kDsFilled0, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kDsUsed0, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kDsFilled1, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kDsUsed1, 4);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
-    if (wave < 4) {
+    if (wave < Tile::kDkvWaveBegin) {
         __builtin_hcu_s_set_vgpr_size(Wdra::kProducerVgprs);
         const int wave_local = wave & 3;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
@@ -493,6 +574,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t row_base = static_cast<int64_t>(bh) * seqlen;
         const int64_t tensor_base = row_base * Tile::kHeadDim;
+
         ins::abarrier_seq<false>(Bar::kResidentFilled);
         producer_load_resident(k, v, lds, tensor_base, k_base, wave_local);
         ins::maybe_wait_bps_vbcnt_before_arrive();
@@ -514,38 +596,36 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         if (q_tile_count != 0) {
             ins::abarrier_try_wait<true>(Bar::kRawUsed, raw_used_phase);
         }
-    } else if (wave < 8) {
-        __builtin_hcu_s_set_vgpr_size(Wdra::kConsumerVgprs);
-        const int wave_local = wave & 3;
+    } else if (wave < Tile::kDqWaveBegin) {
+        __builtin_hcu_s_set_vgpr_size(Wdra::kDkvVgprs);
+        const int n_block = wave - Tile::kDkvWaveBegin;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int bh = static_cast<int>(blockIdx.y) * heads +
                        static_cast<int>(blockIdx.x);
         const int k_base = static_cast<int>(blockIdx.z) * Tile::kNk;
         const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
-        const int64_t row_base = static_cast<int64_t>(bh) * seqlen;
-        const int64_t tensor_base = row_base * Tile::kHeadDim;
+        const int64_t tensor_base =
+            static_cast<int64_t>(bh) * seqlen * Tile::kHeadDim;
         int resident_phase = 0;
         ins::abarrier_try_wait<true>(Bar::kResidentFilled, resident_phase);
-        consumer_loop<0>(lds, dq, dk, dv, tensor_base, k_base,
-                         q_tile_begin, q_tile_count,
-                         causal, softmax_scale, wave_local, lane);
+        run_dkv_owner(lds, lds, dk, dv, tensor_base, k_base, q_tile_begin,
+                      q_tile_count, causal, softmax_scale, n_block, lane);
     } else {
-        __builtin_hcu_s_set_vgpr_size(Wdra::kConsumerVgprs);
-        const int wave_local = wave & 3;
+        __builtin_hcu_s_set_vgpr_size(Wdra::kDqVgprs);
+        const int d_block = wave - Tile::kDqWaveBegin;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int bh = static_cast<int>(blockIdx.y) * heads +
                        static_cast<int>(blockIdx.x);
         const int k_base = static_cast<int>(blockIdx.z) * Tile::kNk;
         const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
-        const int64_t row_base = static_cast<int64_t>(bh) * seqlen;
-        const int64_t tensor_base = row_base * Tile::kHeadDim;
+        const int64_t tensor_base =
+            static_cast<int64_t>(bh) * seqlen * Tile::kHeadDim;
         int resident_phase = 0;
         ins::abarrier_try_wait<true>(Bar::kResidentFilled, resident_phase);
-        consumer_loop<1>(lds, dq, dk, dv, tensor_base, k_base,
-                         q_tile_begin, q_tile_count,
-                         causal, softmax_scale, wave_local, lane);
+        run_dq_owner(lds, dq, tensor_base, q_tile_begin, q_tile_count, d_block,
+                     lane);
     }
 
     __builtin_hcu_s_ebarrier_sync(0);
@@ -553,6 +633,10 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
         __builtin_hcu_s_abarrier_inv(Bar::kRawFilled);
         __builtin_hcu_s_abarrier_inv(Bar::kRawUsed);
+        __builtin_hcu_s_abarrier_inv(Bar::kDsFilled0);
+        __builtin_hcu_s_abarrier_inv(Bar::kDsUsed0);
+        __builtin_hcu_s_abarrier_inv(Bar::kDsFilled1);
+        __builtin_hcu_s_abarrier_inv(Bar::kDsUsed1);
     }
 #else
     (void)dout;

@@ -22,6 +22,13 @@
   fixed gen0/gen1 pair scheduling removed the copy without inline assembly.
 - The production rewrite is now admitted. Preserve one canonical source path,
   exact five-GEMM work and persistent dK/dV ownership.
+- The admitted rewrite is implemented and correct: WDRA role use `8/188/60`,
+  SGPR90/VGPR120, no private/spill, bank0, exact MMOP92,160. S128 causal and
+  non-causal plus S1024 causal pass.
+- Output ownership removes the atomic storm and reduces H1/S1024 kernel ticks
+  from about 3.075B to 277.5M. It is not yet performant: MMAC active6.336% and
+  barrier share53.192%. Do not tune MMAC order until xcu identifies the token
+  responsible for the long idle spans.
 
 Skill Candidate:
 
