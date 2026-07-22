@@ -1,5 +1,29 @@
 # Source Status
 
+## 2026-07-23 FWD-Style Per-Panel Priority Promoted
+
+Status: `ACCEPT_FWD_PRIORITY_CADENCE / MMAC50_OPEN`.
+
+- The reference FWD raises priority for QK, lowers it for softmax/PV, then
+  raises it for the next QK. The fused BWD now applies the same cadence per
+  M16 panel: score+dP run at priority2; softmax/dS+dV+dK and dQ remain at
+  priority0.
+- A four-panel batched score+dP island is rejected. With and without priority,
+  S128 keeps dQ/dK exact but corrupts dV (`actual_max about 14,382`). This
+  isolates a long-live score/dP interaction with the native P writer chain,
+  not an `s_setprio` correctness problem.
+- The admitted per-panel form passes H1/S128 and H1/S1024 causal/noncausal.
+  Resources are role `8/179/178`, SGPR98/VGPR168, private/spill/scratch0,
+  LDS115456B and bank0; MMOP92,160 remains exact.
+- Causal H1/S1024 fullperf improves `105,186,445 -> 103,895,610` ticks
+  (`-1.23%`) and active `16.277420% -> 16.480234%`. Coissue changes from
+  `7263/7498 -> 7314/6621` success/fail.
+- XCU shows the early Ready1 wait averages about 3.02K, down from 3.10K, but
+  the 50% target remains structurally open.
+
+Evidence: `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_075948` and
+`/zys/sb/fa3b/xcu_outputs/5gemm_fwd_prio_per_panel_s1024_20260723`.
+
 ## 2026-07-23 Local-First dQ Ready Tokens Promoted
 
 Status: `ACCEPT_SAME_WORK_LOCAL_FIRST_DQ / MMAC50_OPEN`.

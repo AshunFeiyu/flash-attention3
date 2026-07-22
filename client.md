@@ -1,5 +1,22 @@
 # Client
 
+## 2026-07-23 FWD Priority Cadence Checkpoint
+
+- Canonical scheduling now follows FWD: each M16 panel raises priority2 for
+  score+dP, then lowers to priority0 for softmax/dS+dV+dK and dQ. Keep the
+  native atomic and local-first dQ ready-token topology.
+- Do not batch four score/dP fragments across the native P writer. Two S128
+  controls, with and without priority, corrupt dV while dQ/dK remain exact.
+  The verified unit of native composition is one panel.
+- Admitted result passes S128/S1024 causal/noncausal with exact MMOP92,160,
+  role8/179/178, SGPR98/VGPR168, private/spill/scratch0 and bank0.
+- Causal fullperf is `103,895,610` ticks and `16.480234%` MMAC active. This is
+  `1.23%` faster than local-first dQ and `3.10%` faster than the native-atomic
+  baseline. Ready1 remains about 3.02K cycles, so 50% is still open.
+- Evidence:
+  `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_075948` and
+  `/zys/sb/fa3b/xcu_outputs/5gemm_fwd_prio_per_panel_s1024_20260723`.
+
 ## 2026-07-23 Canonical Local-First dQ Checkpoint
 
 - Keep the native FP32 atomic baseline and the exact M64/N128/D128 work. dS

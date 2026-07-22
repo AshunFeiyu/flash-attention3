@@ -1,5 +1,29 @@
 # Optimization Log
 
+## 2026-07-23 FWD Priority Cadence Accepted; Batched Score Rejected
+
+- Status: `ACCEPT_FWD_PRIORITY_CADENCE / MMAC50_OPEN`.
+- FWD source evidence is explicit: priority2 covers QK, priority0 covers
+  softmax/PV, and the next QK raises priority again. BWD maps score+dP to the
+  high island and softmax/dS+dV+dK to the low island.
+- The first implementation batched four score+dP panels to enlarge the high
+  island. Both priority and no-priority controls corrupt only dV while dQ/dK
+  remain exact. Runs `075044` and `075448` therefore reject the long-live
+  fragment expression before performance testing.
+- The accepted expression restores one verified panel chain at a time and
+  wraps only score+dP with `s_setprio 2/0`. S128/S1024 c0+c1 pass; role use is
+  `8/179/178`, SGPR98/VGPR168, private/spill/scratch0 and bank0.
+- Fullperf is `103,895,610` ticks and `16.480234%` active versus the local-first
+  control `105,186,445 / 16.277420%`: `-1.23%` ticks and `+0.203pp` active.
+  Coissue fail falls `7498 -> 6621`; exact work and memory instruction counts
+  are unchanged.
+- Ready1 still averages about 3.02K cycles. Priority improves cadence but does
+  not remove the ownership critical path, so further progress must change
+  useful-work overlap rather than add priority toggles.
+
+Evidence: `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_075948` and
+`/zys/sb/fa3b/xcu_outputs/5gemm_fwd_prio_per_panel_s1024_20260723`.
+
 ## 2026-07-23 Local-First dQ Consumer Rendezvous Accepted
 
 - Status: `ACCEPT_SAME_WORK_LOCAL_FIRST_DQ / MMAC50_OPEN`.

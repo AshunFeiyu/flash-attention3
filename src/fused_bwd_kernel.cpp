@@ -407,7 +407,7 @@ __device__ __forceinline__ void atomic_store_dq_d16(
 }
 
 template <int Group>
-__device__ __forceinline__ void compute_dkv_panel(
+__device__ __forceinline__ void finish_dkv_panel(
     const __half* lds,
     __half* mutable_lds,
     int q_base,
@@ -418,16 +418,15 @@ __device__ __forceinline__ void compute_dkv_panel(
     float softmax_scale,
     int lane,
     const ResidentFragments& resident,
+    const Fragment& score,
+    const Fragment& dp,
     Fragment& retained_ds,
     Accumulator (&dv_acc)[8],
     Accumulator (&dk_acc)[8]) {
     static_assert(Group == 0 || Group == 1);
     const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
 
-    Fragment score{};
-    Fragment dp{};
     Fragment p{};
-    score_dp_stage(lds, m_block, resident, score, dp);
     const int sidecar_row =
         m_block * Tile::kMqPerPanel + (lane & 15);
     softmax_ds_stage(
@@ -560,18 +559,18 @@ __device__ __forceinline__ void run_consumer_group(
         const int q_base = (q_tile_begin + qi) * Tile::kMq;
 
         Fragment ds_panels[Tile::kMqPanels];
-        compute_dkv_panel<Group>(
-            lds, mutable_lds, q_base, 0, k_base, owner, causal,
-            softmax_scale, lane, resident, ds_panels[0], dv_acc, dk_acc);
-        compute_dkv_panel<Group>(
-            lds, mutable_lds, q_base, 1, k_base, owner, causal,
-            softmax_scale, lane, resident, ds_panels[1], dv_acc, dk_acc);
-        compute_dkv_panel<Group>(
-            lds, mutable_lds, q_base, 2, k_base, owner, causal,
-            softmax_scale, lane, resident, ds_panels[2], dv_acc, dk_acc);
-        compute_dkv_panel<Group>(
-            lds, mutable_lds, q_base, 3, k_base, owner, causal,
-            softmax_scale, lane, resident, ds_panels[3], dv_acc, dk_acc);
+#pragma unroll
+        for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
+            Fragment score{};
+            Fragment dp{};
+            ins::raise_priority_2();
+            score_dp_stage(lds, m_block, resident, score, dp);
+            ins::lower_priority();
+            finish_dkv_panel<Group>(
+                lds, mutable_lds, q_base, m_block, k_base, owner, causal,
+                softmax_scale, lane, resident, score, dp,
+                ds_panels[m_block], dv_acc, dk_acc);
+        }
 
         ins::abarrier_arrive_cnt<false>(Bar::kRawUsed, 1);
         if (qi != 0) {
