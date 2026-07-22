@@ -16447,3 +16447,19 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
 - Initial H1/S1024 stats are intentionally poor because dQ/dK/dV are emitted
   as FP32 atomic partials. Output ownership and epilogue traffic are the first
   performance redesign, followed by SQTT-guided barrier/read scheduling.
+
+## 2026-07-23 - Native two-generation dS conveyor
+
+- Classification: `ACCEPT_RESOURCE_AND_NATIVE_CONVEYOR_GATE`.
+- Added a focused 12-wave `24/240/96` probe with four persistent dKV owners,
+  four dQ readers, two dS generations and four native pages per generation.
+- Dense trans-view reconstruction, downstream MMAC and all 128 live FP32
+  accumulator values are exact on PMD; bank conflict, panic and VGPR warnings
+  are all zero.
+- Final static result is branch `1/49/136`, SGPR25/VGPR120 and no private or
+  spill. Evidence:
+  `/zys/sb/fa3b/layout_probes/fused5_ds_conveyor_20260723_031356`.
+- A runtime even/odd generation branch created a whole-array accumulator PHI
+  copy, branch usage256 and eight VGPR spills. Fixed gen0/gen1 pair scheduling
+  lowers use to136; the MMAC builtin itself is not the cause.
+- Production source remains unchanged until this evidence commit is fixed.

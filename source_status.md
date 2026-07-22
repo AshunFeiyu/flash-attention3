@@ -10657,3 +10657,25 @@ Status: `ACCEPT_CORRECTNESS / PERFORMANCE_BASELINE_PENDING`.
 - The first S1024 stats show 92,160 useful MMOP and no LDS bank conflict, but
   the FP32 atomic partial-output path dominates runtime. Do not treat it as the
   50% MMAC-active candidate.
+
+## 2026-07-23 Two-Generation dS Conveyor PASS
+
+Status: `ACCEPT_RESOURCE_AND_NATIVE_CONVEYOR_GATE`; production kernel is still
+the atomic-heavy correctness baseline.
+
+- The focused 12-wave probe uses one producer role, four persistent dKV owners
+  and four dQ owners under WDRA `24/240/96`.
+- Two generations each contain four native 2 KiB dS pages. dKV writes with
+  `t1/alt0`; dQ reads the trans view, releases the generation after reads, and
+  executes downstream MMAC while the writer may prepare iteration+2.
+- Run `/zys/sb/fa3b/layout_probes/fused5_ds_conveyor_20260723_031356` passes
+  dense view, downstream MMAC and 128-live accumulator oracles with zero
+  mismatches, PMD panic0, VGPR warning0 and bank0.
+- Static gate: branch use producer/dQ/dKV `1/49/136` inside `24/96/240`,
+  SGPR25/VGPR120, private segment0 and SGPR/VGPR spill0. Main path has native
+  matrix writer/trans reader/MMAC and no scalar matrix read or permutation.
+- A runtime generation branch was rejected: LLVM materialized a 128-VGPR PHI
+  copy and spilled eight VGPRs even with a 256 dKV role. Fixed `gen0 -> gen1`
+  pair scheduling removes the copy while retaining the ordinary MMAC builtin.
+- Next: rewrite only `src/fused_bwd_kernel.cpp` around persistent dK/dV owners
+  and four D32 dQ owners; preserve exactly five GEMMs.

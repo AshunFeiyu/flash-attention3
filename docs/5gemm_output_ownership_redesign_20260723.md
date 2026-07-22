@@ -51,7 +51,32 @@ ldsBankConflict  0
 PMD panic/warning 0/0
 ```
 
-This opens only the 128-live VGPR resource gate. The next mandatory gate is a
-12-wave, `24/240/96`, two-generation native dS conveyor probe. Production is
-not rewritten until that probe proves phase ownership, native reader/writer
-semantics, checksum correctness, and clean PMD execution.
+This opens only the 128-live VGPR resource gate.
+
+## Two-Generation Conveyor Gate
+
+The exact 12-wave `24/240/96` topology now passes its isolated structural
+gate. Four dKV waves publish two alternating generations of four native dS
+pages; four dQ waves read every page through the trans view, release the page
+after the reads retire, and execute downstream MMAC while the next generation
+can be produced.
+
+```text
+run              /zys/sb/fa3b/layout_probes/fused5_ds_conveyor_20260723_031356
+branch use       producer/dQ/dKV = 1/49/136 inside 24/96/240
+metadata         SGPR25/VGPR120, private/spill0
+semantic oracle  view/output/128-live mismatches = 0/0/0
+native path      writer t1/alt0 + trans reader + MMAC; scalar read/permute0
+ldsBankConflict  0
+PMD panic/warning 0/0
+```
+
+The decisive code-shape rule is to schedule `generation0` and `generation1`
+as a fixed pair. A runtime `(iteration & 1)` branch caused LLVM to create a
+whole-array PHI copy of the 128 persistent accumulators, driving branch usage
+to 256 and spilling eight VGPRs. The paired loop lowers real dKV usage to 136
+with the ordinary MMAC builtin; no inline-assembly workaround is required.
+
+Both resource and native-conveyor gates are open. The next step is the single
+canonical production rewrite with persistent dK/dV ownership and one minimal
+dQ atomic contribution per K tile.

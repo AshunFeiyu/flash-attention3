@@ -13,8 +13,15 @@
   the symmetric correctness baseline.
 - The 128-live VGPR gate passes cleanly with checksum and PMD warning gate at
   `/zys/sb/fa3b/layout_probes/dkv_pds_split64_probe_20260723_022728`.
-- Production remains untouched until the isolated two-generation dS conveyor
-  probe passes.
+- The isolated two-generation dS conveyor also passes at
+  `/zys/sb/fa3b/layout_probes/fused5_ds_conveyor_20260723_031356`: role use
+  `1/49/136` inside `24/96/240`, SGPR25/VGPR120, spill/private0, bank0 and all
+  dense oracles exact.
+- Never select ping-pong generations with a runtime branch around a large live
+  accumulator array. On e0f10535 it produced a full PHI copy and eight spills;
+  fixed gen0/gen1 pair scheduling removed the copy without inline assembly.
+- The production rewrite is now admitted. Preserve one canonical source path,
+  exact five-GEMM work and persistent dK/dV ownership.
 
 Skill Candidate:
 
