@@ -25,7 +25,7 @@ constexpr int kMatrixBlockHalfs = kMatrixBlockBytes / sizeof(__half);
 constexpr int kQBase = 0;
 constexpr int kKBase = kQBase + kKBlocks * kMatrixBlockHalfs;
 constexpr int kDsBase = kKBase + kKBlocks * kMatrixBlockHalfs;
-constexpr int kModes = 4;
+constexpr int kModes = 16;
 constexpr int kLdsHalfs = kDsBase + kModes * 1024;
 constexpr int kWordsPerLane = 8;
 
@@ -40,6 +40,17 @@ union Acc4 {
     ins::Vec4F32 f32;
     float f[4];
 };
+
+template <int Lit, int Lts>
+__device__ __forceinline__ ins::Vec4F32 mmac_mode(
+    ins::Vec4F16 lhs, ins::Vec4F16 rhs, ins::Vec4F32 acc) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    return __builtin_hcu_mmac_f32_16x16x16_f16_lit_lts(
+        lhs, rhs, acc, Lit, Lts);
+#else
+    return __builtin_hcu_mmac_f32_16x16x16_f16(lhs, rhs, acc);
+#endif
+}
 
 void check_hip(hipError_t err, const char* what) {
     if (err != hipSuccess) {
@@ -62,13 +73,16 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
                                              float* __restrict__ read_dump,
                                              uint16_t* __restrict__ read_bits,
                                              int lane) {
+    constexpr int kReaderMode = Mode & 3;
+    constexpr int kLit = (Mode >> 2) & 1;
+    constexpr int kLts = (Mode >> 3) & 1;
     Frag8 q_reg[kKBlocks];
     Frag8 k_frag0[kKBlocks];
     Frag8 k_frag1[kKBlocks];
 #pragma unroll
     for (int d_block = 0; d_block < kKBlocks; ++d_block) {
         const int lds_offset = d_block * kMatrixBlockBytes;
-        if constexpr (Mode == 0 || Mode == 2) {
+        if constexpr (kReaderMode == 0 || kReaderMode == 2) {
             ins::ds_read_matrix_32x16_trans(lds + kQBase, lds_offset,
                                             q_reg[d_block].f16x8);
         } else {
@@ -76,7 +90,7 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
                                              q_reg[d_block].f16x8);
         }
 
-        if constexpr (Mode == 0 || Mode == 1) {
+        if constexpr (kReaderMode == 0 || kReaderMode == 1) {
             ins::ds_read_matrix_trans_pair(lds + kKBase, lds_offset,
                                            k_frag0[d_block].f16x8,
                                            k_frag1[d_block].f16x8);
@@ -94,27 +108,27 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
     Acc4 acc0{};
     Acc4 acc1{};
     ins::wait_lgkm(0);
-    acc0.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[0],
-                                 k_frag0[0].f16x4[0], zero.f32);
-    acc1.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[0],
-                                 k_frag1[0].f16x4[0], zero.f32);
+    acc0.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[0],
+                                     k_frag0[0].f16x4[0], zero.f32);
+    acc1.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[0],
+                                     k_frag1[0].f16x4[0], zero.f32);
 #pragma unroll
     for (int k_half = 1; k_half < 2; ++k_half) {
-        acc0.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[k_half],
-                                     k_frag0[0].f16x4[k_half], acc0.f32);
-        acc1.f32 = ins::mmac_f16_lit(q_reg[0].f16x4[k_half],
-                                     k_frag1[0].f16x4[k_half], acc1.f32);
+        acc0.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[k_half],
+                                         k_frag0[0].f16x4[k_half], acc0.f32);
+        acc1.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[k_half],
+                                         k_frag1[0].f16x4[k_half], acc1.f32);
     }
 #pragma unroll
     for (int d_block = 1; d_block < kKBlocks; ++d_block) {
 #pragma unroll
         for (int k_half = 0; k_half < 2; ++k_half) {
-            acc0.f32 = ins::mmac_f16_lit(q_reg[d_block].f16x4[k_half],
-                                         k_frag0[d_block].f16x4[k_half],
-                                         acc0.f32);
-            acc1.f32 = ins::mmac_f16_lit(q_reg[d_block].f16x4[k_half],
-                                         k_frag1[d_block].f16x4[k_half],
-                                         acc1.f32);
+            acc0.f32 = mmac_mode<kLit, kLts>(
+                q_reg[d_block].f16x4[k_half],
+                k_frag0[d_block].f16x4[k_half], acc0.f32);
+            acc1.f32 = mmac_mode<kLit, kLts>(
+                q_reg[d_block].f16x4[k_half],
+                k_frag1[d_block].f16x4[k_half], acc1.f32);
         }
     }
 
@@ -187,6 +201,18 @@ dq_source_slot_coordinate_probe_kernel(const __half* __restrict__ q,
     compute_mode<1>(lds, acc_dump, read_dump, read_bits, lane);
     compute_mode<2>(lds, acc_dump, read_dump, read_bits, lane);
     compute_mode<3>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<4>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<5>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<6>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<7>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<8>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<9>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<10>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<11>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<12>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<13>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<14>(lds, acc_dump, read_dump, read_bits, lane);
+    compute_mode<15>(lds, acc_dump, read_dump, read_bits, lane);
 
     __syncthreads();
     if (lane == 0) {
@@ -254,18 +280,17 @@ bool decode_qk(float value, int& q, int& k) {
 }
 
 const char* mode_name(int mode) {
-    switch (mode) {
-        case 0:
-            return "q_trans_k_trans";
-        case 1:
-            return "q_normal_k_trans";
-        case 2:
-            return "q_trans_k_normal";
-        case 3:
-            return "q_normal_k_normal";
-        default:
-            return "unknown";
-    }
+    static const char* names[kModes] = {
+        "qT_kT_lit0_lts0", "qN_kT_lit0_lts0",
+        "qT_kN_lit0_lts0", "qN_kN_lit0_lts0",
+        "qT_kT_lit1_lts0", "qN_kT_lit1_lts0",
+        "qT_kN_lit1_lts0", "qN_kN_lit1_lts0",
+        "qT_kT_lit0_lts1", "qN_kT_lit0_lts1",
+        "qT_kN_lit0_lts1", "qN_kN_lit0_lts1",
+        "qT_kT_lit1_lts1", "qN_kT_lit1_lts1",
+        "qT_kN_lit1_lts1", "qN_kN_lit1_lts1",
+    };
+    return mode >= 0 && mode < kModes ? names[mode] : "unknown";
 }
 
 bool summarize_acc(const std::vector<float>& acc_dump, int mode) {
