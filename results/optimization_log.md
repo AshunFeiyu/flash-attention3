@@ -16190,3 +16190,30 @@ Status: `REJECT_READINESS_DEBT_MOVED_SOURCE_RESTORED`.
   `576/72` instructions. The ownership chain was relocated, not removed.
 - Revert commit `4502a29` restores canonical 67,072-byte LDS and direct FP32
   stores. Do not promote or run fullperf for this candidate.
+
+## 2026-07-22 Wait Audit And Full Backward Correctness Chain
+
+Status: `REJECT_WAIT_CANDIDATE / ACCEPT_CORRECTNESS_CHAIN`.
+
+- Audited every explicit dKV/dQ `lgkmcnt` and BPS `vbcnt` against first use,
+  ownership and prior negative experiments. Steady-loop waits remain required.
+  The only isolated candidate batched two startup resident K/V D-block reads
+  per `lgkmcnt(0)`, reducing static waits `281 -> 267` with no other work
+  change.
+- Three interleaved H1/S1024 A/B pairs pass correctness and bank0, but paired
+  tick deltas are `-0.7005% / +1.1572% / -0.8044%`. Candidate/control median
+  ticks are `31,084,690 / 31,142,020`; the direction is model-noise unstable,
+  so the candidate is not merged.
+- Added cached CPU golden generation and a three-dispatch lifecycle harness:
+  `dot_do_o -> dKV -> dQ`. The GPU-computed delta and packed sidecar feed both
+  canonical gradient kernels; this is not three independent standalone tests.
+- H1/S128 and H1/S1024 pass all delta/dK/dV/dQ metrics with no NaN/Inf. S1024
+  maximum errors are `3.73e-9 / 1.48e-7 / 2.88e-5 / 1.86e-7` respectively.
+  Static resource gates remain dKV `SGPR52/VGPR96` and dQ `SGPR60/VGPR128`,
+  with private/spill/scratch0.
+- The ordinary dot kernel is compiled without local-wave while dKV/dQ retain
+  WDRA flags. Compiling every translation unit with local-wave caused PMD to
+  panic at dispatch0 because the non-WDRA helper had compiler-generated
+  `s_set_vgpr_size` without initialized WDRA allocation mode.
+- Golden caches live outside git, are atomically created once, and validate
+  schema, shape, dtype, byte count and SHA256 before every reuse.

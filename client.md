@@ -5127,3 +5127,35 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `dcu-kernel-optimization` scheduling evidence reference during a serialized
   consolidation pass; do not edit the public skill from this task.
+
+## 2026-07-22 Full Backward Correctness Contract
+
+- Canonical validation now runs `dot_do_o -> dKV -> dQ` in one PMD process.
+  dKV and dQ consume the same GPU-produced delta/sidecar state.
+- CPU golden files are generated once per exact shape/scale contract under
+  `/zys/shaobo_golden/fa3_bwd_7gemm`; every later run validates hashes and
+  reports `golden_cache_status=HIT`.
+- Build with `scripts/build_full_bwd_correctness.sh`; run tiny smoke with
+  `S=128 scripts/run_full_bwd_correctness.sh`, then the standard gate with
+  `S=1024 SKIP_BUILD=1 scripts/run_full_bwd_correctness.sh`.
+- The dKV startup pair-wait experiment is rejected as unstable. Do not remove
+  steady `lgkmcnt`/`vbcnt` waits without a focused dependency proof and
+  repeated same-build A/B.
+
+### Skill Candidate: Compile WDRA And Ordinary Kernels With Separate Modes
+
+- Trigger / 适用场景: one HIP binary links WDRA role kernels and an ordinary
+  helper kernel while the compiler route enables local-wave globally.
+- Rule / 可复用规则: compile WDRA kernels with local-wave and explicit
+  `__builtin_hcu_wdra_init`; compile ordinary helpers without local-wave, then
+  link objects. Do not give a helper fake roles merely to satisfy PMD state.
+- Evidence / 证据: e0f10535 multi-source build made `dot_do_o` panic at PMD
+  dispatch0 with `vgpr_alloc_mode isn't 1 when s_set_vgpr_size`. Per-object
+  modes produce exactly three successful dispatches at H1/S128 and H1/S1024.
+- Boundary / 适用边界: Shaobo compiler routes where local-wave can insert or
+  enable dynamic VGPR resize behavior for every kernel in one compilation.
+- Counterexample / 反例或不适用情况: every linked kernel has a real WDRA role
+  ledger and matching init, or the compiler supports a verified per-kernel
+  opt-out attribute.
+- Proposed Target / 建议进入哪个 skill 或 reference: `shaobo` compiler/PMD
+  reference during the next serialized skill consolidation.

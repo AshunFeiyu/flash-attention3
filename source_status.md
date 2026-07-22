@@ -10383,3 +10383,18 @@ Status: `REJECT / CANONICAL RESTORED`.
 - Canonical build/run now defaults to LLVM47a7, PMD HEAD1694, `GPU_CHIP=sb`,
   SQ7 and the audited PMD config seed. Missing or mismatched components fail
   preflight instead of falling back or regenerating model configuration.
+
+## 2026-07-22 Full Lifecycle Correctness Gate
+
+Status: `ACCEPT`; canonical dKV/dQ device hot paths are unchanged.
+
+- Active compiler lock is LLVM `e0f10535...`; PMD is HEAD1694 with the audited
+  seed, `GPU_CHIP=sb` and SQ7.
+- New component APIs link the canonical dKV and dQ kernels into one harness.
+  `dot_do_o` computes delta and packed sidecar on GPU before dKV and dQ run.
+- H1/S128 and H1/S1024 causal D128 pass all numerical metrics with no
+  non-finite values and exactly three dispatches. Evidence is under
+  `/zys/sb/fullbwd_final/full_bwd_correctness_20260722_{112808,112827}`.
+- Golden cache reuse is fail-closed and read-only after first generation.
+- A startup K/V pair-wait candidate is rejected for inconsistent three-pair
+  A/B results; canonical wait placement remains unchanged.

@@ -21,6 +21,9 @@ sqtt_csv/
 xcu_outputs/
 xcu_sidecar/
 work/
+golden/
+golden_cache/
+shaobo_golden/
 *.perf
 *.csv
 *.jsonl

@@ -6,6 +6,8 @@ source scripts/toolchain_lock.sh
 
 TARGET_GFX="${TARGET_GFX:-946}"
 SRC="${SRC:-src/dkv_kernel.cpp}"
+LINK_OBJECTS="${LINK_OBJECTS:-}"
+COMPILE_ONLY="${COMPILE_ONLY:-0}"
 BUILD_DIR="${BUILD_DIR:-build}"
 BIN="${BIN:-${BUILD_DIR}/fa3_bwd_wasp_clean}"
 ASM="${ASM:-${BUILD_DIR}/fa3_bwd_wasp_clean.asm}"
@@ -114,13 +116,25 @@ shaobo_verify_hipcc_uses_latest_compiler "${HIPCC}"
   printf 'wdra_trap_handler=%s\n' "${SHAOBO_WDRA_TRAP_HANDLER_MODE}"
 } >"${BUILD_DIR}/toolchain_fingerprint.txt"
 echo "building ${BIN}"
-"${HIPCC}" "${COMMON_FLAGS[@]}" "${EXTRA_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" "${SRC}" -o "${BIN}"
+if [[ -n "${LINK_OBJECTS}" ]]; then
+  # shellcheck disable=SC2206
+  OBJECT_INPUTS=(${LINK_OBJECTS})
+  "${HIPCC}" "${COMMON_FLAGS[@]}" "${OBJECT_INPUTS[@]}" -o "${BIN}"
+elif [[ "${COMPILE_ONLY}" == "1" ]]; then
+  "${HIPCC}" "${COMMON_FLAGS[@]}" "${EXTRA_FLAGS[@]}" \
+    "${SHAOBO_FLAGS[@]}" -c "${SRC}" -o "${BIN}"
+else
+  "${HIPCC}" "${COMMON_FLAGS[@]}" "${EXTRA_FLAGS[@]}" \
+    "${SHAOBO_FLAGS[@]}" "${SRC}" -o "${BIN}"
+fi
 
-if [[ "${BUILD_ASM:-1}" == "1" ]]; then
+if [[ "${BUILD_ASM:-1}" == "1" && -z "${LINK_OBJECTS}" ]]; then
   echo "building ${ASM}"
   "${CLANGXX}" "${COMMON_FLAGS[@]}" "${EXTRA_FLAGS[@]}" "${SHAOBO_FLAGS[@]}" \
     --cuda-device-only -x hip -S "${SRC}" -o "${ASM}"
 fi
 
-chmod +x "${BIN}"
+if [[ "${COMPILE_ONLY}" != "1" ]]; then
+  chmod +x "${BIN}"
+fi
 echo "build complete: ${BIN}"

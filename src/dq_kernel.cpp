@@ -3,6 +3,7 @@
 
 #include "dq_contract.h"
 #include "shaobo_fa3_api.h"
+#include "shaobo_fa3_components.h"
 #include "shaobo_instr.h"
 
 #include <algorithm>
@@ -1463,6 +1464,7 @@ inline void ignore_hip_status(hipError_t err) {
 
 }  // namespace
 
+#ifndef SHAOBO_FA3_NO_STANDALONE
 extern "C" const char* shaobo_fa3_status_string(int status) {
     switch (status) {
         case SHAOBO_FA3_STATUS_SUCCESS:
@@ -1479,8 +1481,9 @@ extern "C" const char* shaobo_fa3_status_string(int status) {
             return "unknown";
     }
 }
+#endif
 
-extern "C" size_t shaobo_fa3_bwd_workspace_bytes(
+extern "C" size_t shaobo_fa3_bwd_dq_workspace_bytes(
     const ShaoboFa3Params* params) {
     if (params == nullptr) {
         return 0;
@@ -1491,17 +1494,17 @@ extern "C" size_t shaobo_fa3_bwd_workspace_bytes(
     return 0;
 }
 
-extern "C" int shaobo_fa3_bwd(const void* dout,
-                              const void* q,
-                              const void* k,
-                              const void* v,
-                              const void* out,
-                              const void* softmax_aux0,
-                              const void* softmax_aux1,
-                              void* dq_out,
-                              void* dk,
-                              void* dv,
-                              const ShaoboFa3Params* params) {
+extern "C" int shaobo_fa3_bwd_dq(const void* dout,
+                                 const void* q,
+                                 const void* k,
+                                 const void* v,
+                                 const void* out,
+                                 const void* softmax_aux0,
+                                 const void* softmax_aux1,
+                                 void* dq_out,
+                                 void* dk,
+                                 void* dv,
+                                 const ShaoboFa3Params* params) {
     (void)out;
     (void)dk;
     (void)dv;
@@ -1621,6 +1624,28 @@ extern "C" int shaobo_fa3_bwd(const void* dout,
     }
     return SHAOBO_FA3_STATUS_SUCCESS;
 }
+
+#ifndef SHAOBO_FA3_NO_STANDALONE
+extern "C" size_t shaobo_fa3_bwd_workspace_bytes(
+    const ShaoboFa3Params* params) {
+    return shaobo_fa3_bwd_dq_workspace_bytes(params);
+}
+
+extern "C" int shaobo_fa3_bwd(const void* dout,
+                              const void* q,
+                              const void* k,
+                              const void* v,
+                              const void* out,
+                              const void* softmax_aux0,
+                              const void* softmax_aux1,
+                              void* dq_out,
+                              void* dk,
+                              void* dv,
+                              const ShaoboFa3Params* params) {
+    return shaobo_fa3_bwd_dq(dout, q, k, v, out, softmax_aux0,
+                            softmax_aux1, dq_out, dk, dv, params);
+}
+#endif
 
 #ifndef SHAOBO_FA3_NO_STANDALONE
 int main(int argc, char** argv) {

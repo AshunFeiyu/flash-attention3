@@ -1,14 +1,15 @@
-# Shaobo FA3 BWD dKV WASP
+# Shaobo FA3 BWD 7-GEMM
 
-This repo is the clean rewrite lane for Shaobo FA3 backward dKV.  It exists to
-avoid continuing the historical phase stack in `fa3_bwd_wasp.cpp`.
+This is the clean Shaobo FA3 backward lane. It contains separate canonical
+dKV and dQ kernels plus an end-to-end correctness harness. Historical phase
+stacks and PMD output stay outside this repository.
 
 ## Goal
 
-- Build the dKV kernel from first principles with a readable WASP structure.
-- Optimize FA3 BWD dKV only; dQ remains frozen.
-- Primary performance target: MMAC active share, with same-run FA3 forward as
-  the hard reference.
+- Keep dKV and dQ as readable 7-GEMM kernels with explicit WASP ownership.
+- Preserve exact math and output ownership before instruction scheduling.
+- Use same-shape ticks as the primary metric and MMAC active as the main
+  pipeline-quality metric.
 - Keep algorithm design, resources, pipeline, and profiler evidence readable.
 
 ## Repo Rules
@@ -35,11 +36,19 @@ This clean lane starts from the latest learned constraints:
 
 ## Current State
 
-The repo now contains a buildable clean WASP FA3 BWD dKV probe.  It has a real
-HIP kernel, standalone launcher, four explicit WDRA role branches, ABarrier
-ownership gates, MLS/BPS packet publication, and a score+dP MMAC island.  It is
-`BRINGUP_ONLY`: it does not compute dV/dK yet.
+- `src/dkv_kernel.cpp`: canonical four-GEMM dKV path.
+- `src/dq_kernel.cpp`: canonical three-GEMM dQ path.
+- `src/dot_do_o_kernel.cpp`: correctness-chain delta and packed-sidecar stage.
+- `src/full_bwd_correctness.cpp`: cached-golden full lifecycle harness.
 
-The next implementation step is to add the real q-loop, sidecar loading,
-softmax+dS, and dV/dK accumulation while preserving the clean role topology and
-evidence chain.
+Build and run the full lifecycle on PMD:
+
+```bash
+scripts/build_full_bwd_correctness.sh
+S=128 scripts/run_full_bwd_correctness.sh
+S=1024 SKIP_BUILD=1 scripts/run_full_bwd_correctness.sh
+```
+
+The first run for a shape generates a CPU golden under
+`${SHAOBO_GOLDEN_ROOT}`. Later runs validate and reuse the same cache. See
+`docs/full_bwd_correctness.md` for the data contract and evidence gates.
