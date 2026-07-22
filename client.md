@@ -5252,3 +5252,26 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
 - Before the next PMD update, read PMD-006 and rerun the unchanged global
   roundtrip probe. Required closure is a matched core package or provider
   config seed, not more hand-edited config fields.
+
+### Skill Candidate: Fail Closed On Split PMD Package Updates
+
+- Trigger / 适用场景: a fixed PMD package URL changes, especially when core
+  `gem5.opt`, `libgem5_opt.so`, Python configs and a separate SOC package are
+  installed together.
+- Rule / 可复用规则: install side by side, hash every executable component,
+  compare config-generator and runtime banners, and require fresh-config plus
+  seeded-config smoke before changing the project lock. A newer runtime banner
+  alone is not promotion evidence.
+- Evidence / 证据: commit `3e4c436`, PMD-006, HEAD1698 fixed-url package,
+  official launch `global_roundtrip_pmd_20260722_20260722_205355`, isolated
+  generator proof `configgen_probe5_20260722_211152`, and unchanged HEAD1694
+  control `matrix_global_roundtrip_20260722_211218`.
+- Boundary / 适用边界: split silicon-pre PMD packages whose executable runtime
+  consumes a generated or seeded `config.ini`; this does not classify an
+  instruction semantic failure after a valid dispatch.
+- Counterexample / 反例或不适用情况: all PMD components report one
+  revision, fresh and seeded config paths both launch a known-good smoke, and
+  the focused target probe reaches dispatch.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `shaobo/references/shaobo-perf-model.md` during the next serialized skill
+  consolidation; do not edit the public skill from this task.
