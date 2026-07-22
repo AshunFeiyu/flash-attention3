@@ -178,6 +178,8 @@ __global__ void __launch_bounds__(kThreads, 1)
         float* __restrict__ score_out,
         float* __restrict__ dp_out,
         float* __restrict__ ds_out,
+        float* __restrict__ dq_direct_out,
+        float* __restrict__ dk_direct_out,
         float* __restrict__ dq_out,
         float* __restrict__ dk_out) {
 #if defined(__gfx946__) || defined(__gfx92a__)
@@ -219,12 +221,18 @@ __global__ void __launch_bounds__(kThreads, 1)
         FragF16x8 v_trans_n0{};
         FragF16x8 v_trans_n1{};
         FragF16x8 dout_trans{};
+        FragF16x8 k_normal_d0{};
+        FragF16x8 k_normal_d1{};
+        FragF16x8 q_normal{};
         ins::ds_read_matrix_32x16_trans(lds, kQBase, q_trans.f16x8);
         ins::ds_read_matrix_trans_pair(lds, kKBase, k_trans_n0.f16x8,
                                        k_trans_n1.f16x8);
         ins::ds_read_matrix_trans_pair(lds, kVBase, v_trans_n0.f16x8,
                                        v_trans_n1.f16x8);
         ins::ds_read_matrix_32x16_trans(lds, kDoutBase, dout_trans.f16x8);
+        ins::ds_read_matrix_normal_pair(lds, kKBase, k_normal_d0.f16x8,
+                                        k_normal_d1.f16x8);
+        ins::ds_read_matrix_32x16_normal(lds, kQBase, q_normal.f16x8);
         ins::wait_lgkm(0);
 
         const AccF32x4 score_n0 = mmac_score(q_trans, k_trans_n0);
@@ -257,6 +265,18 @@ __global__ void __launch_bounds__(kThreads, 1)
             writer.f16x4[0][vec] = ds_n0[vec];
             writer.f16x4[1][vec] = ds_n1[vec];
         }
+        store_dq(dq_direct_out, 0, lane,
+                 mmac_pair(writer, k_normal_d0));
+        store_dq(dq_direct_out, 16, lane,
+                 mmac_pair(writer, k_normal_d1));
+        store_dk(dk_direct_out, 0, 0, lane,
+                 mmac_one(writer.f16x4[0], q_normal.f16x4[0]));
+        store_dk(dk_direct_out, 16, 0, lane,
+                 mmac_one(writer.f16x4[1], q_normal.f16x4[0]));
+        store_dk(dk_direct_out, 0, 16, lane,
+                 mmac_one(writer.f16x4[0], q_normal.f16x4[1]));
+        store_dk(dk_direct_out, 16, 16, lane,
+                 mmac_one(writer.f16x4[1], q_normal.f16x4[1]));
         // The single writer/reader contract under test: t=1, alt=0.
         __builtin_hcu_ds_write_matrix_format_f16(
             writer.f16x8,
@@ -311,6 +331,8 @@ __global__ void __launch_bounds__(kThreads, 1)
     (void)score_out;
     (void)dp_out;
     (void)ds_out;
+    (void)dq_direct_out;
+    (void)dk_direct_out;
     (void)dq_out;
     (void)dk_out;
 #endif
@@ -331,11 +353,27 @@ float max_abs_diff(const std::vector<float>& actual,
 bool report(const char* name,
             const std::vector<float>& actual,
             const std::vector<float>& expected,
-            float tolerance) {
+            float tolerance,
+            int columns) {
     const float diff = max_abs_diff(actual, expected);
     const bool pass = std::isfinite(diff) && diff <= tolerance;
-    std::printf("dense_native_ds %s max_abs=%g pass=%d\n", name, diff,
-                pass ? 1 : 0);
+    int mismatch_count = 0;
+    for (size_t i = 0; i < expected.size(); ++i) {
+        if (!std::isfinite(actual[i]) ||
+            std::fabs(actual[i] - expected[i]) > tolerance) {
+            if (mismatch_count < 16) {
+                std::printf(
+                    "dense_native_ds_mismatch %s row=%zu col=%zu "
+                    "actual=%g expected=%g abs=%g\n",
+                    name, i / static_cast<size_t>(columns),
+                    i % static_cast<size_t>(columns), actual[i], expected[i],
+                    std::fabs(actual[i] - expected[i]));
+            }
+            ++mismatch_count;
+        }
+    }
+    std::printf("dense_native_ds %s max_abs=%g mismatches=%d pass=%d\n",
+                name, diff, mismatch_count, pass ? 1 : 0);
     return pass;
 }
 
@@ -405,11 +443,15 @@ int main() {
     float* d_score = nullptr;
     float* d_dp = nullptr;
     float* d_ds = nullptr;
+    float* d_dq_direct = nullptr;
+    float* d_dk_direct = nullptr;
     float* d_dq = nullptr;
     float* d_dk = nullptr;
     std::vector<float> score(kScoreElems);
     std::vector<float> dp(kScoreElems);
     std::vector<float> ds(kScoreElems);
+    std::vector<float> dq_direct(kGradientElems);
+    std::vector<float> dk_direct(kDkElems);
     std::vector<float> dq(kGradientElems);
     std::vector<float> dk(kDkElems);
 
@@ -420,6 +462,10 @@ int main() {
     check_hip(hipMalloc(&d_score, kScoreElems * sizeof(float)), "hipMalloc score");
     check_hip(hipMalloc(&d_dp, kScoreElems * sizeof(float)), "hipMalloc dP");
     check_hip(hipMalloc(&d_ds, kScoreElems * sizeof(float)), "hipMalloc dS");
+    check_hip(hipMalloc(&d_dq_direct, kGradientElems * sizeof(float)),
+              "hipMalloc direct dQ");
+    check_hip(hipMalloc(&d_dk_direct, kDkElems * sizeof(float)),
+              "hipMalloc direct dK");
     check_hip(hipMalloc(&d_dq, kGradientElems * sizeof(float)), "hipMalloc dQ");
     check_hip(hipMalloc(&d_dk, kDkElems * sizeof(float)), "hipMalloc dK");
 
@@ -434,12 +480,16 @@ int main() {
     check_hip(hipMemset(d_score, 0, kScoreElems * sizeof(float)), "clear score");
     check_hip(hipMemset(d_dp, 0, kScoreElems * sizeof(float)), "clear dP");
     check_hip(hipMemset(d_ds, 0, kScoreElems * sizeof(float)), "clear dS");
+    check_hip(hipMemset(d_dq_direct, 0, kGradientElems * sizeof(float)),
+              "clear direct dQ");
+    check_hip(hipMemset(d_dk_direct, 0, kDkElems * sizeof(float)),
+              "clear direct dK");
     check_hip(hipMemset(d_dq, 0, kGradientElems * sizeof(float)), "clear dQ");
     check_hip(hipMemset(d_dk, 0, kDkElems * sizeof(float)), "clear dK");
 
     hipLaunchKernelGGL(dq_native_ds_write_dense_probe_kernel, dim3(1),
                        dim3(kThreads), 0, 0, d_q, d_k, d_v, d_dout, d_score,
-                       d_dp, d_ds, d_dq, d_dk);
+                       d_dp, d_ds, d_dq_direct, d_dk_direct, d_dq, d_dk);
     check_hip(hipGetLastError(), "launch");
     check_hip(hipDeviceSynchronize(), "sync");
 
@@ -449,33 +499,47 @@ int main() {
                         hipMemcpyDeviceToHost), "copy dP");
     check_hip(hipMemcpy(ds.data(), d_ds, kScoreElems * sizeof(float),
                         hipMemcpyDeviceToHost), "copy dS");
+    check_hip(hipMemcpy(dq_direct.data(), d_dq_direct,
+                        kGradientElems * sizeof(float), hipMemcpyDeviceToHost),
+              "copy direct dQ");
+    check_hip(hipMemcpy(dk_direct.data(), d_dk_direct,
+                        kDkElems * sizeof(float), hipMemcpyDeviceToHost),
+              "copy direct dK");
     check_hip(hipMemcpy(dq.data(), d_dq, kGradientElems * sizeof(float),
                         hipMemcpyDeviceToHost), "copy dQ");
     check_hip(hipMemcpy(dk.data(), d_dk, kDkElems * sizeof(float),
                         hipMemcpyDeviceToHost), "copy dK");
 
     constexpr float kTolerance = 2.0e-3f;
-    const bool score_pass = report("score", score, score_expected, kTolerance);
-    const bool dp_pass = report("dP", dp, dp_expected, kTolerance);
-    const bool ds_pass = report("dS", ds, ds_expected, kTolerance);
+    const bool score_pass =
+        report("score", score, score_expected, kTolerance, kN);
+    const bool dp_pass = report("dP", dp, dp_expected, kTolerance, kN);
+    const bool ds_pass = report("dS", ds, ds_expected, kTolerance, kN);
+    const bool dq_direct_pass = report("dQ_direct", dq_direct, dq_expected,
+                                       kTolerance, kD);
+    const bool dk_direct_pass = report("dK_direct", dk_direct, dk_expected,
+                                       kTolerance, kD);
     const bool dq_pass = report("dQ_trans_reader_d32", dq, dq_expected,
-                                kTolerance);
+                                kTolerance, kD);
     const bool dk_pass = report("dK_normal_reader_d32", dk, dk_expected,
-                                kTolerance);
-    const bool pass = score_pass && dp_pass && ds_pass && dq_pass && dk_pass;
+                                kTolerance, kD);
+    const bool pass = score_pass && dp_pass && ds_pass && dq_direct_pass &&
+                      dk_direct_pass && dq_pass && dk_pass;
     std::printf(
         "dense_native_ds_final M=16 N=32 D=32 writer=t1_alt0 "
         "dq_reader=trans dk_reader=normal pass=%d\n",
         pass ? 1 : 0);
 
-    hipFree(d_dk);
-    hipFree(d_dq);
-    hipFree(d_ds);
-    hipFree(d_dp);
-    hipFree(d_score);
-    hipFree(d_dout);
-    hipFree(d_v);
-    hipFree(d_k);
-    hipFree(d_q);
+    check_hip(hipFree(d_dk), "hipFree dK");
+    check_hip(hipFree(d_dq), "hipFree dQ");
+    check_hip(hipFree(d_dk_direct), "hipFree direct dK");
+    check_hip(hipFree(d_dq_direct), "hipFree direct dQ");
+    check_hip(hipFree(d_ds), "hipFree dS");
+    check_hip(hipFree(d_dp), "hipFree dP");
+    check_hip(hipFree(d_score), "hipFree score");
+    check_hip(hipFree(d_dout), "hipFree dO");
+    check_hip(hipFree(d_v), "hipFree V");
+    check_hip(hipFree(d_k), "hipFree K");
+    check_hip(hipFree(d_q), "hipFree Q");
     return pass ? 0 : 2;
 }

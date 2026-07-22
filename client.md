@@ -5202,3 +5202,16 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
 - Proposed Target / 建议进入哪个 skill 或 reference:
   `dcu-kernel-optimization` top-level reduction-design reference during the
   serialized skill consolidation; do not edit the public skill from this task.
+## 2026-07-22 Five-GEMM Branch Handoff
+
+- Canonical design workbook:
+  `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_5gemm_clean_design_20260722.xlsx`.
+- Intended design is exactly five GEMMs, `M64/N128/D128`, 12 waves as one
+  four-wave producer plus two symmetric four-wave consumers, about 112.5 KiB
+  LDS and a 496/512 per-SIMD VGPR target ledger.
+- Implementation is intentionally stopped at the native dS hard gate. The
+  final dense probe proves direct dK is correct while direct dQ is not; the
+  current f16 writer/read pair makes neither downstream path jointly correct.
+- Do not bypass the gate with duplicated score/dP, wrong-layout flags,
+  ds_read_b32, gather or permutation workarounds. Preserve this branch as a
+  design/probe checkpoint until the compiler/PMD contract is extended.

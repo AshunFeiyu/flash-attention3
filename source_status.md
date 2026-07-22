@@ -10423,3 +10423,22 @@ Status: `ACCEPT / TARGET COMPLETE`.
   deferred because the hard 5% gate is already satisfied.
 - The TT/Perf multi-dispatch run produced complete stats but no helper `.perf`;
   xcu is pending only if a future target warrants a single-dispatch harness.
+## 2026-07-22 Five-GEMM Native dS Gate Closed
+
+Status: `BLOCKED_CURRENT_COMPILER_PMD_CONTRACT`; production source unchanged.
+
+- Added the final dense `M16xN32xD32` differential probe using actual
+  MLS-loaded asymmetric Q/K/V/dO and a full-coordinate CPU oracle.
+- Upstream score, dP and dS are exact. Direct dK is exact, proving both the
+  natural dS-to-dK fragment and output store coordinates. Direct dQ fails with
+  458 mismatches; the f16 t1/alt0 writer plus trans reader still fails dQ with
+  462 mismatches, while its normal reader breaks dK with 887 mismatches.
+- Static/resource gates pass at SGPR40/VGPR48, private/spill/scratch0 and
+  `ldsBankConflict=0`. PMD completes without panic.
+- Evidence root:
+  `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_192016`.
+- Together with the prior closed 64 direct modes and 80 writer/read modes,
+  current tools expose no native no-permute ownership switch that serves all
+  five GEMMs. Do not add a fused kernel, duplicate GEMM, gather, bpermute,
+  mpermute or scalar matrix-read workaround. Await a documented compiler/PMD
+  contract and re-run the same dense oracle.

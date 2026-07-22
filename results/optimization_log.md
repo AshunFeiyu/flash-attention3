@@ -16253,3 +16253,20 @@ Status: `ACCEPT_CANONICAL_DOT_SHARE_UNDER_5`.
   correctness, resource or balance proof.
 - Defer half2, native dot2 and fusion. They are no longer justified by the
   current acceptance target and should not be added speculatively.
+## 2026-07-22 Dense Native dS Ownership Differential
+
+Decision: `REJECT_CURRENT_NATIVE_F16_ROUTE / HARD_GATE_CLOSED`.
+
+- Hypothesis: the natural score-owned FP16 dS fragment can be published by
+  `ds_write_matrix_format_f16(t=1,alt0)` and read as trans for dQ and normal
+  for dK without any lane permutation or scalar gather.
+- Probe: real MLS/BPS inputs, one verified Q@K^T and dO@V^T orientation, CPU
+  dense oracle, and direct-versus-writer/read downstream paths.
+- Result: score/dP/dS and direct dK are exact; direct dQ, writer/trans dQ and
+  writer/normal dK fail broadly. SGPR40/VGPR48, no spill/private, bank0.
+- Attribution: the natural dS source layout is dK-compatible only; the current
+  writer/read contract does not perform the required dQ ownership conversion.
+  This is not a wait, barrier, store coordinate or bank conflict issue.
+- Next: retain only the probe and escalation evidence. Re-open implementation
+  after compiler/PMD exposes a documented native conversion, most plausibly
+  `DS_MATRIX_TRANSPOSE_4V`, and it passes the same dense test.

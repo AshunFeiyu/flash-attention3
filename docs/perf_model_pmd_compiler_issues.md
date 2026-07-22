@@ -323,6 +323,74 @@ Owner question:
 
 ## Compiler And Compiler/PMD Issues
 
+### COMP-004: `DS_MATRIX_TRANSPOSE_4V` Has No Current Toolchain Entry
+
+Status: `DEFERRED_COMPILER_AND_PMD_SURFACE_MISSING`.
+
+Environment fingerprint:
+
+```text
+compiler: LLVM e0f10535a0d681bcf3885ea2c398cc494bf6e332
+clang SHA256: 334cb561ceeaf1499039f6ff2a146e71e6b55b83b80d8d407a77ed27155f6f34
+PMD: HEAD1694, compiled 2026-07-17
+HCU source branch: rocm-llvm-dtkenv @ 351b875334eff96873f0ec62ddde6436d8aade08
+XCompute Light: 4.6.3 SQTT CLI package
+```
+
+The public ISA Delta dated 2025-06-10 describes
+`DS_MATRIX_TRANSPOSE_4V`: a 16x16 b32 / 32x16 b16 / 64x16 b8 / 128x16 b4
+matrix in four adjacent VGPRs is transposed through the LDS pipeline and
+returned to VGPRs without writing LDS.  Its table row repeats opcode `226`,
+which is also assigned to `DS_READ_MT8X32_B32`.
+
+Current tool evidence does not expose an independent instruction contract:
+
+- LLVM e0f10535 rejects a `ds_matrix_transpose_4v` mnemonic and has no
+  matching builtin or HCU test.
+- The latest internal `rocm-llvm-dtkenv` branch has no matching mnemonic,
+  builtin, intrinsic, or test.
+- XCompute 4.6.3 maps DS opcode `226` only to `ds_read_mt8x32_b32`.
+- PMD has no `matrix_transpose_4v` symbol or disassembly string.
+- Raw opcode `227` is not this instruction. PMD decodes it as `DS_READ_CV`
+  and rejects an invalid `opctrl` (`W == 0`).
+
+Do not infer a raw encoding from adjacency in the ISA table and do not place
+`.long` encodings in a production kernel.  The two raw attempts are retained
+only in remote run evidence:
+
+```text
+/zys/sb/fa3b/layout_probes/ds_transpose4v_20260722_181852
+/zys/sb/fa3b/layout_probes/ds_transpose4v_20260722_183028
+```
+
+Impact:
+
+- This instruction could be a native way to convert the natural dS fragment
+  between dKV-friendly and dQ-friendly ownership without a `ds_mpermute`
+  bridge.
+- It cannot be used or performance-tested with the current compiler/PMD
+  contract, so it is not a valid dependency for the canonical five-GEMM
+  kernel.
+- Continue only with a documented builtin/mnemonic plus a focused numerical
+  probe, or with a separately proven native MMAC/writer/reader layout.
+
+The final dense differential probe strengthens this from a speculative impact
+to an active five-GEMM blocker.  Under the locked e0f10535/HEAD1694 toolchain,
+the natural score-owned dS fragment gives exact direct dK but incorrect direct
+dQ; `ds_write_matrix_format_f16(t=1,alt0)` followed by trans/normal readers
+gives incorrect dQ and dK.  Upstream score/dP/dS are exact, metadata is
+spill/private-free, and `ldsBankConflict=0`, so this is not an algorithm,
+store-index, resource, or bank-conflict failure.  Evidence:
+`/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_192016` and
+`docs/5gemm_native_ds_gate_20260722.md`.
+
+Owner question:
+
+> What is the final encoding and compiler builtin for
+> `DS_MATRIX_TRANSPOSE_4V` on gfx946, and which PMD build implements it?  Is
+> the repeated opcode `226` in the 2025-06-10 ISA Delta intentional or a
+> documentation placeholder?
+
 ### COMP-001: WDRA Codegen Is Version-Coupled
 
 Status: `COMPATIBILITY`, with validated workarounds.
