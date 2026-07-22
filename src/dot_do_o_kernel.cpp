@@ -9,40 +9,56 @@ namespace {
 
 constexpr float kLog2E = 1.44269504088896340736f;
 constexpr int kPackedSidecarFields = 3;
+constexpr int kHeadDim = 128;
+constexpr int kWaveSize = 64;
+constexpr int kWavesPerBlock = 4;
+constexpr int kThreads = kWaveSize * kWavesPerBlock;
 
-__global__ void dot_do_o_kernel(const __half* dout,
-                                const __half* out,
-                                const float* scores_max,
-                                const float* scores_sum,
-                                float* delta,
-                                float* packed_sidecar,
+__device__ __forceinline__ float wave_reduce_sum(float value) {
+#pragma unroll
+    for (int offset = kWaveSize / 2; offset > 0; offset >>= 1) {
+        value += __shfl_down(value, offset, kWaveSize);
+    }
+    return value;
+}
+
+__global__ void dot_do_o_kernel(const __half* __restrict__ dout,
+                                const __half* __restrict__ out,
+                                const float* __restrict__ scores_max,
+                                const float* __restrict__ scores_sum,
+                                float* __restrict__ delta,
+                                float* __restrict__ packed_sidecar,
                                 int rows,
-                                int dim,
                                 float scale_log2) {
-    const int row = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+    const int lane = static_cast<int>(threadIdx.x & (kWaveSize - 1));
+    const int wave = static_cast<int>(threadIdx.x >> 6);
+    const int row = static_cast<int>(blockIdx.x * kWavesPerBlock + wave);
     if (row >= rows) {
         return;
     }
 
-    const int64_t base = static_cast<int64_t>(row) * dim;
-    float dot = 0.0f;
-    for (int d = 0; d < dim; ++d) {
-        dot += __half2float(dout[base + d]) * __half2float(out[base + d]);
-    }
+    const int64_t base = static_cast<int64_t>(row) * kHeadDim;
+    float dot = __half2float(dout[base + lane]) *
+                __half2float(out[base + lane]);
+    dot += __half2float(dout[base + lane + kWaveSize]) *
+           __half2float(out[base + lane + kWaveSize]);
+    dot = wave_reduce_sum(dot);
 
-    delta[row] = dot;
-    const int packed = row * kPackedSidecarFields;
-    packed_sidecar[packed + 0] = scores_max[row] * scale_log2;
-    packed_sidecar[packed + 1] =
-        scores_sum[row] != 0.0f ? 1.0f / scores_sum[row] : 0.0f;
-    packed_sidecar[packed + 2] = dot;
+    if (lane == 0) {
+        delta[row] = dot;
+        const int packed = row * kPackedSidecarFields;
+        packed_sidecar[packed + 0] = scores_max[row] * scale_log2;
+        packed_sidecar[packed + 1] =
+            scores_sum[row] != 0.0f ? 1.0f / scores_sum[row] : 0.0f;
+        packed_sidecar[packed + 2] = dot;
+    }
 }
 
 bool valid_params(const ShaoboFa3Params* params) {
     return params != nullptr && params->batch > 0 &&
            params->seqlen_q > 0 && params->num_heads_q > 0 &&
-           params->head_dim_qk > 0 &&
-           params->head_dim_qk == params->head_dim_v &&
+           params->head_dim_qk == kHeadDim &&
+           params->head_dim_v == kHeadDim &&
            params->dtype == SHAOBO_FA3_DTYPE_FP16 &&
            params->layout == SHAOBO_FA3_LAYOUT_BHSD;
 }
@@ -67,13 +83,12 @@ extern "C" int shaobo_fa3_bwd_dot_do_o(const void* dout,
 
     const int rows =
         params->batch * params->num_heads_q * params->seqlen_q;
-    constexpr int kThreads = 128;
-    const int blocks = (rows + kThreads - 1) / kThreads;
+    const int blocks = (rows + kWavesPerBlock - 1) / kWavesPerBlock;
     dot_do_o_kernel<<<blocks, kThreads>>>(
         static_cast<const __half*>(dout), static_cast<const __half*>(out),
         static_cast<const float*>(scores_max),
         static_cast<const float*>(scores_sum), static_cast<float*>(delta),
-        static_cast<float*>(packed_sidecar), rows, params->head_dim_qk,
+        static_cast<float*>(packed_sidecar), rows,
         params->softmax_scale * kLog2E);
 
     hipError_t err = hipGetLastError();

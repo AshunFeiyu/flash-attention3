@@ -5159,3 +5159,46 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
   opt-out attribute.
 - Proposed Target / 建议进入哪个 skill 或 reference: `shaobo` compiler/PMD
   reference during the next serialized skill consolidation.
+
+## 2026-07-22 dot_do_o Share Target Complete
+
+- The canonical preprocessing kernel now uses one wave per row and four rows
+  per 256-thread CTA. The serialized one-thread-per-row implementation is gone;
+  no alternate phase or fallback remains.
+- H1/S128 and four H1/S1024 lifecycle runs pass cached CPU correctness with
+  bank0, SGPR22/VGPR12 and private/spill/scratch0. Three standard S1024 runs
+  reduce dot from `12.398295M` to a `2.447900M` median (`5.06487x`) and reduce
+  lifecycle share from `19.352846%` to `4.618129%`.
+- The old mapping was also rebuilt from `84a46e3` with the same lock; all three
+  control runs reproduce `12.398295M` dot ticks, so this is a repeated A/B
+  result rather than a cross-toolchain historical comparison.
+- PMD reports all `48 CU / 192 SIMD` active, versus `8 / 16` before the change.
+  The accepted result is a top-level ownership/launch correction; MMAC active
+  is intentionally irrelevant to this reduction kernel.
+- Design and measured evidence are in workbook sheet `DOT_TopDesign` and
+  `docs/dot_do_o_top_level_design.md`. Half2, native dot2 and fusion remain
+  deferred because the hard goal is already met.
+
+### Skill Candidate: Fix Reduction Ownership Before Micro-Scheduling
+
+- Trigger / 适用场景: a small row-wise reduction or preprocessing kernel takes
+  a large end-to-end share despite low arithmetic work.
+- Rule / 可复用规则: derive rows, CTA count, waves per row, access stride and
+  active CU/SIMD coverage before editing instructions. If one thread owns a
+  long reduction and the target launches too few CTAs, first map one wave to
+  one row and use a proven wave reduction; only then consider packed loads,
+  native dot instructions or fusion.
+- Evidence / 证据: branch `exp/dot-do-o-wave-reduce`, LLVM e0f10535, PMD
+  HEAD1694, H1/S1024. Active topology grows `8 CU / 16 SIMD -> 48 / 192`;
+  median dot ticks fall `12,398,295 -> 2,447,900` (`5.06487x`) and lifecycle
+  share falls `19.352846% -> 4.618129%`. Correctness, bank and resource gates
+  pass; source/ASM has six `ds_bpermute_b32` and no barrier/LDS allocation.
+- Boundary / 适用边界: independent fixed-width row reductions where wave
+  shuffles are verified and rows provide enough parallel work. Tail rows need
+  an explicit valid-row guard.
+- Counterexample / 反例或不适用情况: cross-row reduction semantics, widths
+  substantially larger than a bounded per-lane share, unsupported shuffle
+  behavior, or an already bandwidth-saturated launch with full CU/SIMD use.
+- Proposed Target / 建议进入哪个 skill 或 reference:
+  `dcu-kernel-optimization` top-level reduction-design reference during the
+  serialized skill consolidation; do not edit the public skill from this task.

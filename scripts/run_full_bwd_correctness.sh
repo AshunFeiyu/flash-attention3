@@ -35,6 +35,11 @@ python3 scripts/check_symbol_metadata_gate.py \
 python3 scripts/check_dq_kernel_gate.py --asm build/dq/fa3_bwd_dq.asm
 python3 scripts/check_symbol_metadata_gate.py \
   --asm build/dq/fa3_bwd_dq.asm --symbol-regex fa3_bwd_dq_kernel
+python3 scripts/check_dot_do_o_kernel_gate.py \
+  --asm build/dot/dot_do_o_kernel.asm
+python3 scripts/check_symbol_metadata_gate.py \
+  --asm build/dot/dot_do_o_kernel.asm --symbol-regex dot_do_o_kernel \
+  --max-vgpr-count 32
 
 bin_abs="$(realpath "${BIN}")"
 case_id="full_bwd_correctness_$(date +%Y%m%d_%H%M%S)"
@@ -50,7 +55,7 @@ cat >"${case_script}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 cd ${case_dir}
-export HSA_TOOLS_LIB=""
+export HSA_TOOLS_LIB="${HSA_TOOLS_LIB:-}"
 echo "PMD_BINARY=${bin_abs}"
 sha256sum "${bin_abs}"
 exec "${bin_abs}" --golden-dir=${golden_dir} --B=${B} --H=${H} --S=${S} --D=${D} --causal=${CAUSAL} --softmax-scale=${SOFTMAX_SCALE}
@@ -91,3 +96,5 @@ fi
 echo "full backward correctness golden: ${golden_dir}"
 echo "full backward correctness m5out: ${case_dir}/m5out"
 echo "full backward correctness dispatches=${dispatches} ldsBankConflict=${bank_conflicts}"
+python3 scripts/parse_full_bwd_dispatches.py --m5out "${case_dir}/m5out" \
+  --json-out "${case_dir}/full_bwd_metrics.json"

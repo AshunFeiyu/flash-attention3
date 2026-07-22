@@ -20,6 +20,16 @@ python3 scripts/check_dq_kernel_gate.py --asm build/dq/fa3_bwd_dq.asm
 python3 scripts/check_symbol_metadata_gate.py \
   --asm build/dq/fa3_bwd_dq.asm --symbol-regex fa3_bwd_dq_kernel
 
+TARGET_GFX="${TARGET_GFX}" BUILD_DIR=build/dot \
+  BIN=build/dot/dot_do_o_kernel.o ASM=build/dot/dot_do_o_kernel.asm \
+  SRC=src/dot_do_o_kernel.cpp BUILD_ASM=1 COMPILE_ONLY=1 \
+  SHAOBO_DISABLE_WDRA_FLAGS=1 ./build.sh
+python3 scripts/check_dot_do_o_kernel_gate.py \
+  --asm build/dot/dot_do_o_kernel.asm
+python3 scripts/check_symbol_metadata_gate.py \
+  --asm build/dot/dot_do_o_kernel.asm --symbol-regex dot_do_o_kernel \
+  --max-vgpr-count 32
+
 full_flags="${EXTRA_CXXFLAGS:-} -DSHAOBO_FA3_NO_STANDALONE"
 TARGET_GFX="${TARGET_GFX}" BUILD_DIR=build/full BIN=build/full/dkv_kernel.o \
   SRC=src/dkv_kernel.cpp BUILD_ASM=0 COMPILE_ONLY=1 \

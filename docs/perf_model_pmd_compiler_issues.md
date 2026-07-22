@@ -557,3 +557,22 @@ Rules:
 
 Validation evidence: workbook `218_LatestCompiler_e0f` and shared archive
 `shaobo/perf/20260722_061614_latest_e0f10535_h1s1024_dkv_dq_fullperf`.
+
+## 2026-07-22 Multi-Dispatch Full-Lifecycle Helper Emits No Perf
+
+Status: `OBSERVE / SINGLE-DISPATCH FOLLOW-UP ONLY`.
+
+- The full backward harness loads three kernel objects and dispatches
+  `dot_do_o -> dKV -> dQ` in one process. With helper 2.2.0,
+  `HSA_TOOLS_LIB=/opt/rocm-6.3.3/lib/xprofiler/libperf_gen_helper.so` and
+  `GPU_DFLAGS=['StatLog','SQAbar','SQEbar','MMUCheck','TT','Perf']`, PMD runs all
+  three dispatches correctly and writes complete `stats.txt` files, but emits
+  neither the helper `<pid>_<binary>.perf` nor `stats_xcd0.perf`.
+- Evidence root:
+  `/zys/sb/dotfp/full_bwd_correctness_20260722_124146`. The run passes all
+  numerical/resource/bank gates and measures dot `2,443,805` ticks, so this is
+  not a kernel abort or correctness issue.
+- Do not claim an xcu result from this run. Use stats for the exact lifecycle
+  share and active-CU/SIMD proof. If instruction-level dot attribution becomes
+  necessary, create a single-dispatch harness before escalating the helper;
+  standalone dKV/dQ helper capture remains known-good in the same environment.

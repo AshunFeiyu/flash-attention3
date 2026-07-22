@@ -16217,3 +16217,39 @@ Status: `REJECT_WAIT_CANDIDATE / ACCEPT_CORRECTNESS_CHAIN`.
   `s_set_vgpr_size` without initialized WDRA allocation mode.
 - Golden caches live outside git, are atomically created once, and validate
   schema, shape, dtype, byte count and SHA256 before every reuse.
+
+## 2026-07-22 dot_do_o Wave-Per-Row Redesign Promoted
+
+Status: `ACCEPT_CANONICAL_DOT_SHARE_UNDER_5`.
+
+- Top-level cost analysis identified the old one-thread-per-row mapping as the
+  structural fault: H1/S1024 launched only eight 128-thread CTAs, activated
+  `8/48` CUs and `16/192` SIMDs, gave each lane a serial D128 dependency chain,
+  and produced a `12,398,295`-tick dot dispatch (`19.352846%` of the lifecycle).
+- The promoted kernel assigns one wave64 to one row and four independent rows
+  to a 256-thread CTA. Each lane owns `d` and `d+64`; six `__shfl_down` steps
+  lower to six `ds_bpermute_b32`, and lane0 publishes delta plus packed
+  sidecar. There is no LDS allocation, CTA barrier, ABarrier, EBarrier, WDRA or
+  local-wave mode.
+- Static gates report SGPR22/VGPR12 and private/spill/scratch0. H1/S128 and all
+  H1/S1024 full-lifecycle runs pass delta/dK/dV/dQ correctness with bank0 and
+  no non-finite values; S1024 delta max absolute error is `1.86e-9`.
+- Three same-binary S1024 dot runs are `2,429,245 / 2,449,720 / 2,447,900`
+  ticks. Median is `2,447,900`, a `5.06487x` speedup and `80.2562%` tick
+  reduction. Per-run lifecycle shares are `4.5932018% / 4.6181294% /
+  4.6244563%`; the hard `<=5%` target passes in every run.
+- A fresh control built from commit `84a46e3` under the identical compiler/PMD
+  lock reports exactly `12,398,295` dot ticks in all three control runs. This
+  closes the repeated same-build control/candidate gate rather than relying on
+  a single historical baseline artifact.
+- PMD counters show the mechanism directly: active topology grows to all
+  `48 CU / 192 SIMD`, with active-time CV `2.9279%`. Dynamic dot counts are
+  VALU71680, SCA5120, LDS-class shuffle6144, FLAT8192 and MMOP0. More counted
+  wave instructions are intentional; useful parallelism removes the exposed
+  serial/global-latency critical path.
+- A TT/Perf rerun remains correct at `2,443,805` ticks and `4.592011%`, but the
+  three-dispatch/multi-HSACO harness emits no helper `.perf`. Record xcu as an
+  optional single-dispatch follow-up, not a blocker for the exact share,
+  correctness, resource or balance proof.
+- Defer half2, native dot2 and fusion. They are no longer justified by the
+  current acceptance target and should not be added speculatively.

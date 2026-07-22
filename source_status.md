@@ -10398,3 +10398,28 @@ Status: `ACCEPT`; canonical dKV/dQ device hot paths are unchanged.
 - Golden cache reuse is fail-closed and read-only after first generation.
 - A startup K/V pair-wait candidate is rejected for inconsistent three-pair
   A/B results; canonical wait placement remains unchanged.
+
+## 2026-07-22 Canonical dot_do_o Replaced
+
+Status: `ACCEPT / TARGET COMPLETE`.
+
+- `src/dot_do_o_kernel.cpp` now has one canonical D128 path: one wave owns one
+  row, four waves form a 256-thread CTA, each lane consumes columns `lane` and
+  `lane+64`, and six wave shuffles reduce delta. Only lane0 writes delta and
+  packed sidecar.
+- The old one-thread-per-row serial loop is removed. No experimental phase,
+  fallback, LDS reduction, barrier, WDRA or local-wave path remains.
+- Build/ASM gates require six `ds_bpermute_b32`, SGPR/VGPR metadata within the
+  ordinary-helper budget and no spill/private/trap/resize. Current metadata is
+  SGPR22/VGPR12 with private/spill/scratch0.
+- Cached full-lifecycle correctness passes H1/S128 and every H1/S1024 run;
+  `ldsBankConflict=0`. Three S1024 dot results have median `2,447,900` ticks
+  and median per-run lifecycle share `4.618129%`, versus baseline
+  `12,398,295` and `19.352846%`.
+- A same-lock rebuild of commit `84a46e3` reproduces `12,398,295` dot ticks in
+  all three control runs; the candidate result passes the repeated A/B gate.
+- PMD evidence reports `48 CU / 192 SIMD` active versus baseline `8 / 16`.
+  This is a launch/ownership promotion. A2 half2, native dot2 and fusion are
+  deferred because the hard 5% gate is already satisfied.
+- The TT/Perf multi-dispatch run produced complete stats but no helper `.perf`;
+  xcu is pending only if a future target warrants a single-dispatch harness.

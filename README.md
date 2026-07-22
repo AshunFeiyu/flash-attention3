@@ -51,4 +51,6 @@ S=1024 SKIP_BUILD=1 scripts/run_full_bwd_correctness.sh
 
 The first run for a shape generates a CPU golden under
 `${SHAOBO_GOLDEN_ROOT}`. Later runs validate and reuse the same cache. See
-`docs/full_bwd_correctness.md` for the data contract and evidence gates.
+`docs/full_bwd_correctness.md` for the data contract and evidence gates. The
+standalone delta-stage redesign and dynamic 5% end-to-end target are defined in
+`docs/dot_do_o_top_level_design.md`.
