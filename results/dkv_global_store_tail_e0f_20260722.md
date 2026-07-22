@@ -36,6 +36,22 @@ noise.  Dynamic `MMOP`, `VALU`, `SCA`, `LDS`, `VMEM`, `FLAT` and output bytes
 are also exact for the compiler A/B.  Therefore a compiler-generated store
 sequence cannot explain the GUI-level difference.
 
+The matched-wave timeline makes the boundary unambiguous:
+
+| Physical consumer slot | Compiler | last MMAC -> first store | store issue span | last store -> wave end |
+|---|---:|---:|---:|---:|
+| slot1 / consumer0 | LLVM47a7 | 252 | 2,652 | 4,081 |
+| slot1 / consumer0 | e0f10535 | 272 | 2,616 | 4,085 |
+| slot2 / consumer1 | LLVM47a7 | 1,288 | 3,584 | 1,761 |
+| slot2 / consumer1 | e0f10535 | 1,024 | 3,648 | 1,761 |
+
+The new compiler is 16 cycles shorter from the last MMAC to the last store on
+slot1 and 200 cycles shorter on slot2.  The four-cycle slot1 post-store delta
+is below PMD issue granularity, while slot2 is exact.  What looks like a long
+`global_store` tail in the GUI is therefore mostly time attributed to the
+store-adjacent issue gap plus `AllDone` convergence; it is not extra store
+instructions or a new store dependency emitted by e0f10535.
+
 ## Rejected Workarounds
 
 ### Reversing C1 dV/dK Store Order
@@ -86,3 +102,11 @@ stores are not intrinsically contrary to the FWD-style design.
 4. Keep store-tail experiments isolated.  Promotion still requires repeated
    same-build ticks, exact dynamic work, correctness, bank0 and no spill.
 
+The next structural candidate therefore attacks the serialized resident/raw
+publication boundary, not the epilogue: consumer groups publish and latch
+their own resident K/V while the two producer groups publish independent M64
+Q/dO pages.  This removes startup ownership from the slow-consumer critical
+path without changing the four GEMMs or the direct FP32 store contract.  Its
+resource and barrier proof is in
+`results/dkv_consumer_assisted_resident_design_20260722.md` and it must still
+pass static, correctness, repeated-ticks and SQTT gates before promotion.

@@ -1,6 +1,30 @@
 # FA3 BWD dKV Clean WASP Design Contract
 
-## Current Pivot
+## 2026-07-22 Authoritative Canonical State
+
+The source of truth is now `Mq128/Nk128/D128`, 16 waves, physical 2P2C:
+
+```text
+waves0-3:   producer K resident, then Q + raw-head/raw-tail packets
+waves4-7:   consumer0, owns Nk0..63 as four independent Nk16 waves
+waves8-11:  consumer1, owns Nk64..127 as four independent Nk16 waves
+waves12-15: producer V resident, then dO + sidecar packets
+```
+
+The latest e0f10535 H1/S1024 fullperf baseline is
+`34,625,955 ticks / 38.538081% MMAC active`; the longest causal CTA is about
+`45.36%` active, while the one-q-tile CTA is about `16.94%`.  The next
+structural experiment is documented in
+`results/dkv_consumer_assisted_resident_design_20260722.md`: consumer groups
+publish their own K/V while producers concurrently publish two M64 Q/dO
+pages, then sidecar reuses the released resident region.  It keeps four exact
+GEMMs, seven ABarrier slots, two M64 raw pages, direct FP32 stores and a strict
+128KB LDS budget.
+
+The older material below is retained only as historical design evolution; it
+must not override this authoritative state.
+
+## Archived Historical Pivot
 
 The active canonical kernel is the raw2 W16/Mq64 route:
 
