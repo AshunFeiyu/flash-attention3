@@ -10578,3 +10578,21 @@ Status: `ACCEPT_F16_C_NATIVE_SOURCE_MATCH / FA_SEMANTICS_PENDING`.
   a conversion, nor that FP16 accumulation meets FA numeric accuracy.
 - Next gate is one dense semantic chain using the exact lit0/lts0 trans pair,
   followed by a downstream MMAC and CPU oracle.
+
+## 2026-07-22 Dense FP16 MMAC Handoff Rejected
+
+Status: `REJECT_DENSE_DUAL_CONSUMER_CHAIN`; supersedes the coordinate-only
+`ACCEPT_F16_C_NATIVE_SOURCE_MATCH` promotion.
+
+- Corrected the shared f16 writer wrapper and dense probe to use LDS byte
+  offset zero when the pointer already names the target page.
+- Added FP16-output MMAC LTS0/LTS1 sources, both reader tensor dumps and both
+  downstream dQ/dK CPU-oracle comparisons to the existing dense probe.
+- LTS0 run `dq_native_ds_dense_20260722_232115`: trans/normal tensor mismatch
+  `496/496`, dQ/dK mismatch `493/911`.
+- LTS1 run `dq_native_ds_dense_20260722_232230`: trans/normal tensor mismatch
+  `488/488`, dQ/dK mismatch `488/882`.
+- Both runs are SGPR44/VGPR62, private/spill0, bank0, ordinary DS read0 and
+  permute0. The issue is general dense source ownership, not transport.
+- The sparse coordinate pattern hid the mismatch. Future layout promotion
+  requires dense non-symmetric data and all production consumers.

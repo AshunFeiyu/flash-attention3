@@ -453,7 +453,9 @@ __device__ __forceinline__ void ds_write_matrix_32x16_f16(
 #if defined(__gfx946__) || defined(__gfx92a__)
     auto* ptr = reinterpret_cast<_Float16*>(
         reinterpret_cast<char*>(lds) + lds_offset);
-    __builtin_hcu_ds_write_matrix_format_f16(frag, ptr, 16, 2, 1, 0, 0);
+    // ptr already names the target page. The third builtin operand is an LDS
+    // byte offset, not the element width.
+    __builtin_hcu_ds_write_matrix_format_f16(frag, ptr, 0, 2, 1, 0, 0);
 #else
     (void)frag;
     (void)lds;

@@ -16379,3 +16379,17 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
 - Remaining gate: prove dense dS numeric semantics and downstream MMAC use.
   Do not replace production FP32 score/dP accumulation solely from this
   coordinate-layout result.
+
+## 2026-07-22 - Dense dual-consumer FP16 MMAC stress
+
+- Classification: `REJECT_DENSE_DUAL_CONSUMER_CHAIN`.
+- Corrected `ds_write_matrix_format_f16` byte offset to zero and expanded the
+  existing dense probe with trans/normal tensor reconstruction plus downstream
+  dQ/dK oracles.
+- LTS0: reader tensor mismatches `496/496`, dQ/dK `493/911`.
+- LTS1: reader tensor mismatches `488/488`, dQ/dK `488/882`.
+- Static/PMD gates remain clean: SGPR44/VGPR62, private/spill0, bank0, no
+  scalar matrix-path read or permutation.
+- Conclusion: the coordinate-only exact match was a sparse-pattern false
+  positive. Keep five-GEMM implementation blocked; do not stack a production
+  path around this FP16 MMAC mode.

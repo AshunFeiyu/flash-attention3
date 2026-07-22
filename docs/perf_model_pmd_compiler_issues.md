@@ -522,6 +522,13 @@ correct. The unresolved question is which native MMAC output/layout and writer
 format are intended to be paired. The f32 writer is the remaining no-permute
 candidate, currently blocked by PMD-001.
 
+The 2026-07-22 FP16-output MMAC recheck does not close this gap. A sparse
+two-coordinate input reported zero source-slot errors for selected LTS modes,
+but a dense non-symmetric oracle with writer offset zero failed both the trans
+dQ and normal dK views before their output stores. Treat the sparse result as
+a pattern-specific false positive, not as a compiler or PMD bug. Evidence is
+in `results/ds_matrix_mmac_source_abi_20260722.md`.
+
 ### COMP-003: Read/MMAC Scheduling And Long-Lived Zero Codegen Quality
 
 Status: `OBSERVE`, performance quality only.

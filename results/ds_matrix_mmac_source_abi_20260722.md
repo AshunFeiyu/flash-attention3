@@ -2,7 +2,7 @@
 
 Date: 2026-07-22
 
-Status: `ACCEPT_F16_C_NATIVE_SOURCE_MATCH / F32_TO_DS_SEMANTIC_PENDING`
+Status: `OBSERVE_COORDINATE_MATCH / REJECT_DENSE_DUAL_CONSUMER_CHAIN`
 
 ## Question
 
@@ -98,9 +98,9 @@ Static/resource evidence:
 - `v_mmac_16x16x16_f16=384`
 - ordinary `ds_read_b*=0`, permute/permlane `0/0`
 
-## Revised Interpretation
+## Coordinate-Level Interpretation
 
-The native chain exists. The cleanest proven register-layout contract is:
+The coordinate-label probe found this candidate register-layout contract:
 
 ```text
 FP16-output MMAC(qT, kT, lit=0, lts=0)
@@ -108,15 +108,48 @@ FP16-output MMAC(qT, kT, lit=0, lts=0)
   -> ds_read_matrix_trans_format_f16(m32x16, alt0)
 ```
 
-This closes the instruction-layout existence question, but it does not yet
-close the FA dS handoff. Production score and dP normally use FP32
-accumulation, followed by FP32 softmax/dS arithmetic and an FP16 conversion.
-The previously tested lane-local conversion from FP32 C does not have this
-writer source ABI. The next focused semantic test must therefore prove one of
-these without runtime permutation:
+This is only a candidate because the coordinate input is separable and sparse:
+only two D positions encode the Q and K row labels. It can hide a D-fragment
+or ownership permutation. Production score and dP also require FP32
+accumulation followed by FP32 softmax/dS arithmetic and FP16 conversion.
+
+## Dense Dual-Consumer Stress
+
+The non-symmetric dense probe was extended to publish a real FP16-output MMAC
+fragment once, then read the same LDS page through the trans dQ view and the
+normal dK view. It also reconstructs both reader tensors on the host before
+the downstream MMAC, so the failure can be localized before output stores.
+
+Valid runs use writer byte offset zero:
+
+- LTS0: `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232115`
+- LTS1: `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232230`
+- FP32-downcast control:
+  `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232322`
+
+Results:
+
+| Published source | Trans tensor | Normal tensor | dQ | dK |
+|---|---:|---:|---:|---:|
+| FP16 MMAC LTS0 | 496 mismatches | 496 | 493 | 911 |
+| FP16 MMAC LTS1 | 488 mismatches | 488 | 488 | 882 |
+| FP32 dS downcast | 488 mismatches | 488 | 462 | 887 |
+
+All runs pass transport and resource gates. The native FP16 cases use
+`SGPR44/VGPR62`, private/spill0, `ldsBankConflict=0`, ordinary matrix-path DS
+read0 and permutation0. Their asm contains
+`ds_write_matrix_format ... element:2 row:2 col:1 t` with no `offset:16`.
+
+The dense failure supersedes the coordinate-only promotion. The matrix writer
+and readers remain proven lossless permutations, but neither FP16 MMAC LTS
+candidate produces a general dense source fragment that serves both required
+views. The five-GEMM gate remains closed on this toolchain.
+
+The next native solution must provide one of these without runtime
+permutation:
 
 1. the final dS arithmetic can remain in the FP16-output MMAC source slots; or
 2. a native instruction mode converts the FP32 dS ownership into that ABI.
 
-Do not integrate the FP16 MMAC path into the canonical FA kernel until its
-numeric error and downstream MMAC semantics pass a dense CPU oracle.
+Do not integrate the FP16 MMAC path into the canonical FA kernel from a sparse
+coordinate probe. A dense, non-symmetric CPU oracle is the promotion gate.

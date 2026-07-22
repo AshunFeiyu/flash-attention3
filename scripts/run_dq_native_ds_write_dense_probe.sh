@@ -13,6 +13,14 @@ ASM="${BUILD_DIR}/dq_native_ds_write_dense_probe.asm"
 RUN_ROOT="${DQ_DENSE_RUN_ROOT:-${SHAOBO_RUN_ROOT}/layout_probes}"
 RUN_DIR="${RUN_ROOT}/dq_native_ds_dense_$(date +%Y%m%d_%H%M%S)"
 PMD_TIMEOUT="${DQ_DENSE_PMD_TIMEOUT:-300}"
+NATIVE_F16_SCORE="${DQ_DENSE_NATIVE_F16_SCORE:-0}"
+NATIVE_F16_LTS="${DQ_DENSE_NATIVE_F16_LTS:-0}"
+REQUIRE_SEMANTIC_PASS="${DQ_DENSE_REQUIRE_SEMANTIC_PASS:-1}"
+
+case "${NATIVE_F16_SCORE}:${NATIVE_F16_LTS}:${REQUIRE_SEMANTIC_PASS}" in
+  0:0:0|0:0:1|1:0:0|1:0:1|1:1:0|1:1:1) ;;
+  *) echo "invalid native score/lts/require-pass combination" >&2; exit 2 ;;
+esac
 
 TARGET_GFX=946 \
 BUILD_ASM=1 \
@@ -22,6 +30,7 @@ BIN="${BIN}" \
 ASM="${ASM}" \
 SHAOBO_DISABLE_WDRA_FLAGS=1 \
 SHAOBO_EXPLICIT_WDRA_INIT=0 \
+EXTRA_CXXFLAGS="-DSHAOBO_DENSE_NATIVE_F16_SCORE=${NATIVE_F16_SCORE} -DSHAOBO_DENSE_NATIVE_F16_LTS=${NATIVE_F16_LTS}" \
 ./build.sh
 
 BIN_ABS="$(realpath "${BIN}")"
@@ -39,12 +48,13 @@ awk '
   /^[[:space:]]*ds_read_matrix_format/ { reader_n += 1 }
   /^[[:space:]]*ds_read_matrix_trans_format/ { reader_t += 1 }
   /^[[:space:]]*v_mmac_/ { mmac += 1 }
+  /^[[:space:]]*v_mmac_16x16x16_f16/ { mmac_f16_out += 1 }
   /^[[:space:]]*ds_read_b/ { scalar_read += 1 }
   /^[[:space:]]*ds_(m|b)permute/ { permute += 1 }
   /permlane/ { permlane += 1 }
   END {
-    printf("asm_gate mls=%d writer=%d reader_n=%d reader_t=%d mmac=%d scalar_read=%d permute=%d permlane=%d\n",
-           mls, writer, reader_n, reader_t, mmac, scalar_read, permute, permlane)
+    printf("asm_gate mls=%d writer=%d reader_n=%d reader_t=%d mmac=%d mmac_f16_out=%d scalar_read=%d permute=%d permlane=%d\n",
+           mls, writer, reader_n, reader_t, mmac, mmac_f16_out, scalar_read, permute, permlane)
     if (mls < 4 || writer < 1 || reader_n < 1 || reader_t < 1 || mmac < 12 ||
         scalar_read != 0 || permute != 0 || permlane != 0) exit 1
   }
@@ -79,17 +89,24 @@ if [[ "${stats_found}" -gt 0 ]]; then
 fi
 
 if [[ "${pmd_status}" == "0" && "${panic_lines}" == "0" &&
-      "${stats_found}" -gt 0 && "${bank_conflicts}" == "0" &&
-      "${semantic_pass}" -gt 0 ]]; then
-  result=PASS
+      "${stats_found}" -gt 0 && "${bank_conflicts}" == "0" ]]; then
+  transport=PASS
 else
-  result=FAIL
+  transport=FAIL
 fi
+semantic=FAIL
+[[ "${semantic_pass}" -gt 0 ]] && semantic=PASS
+source_name=f32_ds_downcast
+[[ "${NATIVE_F16_SCORE}" == "1" ]] && source_name=f16_mmac_score
 
 grep -E '^dense_native_ds |^dense_native_ds_final' pmd_stdout.log | tee result.txt || true
-printf 'dq_native_ds_dense result=%s pmd_status=%s panic=%s stats=%s bank=%s run=%s\n' \
-  "${result}" "${pmd_status}" "${panic_lines}" "${stats_found}" "${bank_conflicts}" \
+printf 'dq_native_ds_dense transport=%s semantic=%s source=%s lts=%s pmd_status=%s panic=%s stats=%s bank=%s run=%s\n' \
+  "${transport}" "${semantic}" "${source_name}" "${NATIVE_F16_LTS}" \
+  "${pmd_status}" "${panic_lines}" "${stats_found}" "${bank_conflicts}" \
   "${RUN_DIR}" | tee -a result.txt
 sha256sum "${BIN_ABS}" "${ASM_ABS}" | tee artifact_sha256.txt
 
-[[ "${result}" == "PASS" ]]
+[[ "${transport}" == "PASS" ]]
+if [[ "${REQUIRE_SEMANTIC_PASS}" == "1" ]]; then
+  [[ "${semantic}" == "PASS" ]]
+fi

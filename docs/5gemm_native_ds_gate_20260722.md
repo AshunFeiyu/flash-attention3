@@ -128,3 +128,31 @@ only when one of these is available and passes this same dense oracle:
    serves both downstream views;
 3. another documented native MMAC/writer/reader combination outside the
    already closed mode surfaces.
+
+## Native FP16-Output MMAC Recheck
+
+The HCU FP16-output MMAC initially produced an apparent source-slot match on a
+sparse coordinate-label input. A dense non-symmetric rerun rejects that
+promotion:
+
+```text
+FP16 MMAC LTS0 -> writer(t=1,offset=0) -> trans/normal readers
+  tensor mismatches = 496/512 and 496/512
+  dQ/dK mismatches  = 493 and 911
+
+FP16 MMAC LTS1 -> writer(t=1,offset=0) -> trans/normal readers
+  tensor mismatches = 488/512 and 488/512
+  dQ/dK mismatches  = 488 and 882
+```
+
+Runs:
+
+- `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232115`
+- `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232230`
+
+Both are SGPR44/VGPR62, private/spill0 and bank0, with no scalar matrix read or
+permutation. Therefore the failure is semantic layout ownership, not PMD
+transport, resource pressure, store indexing or bank conflict. Sparse or
+separable coordinate tags are no longer sufficient evidence for a matrix
+layout contract; all future promotion probes need dense non-symmetric data and
+both downstream consumers.

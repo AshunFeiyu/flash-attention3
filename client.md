@@ -5325,3 +5325,15 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
   explicit comparison against the FP32 score/dP plus dS accuracy requirement.
 - Evidence: `results/ds_matrix_mmac_source_abi_20260722.md`, remote run
   `/zys/sb/fa3b/layout_probes/dq_source_slot_20260722_225346`.
+
+Dense follow-up supersedes the coordinate-only promotion:
+
+- FP16 LTS0 and LTS1 both fail to make one writer page serve the trans dQ and
+  normal dK views on non-symmetric dense input.
+- Writer offset must be zero when the pointer already names the page; the
+  shared wrapper is corrected accordingly.
+- The canonical five-GEMM path remains blocked. Do not infer a full layout
+  contract from sparse row-tag, all-ones, checksum or coverage probes.
+- Evidence:
+  `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232115`,
+  `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232230`.
