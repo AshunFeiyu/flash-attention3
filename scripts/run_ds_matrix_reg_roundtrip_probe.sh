@@ -44,7 +44,7 @@ awk '
   END {
     printf("asm_gate writer=%d reader_n=%d reader_t=%d mmac=%d scalar_read=%d permute=%d permlane=%d\n",
            writer, reader_n, reader_t, mmac, scalar_read, permute, permlane)
-    if (writer != 4 || reader_n != 2 || reader_t != 3 || mmac != 0 ||
+    if (writer != 4 || reader_n != 2 || reader_t != 1 || mmac != 0 ||
         scalar_read != 0 || permute != 0 || permlane != 0) exit 1
   }
 ' "${ASM_ABS}"
@@ -71,8 +71,10 @@ panic_lines="$(grep -ciE 'panic:|fatal:|not init or has been freed' pmd_stdout.l
 complete="$(grep -c 'roundtrip_probe_complete=1' pmd_stdout.log || true)"
 identity_pairs="$(sed -n 's/.*roundtrip_probe_complete=1 identity_pairs=\([0-9][0-9]*\).*/\1/p' pmd_stdout.log | tail -1)"
 permutation_pairs="$(sed -n 's/.*permutation_pairs=\([0-9][0-9]*\).*/\1/p' pmd_stdout.log | tail -1)"
+replay_identity_pairs="$(sed -n 's/.*replay_identity_pairs=\([0-9][0-9]*\).*/\1/p' pmd_stdout.log | tail -1)"
 identity_pairs="${identity_pairs:-0}"
 permutation_pairs="${permutation_pairs:-0}"
+replay_identity_pairs="${replay_identity_pairs:-0}"
 bank_conflicts=0
 mapfile -t stats_files < <(find m5out -type f -name stats.txt -size +0c)
 stats_found="${#stats_files[@]}"
@@ -88,20 +90,24 @@ if [[ "${pmd_status}" == "0" && "${panic_lines}" == "0" &&
 else
   transport=FAIL
 fi
-if [[ "${identity_pairs}" -gt 0 ]]; then
-  semantic=IDENTITY_PASS
+if [[ "${permutation_pairs}" == "12" &&
+      "${replay_identity_pairs}" == "12" ]]; then
+  semantic=CALIBRATED_ABI_IDENTITY_PASS
 elif [[ "${permutation_pairs}" -gt 0 ]]; then
   semantic=PERMUTATION_ONLY
 else
   semantic=NO_BIJECTION
 fi
 
-grep -E '^roundtrip_(mismatch|summary|probe_complete)' pmd_stdout.log \
+grep -E '^(calibration_summary|inverse_replay_summary|roundtrip_probe_complete)' pmd_stdout.log \
   | tee result.txt || true
-printf 'ds_matrix_reg_roundtrip transport=%s semantic=%s identity_pairs=%s permutation_pairs=%s pmd_status=%s panic=%s stats=%s bank=%s run=%s\n' \
+[[ -s ds_matrix_slot_map.csv ]]
+printf 'ds_matrix_reg_roundtrip transport=%s semantic=%s identity_pairs=%s permutation_pairs=%s replay_identity_pairs=%s pmd_status=%s panic=%s stats=%s bank=%s run=%s\n' \
   "${transport}" "${semantic}" "${identity_pairs}" "${permutation_pairs}" \
-  "${pmd_status}" "${panic_lines}" "${stats_found}" "${bank_conflicts}" \
+  "${replay_identity_pairs}" "${pmd_status}" "${panic_lines}" \
+  "${stats_found}" "${bank_conflicts}" \
   "${RUN_DIR}" | tee -a result.txt
 sha256sum "${BIN_ABS}" "${ASM_ABS}" | tee artifact_sha256.txt
+sha256sum ds_matrix_slot_map.csv | tee slot_map_sha256.txt
 
 [[ "${transport}" == "PASS" ]]

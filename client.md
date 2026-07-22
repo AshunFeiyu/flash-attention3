@@ -5288,3 +5288,17 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
   MMAC result still needs a separately proven writer-source semantic layout.
 - Evidence: `results/ds_matrix_write_lds_dump_20260722.md` and remote run
   `/zys/sb/fa3b/layout_probes/ds_matrix_write_lds_dump_20260722_214911`.
+
+## 2026-07-22 DS Writer/Reader Register ABI
+
+- The matching `m32x16_f16` writer/reader surface is compatible: 12/12 pairs
+  are complete permutations and 12/12 become strict identities after the CPU
+  inverse-packs the writer source slots.
+- "Unified swizzle" refers to the LDS physical format. It does not mean an
+  arbitrary lane-linear producer fragment equals the normal or trans reader's
+  lane/word output.
+- Canonical follow-up is to make dS production naturally match the required
+  writer source ABI. Do not add runtime gather/permute based on the CSV map.
+- Probe and evidence: `probes/ds_matrix_reg_roundtrip_probe.cpp`,
+  `results/ds_matrix_reg_roundtrip_20260722.md`, remote run
+  `/zys/sb/fa3b/layout_probes/ds_matrix_reg_roundtrip_20260722_220758`.

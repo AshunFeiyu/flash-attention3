@@ -110,6 +110,15 @@ the original dK-compatible view.  Together with the previously closed direct
 64-mode and writer/read 80-mode surfaces, the current compiler/PMD contract
 does not expose a legal no-permute ownership switch for all five GEMMs.
 
+The later ABI-calibrated register probe narrows this conclusion. The matrix
+writer and matching m32 readers are lossless and use a compatible LDS
+swizzle: all 12 pairs are complete permutations, and CPU inverse-packing of
+the writer source makes all 12 pairs strict identities. Therefore the blocker
+is not DS writer/reader transport. It is that the natural score-owned dS MMAC
+output is not already in the writer source-slot ABI required by the desired
+dQ and dK consumer views. CPU inverse-packing proves existence but is not a
+legal runtime implementation.
+
 Do not start the fused canonical kernel on this toolchain.  Re-open the gate
 only when one of these is available and passes this same dense oracle:
 

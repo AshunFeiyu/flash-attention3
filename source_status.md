@@ -10520,3 +10520,21 @@ Status: `ACCEPT_INSTRUCTION_TRANSPORT`; production source unchanged.
 - Conclusion: do not blame the f16 matrix writer for PMD-005. Matrix-store or
   its descriptor contract remains the global-output blocker; MMAC source
   layout remains a separate semantic gate.
+
+## 2026-07-22 DS Writer/Reader Unified-Swizzle ABI PASS
+
+Status: `ACCEPT_NATIVE_TRANSPORT / SOURCE_ABI_STILL_REQUIRED`.
+
+- Reworked the existing register-roundtrip probe into a two-pass ABI test over
+  four f16 writer modes and three matching m32 readers.
+- A lane-linear source yields no identity pair, but all 12 combinations are
+  complete 512-word permutations. CPU inversion of each mapping followed by a
+  second native write/read gives `mismatch=0` for all 12 combinations.
+- ASM has writer4, normal-reader2, trans-reader1, MMAC0, scalar-read0 and
+  permutation0. Metadata is SGPR14/VGPR7, private/spill0, bank0.
+- Evidence: `/zys/sb/fa3b/layout_probes/`
+  `ds_matrix_reg_roundtrip_20260722_220758` and
+  `results/ds_matrix_reg_roundtrip_20260722.md`.
+- Conclusion: DS writer/readers do share a compatible unified LDS swizzle.
+  The remaining five-GEMM gate is producing the correct writer source slots
+  naturally from the dS MMAC/VALU result, not fixing LDS transport.

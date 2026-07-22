@@ -16333,3 +16333,18 @@ Decision: `ACCEPT_INSTRUCTION_TRANSPORT`.
   production bank gate.
 - Result narrows PMD-005 to matrix-store/descriptor handling. It does not
   resolve the independent MMAC-output writer-source layout contract.
+
+## 2026-07-22 DS Writer/Reader ABI-Calibrated Replay
+
+Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
+
+- The existing register-roundtrip probe now measures all matching m32
+  writer/reader slot permutations, CPU-inverts them, and replays a source
+  prepared for each writer ABI.
+- Phase 1: identity0/12, complete permutation12/12. Phase 2: exact identity
+  12/12 with no MMAC, scalar LDS read, permutation instruction or bank conflict.
+- This confirms the compiler owner's unified-swizzle statement. Raw identity
+  failed because producer and consumer register ABIs differ, not because the
+  LDS layout or matrix instructions lose data.
+- Production implication: derive a native MMAC-output/source-slot pairing.
+  Do not translate the CPU inverse into a runtime gather/permute workaround.

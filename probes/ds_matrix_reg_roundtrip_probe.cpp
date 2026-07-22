@@ -1,4 +1,3 @@
-#include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
 
 #include "shaobo_instr.h"
@@ -19,9 +18,10 @@ constexpr int kWordsPerLane = 8;
 constexpr int kWordsPerFragment = kWaveSize * kWordsPerLane;
 constexpr int kLdsPageElems = 64 * 16;
 constexpr int kWriterCount = 4;
-constexpr int kReaderCount = 5;
+constexpr int kReaderCount = 3;
 constexpr int kPairCount = kWriterCount * kReaderCount;
-constexpr uint16_t kPatternBase = 0x3000;
+constexpr uint16_t kCalibrationBase = 0x3000;
+constexpr uint16_t kReplayBase = 0x3400;
 
 union HalfBits {
     _Float16 value;
@@ -62,7 +62,8 @@ __device__ __forceinline__ void write_fragment(
     }
 }
 
-__device__ __forceinline__ Vec8F16 read_fragment(int reader, _Float16* lds) {
+__device__ __forceinline__ Vec8F16 read_fragment(
+    int reader, _Float16* lds) {
     switch (reader) {
         case 0:
             return __builtin_hcu_ds_read_matrix_format_f16(
@@ -70,186 +71,192 @@ __device__ __forceinline__ Vec8F16 read_fragment(int reader, _Float16* lds) {
         case 1:
             return __builtin_hcu_ds_read_matrix_format_f16(
                 lds, 0, 2, 1, 1);
-        case 2:
-            return __builtin_hcu_ds_read_matrix_trans_format_f16(
-                lds, 0, 2, 1, 0);
-        case 3:
-            return __builtin_hcu_ds_read_matrix_trans_format_f16(
-                lds, 0, 1, 2, 0);
         default:
             return __builtin_hcu_ds_read_matrix_trans_format_f16(
-                lds, 0, 1, 2, 1);
+                lds, 0, 2, 1, 0);
     }
 }
 
-// One block is one writer/reader pair.  The same wave creates A in registers,
-// writes A to LDS, reads A1 back, then exports both raw FP16 bit patterns.
-// There is no MMAC, cross-wave handoff, ABarrier, or layout workaround here.
+// One block is one matching m32 writer/reader pair. The first launch measures
+// the register-slot permutation; the second launch replays an inverse-packed
+// source prepared by the CPU. No MMAC or layout workaround is present.
 __global__ void __launch_bounds__(kWaveSize, 1)
     ds_matrix_reg_roundtrip_probe_kernel(
-        uint16_t* __restrict__ a_bits,
-        uint16_t* __restrict__ a1_bits) {
+        const uint16_t* __restrict__ input,
+        uint16_t* __restrict__ output) {
 #if defined(__gfx946__) || defined(__gfx92a__)
     __shared__ __align__(256) _Float16 lds[kLdsPageElems];
     const int lane = static_cast<int>(threadIdx.x % kWaveSize);
     const int pair = static_cast<int>(blockIdx.x);
     const int writer = pair / kReaderCount;
     const int reader = pair % kReaderCount;
-
-    Vec8F16 a{};
-#pragma unroll
-    for (int word = 0; word < kWordsPerLane; ++word) {
-        const uint16_t bits = static_cast<uint16_t>(
-            kPatternBase + lane * kWordsPerLane + word);
-        a[word] = half_from_bits(bits);
-    }
-
-    write_fragment(writer, a, lds);
-    ins::wait_lgkm(0);
-    const Vec8F16 a1 = read_fragment(reader, lds);
-    ins::wait_lgkm(0);
-
     const int base = pair * kWordsPerFragment + lane * kWordsPerLane;
+
+    Vec8F16 source{};
 #pragma unroll
     for (int word = 0; word < kWordsPerLane; ++word) {
-        a_bits[base + word] = half_bits(a[word]);
-        a1_bits[base + word] = half_bits(a1[word]);
+        source[word] = half_from_bits(input[base + word]);
+    }
+    write_fragment(writer, source, lds);
+    ins::wait_lgkm(0);
+    const Vec8F16 result = read_fragment(reader, lds);
+    ins::wait_lgkm(0);
+#pragma unroll
+    for (int word = 0; word < kWordsPerLane; ++word) {
+        output[base + word] = half_bits(result[word]);
     }
 #else
-    (void)a_bits;
-    (void)a1_bits;
+    (void)input;
+    (void)output;
 #endif
 }
 
-void check_hip(hipError_t err, const char* what) {
-    if (err != hipSuccess) {
-        std::fprintf(stderr, "%s failed: %s\n", what, hipGetErrorString(err));
+void check_hip(hipError_t error, const char* what) {
+    if (error != hipSuccess) {
+        std::fprintf(stderr, "%s failed: %s\n", what,
+                     hipGetErrorString(error));
         std::exit(1);
     }
+}
+
+void run_probe(
+    uint16_t* device_input,
+    uint16_t* device_output,
+    const std::vector<uint16_t>& input,
+    std::vector<uint16_t>& output,
+    const char* phase) {
+    const size_t bytes = input.size() * sizeof(uint16_t);
+    check_hip(hipMemcpy(device_input, input.data(), bytes,
+                        hipMemcpyHostToDevice),
+              "hipMemcpy input");
+    check_hip(hipMemset(device_output, 0, bytes), "hipMemset output");
+    hipLaunchKernelGGL(ds_matrix_reg_roundtrip_probe_kernel,
+                       dim3(kPairCount), dim3(kWaveSize), 0, 0,
+                       device_input, device_output);
+    check_hip(hipGetLastError(), phase);
+    check_hip(hipDeviceSynchronize(), "sync");
+    check_hip(hipMemcpy(output.data(), device_output, bytes,
+                        hipMemcpyDeviceToHost),
+              "hipMemcpy output");
 }
 
 const char* kWriterNames[kWriterCount] = {
     "normal_alt0", "normal_alt1", "trans_alt0", "trans_alt1"};
 const char* kReaderNames[kReaderCount] = {
-    "normal_m32_alt0",
-    "normal_m32_alt1",
-    "trans_m32_alt0",
-    "trans_m16_alt0",
-    "trans_m16_alt1",
-};
+    "normal_m32_alt0", "normal_m32_alt1", "trans_m32_alt0"};
 
 }  // namespace
 
 int main() {
     const size_t total_words =
         static_cast<size_t>(kPairCount) * kWordsPerFragment;
-    uint16_t* d_a = nullptr;
-    uint16_t* d_a1 = nullptr;
-    std::vector<uint16_t> h_a(total_words);
-    std::vector<uint16_t> h_a1(total_words);
+    const size_t bytes = total_words * sizeof(uint16_t);
+    uint16_t* device_input = nullptr;
+    uint16_t* device_output = nullptr;
+    std::vector<uint16_t> calibration_input(total_words);
+    std::vector<uint16_t> calibration_output(total_words);
+    std::vector<uint16_t> replay_input(total_words);
+    std::vector<uint16_t> replay_output(total_words);
+    std::vector<int> dst_to_source(total_words, -1);
 
-    check_hip(hipMalloc(&d_a, total_words * sizeof(uint16_t)), "hipMalloc A");
-    check_hip(hipMalloc(&d_a1, total_words * sizeof(uint16_t)), "hipMalloc A1");
-    check_hip(hipMemset(d_a, 0, total_words * sizeof(uint16_t)), "hipMemset A");
-    check_hip(hipMemset(d_a1, 0, total_words * sizeof(uint16_t)),
-              "hipMemset A1");
-
-    hipLaunchKernelGGL(ds_matrix_reg_roundtrip_probe_kernel,
-                       dim3(kPairCount), dim3(kWaveSize), 0, 0, d_a, d_a1);
-    check_hip(hipGetLastError(), "launch");
-    check_hip(hipDeviceSynchronize(), "sync");
-    check_hip(hipMemcpy(h_a.data(), d_a, total_words * sizeof(uint16_t),
-                       hipMemcpyDeviceToHost),
-              "hipMemcpy A");
-    check_hip(hipMemcpy(h_a1.data(), d_a1, total_words * sizeof(uint16_t),
-                       hipMemcpyDeviceToHost),
-              "hipMemcpy A1");
-    check_hip(hipFree(d_a), "hipFree A");
-    check_hip(hipFree(d_a1), "hipFree A1");
-
-    int identity_pair_count = 0;
-    int permutation_pair_count = 0;
-    for (int writer = 0; writer < kWriterCount; ++writer) {
-        for (int reader = 0; reader < kReaderCount; ++reader) {
-            const int pair = writer * kReaderCount + reader;
-            const size_t base = static_cast<size_t>(pair) * kWordsPerFragment;
-            int identity_mismatch = 0;
-            int unmapped = 0;
-            int duplicate = 0;
-            int shown = 0;
-            int unmapped_shown = 0;
-            std::vector<int> source_counts(kWordsPerFragment, 0);
-
-            for (int dst = 0; dst < kWordsPerFragment; ++dst) {
-                const uint16_t expected = h_a[base + dst];
-                const uint16_t actual = h_a1[base + dst];
-                if (actual != expected) {
-                    ++identity_mismatch;
-                }
-
-                int source = -1;
-                if (actual >= kPatternBase &&
-                    actual < kPatternBase + kWordsPerFragment) {
-                    source = static_cast<int>(actual - kPatternBase);
-                    if (++source_counts[source] > 1) {
-                        ++duplicate;
-                    }
-                } else {
-                    ++unmapped;
-                    if (unmapped_shown < 4) {
-                        std::printf(
-                            "roundtrip_unmapped writer=%s reader=%s "
-                            "dst_lane=%d dst_word=%d actual=0x%04x\n",
-                            kWriterNames[writer], kReaderNames[reader],
-                            dst / kWordsPerLane, dst % kWordsPerLane,
-                            static_cast<unsigned>(actual));
-                        ++unmapped_shown;
-                    }
-                }
-
-                if (actual != expected && shown < 4) {
-                    const int dst_lane = dst / kWordsPerLane;
-                    const int dst_word = dst % kWordsPerLane;
-                    const int source_lane =
-                        source >= 0 ? source / kWordsPerLane : -1;
-                    const int source_word =
-                        source >= 0 ? source % kWordsPerLane : -1;
-                    std::printf(
-                        "roundtrip_mismatch writer=%s reader=%s "
-                        "dst_lane=%d dst_word=%d expected=0x%04x actual=0x%04x "
-                        "source_lane=%d source_word=%d\n",
-                        kWriterNames[writer], kReaderNames[reader], dst_lane,
-                        dst_word, static_cast<unsigned>(expected),
-                        static_cast<unsigned>(actual), source_lane,
-                        source_word);
-                    ++shown;
-                }
-            }
-
-            int missing = 0;
-            for (int count : source_counts) {
-                if (count == 0) {
-                    ++missing;
-                }
-            }
-            const bool identity_pass = identity_mismatch == 0;
-            const bool permutation_pass =
-                unmapped == 0 && duplicate == 0 && missing == 0;
-            identity_pair_count += identity_pass ? 1 : 0;
-            permutation_pair_count += permutation_pass ? 1 : 0;
-            std::printf(
-                "roundtrip_summary writer=%s reader=%s "
-                "identity_mismatch=%d identity_pass=%d unmapped=%d "
-                "duplicate=%d missing=%d permutation_pass=%d\n",
-                kWriterNames[writer], kReaderNames[reader], identity_mismatch,
-                identity_pass ? 1 : 0, unmapped, duplicate, missing,
-                permutation_pass ? 1 : 0);
+    for (int pair = 0; pair < kPairCount; ++pair) {
+        const size_t base = static_cast<size_t>(pair) * kWordsPerFragment;
+        for (int source = 0; source < kWordsPerFragment; ++source) {
+            calibration_input[base + source] =
+                static_cast<uint16_t>(kCalibrationBase + source);
         }
+    }
+
+    check_hip(hipMalloc(&device_input, bytes), "hipMalloc input");
+    check_hip(hipMalloc(&device_output, bytes), "hipMalloc output");
+    run_probe(device_input, device_output, calibration_input,
+              calibration_output, "launch calibration");
+
+    std::FILE* slot_map = std::fopen("ds_matrix_slot_map.csv", "w");
+    if (slot_map == nullptr) {
+        std::fprintf(stderr, "failed to create ds_matrix_slot_map.csv\n");
+        return 1;
+    }
+    std::fprintf(
+        slot_map,
+        "writer,reader,dst_lane,dst_word,source_lane,source_word\n");
+    int identity_pairs = 0;
+    int permutation_pairs = 0;
+    for (int pair = 0; pair < kPairCount; ++pair) {
+        const int writer = pair / kReaderCount;
+        const int reader = pair % kReaderCount;
+        const size_t base = static_cast<size_t>(pair) * kWordsPerFragment;
+        std::vector<int> counts(kWordsPerFragment, 0);
+        int identity_mismatch = 0;
+        int unmapped = 0;
+        int duplicate = 0;
+        for (int dst = 0; dst < kWordsPerFragment; ++dst) {
+            const uint16_t actual = calibration_output[base + dst];
+            identity_mismatch +=
+                actual != static_cast<uint16_t>(kCalibrationBase + dst);
+            if (actual >= kCalibrationBase &&
+                actual < kCalibrationBase + kWordsPerFragment) {
+                const int source = actual - kCalibrationBase;
+                dst_to_source[base + dst] = source;
+                duplicate += ++counts[source] > 1;
+                std::fprintf(
+                    slot_map, "%s,%s,%d,%d,%d,%d\n",
+                    kWriterNames[writer], kReaderNames[reader],
+                    dst / kWordsPerLane, dst % kWordsPerLane,
+                    source / kWordsPerLane, source % kWordsPerLane);
+            } else {
+                ++unmapped;
+            }
+        }
+        int missing = 0;
+        for (int count : counts) {
+            missing += count == 0;
+        }
+        const bool permutation =
+            unmapped == 0 && duplicate == 0 && missing == 0;
+        identity_pairs += identity_mismatch == 0;
+        permutation_pairs += permutation ? 1 : 0;
+        if (permutation) {
+            for (int dst = 0; dst < kWordsPerFragment; ++dst) {
+                const int source = dst_to_source[base + dst];
+                replay_input[base + source] =
+                    static_cast<uint16_t>(kReplayBase + dst);
+            }
+        }
+        std::printf(
+            "calibration_summary writer=%s reader=%s identity_mismatch=%d "
+            "unmapped=%d duplicate=%d missing=%d permutation_pass=%d\n",
+            kWriterNames[writer], kReaderNames[reader], identity_mismatch,
+            unmapped, duplicate, missing, permutation ? 1 : 0);
+    }
+    std::fclose(slot_map);
+
+    run_probe(device_input, device_output, replay_input, replay_output,
+              "launch inverse replay");
+    check_hip(hipFree(device_input), "hipFree input");
+    check_hip(hipFree(device_output), "hipFree output");
+
+    int replay_identity_pairs = 0;
+    for (int pair = 0; pair < kPairCount; ++pair) {
+        const int writer = pair / kReaderCount;
+        const int reader = pair % kReaderCount;
+        const size_t base = static_cast<size_t>(pair) * kWordsPerFragment;
+        int mismatch = 0;
+        for (int dst = 0; dst < kWordsPerFragment; ++dst) {
+            mismatch += replay_output[base + dst] !=
+                        static_cast<uint16_t>(kReplayBase + dst);
+        }
+        replay_identity_pairs += mismatch == 0;
+        std::printf(
+            "inverse_replay_summary writer=%s reader=%s mismatch=%d "
+            "identity_pass=%d\n",
+            kWriterNames[writer], kReaderNames[reader], mismatch,
+            mismatch == 0 ? 1 : 0);
     }
 
     std::printf(
         "roundtrip_probe_complete=1 identity_pairs=%d permutation_pairs=%d "
-        "total_pairs=%d\n",
-        identity_pair_count, permutation_pair_count, kPairCount);
-    return 0;
+        "replay_identity_pairs=%d total_pairs=%d\n",
+        identity_pairs, permutation_pairs, replay_identity_pairs, kPairCount);
+    return replay_identity_pairs == kPairCount ? 0 : 1;
 }

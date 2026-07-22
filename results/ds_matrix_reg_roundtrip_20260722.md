@@ -1,67 +1,79 @@
-# DS Matrix Register Roundtrip Probe
+# DS Matrix Register ABI Roundtrip Probe
 
 ## Question
 
-Does a raw FP16 fragment survive this chain bit-for-bit in the same lane and
-word position?
+Do `ds_write_matrix_format_f16` and matching m32 matrix readers share a
+compatible LDS swizzle, even though their register lane/word layouts differ?
 
 ```text
 A-reg -> ds_write_matrix_format_f16 -> LDS
       -> ds_read_matrix[_trans]_format_f16 -> A1-reg
 ```
 
-The probe intentionally contains no MMAC, ABarrier, cross-wave handoff,
-ordinary `ds_read_b*`, permutation, gather, or production FA code.
+The probe contains no MMAC, ABarrier, cross-wave handoff, ordinary
+`ds_read_b*`, permutation, gather, or production FA code.
 
-## Matrix
+## Method
 
 - Source: one wave, 64 lanes, 8 unique finite FP16 bit patterns per lane.
 - Writers: normal/trans times alt0/alt1.
-- Readers: normal m32 alt0/alt1, trans m32 alt0, trans m16 alt0/alt1.
-- Comparison: all 20 writer/reader pairs, 512 words per pair.
+- Readers: matching normal m32 alt0/alt1 and trans m32 alt0.
+- Phase 1 tags every source lane/word and measures the complete register-slot
+  permutation for all 12 writer/reader pairs.
+- Phase 2 CPU-inverts each measured permutation, prepares the source for that
+  writer ABI, and requires strict lane/word identity after the native chain.
 - Toolchain: LLVM `e0f10535...`, PMD HEAD1694, `GPU_CHIP=sb`, SQ7.
 
 ## Result
 
-Corrected run:
-`/zys/sb/fa3b/layout_probes/ds_matrix_reg_roundtrip_20260722_201613`.
+Run: `/zys/sb/fa3b/layout_probes/`
+`ds_matrix_reg_roundtrip_20260722_220758`.
 
-- Transport passes: PMD exits normally, metadata is SGPR16/VGPR13 with no
-  private segment or spill, and `ldsBankConflict=0`.
-- ASM has exactly four matrix writers, two normal readers, three transpose
-  readers, no MMAC, no scalar matrix read, and no permutation instruction.
-- No pair is a same-lane/same-word identity: `identity_pairs=0/20`.
-- All 12 combinations using a matching m32 reader are complete 512-word
-  permutations: `permutation_pairs=12/20`.
-- The m16 readers expose only 256 source words for this m32 source shape and
-  return poison in the other 256 slots, so they are shape-mismatched readers.
-- PMD prints `ds_write_matrix : testing` and
-  `ds_read_matrix_trans : testing` warnings.
+- Transport passes with SGPR14/VGPR7, no private segment or spill, and
+  `ldsBankConflict=0`.
+- ASM has four matrix writers, two normal readers and one transpose reader;
+  MMAC0, scalar-matrix-read0 and permutation0.
+- A lane-linear source is not identity for any pair: `identity_pairs=0/12`.
+- All pairs are complete 512-word bijections: `permutation_pairs=12/12`.
+- After CPU inverse-packing for the writer source ABI, every pair is exact:
+  `replay_identity_pairs=12/12`, with `mismatch=0` for every pair.
+- Full slot map: `ds_matrix_slot_map.csv`, SHA256
+  `c40636535369ea0f577a4ee8ea036d85e3b2bad6ae3f86b4e2accfd026f27f4d`.
 
-Representative normal/normal result:
+Representative calibration:
 
 ```text
-identity_mismatch=510 identity_pass=0
-unmapped=0 duplicate=0 missing=0 permutation_pass=1
+normal_alt0 -> normal_m32_alt0: identity_mismatch=510
+normal_alt0 -> trans_m32_alt0:  identity_mismatch=504
+all pairs: unmapped=0 duplicate=0 missing=0
+all inverse replays: mismatch=0
 ```
+
+For `normal_alt0 -> normal_m32_alt0`, destination lane0 words0..7 come
+from source lanes `[0,16,32,48,8,24,40,56]`, all at source word0. For
+`normal_alt0 -> trans_m32_alt0`, destination lane0 comes from source slots
+`(0,0),(0,1),(1,0),(1,1),(8,0),(8,1),(9,0),(9,1)`.
 
 ## Interpretation
 
-`ds_write_matrix` does not promise that an arbitrary lane-linear register
-fragment will be returned unchanged by an arbitrary `ds_read_matrix` form.
-The writer source contract and reader destination contract are matrix-layout
-contracts, normally tied to MMAC output/operand layouts. Most recovered words
-show a deterministic lane/word redistribution, not random data corruption.
+The compiler guidance is correct: writer and readers use a compatible unified
+LDS swizzle layout. The apparent mismatch came from comparing two different
+register ABIs as lane-linear identity. `ds_write_matrix` consumes a producer
+fragment layout, while normal/trans readers emit different consumer MMAC
+operand layouts. The LDS transport is lossless and bijective.
 
-An earlier run incorrectly passed `16` as the builtin LDS byte offset. Its ASM
-contained `offset:16`, skipped eight FP16 words and returned eight `0xfefe`
-poison slots. With the required byte offset `0`, all matching m32 paths are
-complete permutations. This correction is a probe bug fix, not a hardware or
-PMD behavior change.
+The inverse replay is proof, not a production implementation. It prepares the
+source on the CPU. A real kernel still needs its MMAC/VALU producer to
+naturally generate the required writer source slots; otherwise a runtime
+cross-lane conversion would still be needed.
 
-Do not use raw register identity to reject a documented MMAC-output
-writer/reader pairing; validate that exact semantic chain with a dense CPU
-oracle.
+An earlier run passed LDS byte offset 16 and skipped eight FP16 words. The
+correct builtin byte offset is zero when the pointer already names the page
+base.
+
+Do not use raw register identity to reject a documented pairing. First prove
+the writer/reader slot ABI, then validate the actual MMAC-output-to-next-MMAC
+semantic chain with a dense CPU oracle.
 
 ## Reproduce
 
