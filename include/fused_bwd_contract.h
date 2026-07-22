@@ -152,10 +152,11 @@ struct FusedBwdBarrierLedger {
     static constexpr int kKvDsUsed = 2;
     static constexpr int kRawFilled = 3;
     static constexpr int kRawUsed = 4;
-    static constexpr int kBatchDsFilled = 5;
-    static constexpr int kCount = 6;
+    static constexpr int kBatchDsFilled0 = 5;
+    static constexpr int kBatchDsFilled1 = 6;
+    static constexpr int kCount = 7;
 
-    static_assert(kBatchDsFilled + 1 == kCount,
+    static_assert(kBatchDsFilled1 + 1 == kCount,
                   "barrier IDs must be contiguous and explicit");
 };
 

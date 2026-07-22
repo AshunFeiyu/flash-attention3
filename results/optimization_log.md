@@ -1,5 +1,27 @@
 # Optimization Log
 
+## 2026-07-23 Local-First dQ Consumer Rendezvous Accepted
+
+- Status: `ACCEPT_SAME_WORK_LOCAL_FIRST_DQ / MMAC50_OPEN`.
+- Hypothesis: replace the CTA-wide eight-wave dS rendezvous with two
+  four-wave ready tokens and execute each group's 16 local dQ MMAC before its
+  peer wait. This should turn part of the early group's ID5 bubble into useful
+  work without changing output ownership or dynamic work.
+- The first implementation used two long-lived phase SGPRs and spilled two
+  SGPRs into VGPR lanes. Both tokens advance in the same generation, so one
+  persistent phase plus two short wait copies restores spill0.
+- S128/S1024 causal and noncausal correctness pass. Metadata is role
+  `8/179/178`, SGPR100/VGPR168, private/spill/scratch0 and bank0. MMOP92,160,
+  VMEM1,408, LDS75,808 and FLAT10,528 remain exact.
+- Fullperf changes ticks `107,214,380 -> 105,186,445` (`-1.89%`) and active
+  `16.083128% -> 16.277420%`. PMD barrier share is `28.20% -> 27.89%`.
+- XCU top5000 shows the early peer wait falls from about 4.19K to 3.10K cycles,
+  but the split adds scalar token work (`SCA37,504 -> 40,400`). The useful
+  local island is too short to erase the consumer-group cadence gap.
+
+Evidence: `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_073536` and
+`/zys/sb/fa3b/xcu_outputs/5gemm_local_first_dq_s1024_20260723`.
+
 ## 2026-07-23 Native FP32 Atomic Canonical Integration Accepted
 
 - Status: `ACCEPT_CANONICAL_NATIVE_ATOMIC / MMAC50_OPEN`.

@@ -1,5 +1,29 @@
 # Source Status
 
+## 2026-07-23 Local-First dQ Ready Tokens Promoted
+
+Status: `ACCEPT_SAME_WORK_LOCAL_FIRST_DQ / MMAC50_OPEN`.
+
+- SQTT top5000 proved that `RawUsed(ID4)` is producer-only idle, while the
+  consumer rendezvous is `BatchDsFilled(ID5)`: group0 waited about 4.19K
+  cycles per reported gap and group1 about 0.59K.
+- The canonical kernel now publishes two independent group-ready tokens.
+  Each consumer group computes the four-writer local-N64 half of dQ before
+  waiting for the peer token, then computes the remote-N64 half. Unique D16
+  ownership, native atomic count, exact five GEMMs and MMOP92,160 are unchanged.
+- H1/S128 and H1/S1024 causal/noncausal pass. Static resources are role
+  `8/179/178` inside WDRA `24/240/240`, SGPR100/VGPR168,
+  private/spill/scratch0, LDS115456B and bank0.
+- Causal H1/S1024 fullperf improves `107,214,380 -> 105,186,445` ticks
+  (`-1.89%`) and MMAC active `16.083128% -> 16.277420%`.
+- The local dQ work ages the early group's peer wait by about 1K cycles, but a
+  remaining Ready1 wait averages about 3.10K. This is an accepted checkpoint,
+  not the 50% solution. The next experiment must correct the deterministic
+  group0/group1 cadence without adding duplicate work or atomics.
+
+Evidence: `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_073536` and
+`/zys/sb/fa3b/xcu_outputs/5gemm_local_first_dq_s1024_20260723`.
+
 ## 2026-07-23 Native FP32 Atomic Promoted
 
 Status: `ACCEPT_CANONICAL_NATIVE_ATOMIC / MMAC50_OPEN`.

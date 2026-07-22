@@ -1,5 +1,25 @@
 # Client
 
+## 2026-07-23 Canonical Local-First dQ Checkpoint
+
+- Keep the native FP32 atomic baseline and the exact M64/N128/D128 work. dS
+  publication now has independent Ready0/Ready1 tokens; each symmetric
+  consumer computes its own N64 contribution to the existing D16 accumulator
+  before waiting for the peer contribution.
+- This is a schedule change only: five GEMMs, MMOP92,160, LDS115456B and one
+  native atomic per dQ output are unchanged. Static result is role8/179/178,
+  SGPR100/VGPR168, private/spill/scratch0 and bank0.
+- H1/S128 and H1/S1024 causal/noncausal pass. Causal fullperf is
+  `105,186,445` ticks and `16.277420%` MMAC active, improving the previous
+  native-atomic checkpoint by `1.89%` ticks.
+- XCU proves the limitation: local dQ hides only about 1K of a 4.19K early
+  consumer wait. Ready1 still costs about 3.10K per reported group0 gap.
+  Preserve this checkpoint, then fix group cadence; do not split dQ ownership
+  or double atomic stores.
+- Evidence:
+  `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_073536` and
+  `/zys/sb/fa3b/xcu_outputs/5gemm_local_first_dq_s1024_20260723`.
+
 ## 2026-07-23 Canonical Native-Atomic Baseline
 
 - Canonical commit replaces only dQ's HIP software-CAS `atomicAdd` with the
