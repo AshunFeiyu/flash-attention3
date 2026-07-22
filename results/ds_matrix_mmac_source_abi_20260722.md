@@ -2,7 +2,7 @@
 
 Date: 2026-07-22
 
-Status: `ACCEPT_DENSE_D32_NATIVE_DS_CHAIN / D128_PENDING`
+Status: `ACCEPT_DENSE_D32_D128_NATIVE_DS_CHAIN / REAL_FA_PENDING`
 
 ## Question
 
@@ -156,7 +156,9 @@ FP16 MMAC lit0/lts0 source slots
   -> normal-m32-alt0 for dK
 ```
 
-This proves the D32 source-layout and dual-consumer ownership contract. It does
-not yet prove D128 FP16 accumulation accuracy or production FA softmax/causal
-correctness. The next gate is a D128 dense numeric replay before integrating
-the five-GEMM kernel.
+The D128 streaming replay passes the same contract without retaining all
+operand slices: `/zys/sb/fa3b/layout_probes/`
+`dq_native_ds_dense_20260723_002608`. Score/dP/dS, both reader tensors and
+dQ/dK are exact; FP16 accumulation versus FP32 is `max_abs=0, rel_l2=0`.
+Metadata is SGPR40/VGPR53 with private/spill/bank0. The native D128 handoff
+gate is open; real FA softmax/causal and five-output correctness remain.

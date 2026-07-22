@@ -2,7 +2,7 @@
 
 Date: 2026-07-22
 
-Status: `NATIVE_D32_CHAIN_PASS / D128_NUMERIC_INTEGRATION_PENDING`
+Status: `NATIVE_D32_D128_CHAIN_PASS / REAL_FA_INTEGRATION_PENDING`
 
 ## Why This Gate Exists
 
@@ -62,8 +62,9 @@ route for the current toolchain.
 
 ## Canonical Consequence
 
-The D32 ABI gate now passes, but production remains behind D128 numeric and
-full-FA correctness gates. A wrong-layout path, `ds_mpermute`, `bpermute`,
+The D32 and D128 ABI/numeric gates now pass, but production remains behind
+real softmax/causal and full-FA correctness gates. A wrong-layout path,
+`ds_mpermute`, `bpermute`,
 gather, ordinary `ds_read_b32`, duplicate score/dP, or a second layout-
 conversion kernel remains forbidden.
 
@@ -180,7 +181,14 @@ ASM                     FP16 MMAC=8, scalar matrix read=0, permute=0
 An earlier corrected score-only control also passes both consumers:
 `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_235908`.
 
-The D32 instruction/source-ownership gate is therefore open. Production
-integration remains gated on D128 accumulation accuracy, real softmax/causal
-semantics, resource budget and full five-GEMM correctness. Do not lower the
-canonical score/dP precision solely from this D32 result.
+The same probe now streams four D32 slices for D128. Locked run
+`/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260723_002608` has exact
+score/dP/dS controls, both reader tensors and downstream dQ/dK. FP16-output
+accumulation versus the FP32 oracle is `max_abs=0, rel_l2=0`. Metadata is
+`SGPR40/VGPR53`, private/spill `0`, bank conflict `0`; ASM has 16 MLS, 32
+FP16-output MMAC, no scalar matrix read and no permutation instruction. D32
+regression also remains exact at `dq_native_ds_dense_20260723_002657`.
+
+The native D128 handoff gate is open. Production integration remains gated on
+real softmax/LSE/delta/causal semantics, resource budget and full five-GEMM
+dQ/dK/dV correctness.

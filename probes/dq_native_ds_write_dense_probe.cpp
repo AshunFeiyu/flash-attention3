@@ -41,6 +41,10 @@ namespace {
 #define SHAOBO_DENSE_DK_READER 0
 #endif
 
+#ifndef SHAOBO_DENSE_HEAD_DIM
+#define SHAOBO_DENSE_HEAD_DIM 32
+#endif
+
 static_assert(SHAOBO_DENSE_NATIVE_F16_LTS == 0 ||
                   SHAOBO_DENSE_NATIVE_F16_LTS == 1,
               "native FP16 MMAC LTS must be 0 or 1");
@@ -60,16 +64,21 @@ constexpr int kWaves = 4;
 constexpr int kThreads = kWaveSize * kWaves;
 constexpr int kM = 16;
 constexpr int kN = 32;
-constexpr int kD = 32;
+constexpr int kD = SHAOBO_DENSE_HEAD_DIM;
 constexpr int kTile = 16;
+constexpr int kDSlice = 32;
+constexpr int kDBlocks = kD / kDSlice;
+static_assert(kD == 32 || kD == 128, "dense probe supports D32 or D128");
 constexpr int kMatrixElems = kN * kD;
 constexpr int kMatrixBytes = kMatrixElems * sizeof(__half);
-constexpr int kShortPageBytes = kN * kTile * sizeof(__half);
+constexpr int kMatrixSliceBytes = kN * kDSlice * sizeof(__half);
+constexpr int kDoutSliceBytes = kN * kTile * sizeof(__half);
+constexpr int kDoutBytes = kDBlocks * kDoutSliceBytes;
 constexpr int kQBase = 0;
 constexpr int kKBase = kQBase + kMatrixBytes;
 constexpr int kVBase = kKBase + kMatrixBytes;
 constexpr int kDoutBase = kVBase + kMatrixBytes;
-constexpr int kDsBase = kDoutBase + kShortPageBytes;
+constexpr int kDsBase = kDoutBase + kDoutBytes;
 // The t=1 m32x16 reader footprint is 64x16 even though the logical tile is
 // 32x16. Keep the entire footprint in bounds and zero its writer holes.
 constexpr int kDsPageBytes = 64 * 16 * sizeof(__half);
@@ -157,41 +166,39 @@ __device__ __forceinline__ void t1_trans_source_qk(int src_lane,
            (dst_word & 3);
 }
 
-__device__ __forceinline__ AccF32x4 mmac_score(const FragF16x8& lhs,
-                                                const FragF16x8& rhs) {
-    ins::F16x8 zero;
-    ins::zero_f16x8(zero);
-    AccF32x4 out{};
+__device__ __forceinline__ void mmac_score_accumulate(
+    const FragF16x8& lhs, const FragF16x8& rhs, AccF32x4& out) {
 #if defined(__gfx946__) || defined(__gfx92a__)
-    // Fixed orientation: Q first, K second, LIT=1/LTS=1. This is the
-    // mathematically validated Q-owned score orientation from the old probe.
     out.f32 = __builtin_hcu_mmac_f32_16x16x16_f16_lit_lts(
-        lhs.f16x4[0], rhs.f16x4[0], zero.f32, 1, 1);
+        lhs.f16x4[0], rhs.f16x4[0], out.f32, 1, 1);
     out.f32 = __builtin_hcu_mmac_f32_16x16x16_f16_lit_lts(
         lhs.f16x4[1], rhs.f16x4[1], out.f32, 1, 1);
 #else
     (void)lhs;
     (void)rhs;
+    (void)out;
 #endif
-    return out;
 }
 
-__device__ __forceinline__ FragF16x8 mmac_score_f16(
+__device__ __forceinline__ void mmac_score_f16_accumulate(
     const FragF16x8& lhs,
     const FragF16x8& rhs0,
-    const FragF16x8& rhs1) {
+    const FragF16x8& rhs1,
+    FragF16x8& out,
+    bool first_slice) {
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
-    FragF16x8 out{};
 #if defined(__gfx946__) || defined(__gfx92a__)
+    const ins::Vec4F16 acc0 = first_slice ? zero.f16x4[0] : out.f16x4[0];
+    const ins::Vec4F16 acc1 = first_slice ? zero.f16x4[0] : out.f16x4[1];
     out.f16x4[0] = __builtin_hcu_mmac_16x16x16_f16_lit_lts(
-        lhs.f16x4[0], rhs0.f16x4[0], zero.f16x4[0], 0,
+        lhs.f16x4[0], rhs0.f16x4[0], acc0, 0,
         SHAOBO_DENSE_NATIVE_F16_LTS);
     out.f16x4[0] = __builtin_hcu_mmac_16x16x16_f16_lit_lts(
         lhs.f16x4[1], rhs0.f16x4[1], out.f16x4[0], 0,
         SHAOBO_DENSE_NATIVE_F16_LTS);
     out.f16x4[1] = __builtin_hcu_mmac_16x16x16_f16_lit_lts(
-        lhs.f16x4[0], rhs1.f16x4[0], zero.f16x4[0], 0,
+        lhs.f16x4[0], rhs1.f16x4[0], acc1, 0,
         SHAOBO_DENSE_NATIVE_F16_LTS);
     out.f16x4[1] = __builtin_hcu_mmac_16x16x16_f16_lit_lts(
         lhs.f16x4[1], rhs1.f16x4[1], out.f16x4[1], 0,
@@ -200,8 +207,9 @@ __device__ __forceinline__ FragF16x8 mmac_score_f16(
     (void)lhs;
     (void)rhs0;
     (void)rhs1;
+    (void)out;
+    (void)first_slice;
 #endif
-    return out;
 }
 
 template <int DHalf>
@@ -327,8 +335,6 @@ __global__ void __launch_bounds__(kThreads, 1)
         float* __restrict__ score_out,
         float* __restrict__ dp_out,
         float* __restrict__ ds_out,
-        float* __restrict__ dq_direct_out,
-        float* __restrict__ dk_direct_out,
         float* __restrict__ dq_out,
         float* __restrict__ dk_out,
         float* __restrict__ trans_view_out,
@@ -354,44 +360,70 @@ __global__ void __launch_bounds__(kThreads, 1)
         ins::abarrier_seq<false>(kMlsFilled);
         // Match the source-slot probe's full contract: MLS32x32 t plus the
         // m32 trans reader. MLS shape and transpose are part of the ABI.
-        ins::matrix_load_32x32_b16_bps_lds(
-            lds, ins::prepare_matrix_src(q, kD), kQBase, true);
-        ins::matrix_load_32x32_b16_bps_lds(
-            lds, ins::prepare_matrix_src(k, kD), kKBase, true);
-        ins::matrix_load_32x32_b16_bps_lds(
-            lds, ins::prepare_matrix_src(v, kD), kVBase, true);
-        ins::matrix_load_32x16_b16_bps_lds(
-            lds, ins::prepare_matrix_src(dout, kD), kDoutBase);
+#pragma unroll
+        for (int d_block = 0; d_block < kDBlocks; ++d_block) {
+            const int d_base = d_block * kDSlice;
+            const int matrix_lds_offset = d_block * kMatrixSliceBytes;
+            ins::matrix_load_32x32_b16_bps_lds(
+                lds, ins::prepare_matrix_src(q + d_base, kD),
+                kQBase + matrix_lds_offset, true);
+            ins::matrix_load_32x32_b16_bps_lds(
+                lds, ins::prepare_matrix_src(k + d_base, kD),
+                kKBase + matrix_lds_offset, true);
+            ins::matrix_load_32x32_b16_bps_lds(
+                lds, ins::prepare_matrix_src(v + d_base, kD),
+                kVBase + matrix_lds_offset, true);
+            ins::matrix_load_32x16_b16_bps_lds(
+                lds, ins::prepare_matrix_src(dout + d_base, kD),
+                kDoutBase + d_block * kDoutSliceBytes);
+        }
         ins::maybe_wait_bps_vbcnt_before_arrive();
         ins::abarrier_arrive_cnt<false>(kMlsFilled, 3);
     } else if (wave == 1) {
         int phase = 0;
         ins::abarrier_try_wait<false>(kMlsFilled, phase);
 
-        FragF16x8 q_trans{};
-        FragF16x8 k_trans_n0{};
-        FragF16x8 k_trans_n1{};
-        FragF16x8 v_trans_n0{};
-        FragF16x8 v_trans_n1{};
-        FragF16x8 dout_trans{};
-        FragF16x8 k_normal_d0{};
-        FragF16x8 k_normal_d1{};
-        FragF16x8 q_normal{};
-        ins::ds_read_matrix_32x16_trans(lds, kQBase, q_trans.f16x8);
-        ins::ds_read_matrix_trans_pair(lds, kKBase, k_trans_n0.f16x8,
-                                       k_trans_n1.f16x8);
-        ins::ds_read_matrix_trans_pair(lds, kVBase, v_trans_n0.f16x8,
-                                       v_trans_n1.f16x8);
-        ins::ds_read_matrix_32x16_trans(lds, kDoutBase, dout_trans.f16x8);
-        ins::ds_read_matrix_normal_pair(lds, kKBase, k_normal_d0.f16x8,
-                                        k_normal_d1.f16x8);
-        ins::ds_read_matrix_32x16_normal(lds, kQBase, q_normal.f16x8);
-        ins::wait_lgkm(0);
+        AccF32x4 score_n0{};
+        AccF32x4 score_n1{};
+        AccF32x4 dp_n0{};
+        AccF32x4 dp_n1{};
+        FragF16x8 writer{};
+        FragF16x8 dp_writer{};
+#pragma unroll
+        for (int d_block = 0; d_block < kDBlocks; ++d_block) {
+            FragF16x8 q_trans{};
+            FragF16x8 k_trans_n0{};
+            FragF16x8 k_trans_n1{};
+            FragF16x8 v_trans_n0{};
+            FragF16x8 v_trans_n1{};
+            FragF16x8 dout_trans{};
+            const int matrix_lds_offset = d_block * kMatrixSliceBytes;
+            ins::ds_read_matrix_32x16_trans(
+                lds, kQBase + matrix_lds_offset, q_trans.f16x8);
+            ins::ds_read_matrix_trans_pair(
+                lds, kKBase + matrix_lds_offset, k_trans_n0.f16x8,
+                k_trans_n1.f16x8);
+            ins::ds_read_matrix_trans_pair(
+                lds, kVBase + matrix_lds_offset, v_trans_n0.f16x8,
+                v_trans_n1.f16x8);
+            ins::ds_read_matrix_32x16_trans(
+                lds, kDoutBase + d_block * kDoutSliceBytes,
+                dout_trans.f16x8);
+            ins::wait_lgkm(0);
 
-        const AccF32x4 score_n0 = mmac_score(q_trans, k_trans_n0);
-        const AccF32x4 score_n1 = mmac_score(q_trans, k_trans_n1);
-        const AccF32x4 dp_n0 = mmac_score(dout_trans, v_trans_n0);
-        const AccF32x4 dp_n1 = mmac_score(dout_trans, v_trans_n1);
+            mmac_score_accumulate(q_trans, k_trans_n0, score_n0);
+            mmac_score_accumulate(q_trans, k_trans_n1, score_n1);
+            mmac_score_accumulate(dout_trans, v_trans_n0, dp_n0);
+            mmac_score_accumulate(dout_trans, v_trans_n1, dp_n1);
+#if SHAOBO_DENSE_NATIVE_F16_SCORE
+            mmac_score_f16_accumulate(q_trans, k_trans_n0, k_trans_n1,
+                                      writer, d_block == 0);
+#if SHAOBO_DENSE_NATIVE_F16_DS
+            mmac_score_f16_accumulate(dout_trans, v_trans_n0, v_trans_n1,
+                                      dp_writer, d_block == 0);
+#endif
+#endif
+        }
         store_qk(score_out, 0, lane, score_n0);
         store_qk(score_out, 16, lane, score_n1);
         store_qk(dp_out, 0, lane, dp_n0);
@@ -412,17 +444,13 @@ __global__ void __launch_bounds__(kThreads, 1)
         store_ds(ds_out, 0, lane, ds_n0);
         store_ds(ds_out, 16, lane, ds_n1);
 
-        FragF16x8 writer{};
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
-        writer = mmac_score_f16(q_trans, k_trans_n0, k_trans_n1);
 #if SHAOBO_DENSE_NATIVE_F16_DS
         static_assert(SHAOBO_DENSE_NATIVE_F16_LTS == 0,
                       "validated dS source-slot path uses LTS0");
         static_assert(SHAOBO_DENSE_WRITER_T == 1 &&
                           SHAOBO_DENSE_DQ_READER == 0,
                       "dS source coordinates require t1/trans-m32 ABI");
-        const FragF16x8 dp_writer =
-            mmac_score_f16(dout_trans, v_trans_n0, v_trans_n1);
 #pragma unroll
         for (int word = 0; word < 8; ++word) {
             int qrow = 0;
@@ -440,18 +468,6 @@ __global__ void __launch_bounds__(kThreads, 1)
             writer.f16x4[1][vec] = ds_n1[vec];
         }
 #endif
-        store_dq(dq_direct_out, 0, lane,
-                 mmac_dq_half<0>(writer, k_normal_d0, k_normal_d1));
-        store_dq(dq_direct_out, 16, lane,
-                 mmac_dq_half<1>(writer, k_normal_d0, k_normal_d1));
-        store_dk(dk_direct_out, 0, 0, lane,
-                 mmac_one(writer.f16x4[0], q_normal.f16x4[0]));
-        store_dk(dk_direct_out, 16, 0, lane,
-                 mmac_one(writer.f16x4[1], q_normal.f16x4[0]));
-        store_dk(dk_direct_out, 0, 16, lane,
-                 mmac_one(writer.f16x4[0], q_normal.f16x4[1]));
-        store_dk(dk_direct_out, 16, 16, lane,
-                 mmac_one(writer.f16x4[1], q_normal.f16x4[1]));
         // All format controls are compile-time constants in the emitted ISA.
         __builtin_hcu_ds_write_matrix_format_f16(
             writer.f16x8,
@@ -466,36 +482,48 @@ __global__ void __launch_bounds__(kThreads, 1)
 
     if (wave == 2) {
         FragF16x8 ds_trans{};
-        FragF16x8 k_normal_d0{};
-        FragF16x8 k_normal_d1{};
         ds_trans.f16x8 = read_candidate(
             reinterpret_cast<_Float16*>(reinterpret_cast<char*>(lds) + kDsBase),
             SHAOBO_DENSE_DQ_READER);
-        ins::ds_read_matrix_normal_pair(lds, kKBase, k_normal_d0.f16x8,
-                                        k_normal_d1.f16x8);
         ins::wait_lgkm(0);
         store_trans_view(trans_view_out, lane, ds_trans);
-        store_dq(dq_out, 0, lane,
-                 mmac_dq_half<0>(ds_trans, k_normal_d0, k_normal_d1));
-        store_dq(dq_out, 16, lane,
-                 mmac_dq_half<1>(ds_trans, k_normal_d0, k_normal_d1));
+#pragma unroll
+        for (int d_block = 0; d_block < kDBlocks; ++d_block) {
+            FragF16x8 k_normal_d0{};
+            FragF16x8 k_normal_d1{};
+            ins::ds_read_matrix_normal_pair(
+                lds, kKBase + d_block * kMatrixSliceBytes,
+                k_normal_d0.f16x8, k_normal_d1.f16x8);
+            ins::wait_lgkm(0);
+            const int d_base = d_block * kDSlice;
+            store_dq(dq_out, d_base, lane,
+                     mmac_dq_half<0>(ds_trans, k_normal_d0, k_normal_d1));
+            store_dq(dq_out, d_base + 16, lane,
+                     mmac_dq_half<1>(ds_trans, k_normal_d0, k_normal_d1));
+        }
     } else if (wave == 3) {
         FragF16x8 ds_normal{};
-        FragF16x8 q_normal{};
         ds_normal.f16x8 = read_candidate(
             reinterpret_cast<_Float16*>(reinterpret_cast<char*>(lds) + kDsBase),
             SHAOBO_DENSE_DK_READER);
-        ins::ds_read_matrix_32x16_normal(lds, kQBase, q_normal.f16x8);
         ins::wait_lgkm(0);
         store_normal_view(normal_view_out, lane, ds_normal);
-        store_dk(dk_out, 0, 0, lane,
-                 mmac_one(ds_normal.f16x4[0], q_normal.f16x4[0]));
-        store_dk(dk_out, 16, 0, lane,
-                 mmac_one(ds_normal.f16x4[1], q_normal.f16x4[0]));
-        store_dk(dk_out, 0, 16, lane,
-                 mmac_one(ds_normal.f16x4[0], q_normal.f16x4[1]));
-        store_dk(dk_out, 16, 16, lane,
-                 mmac_one(ds_normal.f16x4[1], q_normal.f16x4[1]));
+#pragma unroll
+        for (int d_block = 0; d_block < kDBlocks; ++d_block) {
+            FragF16x8 q_normal{};
+            ins::ds_read_matrix_32x16_normal(
+                lds, kQBase + d_block * kMatrixSliceBytes, q_normal.f16x8);
+            ins::wait_lgkm(0);
+            const int d_base = d_block * kDSlice;
+            store_dk(dk_out, 0, d_base, lane,
+                     mmac_one(ds_normal.f16x4[0], q_normal.f16x4[0]));
+            store_dk(dk_out, 16, d_base, lane,
+                     mmac_one(ds_normal.f16x4[1], q_normal.f16x4[0]));
+            store_dk(dk_out, 0, d_base + 16, lane,
+                     mmac_one(ds_normal.f16x4[0], q_normal.f16x4[1]));
+            store_dk(dk_out, 16, d_base + 16, lane,
+                     mmac_one(ds_normal.f16x4[1], q_normal.f16x4[1]));
+        }
     }
 
     __builtin_hcu_s_ebarrier_sync(0);
@@ -510,8 +538,6 @@ __global__ void __launch_bounds__(kThreads, 1)
     (void)score_out;
     (void)dp_out;
     (void)ds_out;
-    (void)dq_direct_out;
-    (void)dk_direct_out;
     (void)dq_out;
     (void)dk_out;
     (void)trans_view_out;
@@ -529,6 +555,18 @@ float max_abs_diff(const std::vector<float>& actual,
         max_abs = std::max(max_abs, std::fabs(actual[i] - expected[i]));
     }
     return max_abs;
+}
+
+float relative_l2(const std::vector<float>& actual,
+                  const std::vector<float>& expected) {
+    double error_sq = 0.0;
+    double expected_sq = 0.0;
+    for (size_t i = 0; i < expected.size(); ++i) {
+        const double error = static_cast<double>(actual[i]) - expected[i];
+        error_sq += error * error;
+        expected_sq += static_cast<double>(expected[i]) * expected[i];
+    }
+    return static_cast<float>(std::sqrt(error_sq / std::max(expected_sq, 1.0e-30)));
 }
 
 bool report(const char* name,
@@ -586,29 +624,49 @@ int main() {
     std::vector<float> score_expected(kScoreElems, 0.0f);
     std::vector<float> dp_expected(kScoreElems, 0.0f);
     std::vector<float> ds_expected(kScoreElems, 0.0f);
+    std::vector<float> score_f16_expected(kScoreElems, 0.0f);
+    std::vector<float> dp_f16_expected(kScoreElems, 0.0f);
+    std::vector<float> ds_f16_expected(kScoreElems, 0.0f);
     for (int qrow = 0; qrow < kM; ++qrow) {
         for (int krow = 0; krow < kN; ++krow) {
             float score = 0.0f;
             float dp = 0.0f;
-            for (int d = 0; d < kD; ++d) {
-                score += __half2float(q[qrow * kD + d]) *
-                         __half2float(k[krow * kD + d]);
-                dp += __half2float(dout[qrow * kD + d]) *
-                      __half2float(v[krow * kD + d]);
+            float score_f16 = 0.0f;
+            float dp_f16 = 0.0f;
+            for (int d_chunk = 0; d_chunk < kD; d_chunk += 16) {
+                float score_chunk = 0.0f;
+                float dp_chunk = 0.0f;
+                for (int d = d_chunk; d < d_chunk + 16; ++d) {
+                    const float q_value = __half2float(q[qrow * kD + d]);
+                    const float k_value = __half2float(k[krow * kD + d]);
+                    const float dout_value =
+                        __half2float(dout[qrow * kD + d]);
+                    const float v_value = __half2float(v[krow * kD + d]);
+                    score_chunk += q_value * k_value;
+                    dp_chunk += dout_value * v_value;
+                    score += q_value * k_value;
+                    dp += dout_value * v_value;
+                }
+                score_f16 = half_round(score_f16 + score_chunk);
+                dp_f16 = half_round(dp_f16 + dp_chunk);
             }
             const int index = qrow * kN + krow;
             score_expected[index] = score;
             dp_expected[index] = dp;
             ds_expected[index] = make_ds(score, dp, qrow, krow);
+            score_f16_expected[index] = score_f16;
+            dp_f16_expected[index] = dp_f16;
+            ds_f16_expected[index] =
+                make_ds(score_f16, dp_f16, qrow, krow);
         }
     }
 
     const std::vector<float>& published_expected =
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
 #if SHAOBO_DENSE_NATIVE_F16_DS
-        ds_expected;
+        ds_f16_expected;
 #else
-        score_expected;
+        score_f16_expected;
 #endif
 #else
         ds_expected;
@@ -635,8 +693,6 @@ int main() {
     float* d_score = nullptr;
     float* d_dp = nullptr;
     float* d_ds = nullptr;
-    float* d_dq_direct = nullptr;
-    float* d_dk_direct = nullptr;
     float* d_dq = nullptr;
     float* d_dk = nullptr;
     float* d_trans_view = nullptr;
@@ -644,8 +700,6 @@ int main() {
     std::vector<float> score(kScoreElems);
     std::vector<float> dp(kScoreElems);
     std::vector<float> ds(kScoreElems);
-    std::vector<float> dq_direct(kGradientElems);
-    std::vector<float> dk_direct(kDkElems);
     std::vector<float> dq(kGradientElems);
     std::vector<float> dk(kDkElems);
     std::vector<float> trans_view(kScoreElems);
@@ -658,10 +712,6 @@ int main() {
     check_hip(hipMalloc(&d_score, kScoreElems * sizeof(float)), "hipMalloc score");
     check_hip(hipMalloc(&d_dp, kScoreElems * sizeof(float)), "hipMalloc dP");
     check_hip(hipMalloc(&d_ds, kScoreElems * sizeof(float)), "hipMalloc dS");
-    check_hip(hipMalloc(&d_dq_direct, kGradientElems * sizeof(float)),
-              "hipMalloc direct dQ");
-    check_hip(hipMalloc(&d_dk_direct, kDkElems * sizeof(float)),
-              "hipMalloc direct dK");
     check_hip(hipMalloc(&d_dq, kGradientElems * sizeof(float)), "hipMalloc dQ");
     check_hip(hipMalloc(&d_dk, kDkElems * sizeof(float)), "hipMalloc dK");
     check_hip(hipMalloc(&d_trans_view, kScoreElems * sizeof(float)),
@@ -680,10 +730,6 @@ int main() {
     check_hip(hipMemset(d_score, 0, kScoreElems * sizeof(float)), "clear score");
     check_hip(hipMemset(d_dp, 0, kScoreElems * sizeof(float)), "clear dP");
     check_hip(hipMemset(d_ds, 0, kScoreElems * sizeof(float)), "clear dS");
-    check_hip(hipMemset(d_dq_direct, 0, kGradientElems * sizeof(float)),
-              "clear direct dQ");
-    check_hip(hipMemset(d_dk_direct, 0, kDkElems * sizeof(float)),
-              "clear direct dK");
     check_hip(hipMemset(d_dq, 0, kGradientElems * sizeof(float)), "clear dQ");
     check_hip(hipMemset(d_dk, 0, kDkElems * sizeof(float)), "clear dK");
     check_hip(hipMemset(d_trans_view, 0, kScoreElems * sizeof(float)),
@@ -693,8 +739,7 @@ int main() {
 
     hipLaunchKernelGGL(dq_native_ds_write_dense_probe_kernel, dim3(1),
                        dim3(kThreads), 0, 0, d_q, d_k, d_v, d_dout, d_score,
-                       d_dp, d_ds, d_dq_direct, d_dk_direct, d_dq, d_dk,
-                       d_trans_view, d_normal_view);
+                       d_dp, d_ds, d_dq, d_dk, d_trans_view, d_normal_view);
     check_hip(hipGetLastError(), "launch");
     check_hip(hipDeviceSynchronize(), "sync");
 
@@ -704,12 +749,6 @@ int main() {
                         hipMemcpyDeviceToHost), "copy dP");
     check_hip(hipMemcpy(ds.data(), d_ds, kScoreElems * sizeof(float),
                         hipMemcpyDeviceToHost), "copy dS");
-    check_hip(hipMemcpy(dq_direct.data(), d_dq_direct,
-                        kGradientElems * sizeof(float), hipMemcpyDeviceToHost),
-              "copy direct dQ");
-    check_hip(hipMemcpy(dk_direct.data(), d_dk_direct,
-                        kDkElems * sizeof(float), hipMemcpyDeviceToHost),
-              "copy direct dK");
     check_hip(hipMemcpy(dq.data(), d_dq, kGradientElems * sizeof(float),
                         hipMemcpyDeviceToHost), "copy dQ");
     check_hip(hipMemcpy(dk.data(), d_dk, kDkElems * sizeof(float),
@@ -726,13 +765,9 @@ int main() {
         report("score", score, score_expected, kTolerance, kN);
     const bool dp_pass = report("dP", dp, dp_expected, kTolerance, kN);
     const bool ds_pass = report("dS", ds, ds_expected, kTolerance, kN);
-    const bool dq_direct_pass = report("dQ_direct", dq_direct, dq_expected,
-                                       kTolerance, kD);
-    const bool dk_direct_pass = report("dK_direct", dk_direct, dk_expected,
-                                       kTolerance, kD);
-    const bool dq_pass = report("dQ_trans_reader_d32", dq, dq_expected,
+    const bool dq_pass = report("dQ_trans_reader", dq, dq_expected,
                                 kTolerance, kD);
-    const bool dk_pass = report("dK_normal_reader_d32", dk, dk_expected,
+    const bool dk_pass = report("dK_normal_reader", dk, dk_expected,
                                 kTolerance, kD);
     std::vector<float> published_half(kScoreElems);
     for (int i = 0; i < kScoreElems; ++i) {
@@ -742,19 +777,29 @@ int main() {
                                         published_half, kTolerance, kN);
     const bool normal_view_pass = report("normal_reader_tensor", normal_view,
                                          published_half, kTolerance, kN);
+    const float native_ds_max_abs =
+        max_abs_diff(ds_f16_expected, ds_expected);
+    const float native_ds_rel_l2 = relative_l2(ds_f16_expected, ds_expected);
+    const bool native_precision_pass =
+        native_ds_max_abs <= kTolerance && native_ds_rel_l2 <= kTolerance;
+    std::printf(
+        "dense_native_ds f16_accum_vs_f32 max_abs=%g rel_l2=%g pass=%d\n",
+        native_ds_max_abs, native_ds_rel_l2,
+        native_precision_pass ? 1 : 0);
     const bool pass = score_pass && dp_pass && ds_pass &&
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
 #if SHAOBO_DENSE_NATIVE_F16_DS
-                      trans_view_pass && normal_view_pass &&
+                      native_precision_pass && trans_view_pass &&
+                      normal_view_pass &&
 #endif
                       dq_pass && dk_pass;
 #else
-                      dq_direct_pass && dk_direct_pass && dq_pass && dk_pass;
+                      dq_pass && dk_pass;
 #endif
     std::printf(
-        "dense_native_ds_final M=16 N=32 D=32 writer=t%d_alt%d "
+        "dense_native_ds_final M=16 N=32 D=%d writer=t%d_alt%d "
         "dq_reader=%d dk_reader=%d source=%s lts=%d pass=%d\n",
-        SHAOBO_DENSE_WRITER_T, SHAOBO_DENSE_WRITER_ALT,
+        kD, SHAOBO_DENSE_WRITER_T, SHAOBO_DENSE_WRITER_ALT,
         SHAOBO_DENSE_DQ_READER, SHAOBO_DENSE_DK_READER,
         SHAOBO_DENSE_NATIVE_F16_DS
             ? "f16_mmac_ds"
@@ -766,8 +811,6 @@ int main() {
     check_hip(hipFree(d_dq), "hipFree dQ");
     check_hip(hipFree(d_normal_view), "hipFree normal view");
     check_hip(hipFree(d_trans_view), "hipFree trans view");
-    check_hip(hipFree(d_dk_direct), "hipFree direct dK");
-    check_hip(hipFree(d_dq_direct), "hipFree direct dQ");
     check_hip(hipFree(d_ds), "hipFree dS");
     check_hip(hipFree(d_dp), "hipFree dP");
     check_hip(hipFree(d_score), "hipFree score");

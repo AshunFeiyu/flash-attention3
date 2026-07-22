@@ -16394,9 +16394,9 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
   positive. Keep five-GEMM implementation blocked; do not stack a production
   path around this FP16 MMAC mode.
 
-## 2026-07-23 - Corrected native D32 dS dual-consumer chain
+## 2026-07-23 - Corrected native D32/D128 dS dual-consumer chain
 
-- Classification: `ACCEPT_D32_NATIVE_LAYOUT / D128_NUMERIC_PENDING`.
+- Classification: `ACCEPT_D32_D128_NATIVE_LAYOUT / REAL_FA_PENDING`.
 - The prior rejection was a probe bug: the reader byte offset was duplicated
   and the dQ oracle mixed N-half and D-half K fragments.
 - A 40-case dense tuple sweep isolated the native pairing. After correcting
@@ -16407,5 +16407,9 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
 - Final run `dq_native_ds_dense_20260723_000722`: score/dP/dS, trans/normal
   tensors and dQ/dK all max_abs0; SGPR44/VGPR68, private/spill0, bank0,
   FP16-MMAC8, scalar matrix-read0, permute0.
-- Production remains gated on D128 accuracy, real softmax/causal and full
-  resource/correctness validation.
+- D128 run `dq_native_ds_dense_20260723_002608` streams four D32 slices. All
+  controls/readers/dQ/dK remain max_abs0 and FP16-vs-FP32 is max_abs0/rel_l2 0.
+- D128 resource gate: SGPR40/VGPR53, private/spill0, bank0, MLS16,
+  FP16-output MMAC32, scalar matrix read0, permute0.
+- Native handoff is promoted. Production remains gated on real
+  softmax/LSE/delta/causal and full five-GEMM dQ/dK/dV correctness.

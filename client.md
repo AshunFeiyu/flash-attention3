@@ -5349,5 +5349,9 @@ Correction, 2026-07-23:
   bank0, no scalar matrix read or permutation.
 - Evidence:
   `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260723_000722`.
-- Next gate is D128 numerical accuracy plus real softmax and causal behavior;
-  the canonical performance kernel remains unchanged.
+- D128 streaming replay also passes exactly at
+  `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260723_002608`:
+  score/dP/dS, both readers and dQ/dK max_abs0; FP16-vs-FP32 max_abs0/rel_l2 0;
+  SGPR40/VGPR53, private/spill0, bank0.
+- Native handoff is now open. Next gate is real softmax/LSE/delta/causal plus
+  full five-GEMM dQ/dK/dV correctness; performance kernel remains unchanged.

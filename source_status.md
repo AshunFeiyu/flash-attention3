@@ -10599,7 +10599,8 @@ failure and superseded by the 2026-07-23 corrected PASS below.
 
 ## 2026-07-23 Corrected Dense Native dS Handoff PASS
 
-Status: `ACCEPT_D32_NATIVE_LAYOUT / D128_PENDING`; production kernel unchanged.
+Status: `ACCEPT_D32_D128_NATIVE_LAYOUT / REAL_FA_PENDING`; production kernel
+unchanged.
 
 - Supersedes the 2026-07-22 dense rejection. That probe doubled the DS-reader
   byte offset and paired dQ N halves with D halves incorrectly.
@@ -10609,4 +10610,8 @@ Status: `ACCEPT_D32_NATIVE_LAYOUT / D128_PENDING`; production kernel unchanged.
   SGPR44/VGPR68, private/spill0, bank0, scalar matrix read0 and permute0.
 - Evidence:
   `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260723_000722`.
-- Next gate is D128 numeric accuracy and full softmax/causal integration.
+- D128 streaming replay `dq_native_ds_dense_20260723_002608` is also exact:
+  score/dP/dS, both readers and dQ/dK max_abs0; FP16-vs-FP32
+  max_abs0/rel_l2 0; SGPR40/VGPR53, private/spill0, bank0.
+- Next gate is real softmax/LSE/delta/causal and full five-GEMM output
+  integration.
