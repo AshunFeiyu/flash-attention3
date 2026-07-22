@@ -5332,8 +5332,22 @@ Dense follow-up supersedes the coordinate-only promotion:
   normal dK views on non-symmetric dense input.
 - Writer offset must be zero when the pointer already names the page; the
   shared wrapper is corrected accordingly.
-- The canonical five-GEMM path remains blocked. Do not infer a full layout
-  contract from sparse row-tag, all-ones, checksum or coverage probes.
+- This rejection is superseded by the corrected dense PASS below. It remains
+  useful only as a warning against sparse row-tag, checksum or broken-oracle
+  promotion.
 - Evidence:
   `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232115`,
   `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232230`.
+
+Correction, 2026-07-23:
+
+- The dense rejection above came from duplicated reader byte offset and an
+  incorrect dQ N-half/D-half pairing; it is not an ISA result.
+- Corrected D32 chain passes with FP16 MMAC lit0/lts0, in-slot dS, writer
+  t1/alt0/offset0, trans dQ reader and normal dK reader.
+- dQ/dK and both reader tensors are exact; SGPR44/VGPR68, no spill/private,
+  bank0, no scalar matrix read or permutation.
+- Evidence:
+  `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260723_000722`.
+- Next gate is D128 numerical accuracy plus real softmax and causal behavior;
+  the canonical performance kernel remains unchanged.

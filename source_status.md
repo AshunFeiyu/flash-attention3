@@ -10581,8 +10581,8 @@ Status: `ACCEPT_F16_C_NATIVE_SOURCE_MATCH / FA_SEMANTICS_PENDING`.
 
 ## 2026-07-22 Dense FP16 MMAC Handoff Rejected
 
-Status: `REJECT_DENSE_DUAL_CONSUMER_CHAIN`; supersedes the coordinate-only
-`ACCEPT_F16_C_NATIVE_SOURCE_MATCH` promotion.
+Status: `SUPERSEDED_INVALID_PROBE`; retained to document the offset/oracle
+failure and superseded by the 2026-07-23 corrected PASS below.
 
 - Corrected the shared f16 writer wrapper and dense probe to use LDS byte
   offset zero when the pointer already names the target page.
@@ -10596,3 +10596,17 @@ Status: `REJECT_DENSE_DUAL_CONSUMER_CHAIN`; supersedes the coordinate-only
   permute0. The issue is general dense source ownership, not transport.
 - The sparse coordinate pattern hid the mismatch. Future layout promotion
   requires dense non-symmetric data and all production consumers.
+
+## 2026-07-23 Corrected Dense Native dS Handoff PASS
+
+Status: `ACCEPT_D32_NATIVE_LAYOUT / D128_PENDING`; production kernel unchanged.
+
+- Supersedes the 2026-07-22 dense rejection. That probe doubled the DS-reader
+  byte offset and paired dQ N halves with D halves incorrectly.
+- Correct tuple: FP16 MMAC lit0/lts0 -> source-slot-local dS -> f16 writer
+  t1/alt0/offset0 -> trans-m32 reader for dQ and normal-m32 reader for dK.
+- Dense D32 result: score/dP/dS, both reader tensors, dQ and dK all exact;
+  SGPR44/VGPR68, private/spill0, bank0, scalar matrix read0 and permute0.
+- Evidence:
+  `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260723_000722`.
+- Next gate is D128 numeric accuracy and full softmax/causal integration.

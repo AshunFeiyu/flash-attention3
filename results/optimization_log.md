@@ -16382,7 +16382,7 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
 
 ## 2026-07-22 - Dense dual-consumer FP16 MMAC stress
 
-- Classification: `REJECT_DENSE_DUAL_CONSUMER_CHAIN`.
+- Classification: `SUPERSEDED_INVALID_PROBE` after the 2026-07-23 correction.
 - Corrected `ds_write_matrix_format_f16` byte offset to zero and expanded the
   existing dense probe with trans/normal tensor reconstruction plus downstream
   dQ/dK oracles.
@@ -16393,3 +16393,19 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
 - Conclusion: the coordinate-only exact match was a sparse-pattern false
   positive. Keep five-GEMM implementation blocked; do not stack a production
   path around this FP16 MMAC mode.
+
+## 2026-07-23 - Corrected native D32 dS dual-consumer chain
+
+- Classification: `ACCEPT_D32_NATIVE_LAYOUT / D128_NUMERIC_PENDING`.
+- The prior rejection was a probe bug: the reader byte offset was duplicated
+  and the dQ oracle mixed N-half and D-half K fragments.
+- A 40-case dense tuple sweep isolated the native pairing. After correcting
+  the dQ oracle, `LTS0/t1/alt0/trans32/normal32` passes the score-only handoff
+  at `dq_native_ds_dense_20260722_235908`.
+- Source-slot-local dS from native FP16-output score and dP changes values in
+  place and performs no lane/word movement.
+- Final run `dq_native_ds_dense_20260723_000722`: score/dP/dS, trans/normal
+  tensors and dQ/dK all max_abs0; SGPR44/VGPR68, private/spill0, bank0,
+  FP16-MMAC8, scalar matrix-read0, permute0.
+- Production remains gated on D128 accuracy, real softmax/causal and full
+  resource/correctness validation.

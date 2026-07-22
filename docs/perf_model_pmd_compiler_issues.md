@@ -507,27 +507,26 @@ Rules:
 - Record `clang++ --version`, full flags, and ASM counts in every compiler
   comparison.
 
-### COMP-002: Natural MMAC Output Does Not Match The Tested F16 Writer Source Slots
+### COMP-002: FP32 C Downcast Does Not Match F16 Writer Source Slots
 
-Status: `SUSPECTED ISA/compiler-contract gap`, not a confirmed compiler bug.
+Status: `OBSERVED MODE LIMITATION / NATIVE FP16 D32 ROUTE FOUND`, not a
+compiler or PMD bug.
 
 The f16 matrix writer/readers transport data correctly, including across WDRA
-roles, but a non-degenerate oracle shows that natural score/dP MMAC output is
-permuted relative to the writer source-slot ABI. Writer transpose flags,
-normal/transpose readers, lane-local pack orders, operand order, and tested
-LIT/LTS combinations do not recover semantic equivalence.
+roles. FP32 MMAC C followed by lane-local FP16 downcast does not match the f16
+writer source ABI, but native FP16-output MMAC lit0/lts0 does.
 
 Do not report this as a broken `ds_write_matrix` implementation: transport is
-correct. The unresolved question is which native MMAC output/layout and writer
-format are intended to be paired. The f32 writer is the remaining no-permute
-candidate, currently blocked by PMD-001.
+correct. The D32 native pairing is now measured; the remaining question is
+whether FP16 score/dP accumulation is accurate enough at D128 and full FA
+shapes. The f32 writer remains a separate candidate blocked by PMD-001.
 
-The 2026-07-22 FP16-output MMAC recheck does not close this gap. A sparse
-two-coordinate input reported zero source-slot errors for selected LTS modes,
-but a dense non-symmetric oracle with writer offset zero failed both the trans
-dQ and normal dK views before their output stores. Treat the sparse result as
-a pattern-specific false positive, not as a compiler or PMD bug. Evidence is
-in `results/ds_matrix_mmac_source_abi_20260722.md`.
+The corrected 2026-07-23 dense probe closes the D32 native route with
+FP16-output score/dP MMAC, source-slot-local dS VALU, one trans writer page and
+normal/trans readers: both dQ and dK are exact, bank0 and no spill. Earlier
+dense failures were probe bugs caused by doubled reader byte offset and an
+incorrect dQ N-half/D-half pairing. D128 numeric promotion remains pending;
+see `results/ds_matrix_mmac_source_abi_20260722.md`.
 
 ### COMP-003: Read/MMAC Scheduling And Long-Lived Zero Codegen Quality
 

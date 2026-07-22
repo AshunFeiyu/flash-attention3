@@ -17,13 +17,43 @@ namespace {
 #define SHAOBO_DENSE_NATIVE_F16_SCORE 0
 #endif
 
+#ifndef SHAOBO_DENSE_NATIVE_F16_DS
+#define SHAOBO_DENSE_NATIVE_F16_DS 0
+#endif
+
 #ifndef SHAOBO_DENSE_NATIVE_F16_LTS
 #define SHAOBO_DENSE_NATIVE_F16_LTS 0
+#endif
+
+#ifndef SHAOBO_DENSE_WRITER_ALT
+#define SHAOBO_DENSE_WRITER_ALT 0
+#endif
+
+#ifndef SHAOBO_DENSE_WRITER_T
+#define SHAOBO_DENSE_WRITER_T 1
+#endif
+
+#ifndef SHAOBO_DENSE_DQ_READER
+#define SHAOBO_DENSE_DQ_READER 0
+#endif
+
+#ifndef SHAOBO_DENSE_DK_READER
+#define SHAOBO_DENSE_DK_READER 0
 #endif
 
 static_assert(SHAOBO_DENSE_NATIVE_F16_LTS == 0 ||
                   SHAOBO_DENSE_NATIVE_F16_LTS == 1,
               "native FP16 MMAC LTS must be 0 or 1");
+static_assert(!SHAOBO_DENSE_NATIVE_F16_DS || SHAOBO_DENSE_NATIVE_F16_SCORE,
+              "native FP16 dS requires native FP16 score/dP");
+static_assert(SHAOBO_DENSE_WRITER_ALT == 0 || SHAOBO_DENSE_WRITER_ALT == 1,
+              "writer alt must be 0 or 1");
+static_assert(SHAOBO_DENSE_WRITER_T == 0 || SHAOBO_DENSE_WRITER_T == 1,
+              "writer t must be 0 or 1");
+static_assert(SHAOBO_DENSE_DQ_READER >= 0 && SHAOBO_DENSE_DQ_READER <= 4,
+              "dQ reader must be 0..4");
+static_assert(SHAOBO_DENSE_DK_READER >= 0 && SHAOBO_DENSE_DK_READER <= 4,
+              "dK reader must be 0..4");
 
 constexpr int kWaveSize = 64;
 constexpr int kWaves = 4;
@@ -58,6 +88,33 @@ union AccF32x4 {
     float scalar[4];
 };
 
+__device__ __forceinline__ ins::Vec8F16 read_candidate(
+    _Float16* ptr, int mode) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    switch (mode) {
+        case 0:
+            return __builtin_hcu_ds_read_matrix_trans_format_f16(
+                ptr, 0, 2, 1, 0);
+        case 1:
+            return __builtin_hcu_ds_read_matrix_trans_format_f16(
+                ptr, 0, 1, 2, 0);
+        case 2:
+            return __builtin_hcu_ds_read_matrix_trans_format_f16(
+                ptr, 0, 1, 2, 1);
+        case 3:
+            return __builtin_hcu_ds_read_matrix_format_f16(
+                ptr, 0, 2, 1, 0);
+        default:
+            return __builtin_hcu_ds_read_matrix_format_f16(
+                ptr, 0, 2, 1, 1);
+    }
+#else
+    (void)ptr;
+    (void)mode;
+    return {};
+#endif
+}
+
 void check_hip(hipError_t status, const char* what) {
     if (status != hipSuccess) {
         std::fprintf(stderr, "%s: %s\n", what, hipGetErrorString(status));
@@ -81,6 +138,23 @@ __host__ __device__ __forceinline__ float make_ds(float score,
     const float row_bias = (static_cast<float>(qrow) - 7.5f) * 0.00390625f;
     const float col_bias = (static_cast<float>(krow) - 15.5f) * 0.001953125f;
     return half_round(score16 * 0.3125f + dp16 * 0.4375f + row_bias + col_bias);
+}
+
+__device__ __forceinline__ void t1_trans_source_qk(int src_lane,
+                                                    int src_word,
+                                                    int& qrow,
+                                                    int& krow) {
+    // Inverse of the measured t1-writer -> trans-m32-alt0 reader slot map.
+    const int dst_lane =
+        ((src_lane >> 0) & 1) | (((src_lane >> 1) & 1) << 1) |
+        (((src_lane >> 2) & 1) << 2) | (((src_lane >> 3) & 1) << 3) |
+        (((src_lane >> 5) & 1) << 4) | (((src_word >> 1) & 1) << 5);
+    const int dst_word =
+        ((src_word >> 0) & 1) | (((src_lane >> 4) & 1) << 1) |
+        (((src_word >> 2) & 1) << 2);
+    qrow = dst_lane & 15;
+    krow = (dst_word >= 4 ? 16 : 0) + (dst_lane >> 4) * 4 +
+           (dst_word & 3);
 }
 
 __device__ __forceinline__ AccF32x4 mmac_score(const FragF16x8& lhs,
@@ -130,17 +204,24 @@ __device__ __forceinline__ FragF16x8 mmac_score_f16(
     return out;
 }
 
-__device__ __forceinline__ AccF32x4 mmac_pair(const FragF16x8& lhs,
-                                               const FragF16x8& rhs) {
+template <int DHalf>
+__device__ __forceinline__ AccF32x4 mmac_dq_half(
+    const FragF16x8& ds,
+    const FragF16x8& k_n0,
+    const FragF16x8& k_n1) {
+    static_assert(DHalf == 0 || DHalf == 1, "D half must be 0 or 1");
     ins::F16x8 zero;
     ins::zero_f16x8(zero);
     AccF32x4 out{};
 #if defined(__gfx946__) || defined(__gfx92a__)
-    out.f32 = ins::mmac_f16_lit(lhs.f16x4[0], rhs.f16x4[0], zero.f32);
-    out.f32 = ins::mmac_f16_lit(lhs.f16x4[1], rhs.f16x4[1], out.f32);
+    out.f32 = ins::mmac_f16_lit(
+        ds.f16x4[0], k_n0.f16x4[DHalf], zero.f32);
+    out.f32 = ins::mmac_f16_lit(
+        ds.f16x4[1], k_n1.f16x4[DHalf], out.f32);
 #else
-    (void)lhs;
-    (void)rhs;
+    (void)ds;
+    (void)k_n0;
+    (void)k_n1;
 #endif
     return out;
 }
@@ -334,6 +415,24 @@ __global__ void __launch_bounds__(kThreads, 1)
         FragF16x8 writer{};
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
         writer = mmac_score_f16(q_trans, k_trans_n0, k_trans_n1);
+#if SHAOBO_DENSE_NATIVE_F16_DS
+        static_assert(SHAOBO_DENSE_NATIVE_F16_LTS == 0,
+                      "validated dS source-slot path uses LTS0");
+        static_assert(SHAOBO_DENSE_WRITER_T == 1 &&
+                          SHAOBO_DENSE_DQ_READER == 0,
+                      "dS source coordinates require t1/trans-m32 ABI");
+        const FragF16x8 dp_writer =
+            mmac_score_f16(dout_trans, v_trans_n0, v_trans_n1);
+#pragma unroll
+        for (int word = 0; word < 8; ++word) {
+            int qrow = 0;
+            int krow = 0;
+            t1_trans_source_qk(lane, word, qrow, krow);
+            writer.f16x8[word] = static_cast<_Float16>(make_ds(
+                static_cast<float>(writer.f16x8[word]),
+                static_cast<float>(dp_writer.f16x8[word]), qrow, krow));
+        }
+#endif
 #else
 #pragma unroll
         for (int vec = 0; vec < 4; ++vec) {
@@ -342,9 +441,9 @@ __global__ void __launch_bounds__(kThreads, 1)
         }
 #endif
         store_dq(dq_direct_out, 0, lane,
-                 mmac_pair(writer, k_normal_d0));
+                 mmac_dq_half<0>(writer, k_normal_d0, k_normal_d1));
         store_dq(dq_direct_out, 16, lane,
-                 mmac_pair(writer, k_normal_d1));
+                 mmac_dq_half<1>(writer, k_normal_d0, k_normal_d1));
         store_dk(dk_direct_out, 0, 0, lane,
                  mmac_one(writer.f16x4[0], q_normal.f16x4[0]));
         store_dk(dk_direct_out, 16, 0, lane,
@@ -353,11 +452,11 @@ __global__ void __launch_bounds__(kThreads, 1)
                  mmac_one(writer.f16x4[0], q_normal.f16x4[1]));
         store_dk(dk_direct_out, 16, 16, lane,
                  mmac_one(writer.f16x4[1], q_normal.f16x4[1]));
-        // The single writer/reader contract under test: t=1, alt=0.
+        // All format controls are compile-time constants in the emitted ISA.
         __builtin_hcu_ds_write_matrix_format_f16(
             writer.f16x8,
             reinterpret_cast<_Float16*>(reinterpret_cast<char*>(lds) + kDsBase),
-            0, 2, 1, 0, 1);
+            0, 2, 1, SHAOBO_DENSE_WRITER_ALT, SHAOBO_DENSE_WRITER_T);
         ins::wait_lgkm(0);
     }
 
@@ -369,21 +468,23 @@ __global__ void __launch_bounds__(kThreads, 1)
         FragF16x8 ds_trans{};
         FragF16x8 k_normal_d0{};
         FragF16x8 k_normal_d1{};
-        ds_trans.f16x8 = __builtin_hcu_ds_read_matrix_trans_format_f16(
+        ds_trans.f16x8 = read_candidate(
             reinterpret_cast<_Float16*>(reinterpret_cast<char*>(lds) + kDsBase),
-            16, 2, 1, 0);
+            SHAOBO_DENSE_DQ_READER);
         ins::ds_read_matrix_normal_pair(lds, kKBase, k_normal_d0.f16x8,
                                         k_normal_d1.f16x8);
         ins::wait_lgkm(0);
         store_trans_view(trans_view_out, lane, ds_trans);
-        store_dq(dq_out, 0, lane, mmac_pair(ds_trans, k_normal_d0));
-        store_dq(dq_out, 16, lane, mmac_pair(ds_trans, k_normal_d1));
+        store_dq(dq_out, 0, lane,
+                 mmac_dq_half<0>(ds_trans, k_normal_d0, k_normal_d1));
+        store_dq(dq_out, 16, lane,
+                 mmac_dq_half<1>(ds_trans, k_normal_d0, k_normal_d1));
     } else if (wave == 3) {
         FragF16x8 ds_normal{};
         FragF16x8 q_normal{};
-        ds_normal.f16x8 = __builtin_hcu_ds_read_matrix_format_f16(
+        ds_normal.f16x8 = read_candidate(
             reinterpret_cast<_Float16*>(reinterpret_cast<char*>(lds) + kDsBase),
-            16, 2, 1, 0);
+            SHAOBO_DENSE_DK_READER);
         ins::ds_read_matrix_32x16_normal(lds, kQBase, q_normal.f16x8);
         ins::wait_lgkm(0);
         store_normal_view(normal_view_out, lane, ds_normal);
@@ -504,7 +605,11 @@ int main() {
 
     const std::vector<float>& published_expected =
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
+#if SHAOBO_DENSE_NATIVE_F16_DS
+        ds_expected;
+#else
         score_expected;
+#endif
 #else
         ds_expected;
 #endif
@@ -639,14 +744,22 @@ int main() {
                                          published_half, kTolerance, kN);
     const bool pass = score_pass && dp_pass && ds_pass &&
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
-                      trans_view_pass && normal_view_pass && dq_pass && dk_pass;
+#if SHAOBO_DENSE_NATIVE_F16_DS
+                      trans_view_pass && normal_view_pass &&
+#endif
+                      dq_pass && dk_pass;
 #else
                       dq_direct_pass && dk_direct_pass && dq_pass && dk_pass;
 #endif
     std::printf(
-        "dense_native_ds_final M=16 N=32 D=32 writer=t1_alt0 "
-        "dq_reader=trans dk_reader=normal source=%s lts=%d pass=%d\n",
-        SHAOBO_DENSE_NATIVE_F16_SCORE ? "f16_mmac_score" : "f32_ds_downcast",
+        "dense_native_ds_final M=16 N=32 D=32 writer=t%d_alt%d "
+        "dq_reader=%d dk_reader=%d source=%s lts=%d pass=%d\n",
+        SHAOBO_DENSE_WRITER_T, SHAOBO_DENSE_WRITER_ALT,
+        SHAOBO_DENSE_DQ_READER, SHAOBO_DENSE_DK_READER,
+        SHAOBO_DENSE_NATIVE_F16_DS
+            ? "f16_mmac_ds"
+            : (SHAOBO_DENSE_NATIVE_F16_SCORE ? "f16_mmac_score"
+                                             : "f32_ds_downcast"),
         SHAOBO_DENSE_NATIVE_F16_LTS, pass ? 1 : 0);
 
     check_hip(hipFree(d_dk), "hipFree dK");

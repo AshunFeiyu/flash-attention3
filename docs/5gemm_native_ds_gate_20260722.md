@@ -2,7 +2,7 @@
 
 Date: 2026-07-22
 
-Status: `CLOSED_FAIL_CURRENT_TOOLCHAIN`
+Status: `NATIVE_D32_CHAIN_PASS / D128_NUMERIC_INTEGRATION_PENDING`
 
 ## Why This Gate Exists
 
@@ -21,7 +21,7 @@ the transposed dKV GEMMs and the non-transposed dQ GEMM.  A correct five-GEMM
 kernel therefore needs a native ownership conversion or a natural fragment
 layout accepted by both sides.
 
-## Closed Search Space
+## Historical Search Space
 
 The prior branch already tested the direct register surface across operand
 order, LIT/LTS and output maps, and tested the f16 matrix writer/reader surface.
@@ -41,14 +41,14 @@ Current e0f10535 rechecks show:
 Do not repeat broad LIT/LTS, reader, writer or store-map sweeps.  They are not
 new architectural hypotheses.
 
-## Final Differential Probe
+## Dense Promotion Requirements
 
-One final probe is admissible before closing this gate.  It must use:
+Any native tuple must be promoted with:
 
 1. Actual MLS-loaded, non-symmetric Q and K data.
 2. A CPU coordinate oracle for a fixed canonical `M16xN32xD32` product.
 3. One mathematically verified upstream score/dS orientation.
-4. FP32-to-FP16 conversion followed by
+4. The actual MMAC output ABI and source-slot-local dS arithmetic followed by
    `ds_write_matrix_format_f16(t=1,alt0)`.
 5. Both downstream consumers from the same published fragment:
    transposed read for dQ and normal read for dK.
@@ -62,13 +62,12 @@ route for the current toolchain.
 
 ## Canonical Consequence
 
-Until the final differential probe passes, the production five-GEMM kernel is
-not allowed to use a wrong-layout path, `ds_mpermute`, `bpermute`, gather,
-ordinary `ds_read_b32`, duplicate score/dP, or a second layout-conversion
-kernel.  The top-level workbook may continue, but code implementation remains
-behind this hard gate.
+The D32 ABI gate now passes, but production remains behind D128 numeric and
+full-FA correctness gates. A wrong-layout path, `ds_mpermute`, `bpermute`,
+gather, ordinary `ds_read_b32`, duplicate score/dP, or a second layout-
+conversion kernel remains forbidden.
 
-## Final Dense Differential Result
+## Superseded Dense Differential Result
 
 The final probe is `probes/dq_native_ds_write_dense_probe.cpp`.  It uses
 non-symmetric MLS-loaded `Q/K/V/dO`, verifies the upstream `score`, `dP` and
@@ -119,17 +118,11 @@ output is not already in the writer source-slot ABI required by the desired
 dQ and dK consumer views. CPU inverse-packing proves existence but is not a
 legal runtime implementation.
 
-Do not start the fused canonical kernel on this toolchain.  Re-open the gate
-only when one of these is available and passes this same dense oracle:
+The result above was produced by an invalid differential probe and is retained
+only as history. Do not use it to classify the native chain. The corrected
+result below supersedes it.
 
-1. the documented final builtin/encoding plus PMD support for
-   `DS_MATRIX_TRANSPOSE_4V`;
-2. a compiler-owner-provided `ds_write_matrix` source-layout contract that
-   serves both downstream views;
-3. another documented native MMAC/writer/reader combination outside the
-   already closed mode surfaces.
-
-## Native FP16-Output MMAC Recheck
+## Superseded FP16-Output MMAC Recheck
 
 The HCU FP16-output MMAC initially produced an apparent source-slot match on a
 sparse coordinate-label input. A dense non-symmetric rerun rejects that
@@ -150,9 +143,44 @@ Runs:
 - `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232115`
 - `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232230`
 
-Both are SGPR44/VGPR62, private/spill0 and bank0, with no scalar matrix read or
-permutation. Therefore the failure is semantic layout ownership, not PMD
-transport, resource pressure, store indexing or bank conflict. Sparse or
-separable coordinate tags are no longer sufficient evidence for a matrix
-layout contract; all future promotion probes need dense non-symmetric data and
-both downstream consumers.
+These runs were invalid for two independent reasons: the reader pointer already
+named the dS page but the builtin also received byte offset 16, and the dQ
+control paired the N-half and D-half fragments incorrectly. They are negative
+probe-development evidence, not instruction evidence.
+
+## Corrected Dense Native dS Result
+
+The corrected probe uses this exact native chain:
+
+```text
+FP16-output score MMAC + FP16-output dP MMAC
+  -> source-slot-local dS VALU (no lane movement)
+  -> ds_write_matrix_format_f16(t=1, alt0, offset=0)
+  -> same LDS page
+     -> trans-m32-alt0 reader -> dQ MMAC
+     -> normal-m32-alt0 reader -> dK MMAC
+```
+
+The source-slot-local dS code uses the inverse of the measured writer-to-trans
+reader bit permutation only to select the logical q/k sidecar coordinate. It
+does not move register values between lanes or words.
+
+Locked PMD result:
+
+```text
+run /zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260723_000722
+score/dP/dS             max_abs=0, PASS
+trans/normal tensor     max_abs=0, PASS
+dQ/dK downstream MMAC   max_abs=0, PASS
+metadata                SGPR44/VGPR68, private/spill=0
+LDS bank conflict       0
+ASM                     FP16 MMAC=8, scalar matrix read=0, permute=0
+```
+
+An earlier corrected score-only control also passes both consumers:
+`/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_235908`.
+
+The D32 instruction/source-ownership gate is therefore open. Production
+integration remains gated on D128 accumulation accuracy, real softmax/causal
+semantics, resource budget and full five-GEMM correctness. Do not lower the
+canonical score/dP precision solely from this D32 result.

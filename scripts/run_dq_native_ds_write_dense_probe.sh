@@ -14,12 +14,25 @@ RUN_ROOT="${DQ_DENSE_RUN_ROOT:-${SHAOBO_RUN_ROOT}/layout_probes}"
 RUN_DIR="${RUN_ROOT}/dq_native_ds_dense_$(date +%Y%m%d_%H%M%S)"
 PMD_TIMEOUT="${DQ_DENSE_PMD_TIMEOUT:-300}"
 NATIVE_F16_SCORE="${DQ_DENSE_NATIVE_F16_SCORE:-0}"
+NATIVE_F16_DS="${DQ_DENSE_NATIVE_F16_DS:-0}"
 NATIVE_F16_LTS="${DQ_DENSE_NATIVE_F16_LTS:-0}"
+WRITER_ALT="${DQ_DENSE_WRITER_ALT:-0}"
+WRITER_T="${DQ_DENSE_WRITER_T:-1}"
+DQ_READER="${DQ_DENSE_DQ_READER:-0}"
+DK_READER="${DQ_DENSE_DK_READER:-0}"
 REQUIRE_SEMANTIC_PASS="${DQ_DENSE_REQUIRE_SEMANTIC_PASS:-1}"
 
-case "${NATIVE_F16_SCORE}:${NATIVE_F16_LTS}:${REQUIRE_SEMANTIC_PASS}" in
-  0:0:0|0:0:1|1:0:0|1:0:1|1:1:0|1:1:1) ;;
+case "${NATIVE_F16_SCORE}:${NATIVE_F16_DS}:${NATIVE_F16_LTS}:${REQUIRE_SEMANTIC_PASS}" in
+  0:0:0:0|0:0:0:1|1:0:0:0|1:0:0:1|1:0:1:0|1:0:1:1|1:1:0:0|1:1:0:1) ;;
   *) echo "invalid native score/lts/require-pass combination" >&2; exit 2 ;;
+esac
+case "${WRITER_ALT}:${WRITER_T}" in
+  0:0|0:1|1:0|1:1) ;;
+  *) echo "invalid writer alt/t" >&2; exit 2 ;;
+esac
+case "${DQ_READER}:${DK_READER}" in
+  [0-4]:[0-4]) ;;
+  *) echo "invalid dQ/dK reader mode" >&2; exit 2 ;;
 esac
 
 TARGET_GFX=946 \
@@ -30,7 +43,7 @@ BIN="${BIN}" \
 ASM="${ASM}" \
 SHAOBO_DISABLE_WDRA_FLAGS=1 \
 SHAOBO_EXPLICIT_WDRA_INIT=0 \
-EXTRA_CXXFLAGS="-DSHAOBO_DENSE_NATIVE_F16_SCORE=${NATIVE_F16_SCORE} -DSHAOBO_DENSE_NATIVE_F16_LTS=${NATIVE_F16_LTS}" \
+EXTRA_CXXFLAGS="-DSHAOBO_DENSE_NATIVE_F16_SCORE=${NATIVE_F16_SCORE} -DSHAOBO_DENSE_NATIVE_F16_DS=${NATIVE_F16_DS} -DSHAOBO_DENSE_NATIVE_F16_LTS=${NATIVE_F16_LTS} -DSHAOBO_DENSE_WRITER_ALT=${WRITER_ALT} -DSHAOBO_DENSE_WRITER_T=${WRITER_T} -DSHAOBO_DENSE_DQ_READER=${DQ_READER} -DSHAOBO_DENSE_DK_READER=${DK_READER}" \
 ./build.sh
 
 BIN_ABS="$(realpath "${BIN}")"
@@ -98,10 +111,12 @@ semantic=FAIL
 [[ "${semantic_pass}" -gt 0 ]] && semantic=PASS
 source_name=f32_ds_downcast
 [[ "${NATIVE_F16_SCORE}" == "1" ]] && source_name=f16_mmac_score
+[[ "${NATIVE_F16_DS}" == "1" ]] && source_name=f16_mmac_ds
 
 grep -E '^dense_native_ds |^dense_native_ds_final' pmd_stdout.log | tee result.txt || true
-printf 'dq_native_ds_dense transport=%s semantic=%s source=%s lts=%s pmd_status=%s panic=%s stats=%s bank=%s run=%s\n' \
+printf 'dq_native_ds_dense transport=%s semantic=%s source=%s lts=%s writer=t%s_alt%s dq_reader=%s dk_reader=%s pmd_status=%s panic=%s stats=%s bank=%s run=%s\n' \
   "${transport}" "${semantic}" "${source_name}" "${NATIVE_F16_LTS}" \
+  "${WRITER_T}" "${WRITER_ALT}" "${DQ_READER}" "${DK_READER}" \
   "${pmd_status}" "${panic_lines}" "${stats_found}" "${bank_conflicts}" \
   "${RUN_DIR}" | tee -a result.txt
 sha256sum "${BIN_ABS}" "${ASM_ABS}" | tee artifact_sha256.txt

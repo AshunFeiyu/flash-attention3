@@ -2,7 +2,7 @@
 
 Date: 2026-07-22
 
-Status: `OBSERVE_COORDINATE_MATCH / REJECT_DENSE_DUAL_CONSUMER_CHAIN`
+Status: `ACCEPT_DENSE_D32_NATIVE_DS_CHAIN / D128_PENDING`
 
 ## Question
 
@@ -120,36 +120,43 @@ fragment once, then read the same LDS page through the trans dQ view and the
 normal dK view. It also reconstructs both reader tensors on the host before
 the downstream MMAC, so the failure can be localized before output stores.
 
-Valid runs use writer byte offset zero:
+The first dense runs were invalid: writer offset was corrected, but the reader
+still added byte offset 16 after its pointer already named the page, and the dQ
+oracle mixed N-half and D-half K fragments. Their mismatch counts are retained
+in git history only and must not classify the ISA.
 
-- LTS0: `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232115`
-- LTS1: `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232230`
-- FP32-downcast control:
-  `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_232322`
+After fixing both controls, the score-only chain passes:
 
-Results:
+- `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260722_235908`
+- trans tensor, normal tensor, dQ and dK: all `max_abs=0`, mismatch `0`.
 
-| Published source | Trans tensor | Normal tensor | dQ | dK |
-|---|---:|---:|---:|---:|
-| FP16 MMAC LTS0 | 496 mismatches | 496 | 493 | 911 |
-| FP16 MMAC LTS1 | 488 mismatches | 488 | 488 | 882 |
-| FP32 dS downcast | 488 mismatches | 488 | 462 | 887 |
+The final dS chain computes score and dP with the same FP16-output MMAC ABI,
+performs dS VALU in the native source slots, publishes once, then consumes the
+same LDS page through trans dQ and normal dK views:
 
-All runs pass transport and resource gates. The native FP16 cases use
-`SGPR44/VGPR62`, private/spill0, `ldsBankConflict=0`, ordinary matrix-path DS
-read0 and permutation0. Their asm contains
-`ds_write_matrix_format ... element:2 row:2 col:1 t` with no `offset:16`.
+- `/zys/sb/fa3b/layout_probes/dq_native_ds_dense_20260723_000722`
 
-The dense failure supersedes the coordinate-only promotion. The matrix writer
-and readers remain proven lossless permutations, but neither FP16 MMAC LTS
-candidate produces a general dense source fragment that serves both required
-views. The five-GEMM gate remains closed on this toolchain.
+| Check | Result |
+|---|---:|
+| score / dP / dS CPU oracle | all exact |
+| trans reader tensor | 0 mismatch |
+| normal reader tensor | 0 mismatch |
+| dQ downstream MMAC | 0 mismatch |
+| dK downstream MMAC | 0 mismatch |
+| SGPR / VGPR | 44 / 68 |
+| private / spill / bank conflict | 0 / 0 / 0 |
+| scalar matrix read / permute | 0 / 0 |
 
-The next native solution must provide one of these without runtime
-permutation:
+The exact native tuple is:
 
-1. the final dS arithmetic can remain in the FP16-output MMAC source slots; or
-2. a native instruction mode converts the FP32 dS ownership into that ABI.
+```text
+FP16 MMAC lit0/lts0 source slots
+  -> ds_write_matrix_format_f16(t1, alt0, offset0)
+  -> trans-m32-alt0 for dQ
+  -> normal-m32-alt0 for dK
+```
 
-Do not integrate the FP16 MMAC path into the canonical FA kernel from a sparse
-coordinate probe. A dense, non-symmetric CPU oracle is the promotion gate.
+This proves the D32 source-layout and dual-consumer ownership contract. It does
+not yet prove D128 FP16 accumulation accuracy or production FA softmax/causal
+correctness. The next gate is a D128 dense numeric replay before integrating
+the five-GEMM kernel.
