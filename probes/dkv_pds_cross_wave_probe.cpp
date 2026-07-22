@@ -424,10 +424,10 @@ __device__ __forceinline__ void run_reader(
     ins::F32x4 pressure[PDS_PROBE_ACCUM_F32X4];
 #pragma unroll
     for (int i = 0; i < PDS_PROBE_ACCUM_F32X4; ++i) {
-        const float value = static_cast<float>(
-            wave * 1024 + lane * PDS_PROBE_ACCUM_F32X4 + i);
-        pressure[i].f32 = ins::Vec4F32{value, value + 1.0f,
-                                       value + 2.0f, value + 3.0f};
+        pressure[i].scalar[0] = static_cast<float>(4 * i + 0);
+        pressure[i].scalar[1] = static_cast<float>(4 * i + 1);
+        pressure[i].scalar[2] = static_cast<float>(4 * i + 2);
+        pressure[i].scalar[3] = static_cast<float>(4 * i + 3);
         asm volatile("" : "+v"(pressure[i].f32) : : "memory");
     }
 #endif
@@ -501,7 +501,8 @@ __device__ __forceinline__ void run_reader(
     float checksum = 0.0f;
 #pragma unroll
     for (int i = 0; i < PDS_PROBE_ACCUM_F32X4; ++i) {
-        checksum += pressure[i].scalar[0];
+        checksum += pressure[i].scalar[0] + pressure[i].scalar[1] +
+                    pressure[i].scalar[2] + pressure[i].scalar[3];
     }
     pressure_sink[threadIdx.x] = checksum;
 #else
@@ -517,6 +518,9 @@ dkv_pds_cross_wave_probe_kernel(uint16_t* actual,
                                 int base_bytes,
                                 int use_abarrier,
                                 int producer_readback) {
+#if defined(SHAOBO_EXPLICIT_WDRA_INIT)
+    __builtin_hcu_wdra_init(16, 176, PDS_PROBE_READER_VGPRS, 8);
+#endif
 #if defined(__gfx946__) || defined(__gfx92a__)
     __shared__ __align__(2048) __half lds[kLdsBytes / sizeof(__half)];
     const uint32_t wave = __builtin_hcu_get_wave_id();
@@ -641,12 +645,17 @@ int main() {
 
             std::vector<uint16_t> actual(values);
             std::vector<uint16_t> expected(values);
+            std::vector<float> pressure_sink(kWaves * kWaveSize);
             check_hip(hipMemcpy(actual.data(), actual_device, bytes,
                                 hipMemcpyDeviceToHost),
                       "copy actual");
             check_hip(hipMemcpy(expected.data(), expected_device, bytes,
                                 hipMemcpyDeviceToHost),
                       "copy expected");
+            check_hip(hipMemcpy(pressure_sink.data(), pressure_sink_device,
+                                pressure_sink.size() * sizeof(float),
+                                hipMemcpyDeviceToHost),
+                      "copy pressure sink");
 
             size_t bad = 0;
             size_t bad_by_iteration[kIterations] = {};
@@ -659,12 +668,32 @@ int main() {
                 }
             }
             total_bad += bad;
+            size_t pressure_bad = 0;
+#if PDS_PROBE_HIGH_PRESSURE
+            for (int reader_wave = kConsumerWaveBase;
+                 reader_wave < kConsumerWaveBase + kConsumerWaves;
+                 ++reader_wave) {
+                for (int reader_lane = 0; reader_lane < kWaveSize;
+                     ++reader_lane) {
+                    constexpr int kPressureValues =
+                        PDS_PROBE_ACCUM_F32X4 * 4;
+                    const float expected_checksum =
+                        kPressureValues * (kPressureValues - 1) * 0.5f;
+                    const float got = pressure_sink[
+                        reader_wave * kWaveSize + reader_lane];
+                    pressure_bad += got != expected_checksum;
+                }
+            }
+#endif
+            total_bad += pressure_bad;
             std::printf(
                 "dkv_pds_cross_wave sync=%s base_bytes=%d mismatches=%zu "
-                "expected=%04x,%04x actual=%04x,%04x pass=%d\n",
+                "pressure_mismatches=%zu expected=%04x,%04x "
+                "actual=%04x,%04x pass=%d\n",
                 use_abarrier ? "abarrier" : "cta", base_bytes, bad,
+                pressure_bad,
                 expected[0], expected[1], actual[0], actual[1],
-                bad == 0 ? 1 : 0);
+                bad == 0 && pressure_bad == 0 ? 1 : 0);
             std::printf("dkv_pds_cross_wave mismatches_by_iteration=");
             for (int iteration = 0; iteration < kIterations; ++iteration) {
                 std::printf("%s%zu", iteration == 0 ? "" : ",",

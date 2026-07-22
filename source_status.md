@@ -1,5 +1,24 @@
 # Source Status
 
+## 2026-07-23 Five-GEMM 128-Live Resource Gate Open
+
+Status: `ACCEPT_RESOURCE_GATE / STRUCTURAL_CONVEYOR_PENDING`; production still
+points at correctness commit `0ad7922`.
+
+- H1/S1024 baseline is exact-work and bank0 but only `0.589255%` useful MMAC
+  active: FP32 partial atomics cause `61.1656%` waitVm and dominate the path.
+- The redesigned 12-wave owner topology is producer0-3, persistent N32 dKV
+  owners4-7 and D32 dQ owners8-11. It preserves 1,280 useful MMAC/tile and
+  reduces estimated atomic element traffic about 18x.
+- A 128-live FP32 WDRA/ABarrier probe passes with host checksum, role use141
+  inside248, SGPR29/VGPR112, private/spill0, bank0, and no PMD uninitialized-
+  VGPR warning. Evidence:
+  `/zys/sb/fa3b/layout_probes/dkv_pds_split64_probe_20260723_022728`.
+- Next gate is the exact `24/240/96` two-page dS conveyor probe. No production
+  schedule change is admitted before it passes.
+
+See `docs/5gemm_output_ownership_redesign_20260723.md`.
+
 ## 2026-07-22 Consumer-Assisted Resident Publication Rejected
 
 Status: `REJECT_READINESS_DEBT_MOVED_SOURCE_RESTORED`; current code is the

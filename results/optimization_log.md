@@ -1,5 +1,20 @@
 # Optimization Log
 
+## 2026-07-23 Five-GEMM Output Ownership Pivot
+
+- Status: `ACCEPT_RESOURCE_GATE / IMPLEMENTATION_PENDING`.
+- The correctness baseline's `3,074,860,880` H1/S1024 kernel ticks and
+  `0.589255%` useful MMAC active are not a matrix-pipeline result: partial FP32
+  atomics produce `61.1656%` waitVm and obscure all smaller scheduling effects.
+- Workbook design now uses four persistent N32 dKV owners and four D32 dQ
+  owners with two native dS generations. dK/dV store once; dQ performs only
+  the necessary per-K-tile contribution. Useful work remains exactly five
+  GEMMs and 1,280 MMAC/tile.
+- The 128-live accumulator gate passes cleanly at
+  `dkv_pds_split64_probe_20260723_022728`: checksum0, bank0, no warning/panic,
+  and private/spill0. The following experiment is a `24/240/96` structural dS
+  conveyor probe, not a production patch.
+
 ## 2026-07-20 dKV Exact-Work Baseline Locked
 
 - Status: `ACCEPT_CANONICAL_BASELINE`.

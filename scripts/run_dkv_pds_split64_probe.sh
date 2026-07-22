@@ -28,7 +28,7 @@ python3 scripts/check_symbol_metadata_gate.py \
   --symbol-regex dkv_pds_cross_wave_probe_kernel
 
 awk -v expect_trans_read="${EXPECT_TRANS_READ}" '
-  /s_trap/ { trap += 1 }
+  /^[[:space:]]*s_trap([[:space:]]|$)/ { trap += 1 }
   /ds_write_matrix/ { write += 1 }
   /ds_read_matrix/ { read += 1 }
   /s_set_vgpr_size/ { resize += 1 }
@@ -40,21 +40,23 @@ awk -v expect_trans_read="${EXPECT_TRANS_READ}" '
   }
 ' "${ASM}"
 
-mkdir -p "${RUN_DIR}"
+mkdir -p "${RUN_DIR}/m5out"
+cp "${PMD_CONFIG_SEED}" "${RUN_DIR}/m5out/config.ini"
 cd "${RUN_DIR}"
 python3 "${PMD_PATH}/scripts/run.py" -c sb -m m5out -e "${ROOT}/${BIN}" \
   2>&1 | tee pmd_stdout.log
 
-pass_lines="$(grep -cE 'sync=(abarrier|cta) .*mismatches=0 .*pass=1' pmd_stdout.log)"
+pass_lines="$(grep -cE 'sync=(abarrier|cta) .*mismatches=0 pressure_mismatches=0 .*pass=1' pmd_stdout.log)"
 panic_lines="$(grep -ciE 'panic:|fatal:' pmd_stdout.log || true)"
-vgpr_warning_lines="$(grep -ciE 'warn: read vgpr[0-9]+ before writing' pmd_stdout.log || true)"
+vgpr_warning_lines="$(grep -ciE 'warn:.*read vgpr.*before writing' pmd_stdout.log || true)"
 bank_conflicts="$(awk '/ldsBankConflict/ { sum += $2 } END { print sum + 0 }' \
   m5out/0/*/stats.txt)"
 
 if [[ "${pass_lines}" != "2" || "${panic_lines}" != "0" ||
-      "${bank_conflicts}" != "0" ]]; then
-  printf 'pds_split64_probe_status=FAIL pass_lines=%s panic=%s bank=%s\n' \
-    "${pass_lines}" "${panic_lines}" "${bank_conflicts}"
+      "${bank_conflicts}" != "0" || "${vgpr_warning_lines}" != "0" ]]; then
+  printf 'pds_split64_probe_status=FAIL pass_lines=%s panic=%s bank=%s vgpr_warnings=%s\n' \
+    "${pass_lines}" "${panic_lines}" "${bank_conflicts}" \
+    "${vgpr_warning_lines}"
   exit 1
 fi
 

@@ -1,5 +1,39 @@
 # Client
 
+## 2026-07-23 Five-GEMM Performance Redesign
+
+- Commit `0ad7922` remains the correctness checkpoint. Its H1/S1024 useful
+  MMAC active is only `0.589255%` because dQ/dK/dV partial FP32 atomics dominate
+  VM wait; do not optimize that trace with waitcnt micro-edits.
+- The next canonical topology is 12 waves: one producer group, four N32 dKV
+  owners with persistent dK/dV, and four D32 dQ owners fed through two native
+  dS pages. It keeps exactly five GEMMs and cuts estimated atomic elements
+  about 18x.
+- Target WDRA is `24/240/96`; the old `24/240/240` allocation belongs only to
+  the symmetric correctness baseline.
+- The 128-live VGPR gate passes cleanly with checksum and PMD warning gate at
+  `/zys/sb/fa3b/layout_probes/dkv_pds_split64_probe_20260723_022728`.
+- Production remains untouched until the isolated two-generation dS conveyor
+  probe passes.
+
+Skill Candidate:
+
+- Trigger / 适用场景: a fused backward kernel has correct matrix work but very
+  low MMAC active and high atomic/VM wait.
+- Rule / 可复用规则: quantify output ownership and partial-output traffic
+  before tuning waits. Assign persistent output owners and prove their minimum
+  live-accumulator VGPR footprint with a focused WDRA probe.
+- Evidence / 证据: fused H1/S1024 baseline `0.589255%` active and `61.1656%`
+  waitVm; 128-live accumulator gate passes under e0f10535/HEAD1694 with bank0,
+  warning0 and spill0.
+- Boundary / 适用边界: fused kernels whose output dimensions permit one CTA
+  owner. Multi-die atomic scope and cross-CTA reduction still need a separate
+  contract.
+- Counterexample / 反例或不适用情况: the output is intrinsically split across
+  CTAs or the persistent accumulator footprint cannot pass WDRA/resource gates.
+- Proposed Target / 建议进入哪个 skill 或 reference: `shaobo` fused-output
+  ownership reference during a later consolidation round.
+
 ## 2026-07-22 Resident-Publication Structural Candidate Rejected
 
 - A 128KB-LDS candidate moved K/V publication into the two consumer groups and
