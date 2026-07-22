@@ -5302,3 +5302,13 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
 - Probe and evidence: `probes/ds_matrix_reg_roundtrip_probe.cpp`,
   `results/ds_matrix_reg_roundtrip_20260722.md`, remote run
   `/zys/sb/fa3b/layout_probes/ds_matrix_reg_roundtrip_20260722_220758`.
+## 2026-07-22 MMAC-to-writer source ABI checkpoint
+
+- Writer transport is proven complete and reversible; do not classify the
+  current issue as `ds_write_matrix` data corruption.
+- The exact measured slot map replaces the old inferred map with eight holes.
+- Real FP32 MMAC C outputs were checked as both adjacent-N and adjacent-M
+  pairs. Lane-local FP16 downcast matches none of the 12 measured native
+  writer-reader ABIs; best mismatch is `384/512`.
+- Keep the canonical FA path unchanged. The next isolated test is the native
+  FP16-output MMAC C/D form, not a runtime permute/gather workaround.

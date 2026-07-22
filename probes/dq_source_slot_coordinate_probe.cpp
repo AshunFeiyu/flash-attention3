@@ -1,7 +1,6 @@
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
 
-#include "dq_probe_contract.h"
 #include "shaobo_instr.h"
 
 #include <cmath>
@@ -10,7 +9,6 @@
 #include <cstdlib>
 #include <vector>
 
-namespace dq = shaobo::fa3::bwd::dq;
 namespace ins = shaobo::fa3::bwd::instr;
 
 namespace {
@@ -25,8 +23,10 @@ constexpr int kMatrixBlockHalfs = kMatrixBlockBytes / sizeof(__half);
 constexpr int kQBase = 0;
 constexpr int kKBase = kQBase + kKBlocks * kMatrixBlockHalfs;
 constexpr int kDsBase = kKBase + kKBlocks * kMatrixBlockHalfs;
-constexpr int kModes = 16;
-constexpr int kLdsHalfs = kDsBase + kModes * 1024;
+constexpr int kBaseModes = 16;
+constexpr int kPairKinds = 2;
+constexpr int kModes = kBaseModes * kPairKinds;
+constexpr int kLdsHalfs = kDsBase + kBaseModes * 1024;
 constexpr int kWordsPerLane = 8;
 
 union Frag8 {
@@ -77,6 +77,7 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
     constexpr int kLit = (Mode >> 2) & 1;
     constexpr int kLts = (Mode >> 3) & 1;
     Frag8 q_reg[kKBlocks];
+    Frag8 q_reg_m1[kKBlocks];
     Frag8 k_frag0[kKBlocks];
     Frag8 k_frag1[kKBlocks];
 #pragma unroll
@@ -85,9 +86,13 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
         if constexpr (kReaderMode == 0 || kReaderMode == 2) {
             ins::ds_read_matrix_32x16_trans(lds + kQBase, lds_offset,
                                             q_reg[d_block].f16x8);
+            ins::ds_read_matrix_32x16_trans(lds + kQBase, lds_offset + 1024,
+                                            q_reg_m1[d_block].f16x8);
         } else {
             ins::ds_read_matrix_32x16_normal(lds + kQBase, lds_offset,
                                              q_reg[d_block].f16x8);
+            ins::ds_read_matrix_32x16_normal(lds + kQBase, lds_offset + 1024,
+                                             q_reg_m1[d_block].f16x8);
         }
 
         if constexpr (kReaderMode == 0 || kReaderMode == 1) {
@@ -107,17 +112,23 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
 
     Acc4 acc0{};
     Acc4 acc1{};
+    Acc4 acc_m1{};
     ins::wait_lgkm(0);
     acc0.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[0],
                                      k_frag0[0].f16x4[0], zero.f32);
     acc1.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[0],
                                      k_frag1[0].f16x4[0], zero.f32);
+    acc_m1.f32 = mmac_mode<kLit, kLts>(q_reg_m1[0].f16x4[0],
+                                       k_frag0[0].f16x4[0], zero.f32);
 #pragma unroll
     for (int k_half = 1; k_half < 2; ++k_half) {
         acc0.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[k_half],
                                          k_frag0[0].f16x4[k_half], acc0.f32);
         acc1.f32 = mmac_mode<kLit, kLts>(q_reg[0].f16x4[k_half],
                                          k_frag1[0].f16x4[k_half], acc1.f32);
+        acc_m1.f32 = mmac_mode<kLit, kLts>(
+            q_reg_m1[0].f16x4[k_half], k_frag0[0].f16x4[k_half],
+            acc_m1.f32);
     }
 #pragma unroll
     for (int d_block = 1; d_block < kKBlocks; ++d_block) {
@@ -129,15 +140,22 @@ __device__ __forceinline__ void compute_mode(__half* __restrict__ lds,
             acc1.f32 = mmac_mode<kLit, kLts>(
                 q_reg[d_block].f16x4[k_half],
                 k_frag1[d_block].f16x4[k_half], acc1.f32);
+            acc_m1.f32 = mmac_mode<kLit, kLts>(
+                q_reg_m1[d_block].f16x4[k_half],
+                k_frag0[d_block].f16x4[k_half], acc_m1.f32);
         }
     }
 
     Frag8 natural{};
     const int dump_base = (Mode * kWaveSize + lane) * kWordsPerLane;
+    const int mpair_base =
+        ((kBaseModes + Mode) * kWaveSize + lane) * kWordsPerLane;
 #pragma unroll
     for (int i = 0; i < 4; ++i) {
         acc_dump[dump_base + i] = acc0.f[i];
         acc_dump[dump_base + 4 + i] = acc1.f[i];
+        acc_dump[mpair_base + i] = acc0.f[i];
+        acc_dump[mpair_base + 4 + i] = acc_m1.f[i];
         natural.h[i] = static_cast<_Float16>(acc0.f[i]);
         natural.h[4 + i] = static_cast<_Float16>(acc1.f[i]);
     }
@@ -227,39 +245,58 @@ dq_source_slot_coordinate_probe_kernel(const __half* __restrict__ q,
 #endif
 }
 
-bool source_slot_to_dst(int src_lane,
-                        int src_word,
-                        int& dst_group,
-                        int& dst_q,
-                        int& dst_word) {
-    const int low = src_word & 1;
-    for (int carry = 0; carry < 2; ++carry) {
-        const int q_hi_word = src_word - 2 * carry;
-        if (q_hi_word < 0) {
-            continue;
-        }
-        const int q_hi = q_hi_word >> 1;
-        if (q_hi > 3) {
-            continue;
-        }
-        const int raw_lane = src_lane + carry * dq::NativeDsSlotMap::kWaveSize;
-        const int base = raw_lane - 4;
-        if (base < 0 || base >= dq::NativeDsSlotMap::kWaveSize) {
-            continue;
-        }
-        const int q_lo = base >> 4;
-        const int rem = base & 15;
-        const int word_hi = rem >> 3;
-        const int rem2 = rem & 7;
-        dst_group = rem2 >> 1;
-        dst_q = 4 * q_hi + q_lo;
-        dst_word = 4 * word_hi + 2 * (rem2 & 1) + low;
-        if (dst_group < 4 && dst_q < 16 &&
-            dst_word < dq::NativeDsSlotMap::kWordsPerFrag) {
-            return true;
-        }
+int bit(int value, int index) {
+    return (value >> index) & 1;
+}
+
+int pack6(int b0, int b1, int b2, int b3, int b4, int b5) {
+    return b0 | (b1 << 1) | (b2 << 2) | (b3 << 3) | (b4 << 4) |
+           (b5 << 5);
+}
+
+int pack3(int b0, int b1, int b2) {
+    return b0 | (b1 << 1) | (b2 << 2);
+}
+
+// Exact dst(reader) -> src(writer) register-slot permutations measured by
+// ds_matrix_reg_roundtrip_probe. Writer alt does not change this register ABI;
+// reader alt does. These six formulas reproduce all 6144 measured CSV rows.
+void measured_writer_source_slot(int writer,
+                                 int reader,
+                                 int dst_lane,
+                                 int dst_word,
+                                 int& src_lane,
+                                 int& src_word) {
+    const int l0 = bit(dst_lane, 0);
+    const int l1 = bit(dst_lane, 1);
+    const int l2 = bit(dst_lane, 2);
+    const int l3 = bit(dst_lane, 3);
+    const int l4 = bit(dst_lane, 4);
+    const int l5 = bit(dst_lane, 5);
+    const int w0 = bit(dst_word, 0);
+    const int w1 = bit(dst_word, 1);
+    const int w2 = bit(dst_word, 2);
+    const bool writer_trans = writer >= 2;
+
+    if (!writer_trans && reader == 0) {
+        src_lane = pack6(l1, l2, l3, w2, w0, w1);
+        src_word = pack3(l0, l4, l5);
+    } else if (!writer_trans && reader == 1) {
+        src_lane = pack6(l0, l1, l2, l3, w0, w1);
+        src_word = pack3(w2, l4, l5);
+    } else if (!writer_trans) {
+        src_lane = pack6(w1, l4, l5, w2, l0, l1);
+        src_word = pack3(w0, l2, l3);
+    } else if (reader == 0) {
+        src_lane = pack6(w0, w1, l4, l5, l1, l2);
+        src_word = pack3(l0, l3, w2);
+    } else if (reader == 1) {
+        src_lane = pack6(w0, w1, l4, l5, l0, l1);
+        src_word = pack3(w2, l2, l3);
+    } else {
+        src_lane = pack6(l0, l1, l2, l3, w1, l4);
+        src_word = pack3(w0, l5, w2);
     }
-    return false;
 }
 
 int decode_code(float value) {
@@ -280,7 +317,7 @@ bool decode_qk(float value, int& q, int& k) {
 }
 
 const char* mode_name(int mode) {
-    static const char* names[kModes] = {
+    static const char* names[kBaseModes] = {
         "qT_kT_lit0_lts0", "qN_kT_lit0_lts0",
         "qT_kN_lit0_lts0", "qN_kN_lit0_lts0",
         "qT_kT_lit1_lts0", "qN_kT_lit1_lts0",
@@ -290,17 +327,18 @@ const char* mode_name(int mode) {
         "qT_kT_lit1_lts1", "qN_kT_lit1_lts1",
         "qT_kN_lit1_lts1", "qN_kN_lit1_lts1",
     };
-    return mode >= 0 && mode < kModes ? names[mode] : "unknown";
+    const int base_mode = mode % kBaseModes;
+    return mode >= 0 && mode < kModes ? names[base_mode] : "unknown";
+}
+
+const char* pair_name(int mode) {
+    return mode < kBaseModes ? "N_pair" : "M_pair";
 }
 
 bool summarize_acc(const std::vector<float>& acc_dump, int mode) {
     int identity_errors = 0;
-    int source_slot_errors = 0;
-    int source_slots = 0;
-    int printed = 0;
     const int mode_base = mode * kWaveSize * kWordsPerLane;
     for (int lane = 0; lane < kWaveSize; ++lane) {
-        const int identity_q = lane & 15;
         const int group = lane >> 4;
         for (int word = 0; word < kWordsPerLane; ++word) {
             int q = -1;
@@ -308,44 +346,83 @@ bool summarize_acc(const std::vector<float>& acc_dump, int mode) {
             const int idx = mode_base + lane * kWordsPerLane + word;
             const bool ok = decode_qk(acc_dump[idx],
                                       q, k);
-            const int identity_k = (word >= 4 ? 16 : 0) + group * 4 +
-                                   (word & 3);
+            const bool m_pair = mode >= kBaseModes;
+            const int identity_q =
+                (m_pair && word >= 4 ? 16 : 0) + (lane & 15);
+            const int identity_k =
+                (!m_pair && word >= 4 ? 16 : 0) + group * 4 +
+                (word & 3);
             if (!ok || q != identity_q || k != identity_k) {
                 ++identity_errors;
-            }
-
-            int dst_group = -1;
-            int dst_q = -1;
-            int dst_word = -1;
-            if (source_slot_to_dst(lane, word, dst_group, dst_q, dst_word)) {
-                ++source_slots;
-                const int expected_k =
-                    (word >= 4 ? 16 : 0) +
-                    dq::NativeDsSlotMap::slot_krow(dst_group, dst_word);
-                if (!ok || q != dst_q || k != expected_k) {
-                    ++source_slot_errors;
-                    if (printed < 10) {
-                        std::printf(
-                            "source_slot_mismatch lane=%d word=%d got_q=%d "
-                            "got_k=%d expected_q=%d expected_k=%d "
-                            "dst_group=%d dst_word=%d value=%g\n",
-                            lane, word, q, k, dst_q, expected_k, dst_group,
-                            dst_word,
-                            acc_dump[idx]);
-                        ++printed;
-                    }
-                }
             }
         }
     }
     std::printf(
-        "source_slot_coordinate_acc_summary mode=%d name=%s identity_errors=%d "
-        "source_slot_errors=%d source_slots=%d identity_pass=%d "
-        "source_slot_direct_pass=%d\n",
-        mode, mode_name(mode), identity_errors, source_slot_errors, source_slots,
-        identity_errors == 0 ? 1 : 0,
-        source_slot_errors == 0 && source_slots != 0 ? 1 : 0);
-    return source_slot_errors == 0 && source_slots != 0;
+        "source_slot_coordinate_acc_summary mode=%d pair=%s name=%s "
+        "identity_errors=%d identity_pass=%d\n",
+        mode, pair_name(mode), mode_name(mode), identity_errors,
+        identity_errors == 0 ? 1 : 0);
+    return identity_errors == 0;
+}
+
+bool summarize_exact_writer_abi(const std::vector<float>& acc_dump, int mode) {
+    static const char* writer_names[4] = {
+        "normal_alt0", "normal_alt1", "trans_alt0", "trans_alt1"};
+    static const char* reader_names[3] = {
+        "normal_m32_alt0", "normal_m32_alt1", "trans_m32_alt0"};
+    const int mode_base = mode * kWaveSize * kWordsPerLane;
+    int best_errors = kWaveSize * kWordsPerLane + 1;
+    int best_writer = -1;
+    int best_reader = -1;
+    bool exact = false;
+
+    for (int writer = 0; writer < 4; ++writer) {
+        for (int reader = 0; reader < 3; ++reader) {
+            int errors = 0;
+            for (int dst_lane = 0; dst_lane < kWaveSize; ++dst_lane) {
+                const int group = dst_lane >> 4;
+                for (int dst_word = 0; dst_word < kWordsPerLane; ++dst_word) {
+                    int src_lane = -1;
+                    int src_word = -1;
+                    measured_writer_source_slot(writer, reader, dst_lane,
+                                                dst_word, src_lane, src_word);
+                    int q = -1;
+                    int k = -1;
+                    const int src_index =
+                        mode_base + src_lane * kWordsPerLane + src_word;
+                    const bool ok = decode_qk(acc_dump[src_index], q, k);
+                    const bool m_pair = mode >= kBaseModes;
+                    const int expected_q =
+                        (m_pair && dst_word >= 4 ? 16 : 0) +
+                        (dst_lane & 15);
+                    const int expected_k =
+                        (!m_pair && dst_word >= 4 ? 16 : 0) + group * 4 +
+                        (dst_word & 3);
+                    errors += !ok || q != expected_q || k != expected_k;
+                }
+            }
+            if (errors < best_errors) {
+                best_errors = errors;
+                best_writer = writer;
+                best_reader = reader;
+            }
+            if (errors == 0) {
+                exact = true;
+                std::printf(
+                    "source_slot_exact_match mode=%d pair=%s name=%s writer=%s "
+                    "reader=%s source_slot_exact_pass=1\n",
+                    mode, pair_name(mode), mode_name(mode), writer_names[writer],
+                    reader_names[reader]);
+            }
+        }
+    }
+    std::printf(
+        "source_slot_exact_summary mode=%d pair=%s name=%s best_errors=%d "
+        "best_writer=%s best_reader=%s source_slot_exact_pass=%d\n",
+        mode, pair_name(mode), mode_name(mode), best_errors,
+        writer_names[best_writer],
+        reader_names[best_reader], exact ? 1 : 0);
+    return exact;
 }
 
 bool summarize_direct_read(const std::vector<float>& read_dump, int mode) {
@@ -449,16 +526,22 @@ int main() {
                         hipMemcpyDeviceToHost),
               "hipMemcpy bits");
 
-    bool any_source_slot_pass = false;
+    bool any_identity_pass = false;
+    bool any_exact_source_slot_pass = false;
     bool any_direct_read_pass = false;
     for (int mode = 0; mode < kModes; ++mode) {
-        any_source_slot_pass |= summarize_acc(acc_dump, mode);
-        any_direct_read_pass |= summarize_direct_read(read_dump, mode);
+        any_identity_pass |= summarize_acc(acc_dump, mode);
+        any_exact_source_slot_pass |=
+            summarize_exact_writer_abi(acc_dump, mode);
+        if (mode < kBaseModes) {
+            any_direct_read_pass |= summarize_direct_read(read_dump, mode);
+        }
     }
     std::printf(
-        "source_slot_orientation_final any_source_slot_pass=%d "
-        "any_direct_read_pass=%d\n",
-        any_source_slot_pass ? 1 : 0, any_direct_read_pass ? 1 : 0);
+        "source_slot_orientation_final any_identity_pass=%d "
+        "any_exact_source_slot_pass=%d any_direct_read_pass=%d\n",
+        any_identity_pass ? 1 : 0, any_exact_source_slot_pass ? 1 : 0,
+        any_direct_read_pass ? 1 : 0);
 
     (void)hipFree(bits_dev);
     (void)hipFree(read_dev);

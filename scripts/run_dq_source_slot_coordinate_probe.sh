@@ -63,7 +63,7 @@ set -e
 cat pmd_stdout.log
 
 panic_lines="$(grep -ciE 'panic:|fatal:|not init or has been freed' pmd_stdout.log || true)"
-source_pass="$(grep -c 'source_slot_direct_pass=1' pmd_stdout.log || true)"
+source_pass="$(grep -c 'source_slot_exact_pass=1' pmd_stdout.log || true)"
 bank_conflicts=0
 if compgen -G 'm5out/0/*/stats.txt' >/dev/null; then
   bank_conflicts="$(awk '/ldsBankConflict/ { sum += $2 } END { print sum + 0 }' \
@@ -82,7 +82,7 @@ else
   semantic=NO_MATCH
 fi
 
-grep -E 'source_slot_coordinate_(acc_summary|direct_read_summary)|source_slot_orientation_final' \
+grep -E 'source_slot_coordinate_(acc_summary|direct_read_summary)|source_slot_exact_(match|summary)|source_slot_orientation_final' \
   pmd_stdout.log | tee result.txt || true
 printf 'dq_source_slot_probe transport=%s semantic=%s pmd_status=%s panic=%s bank=%s run=%s\n' \
   "${transport}" "${semantic}" "${pmd_status}" "${panic_lines}" \

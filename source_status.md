@@ -10538,3 +10538,23 @@ Status: `ACCEPT_NATIVE_TRANSPORT / SOURCE_ABI_STILL_REQUIRED`.
 - Conclusion: DS writer/readers do share a compatible unified LDS swizzle.
   The remaining five-GEMM gate is producing the correct writer source slots
   naturally from the dS MMAC/VALU result, not fixing LDS transport.
+
+## 2026-07-22 Exact MMAC C -> writer source-slot audit
+
+Status: `OBSERVE_NO_F32_C_NATIVE_SOURCE_MATCH`.
+
+- `dq_source_slot_coordinate_probe.cpp` now uses the complete 512-slot
+  writer-reader permutations measured by `ds_matrix_reg_roundtrip_probe`; the
+  six formulas reproduce all 6144 CSV rows with zero error and supersede the
+  old 504/512 boundary-hole model.
+- It tests N-pair and M-pair FP32 MMAC C outputs across all 16 Q/K reader and
+  LIT/LTS modes against four writers and three readers. Both canonical
+  `qT_kT_lit1_lts0` layouts decode exactly, but neither pairing has a native
+  writer-source match; best mismatch is `384/512` for both.
+- PMD evidence:
+  `/zys/sb/fa3b/layout_probes/dq_source_slot_20260722_224840`.
+  Metadata is `SGPR31/VGPR79`, no private/spill, no scalar matrix read or
+  permute, and `ldsBankConflict=0`.
+- This rejects only `FP32 MMAC C -> lane-local FP16 downcast -> writer` as the
+  missing native bridge. It does not reject matrix writer transport or unified
+  LDS swizzle. Next probe targets the HCU FP16-output MMAC C/D form.

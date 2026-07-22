@@ -16348,3 +16348,17 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
   LDS layout or matrix instructions lose data.
 - Production implication: derive a native MMAC-output/source-slot pairing.
   Do not translate the CPU inverse into a runtime gather/permute workaround.
+## 2026-07-22 - Exact MMAC writer-source ABI audit
+
+- Classification: `OBSERVE_NO_F32_C_NATIVE_SOURCE_MATCH`.
+- Replaced the stale 504/512 inferred source-slot mapping with the complete
+  hardware-measured 512-slot permutations.
+- Audited 384 native combinations: N-pair/M-pair x 16 MMAC modes x four
+  writers x three readers. No exact source ABI match; both best results are
+  `384/512` mismatches.
+- PMD run:
+  `/zys/sb/fa3b/layout_probes/dq_source_slot_20260722_224840`.
+- Resource/correctness gates: canonical coordinate modes pass, no spill or
+  private segment, no ordinary matrix read or permute, bank conflict `0`.
+- Next hypothesis: FP16-output MMAC C/D may match the FP16 writer source ABI;
+  test it before any FA integration.
