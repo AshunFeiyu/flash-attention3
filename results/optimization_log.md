@@ -1,5 +1,29 @@
 # Optimization Log
 
+## 2026-07-23 Batch-dS Resident-K Conveyor Accepted
+
+- Status: `ACCEPT_EXACT_BATCH_DS_CHECKPOINT / MMAC50_OPEN`.
+- Hypothesis: eliminate per-M16 cross-group dS ownership by latching K/V
+  normal+transpose fragments once, reusing the 64 KiB K/V LDS region for four
+  dS panels, and releasing raw Q/dO before dQ publication/atomic drain.
+- An initial S128 causal run produced exactly 8192 nonfinite dQ elements. The
+  cause was protocol, not layout: group0 latched all-N K fragments after only
+  `ResidentFilled0`. Requiring both consumer groups to wait both resident
+  publications fixed the half-tile race without adding q-loop synchronization.
+- H1/S128 and H1/S1024 causal/noncausal pass. Resources are role
+  `8/189/188` inside WDRA `24/240/240`, SGPR100/VGPR168,
+  private/spill/scratch0, LDS115456B and bank0.
+- Causal H1/S1024 fullperf is `232,668,800` ticks and `7.407455%` MMAC active
+  versus the accepted single-page control `256,493,510 / 6.791259%`:
+  `-9.29%` ticks and `+0.6162pp` active at exact `MMOP=92,160`.
+- XCU attributes the remaining path to ABarrier `30.76%`, atomic CAS-to-wait
+  `27.14%`, atomic scalar-setup-to-wait `13.09%`, and atomic load-to-wait
+  `4.41%`. Next work is output ownership/atomic elimination, not waitcnt-only
+  tuning.
+
+Evidence: `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_063647` and
+`/zys/sb/fa3b/xcu_outputs/5gemm_batch_ds_s1024_20260723`.
+
 ## 2026-07-23 Five-GEMM Output Ownership Pivot
 
 - Status: `ACCEPT_RESOURCE_GATE / IMPLEMENTATION_PENDING`.

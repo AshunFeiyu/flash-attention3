@@ -53,6 +53,13 @@ union Accumulator {
     float scalar[4];
 };
 
+struct ResidentFragments {
+    Fragment k_trans[kMatrixBlocksD];
+    Fragment v_trans[kMatrixBlocksD];
+    ins::Vec4F16 k_normal[Tile::kConsumerGroups *
+                          Tile::kWavesPerConsumerGroup];
+};
+
 __device__ __forceinline__ int matrix_block_offset(int row_block,
                                                    int d_block) {
     return (row_block * kMatrixBlocksD + d_block) * kMatrixBlockBytes;
@@ -71,11 +78,19 @@ __host__ __device__ constexpr int scratch_page_offset(int writer) {
                Tile::kWriterPageBytes;
 }
 
-template <int Group>
-__device__ __forceinline__ const __half* scratch_group(const __half* lds) {
+template <int MBlock, int Group>
+__host__ __device__ constexpr int batch_ds_group_offset() {
+    static_assert(MBlock >= 0 && MBlock < Tile::kMqPanels);
+    static_assert(Group == 0 || Group == 1);
+    return LdsLayout::kKBase + MBlock * Tile::kPdsGenerationBytes +
+           Group * Tile::kWavesPerConsumerGroup * Tile::kWriterPageBytes;
+}
+
+template <int MBlock, int Group>
+__device__ __forceinline__ const __half* batch_ds_group(const __half* lds) {
     return reinterpret_cast<const __half*>(
-        reinterpret_cast<const char*>(lds) + LdsLayout::kScratchBase +
-        Group * Tile::kWavesPerConsumerGroup * Tile::kWriterPageBytes);
+        reinterpret_cast<const char*>(lds) +
+        batch_ds_group_offset<MBlock, Group>());
 }
 
 __device__ __forceinline__ float* sidecar_field(__half* lds, int field) {
@@ -179,33 +194,74 @@ __device__ __forceinline__ void f16_mmac_single(const Fragment& lhs,
     }
 }
 
+template <int DHalf>
+__device__ __forceinline__ void latch_resident_fragments(
+    const __half* lds,
+    int n_owner,
+    int d_block,
+    ResidentFragments& resident) {
+    static_assert(DHalf == 0 || DHalf == 1);
+#pragma unroll
+    for (int source_d = 0; source_d < kMatrixBlocksD; ++source_d) {
+        const int kv_offset =
+            matrix_block_offset(n_owner >> 1, source_d) +
+            (n_owner & 1) * Tile::kWriterPageBytes / 2;
+        ins::ds_read_matrix_32x16_trans(
+            lds, LdsLayout::kKBase + kv_offset,
+            resident.k_trans[source_d].f16x8);
+        ins::ds_read_matrix_32x16_trans(
+            lds, LdsLayout::kVBase + kv_offset,
+            resident.v_trans[source_d].f16x8);
+    }
+
+    Fragment k_full[Tile::kConsumerGroups * Tile::kWavesPerConsumerGroup];
+    const auto* k_d_base = reinterpret_cast<const __half*>(
+        reinterpret_cast<const char*>(lds) + LdsLayout::kKBase +
+        d_block * kMatrixBlockBytes);
+    ins::ds_read_matrix_32x16_normal_imm4<
+        0, Tile::kWriterPageBytes / 2,
+        kMatrixBlocksD * kMatrixBlockBytes,
+        kMatrixBlocksD * kMatrixBlockBytes + Tile::kWriterPageBytes / 2>(
+        k_d_base, k_full[0].f16x8, k_full[1].f16x8,
+        k_full[2].f16x8, k_full[3].f16x8);
+    ins::ds_read_matrix_32x16_normal_imm4<
+        2 * kMatrixBlocksD * kMatrixBlockBytes,
+        2 * kMatrixBlocksD * kMatrixBlockBytes +
+            Tile::kWriterPageBytes / 2,
+        3 * kMatrixBlocksD * kMatrixBlockBytes,
+        3 * kMatrixBlocksD * kMatrixBlockBytes +
+            Tile::kWriterPageBytes / 2>(
+        k_d_base, k_full[4].f16x8, k_full[5].f16x8,
+        k_full[6].f16x8, k_full[7].f16x8);
+    ins::wait_lgkm(0);
+#pragma unroll
+    for (int writer = 0;
+         writer < Tile::kConsumerGroups * Tile::kWavesPerConsumerGroup;
+         ++writer) {
+        resident.k_normal[writer] = k_full[writer].f16x4[DHalf];
+    }
+}
+
 // Logical GEMMs 1 and 2: one M16xN16 score/dP panel, computed once.
 __device__ __forceinline__ void score_dp_stage(const __half* lds,
                                                int m_block,
-                                               int n_owner,
+                                               const ResidentFragments& resident,
                                                Fragment& score,
                                                Fragment& dp) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
         Fragment q_frag{};
         Fragment dout_frag{};
-        Fragment k_frag{};
-        Fragment v_frag{};
         const int q_offset = m16_matrix_offset(m_block, d_block);
-        const int kv_offset =
-            matrix_block_offset(n_owner >> 1, d_block) +
-            (n_owner & 1) * Tile::kWriterPageBytes / 2;
         ins::ds_read_matrix_32x16_trans(
             lds, LdsLayout::kQBase + q_offset, q_frag.f16x8);
         ins::ds_read_matrix_32x16_trans(
             lds, LdsLayout::kDoutBase + q_offset, dout_frag.f16x8);
-        ins::ds_read_matrix_32x16_trans(
-            lds, LdsLayout::kKBase + kv_offset, k_frag.f16x8);
-        ins::ds_read_matrix_32x16_trans(
-            lds, LdsLayout::kVBase + kv_offset, v_frag.f16x8);
         ins::wait_lgkm(0);
-        f16_mmac_single(q_frag, k_frag, score, d_block == 0);
-        f16_mmac_single(dout_frag, v_frag, dp, d_block == 0);
+        f16_mmac_single(q_frag, resident.k_trans[d_block], score,
+                        d_block == 0);
+        f16_mmac_single(dout_frag, resident.v_trans[d_block], dp,
+                        d_block == 0);
     }
 }
 
@@ -261,20 +317,6 @@ __device__ __forceinline__ void softmax_ds_stage(
     }
 }
 
-template <int Group>
-struct DsBarrier {
-    static_assert(Group == 0 || Group == 1);
-    static constexpr int kFilled =
-        Group == 0 ? Bar::kDsFilledG0 : Bar::kDsFilledG1;
-    static constexpr int kUsed =
-        Group == 0 ? Bar::kDsUsedG0 : Bar::kDsUsedG1;
-};
-
-template <int Group>
-__host__ __device__ constexpr int resident_barrier() {
-    return Group == 0 ? Bar::kResidentFilled0 : Bar::kResidentFilled1;
-}
-
 __device__ __forceinline__ void zero_dkv_accumulators(
     Accumulator (&dv_acc)[8], Accumulator (&dk_acc)[8]) {
     ins::F16x8 zero;
@@ -320,49 +362,31 @@ __device__ __forceinline__ void update_dk_stage(
     }
 }
 
-template <int DHalf>
-__device__ __forceinline__ void update_dq_pair(
-    const Fragment (&ds_trans)[2],
-    const Fragment (&k_normal)[2],
+template <int MBlock>
+__device__ __forceinline__ void update_dq_batch_panel(
+    const __half* lds,
+    const ResidentFragments& resident,
     Accumulator& dq_acc) {
-    static_assert(DHalf == 0 || DHalf == 1);
+    Fragment ds_trans[Tile::kConsumerGroups *
+                      Tile::kWavesPerConsumerGroup];
+    const __half* group0 = batch_ds_group<MBlock, 0>(lds);
+    const __half* group1 = batch_ds_group<MBlock, 1>(lds);
+    ins::ds_read_matrix_32x16_trans_dual_base_imm4<
+        0, Tile::kWriterPageBytes, 2 * Tile::kWriterPageBytes,
+        3 * Tile::kWriterPageBytes>(
+        group0, group1, ds_trans[0].f16x8, ds_trans[4].f16x8,
+        ds_trans[1].f16x8, ds_trans[5].f16x8,
+        ds_trans[2].f16x8, ds_trans[6].f16x8,
+        ds_trans[3].f16x8, ds_trans[7].f16x8);
+    ins::wait_lgkm(0);
 #pragma unroll
-    for (int writer = 0; writer < 2; ++writer) {
+    for (int writer = 0;
+         writer < Tile::kConsumerGroups * Tile::kWavesPerConsumerGroup;
+         ++writer) {
         ins::mmac_f16_lit_inplace(dq_acc.f32,
                                   ds_trans[writer].f16x4[0],
-                                  k_normal[writer].f16x4[DHalf]);
+                                  resident.k_normal[writer]);
     }
-}
-
-template <int Group, int Pair, int DHalf>
-__device__ __forceinline__ void update_dq_group_pair(
-    const __half* lds,
-    int d_block,
-    Accumulator& dq_acc) {
-    Fragment ds_trans[2];
-    Fragment k_normal[2];
-    const __half* group_pages = scratch_group<Group>(lds);
-    const auto* k_pair = reinterpret_cast<const __half*>(
-        reinterpret_cast<const char*>(lds) + LdsLayout::kKBase +
-        (Group * 2 + Pair) * kMatrixBlocksD * kMatrixBlockBytes +
-        d_block * kMatrixBlockBytes);
-    constexpr int kPage0 = (Pair * 2 + 0) * Tile::kWriterPageBytes;
-    constexpr int kPage1 = (Pair * 2 + 1) * Tile::kWriterPageBytes;
-    ins::ds_read_matrix_32x16_trans_normal_dual_base_imm2<
-        kPage0, kPage1, 0, Tile::kWriterPageBytes / 2>(
-        group_pages, k_pair, ds_trans[0].f16x8, k_normal[0].f16x8,
-        ds_trans[1].f16x8, k_normal[1].f16x8);
-    ins::wait_lgkm(0);
-    update_dq_pair<DHalf>(ds_trans, k_normal, dq_acc);
-}
-
-template <int Group, int DHalf>
-__device__ __forceinline__ void update_dq_group(
-    const __half* lds,
-    int d_block,
-    Accumulator& dq_acc) {
-    update_dq_group_pair<Group, 0, DHalf>(lds, d_block, dq_acc);
-    update_dq_group_pair<Group, 1, DHalf>(lds, d_block, dq_acc);
 }
 
 __device__ __forceinline__ void atomic_store_dq_d16(
@@ -385,11 +409,9 @@ __device__ __forceinline__ void atomic_store_dq_d16(
 }
 
 template <int Group>
-__device__ __forceinline__ void consume_symmetric_panel(
+__device__ __forceinline__ void compute_dkv_panel(
     const __half* lds,
     __half* mutable_lds,
-    float* dq,
-    int64_t tensor_base,
     int q_base,
     int m_block,
     int k_base,
@@ -397,29 +419,25 @@ __device__ __forceinline__ void consume_symmetric_panel(
     int causal,
     float softmax_scale,
     int lane,
-    int& filled_phase,
+    const ResidentFragments& resident,
+    Fragment& retained_ds,
     Accumulator (&dv_acc)[8],
     Accumulator (&dk_acc)[8]) {
     static_assert(Group == 0 || Group == 1);
-    constexpr int kFilled = DsBarrier<Group>::kFilled;
-    constexpr int kUsed = DsBarrier<Group>::kUsed;
     const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
-    const int d_owner = n_owner;
-    const int d_block = d_owner >> 1;
-    const int d_half = d_owner & 1;
 
     Fragment score{};
     Fragment dp{};
     Fragment p{};
-    Fragment ds{};
-    score_dp_stage(lds, m_block, n_owner, score, dp);
+    score_dp_stage(lds, m_block, resident, score, dp);
     const int sidecar_row =
         m_block * Tile::kMqPerPanel + (lane & 15);
     softmax_ds_stage(
         score, dp, lane, q_base, m_block, k_base, n_owner, causal,
         sidecar_field(mutable_lds, 0)[sidecar_row],
         sidecar_field(mutable_lds, 1)[sidecar_row],
-        sidecar_field(mutable_lds, 2)[sidecar_row], softmax_scale, p, ds);
+        sidecar_field(mutable_lds, 2)[sidecar_row], softmax_scale, p,
+        retained_ds);
 
     const int page = scratch_page_offset<Group>(owner);
     ins::ds_write_matrix_32x16_trans_f16(p.f16x8, mutable_lds, page);
@@ -436,8 +454,8 @@ __device__ __forceinline__ void consume_symmetric_panel(
         update_dv_stage(p_normal, dout_normal, dv_acc);
     }
 
-    ins::abarrier_seq<false>(kFilled);
-    ins::ds_write_matrix_32x16_trans_f16(ds.f16x8, mutable_lds, page);
+    ins::ds_write_matrix_32x16_trans_f16(retained_ds.f16x8, mutable_lds,
+                                         page);
     ins::wait_lgkm(0);
 
     {
@@ -448,32 +466,26 @@ __device__ __forceinline__ void consume_symmetric_panel(
         ins::wait_lgkm(0);
         update_dk_stage(ds_normal, q_normal, dk_acc);
     }
+}
 
-    ins::abarrier_arrive_cnt<false>(kFilled, 1);
-    int peer_phase = filled_phase;
-    ins::abarrier_try_wait<true>(kFilled, filled_phase);
-    constexpr int kPeerGroup = 1 - Group;
-    constexpr int kPeerFilled = DsBarrier<kPeerGroup>::kFilled;
-    constexpr int kPeerUsed = DsBarrier<kPeerGroup>::kUsed;
-    ins::abarrier_try_wait<true>(kPeerFilled, peer_phase);
+template <int MBlock, int Group>
+__device__ __forceinline__ void publish_batch_ds(
+    const Fragment& ds,
+    __half* lds,
+    int owner) {
+    const int page = batch_ds_group_offset<MBlock, Group>() +
+                     owner * Tile::kWriterPageBytes;
+    ins::ds_write_matrix_32x16_trans_f16(ds.f16x8, lds, page);
+}
 
-    Accumulator dq_acc{};
+__device__ __forceinline__ void zero_dq_accumulators(
+    Accumulator (&dq_acc)[Tile::kMqPanels]) {
     ins::F16x8 dq_zero;
     ins::zero_f16x8(dq_zero);
-    dq_acc.f32 = dq_zero.f32;
-    if (d_half == 0) {
-        update_dq_group<Group, 0>(lds, d_block, dq_acc);
-        ins::abarrier_arrive_cnt<false>(kUsed, 1);
-        update_dq_group<kPeerGroup, 0>(lds, d_block, dq_acc);
-        ins::abarrier_arrive_cnt<false>(kPeerUsed, 1);
-    } else {
-        update_dq_group<Group, 1>(lds, d_block, dq_acc);
-        ins::abarrier_arrive_cnt<false>(kUsed, 1);
-        update_dq_group<kPeerGroup, 1>(lds, d_block, dq_acc);
-        ins::abarrier_arrive_cnt<false>(kPeerUsed, 1);
+#pragma unroll
+    for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
+        dq_acc[m_block].f32 = dq_zero.f32;
     }
-    atomic_store_dq_d16(dq, tensor_base, q_base, m_block, d_owner, lane,
-                        dq_acc);
 }
 
 __device__ __forceinline__ void store_dkv_outputs(
@@ -521,38 +533,76 @@ __device__ __forceinline__ void run_consumer_group(
     float softmax_scale,
     int owner,
     int lane) {
+    const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
+    const int d_block = n_owner >> 1;
+    const int d_half = n_owner & 1;
+    ResidentFragments resident;
+    if (d_half == 0) {
+        latch_resident_fragments<0>(lds, n_owner, d_block, resident);
+    } else {
+        latch_resident_fragments<1>(lds, n_owner, d_block, resident);
+    }
+
+    int kv_ds_used_phase = 0;
+    ins::abarrier_arrive_cnt<false>(Bar::kKvDsUsed, 1);
+    ins::abarrier_try_wait<true>(Bar::kKvDsUsed, kv_ds_used_phase);
+
     Accumulator dv_acc[8];
     Accumulator dk_acc[8];
     zero_dkv_accumulators(dv_acc, dk_acc);
     int raw_phase = 0;
-    int filled_phase = 0;
-    int used_phase = 0;
+    int batch_filled_phase = 0;
 #pragma clang loop unroll(disable)
     for (int qi = 0; qi < q_tile_count; ++qi) {
         ins::abarrier_try_wait<true>(Bar::kRawFilled, raw_phase);
         const int q_base = (q_tile_begin + qi) * Tile::kMq;
-        if (qi != 0) {
-            ins::abarrier_try_wait<true>(DsBarrier<Group>::kUsed, used_phase);
-        }
-        consume_symmetric_panel<Group>(
-            lds, mutable_lds, dq, tensor_base, q_base, 0, k_base, owner,
-            causal, softmax_scale, lane, filled_phase, dv_acc, dk_acc);
-        ins::abarrier_try_wait<true>(DsBarrier<Group>::kUsed, used_phase);
-        consume_symmetric_panel<Group>(
-            lds, mutable_lds, dq, tensor_base, q_base, 1, k_base, owner,
-            causal, softmax_scale, lane, filled_phase, dv_acc, dk_acc);
-        ins::abarrier_try_wait<true>(DsBarrier<Group>::kUsed, used_phase);
-        consume_symmetric_panel<Group>(
-            lds, mutable_lds, dq, tensor_base, q_base, 2, k_base, owner,
-            causal, softmax_scale, lane, filled_phase, dv_acc, dk_acc);
-        ins::abarrier_try_wait<true>(DsBarrier<Group>::kUsed, used_phase);
-        consume_symmetric_panel<Group>(
-            lds, mutable_lds, dq, tensor_base, q_base, 3, k_base, owner,
-            causal, softmax_scale, lane, filled_phase, dv_acc, dk_acc);
+
+        Fragment ds_panels[Tile::kMqPanels];
+        compute_dkv_panel<Group>(
+            lds, mutable_lds, q_base, 0, k_base, owner, causal,
+            softmax_scale, lane, resident, ds_panels[0], dv_acc, dk_acc);
+        compute_dkv_panel<Group>(
+            lds, mutable_lds, q_base, 1, k_base, owner, causal,
+            softmax_scale, lane, resident, ds_panels[1], dv_acc, dk_acc);
+        compute_dkv_panel<Group>(
+            lds, mutable_lds, q_base, 2, k_base, owner, causal,
+            softmax_scale, lane, resident, ds_panels[2], dv_acc, dk_acc);
+        compute_dkv_panel<Group>(
+            lds, mutable_lds, q_base, 3, k_base, owner, causal,
+            softmax_scale, lane, resident, ds_panels[3], dv_acc, dk_acc);
+
         ins::abarrier_arrive_cnt<false>(Bar::kRawUsed, 1);
+        if (qi != 0) {
+            ins::abarrier_try_wait<true>(Bar::kKvDsUsed, kv_ds_used_phase);
+        }
+
+        publish_batch_ds<0, Group>(ds_panels[0], mutable_lds, owner);
+        publish_batch_ds<1, Group>(ds_panels[1], mutable_lds, owner);
+        publish_batch_ds<2, Group>(ds_panels[2], mutable_lds, owner);
+        publish_batch_ds<3, Group>(ds_panels[3], mutable_lds, owner);
+        ins::wait_lgkm(0);
+        ins::abarrier_arrive_cnt<false>(Bar::kBatchDsFilled, 1);
+        ins::abarrier_try_wait<true>(Bar::kBatchDsFilled,
+                                     batch_filled_phase);
+
+        Accumulator dq_acc[Tile::kMqPanels];
+        zero_dq_accumulators(dq_acc);
+        update_dq_batch_panel<0>(lds, resident, dq_acc[0]);
+        update_dq_batch_panel<1>(lds, resident, dq_acc[1]);
+        update_dq_batch_panel<2>(lds, resident, dq_acc[2]);
+        update_dq_batch_panel<3>(lds, resident, dq_acc[3]);
+        ins::abarrier_arrive_cnt<false>(Bar::kKvDsUsed, 1);
+
+        atomic_store_dq_d16(dq, tensor_base, q_base, 0, n_owner, lane,
+                            dq_acc[0]);
+        atomic_store_dq_d16(dq, tensor_base, q_base, 1, n_owner, lane,
+                            dq_acc[1]);
+        atomic_store_dq_d16(dq, tensor_base, q_base, 2, n_owner, lane,
+                            dq_acc[2]);
+        atomic_store_dq_d16(dq, tensor_base, q_base, 3, n_owner, lane,
+                            dq_acc[3]);
     }
 
-    const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
     store_dkv_outputs(dk, dv, tensor_base, k_base, n_owner, lane, dk_acc,
                       dv_acc);
 }
@@ -583,12 +633,10 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
     if (wave == 0) {
         __builtin_hcu_s_abarrier_init(Bar::kResidentFilled0, 4);
         __builtin_hcu_s_abarrier_init(Bar::kResidentFilled1, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kKvDsUsed, 8);
         __builtin_hcu_s_abarrier_init(Bar::kRawFilled, 4);
         __builtin_hcu_s_abarrier_init(Bar::kRawUsed, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kDsFilledG0, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kDsUsedG0, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kDsFilledG1, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kDsUsedG1, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kBatchDsFilled, 8);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
@@ -642,8 +690,12 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t tensor_base =
             static_cast<int64_t>(bh) * seqlen * Tile::kHeadDim;
-        int resident_phase = 0;
-        ins::abarrier_try_wait<true>(resident_barrier<0>(), resident_phase);
+        int resident0_phase = 0;
+        int resident1_phase = 0;
+        ins::abarrier_try_wait<true>(Bar::kResidentFilled0,
+                                     resident0_phase);
+        ins::abarrier_try_wait<true>(Bar::kResidentFilled1,
+                                     resident1_phase);
         run_consumer_group<0>(lds, lds, dq, dk, dv, tensor_base, k_base,
                               q_tile_begin, q_tile_count, causal,
                               softmax_scale, owner, lane);
@@ -658,8 +710,12 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t tensor_base =
             static_cast<int64_t>(bh) * seqlen * Tile::kHeadDim;
-        int resident_phase = 0;
-        ins::abarrier_try_wait<true>(resident_barrier<1>(), resident_phase);
+        int resident0_phase = 0;
+        int resident1_phase = 0;
+        ins::abarrier_try_wait<true>(Bar::kResidentFilled0,
+                                     resident0_phase);
+        ins::abarrier_try_wait<true>(Bar::kResidentFilled1,
+                                     resident1_phase);
         run_consumer_group<1>(lds, lds, dq, dk, dv, tensor_base, k_base,
                               q_tile_begin, q_tile_count, causal,
                               softmax_scale, owner, lane);
@@ -669,12 +725,10 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
     if (wave == 0) {
         __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled0);
         __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled1);
+        __builtin_hcu_s_abarrier_inv(Bar::kKvDsUsed);
         __builtin_hcu_s_abarrier_inv(Bar::kRawFilled);
         __builtin_hcu_s_abarrier_inv(Bar::kRawUsed);
-        __builtin_hcu_s_abarrier_inv(Bar::kDsFilledG0);
-        __builtin_hcu_s_abarrier_inv(Bar::kDsUsedG0);
-        __builtin_hcu_s_abarrier_inv(Bar::kDsFilledG1);
-        __builtin_hcu_s_abarrier_inv(Bar::kDsUsedG1);
+        __builtin_hcu_s_abarrier_inv(Bar::kBatchDsFilled);
     }
 #else
     (void)dout;

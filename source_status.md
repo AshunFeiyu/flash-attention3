@@ -1,5 +1,27 @@
 # Source Status
 
+## 2026-07-23 Batch-dS / Resident-K Conveyor Promoted
+
+Status: `ACCEPT_EXACT_BATCH_DS_CHECKPOINT / MMAC50_OPEN`.
+
+- The canonical 12-wave kernel now latches the required K/V normal and
+  transpose fragments into each consumer role at startup, then reuses the
+  dead 64 KiB K/V LDS region for all four M16 dS panels.
+- Raw Q/dO is released after dKV, so the producer can publish the next q tile
+  while consumers publish/read batch dS, execute dQ MMAC and drain dQ atomics.
+  Five-GEMM work stays exact at `MMOP=92,160` for H1/S1024 causal.
+- Static resources pass: WDRA `24/240/240`, actual role VGPR `8/189/188`,
+  SGPR100/VGPR168, LDS115456B, private/spill/scratch0 and bank0.
+- H1/S128 and H1/S1024 pass for causal and noncausal. Causal H1/S1024
+  fullperf improves `256,493,510 -> 232,668,800` kernel ticks (`-9.29%`)
+  and MMAC active `6.7913% -> 7.4075%` at unchanged useful work.
+- XCU shows ABarrier issue gaps fall `37.18% -> 30.76%`, but dQ software-CAS
+  issue gaps now total about `44.6%`. The next design must remove or aggregate
+  dQ atomic ownership; waitcnt/read-order micro-edits cannot reach 50%.
+
+Evidence: `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_063647` and
+`/zys/sb/fa3b/xcu_outputs/5gemm_batch_ds_s1024_20260723`.
+
 ## 2026-07-23 Five-GEMM 128-Live Resource Gate Open
 
 Status: `ACCEPT_RESOURCE_GATE / STRUCTURAL_CONVEYOR_PENDING`; production still

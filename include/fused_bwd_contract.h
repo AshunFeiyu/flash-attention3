@@ -69,8 +69,8 @@ struct FusedBwdContract {
         2 * kMq * kHeadDim * kHalfBytes;
     static constexpr int kPdsLogicalBytes = kMq * kNk * kHalfBytes;
     // One t=1 m32x16 writer carries one real N16 half plus one zero-padded
-    // N16 half in a 2KB physical footprint. Eight owners publish two
-    // independent N64 groups and fully consume the pages before reuse.
+    // N16 half in a 2KB physical footprint. After K/V are latched into VGPRs,
+    // their 64KB LDS region holds all four M16 dS panels at once.
     static constexpr int kWriterPageBytes = 64 * 16 * kHalfBytes;
     static constexpr int kActiveWriterPages =
         kConsumerGroups * kWavesPerConsumerGroup;
@@ -79,6 +79,7 @@ struct FusedBwdContract {
     static constexpr int kPdsGenerationCount = 1;
     static constexpr int kPdsPageBytes =
         kPdsGenerationCount * kPdsGenerationBytes;
+    static constexpr int kBatchPdsBytes = kMqPanels * kPdsGenerationBytes;
     static constexpr int kSidecarBytes = 3 * kMq * sizeof(float);
     static constexpr bool kSidecarAliasesPds = false;
     static constexpr int kLdsBudgetBytes = 128 * 1024;
@@ -134,7 +135,9 @@ struct FusedBwdContract {
                       kPdsPageBytes == 16 * 1024,
                   "resident/raw/P-dS LDS regions must retain their fixed sizes");
     static_assert(kPdsGenerationCount == 1,
-                  "symmetric path uses one fully-consumed dS generation");
+                  "local P/dS conversion uses one private-page generation");
+    static_assert(kBatchPdsBytes == kResidentKvBytes,
+                  "four dS panels must exactly reuse the resident K/V LDS");
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
                   "fused FA3 BWD LDS plan must fit within 128KB");
     static_assert(!kSidecarAliasesPds && kSidecarBytes == 768,
@@ -146,36 +149,34 @@ struct FusedBwdContract {
 struct FusedBwdBarrierLedger {
     static constexpr int kResidentFilled0 = 0;
     static constexpr int kResidentFilled1 = 1;
-    static constexpr int kRawFilled = 2;
-    static constexpr int kRawUsed = 3;
-    static constexpr int kDsFilledG0 = 4;
-    static constexpr int kDsUsedG0 = 5;
-    static constexpr int kDsFilledG1 = 6;
-    static constexpr int kDsUsedG1 = 7;
-    static constexpr int kCount = 8;
+    static constexpr int kKvDsUsed = 2;
+    static constexpr int kRawFilled = 3;
+    static constexpr int kRawUsed = 4;
+    static constexpr int kBatchDsFilled = 5;
+    static constexpr int kCount = 6;
 
-    static_assert(kDsUsedG1 + 1 == kCount,
+    static_assert(kBatchDsFilled + 1 == kCount,
                   "barrier IDs must be contiguous and explicit");
 };
 
 struct FusedBwdWdraResourceWindow {
-    static constexpr int kProducerVgprs = 32;
-    static constexpr int kConsumer0Vgprs = 176;
-    static constexpr int kConsumer1Vgprs = 176;
+    static constexpr int kProducerVgprs = 24;
+    static constexpr int kConsumer0Vgprs = 240;
+    static constexpr int kConsumer1Vgprs = 240;
     static constexpr int kPhysicalVgprTarget =
         kProducerVgprs + kConsumer0Vgprs + kConsumer1Vgprs;
-    static constexpr int kPhysicalVgprGuard = 384;
+    static constexpr int kPhysicalVgprGuard = 504;
     static constexpr int kPhysicalVgprBudget = 512;
     static constexpr bool kRequireNoSpill = true;
     static constexpr bool kRequireNoPrivateSegment = true;
     static constexpr bool kRequireNoScratch = true;
 
     static_assert(kPhysicalVgprTarget <= kPhysicalVgprGuard,
-                  "physical WDRA target must stay at or below 384 VGPRs");
+                  "physical WDRA target exceeds the admitted guard");
     static_assert(kPhysicalVgprTarget <= kPhysicalVgprBudget,
                   "physical WDRA target must fit the 512 VGPR budget");
-    static_assert(kPhysicalVgprTarget == 384,
-                  "symmetric three-role WDRA target must be exactly 384 VGPRs");
+    static_assert(kPhysicalVgprTarget == 504,
+                  "K/V-resident WDRA average must satisfy the 8-VGPR granularity");
     static_assert(kRequireNoSpill, "fused path must be spill-free");
     static_assert(kRequireNoPrivateSegment && kRequireNoScratch,
                   "fused path must not allocate private or scratch storage");

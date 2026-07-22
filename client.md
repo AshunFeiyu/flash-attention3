@@ -1,5 +1,42 @@
 # Client
 
+## 2026-07-23 Canonical 5-GEMM Batch-dS Checkpoint
+
+- Active source is one exact 12-wave 5-GEMM kernel. Consumers latch resident
+  K/V views once, K/V LDS is reused for four dS panels, and raw Q/dO is
+  released before dQ publication and atomic drain.
+- Correctness passes H1/S128 and H1/S1024 for causal/noncausal. Static gates:
+  WDRA `24/240/240`, role use `8/189/188`, SGPR100/VGPR168,
+  LDS115456B, private/spill/scratch0 and bank0.
+- Causal H1/S1024 fullperf is `232,668,800` ticks, `7.407455%` useful MMAC
+  active and exact `MMOP=92,160`; this improves the prior accepted baseline by
+  `9.29%` ticks but remains far below the 50% goal.
+- Do not add more per-panel barriers or tune matrix-read waits next. XCU shows
+  `30.76%` ABarrier issue gaps and about `44.6%` software atomic-CAS gaps.
+  The next workbook revision must give dQ a non-CAS final owner or aggregate
+  partials before one final global store.
+- Full evidence:
+  `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_063647` and
+  `/zys/sb/fa3b/xcu_outputs/5gemm_batch_ds_s1024_20260723`.
+
+Skill Candidate:
+
+- Trigger / 适用场景: a fused kernel repeatedly publishes short-lived matrix
+  panels while a startup-only operand occupies reusable LDS.
+- Rule / 可复用规则: latch only the legally reusable operand fragments into
+  role-local VGPRs, prove the WDRA ledger, then batch all dependent panels in
+  the released LDS region and release the streaming input before the batch
+  consumer tail.
+- Evidence / 证据: exact H1/S1024 ticks `256.49M -> 232.67M`, ABarrier issue
+  gaps `37.18% -> 30.76%`, unchanged MMOP92,160, correctness and bank0.
+- Boundary / 适用边界: the resident fragment set must fit each WDRA role and
+  every consumer reading all partitions must wait every startup publication.
+- Counterexample / 反例或不适用情况: latching forces spill/private memory, or
+  the released LDS page is still needed by a producer before batch consumers
+  finish.
+- Proposed Target / 建议进入哪个 skill 或 reference: `shaobo` ownership and
+  ABarrier reference in a later consolidation round.
+
 ## 2026-07-23 Five-GEMM Performance Redesign
 
 - Commit `0ad7922` remains the correctness checkpoint. Its H1/S1024 useful
