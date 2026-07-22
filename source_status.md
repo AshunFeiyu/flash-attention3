@@ -10464,3 +10464,22 @@ Status: `OBSERVE_COMPLETE_LAYOUT_REMAP`; production source unchanged.
 - The rejected `200230` run used `offset:16` and is invalid evidence. The
   builtin parameter is an LDS byte offset; pass zero when the pointer already
   names the page base.
+
+## 2026-07-22 Global Matrix Roundtrip Blocked At Matrix Store
+
+Status: `DEFER_PMD_MATRIX_STORE_PARTIAL_COMMIT`; production source unchanged.
+
+- Added an exact-bit `A-global -> MLS -> ds_read_matrix -> A-reg ->
+  ds_write_matrix -> matrix_store -> A1-global` probe with 192 native mode
+  combinations and 16 MLS-direct matrix-store controls.
+- No full chain is exact. More importantly, every direct control already
+  fails identically: 272/512 values in rows0..16 are correct, while 240 values
+  from row17/col0 remain `0xfefe` for every load/store `t/r` pairing.
+- Gates pass at SGPR18/VGPR4, private/spill/scratch0, LDS100352B and bank0;
+  there is no MMAC, scalar matrix read, gather or permutation.
+- Evidence:
+  `/zys/sb/fa3b/layout_probes/matrix_global_roundtrip_20260722_202711` and
+  `results/matrix_global_roundtrip_20260722.md`.
+- Do not infer a DS writer/reader failure from this end-to-end result. PMD-005
+  must first be resolved because `matrix_store_32x16_b16` fails before the
+  register roundtrip is inserted.

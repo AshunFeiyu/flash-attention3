@@ -16288,3 +16288,20 @@ Decision: `OBSERVE_NO_IDENTITY / COMPLETE_M32_PERMUTATION`.
 - Keep the probe isolated. Raw lane identity is the wrong semantic gate;
   validate the exact writer-source and reader-destination contracts with the
   dense oracle.
+
+## 2026-07-22 Global Matrix Roundtrip Sweep
+
+Decision: `DEFER_PMD_MATRIX_STORE_PARTIAL_COMMIT`.
+
+- Tested the exact-bit full chain from global MLS through normal/trans m32
+  reader, all f16 writer modes and global matrix-store across 192 combinations.
+- Added 16 MLS-direct matrix-store controls. All direct controls fail at the
+  same boundary: 240/512 values remain poison beginning at row17/col0,
+  independent of load/store `t/r`.
+- Full-chain best is still 444 mismatches and no combination is a complete
+  permutation. Because the direct control already fails, this cannot rank the
+  DS writer/reader pairs.
+- Metadata SGPR18/VGPR4, private/spill0, LDS100352B, bank0 and no fallback
+  instructions. PMD completes at `simTicks=20,328,035`.
+- Keep matrix-store outside canonical epilogues. Escalate PMD-005 with this
+  minimal control and re-run unchanged after a model/ABI answer.

@@ -5228,3 +5228,14 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
 - Do not infer production correctness from register identity. A native FA path
   must use the documented MMAC-output/operand layout contract and pass the
   dense CPU-oracle probe.
+
+## 2026-07-22 Global Matrix Roundtrip
+
+- Focused source: `probes/matrix_global_roundtrip_probe.cpp`.
+- Runner: `scripts/run_matrix_global_roundtrip_probe.sh`.
+- Current PMD cannot complete `matrix_store_32x16_b16`: even the direct
+  `A-global -> MLS -> LDS -> matrix-store -> A1-global` control writes only
+  rows0..16 and leaves 240/512 values poisoned from row17 onward.
+- The requested DS read/write full chain therefore remains deferred, not
+  disproved. Re-run this probe unchanged after PMD-005 or the store descriptor
+  contract is resolved.

@@ -321,6 +321,21 @@ Owner question:
 > single official-builtin store with the documented ABarrier transaction
 > lifecycle commit only the first 17 rows?
 
+2026-07-22 exhaustive roundtrip confirmation:
+
+- New focused source: `probes/matrix_global_roundtrip_probe.cpp`.
+- Run:
+  `/zys/sb/fa3b/layout_probes/matrix_global_roundtrip_20260722_202711`.
+- Swept all four MLS `t/r` modes against all four matrix-store `t/r` modes.
+  All 16 direct controls reproduce exactly 240/512 mismatches, first at
+  row17/col0 with `0xfefe`; only rows0..16 are committed.
+- A further 192 combinations insert matching m32 `ds_read_matrix` plus all
+  four f16 `ds_write_matrix` modes. None is exact or a complete permutation,
+  but these results are downstream of the already-failing direct control.
+- The test uses LDS byte offset zero, the full documented ABarrier lifecycle,
+  SGPR18/VGPR4, private/spill0, 100,352-byte LDS and bank0. This rules out the
+  earlier offset misuse and any single `t/r` choice as explanations.
+
 ## Compiler And Compiler/PMD Issues
 
 ### COMP-004: `DS_MATRIX_TRANSPOSE_4V` Has No Current Toolchain Entry
