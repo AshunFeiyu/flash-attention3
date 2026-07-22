@@ -10737,3 +10737,24 @@ Production follow-up: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   the raw-publication boundary, not hidden.
 - Do not merge the integration. Retain only the focused writer probe and
   evidence; restore the persistent-owner canonical source.
+
+## 2026-07-23 Symmetric N16 Native Ownership Gate
+
+Status: `ACCEPT_NATIVE_SYMMETRIC_GATE / PRODUCTION_INTEGRATION_OPEN`.
+
+- A focused 12-wave probe models the next top-level candidate: waves0-3 are
+  producers and waves4-7 / waves8-11 are independent four-wave consumer
+  groups. Every consumer owns one padded N16 dS source page.
+- Each group has four native 2 KiB pages and independent Filled/Used tokens;
+  two fixed generations consume 32 KiB LDS. The same page is read through the
+  trans view for dQ and the normal view for dK, with no scalar matrix read,
+  bpermute, gather or wrong-layout path.
+- Dense trans/normal tensors, downstream dQ/dK MMAC oracles and 64-VGPR
+  persistent dK/dV pressure are exact for eight iterations. Evidence:
+  `/zys/sb/fa3b/layout_probes/fused5_symmetric_n16_ds_20260723_044005`.
+- Static gate: branch use `1/116/116` inside WDRA `32/176/176`, SGPR32,
+  VGPR128, private/spill0. PMD panic0, uninitialized-VGPR warning0 and
+  `ldsBankConflict=0`.
+- This closes the native layout, token and role-budget blockers. Production
+  may replace the 4:1 dKV:dQ role split with two symmetric N64 groups while
+  retaining exactly five logical GEMMs and fixed gen0/gen1 calls.

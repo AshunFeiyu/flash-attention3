@@ -16507,3 +16507,21 @@ Production integration result:
   the useful MMAC schedule remains fundamentally imbalanced.
 - Restore canonical code. Next top-level candidate is two symmetric heavy
   N64 consumer groups, each partitioning all five GEMMs without duplication.
+
+## 2026-07-23 - Symmetric N16 Native dS Gate
+
+- Classification: `ACCEPT_NATIVE_SYMMETRIC_GATE`.
+- Added an isolated 12-wave `32/176/176` probe for two independent four-wave
+  consumer groups. Each wave writes one padded N16 native dS page, reads all
+  four group pages through the trans view for dQ, and reads its own page
+  through the normal view for dK.
+- Two fixed generations use 32 KiB LDS and independent per-group Filled/Used
+  tokens. Eight iterations validate dense trans/normal tensors, dQ/dK MMAC
+  outputs and persistent dK/dV pressure with zero mismatches.
+- Static result is role `1/116/116`, SGPR32/VGPR128, private/spill0. Main path
+  has native FP16 writer, normal/trans matrix readers and MMAC; scalar matrix
+  read and permutation counts are zero.
+- PMD has panic0, VGPR warning0 and bank0:
+  `/zys/sb/fa3b/layout_probes/fused5_symmetric_n16_ds_20260723_044005`.
+- Promote the topology to production next. Do not add a phase switch; rewrite
+  the one canonical kernel and preserve exact five-GEMM work.

@@ -5453,3 +5453,15 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   keep the writer in the canonical kernel.
 - Next redesign must repair the 4:1 dKV:dQ useful-work imbalance before
   another output epilogue optimization.
+
+## Symmetric 5-GEMM Integration Gate (2026-07-23)
+
+- `probes/fused5_symmetric_n16_ds_probe.cpp` proves the two-heavy-group
+  topology at the instruction, layout, barrier and resource levels.
+- Accepted evidence:
+  `/zys/sb/fa3b/layout_probes/fused5_symmetric_n16_ds_20260723_044005`.
+- Contract: 12 waves, WDRA `32/176/176`, four padded N16 pages per group,
+  independent group tokens and fixed two-generation calls. Normal/trans
+  tensors plus dQ/dK MMAC are exact; SGPR32/VGPR128, private/spill0, bank0.
+- The production change must keep one canonical path, exactly five logical
+  GEMMs, no duplicate score/dP and no scalar/permutation layout workaround.
