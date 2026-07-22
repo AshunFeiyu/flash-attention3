@@ -80,3 +80,52 @@ with the ordinary MMAC builtin; no inline-assembly workaround is required.
 Both resource and native-conveyor gates are open. The next step is the single
 canonical production rewrite with persistent dK/dV ownership and one minimal
 dQ atomic contribution per K tile.
+
+## SQTT Root Cause And dQ Writer Redesign
+
+The persistent-owner fullperf checkpoint keeps the exact 92,160 useful MMOPs
+but exposes a new structural limit:
+
+```text
+kernel_ticks                     273,490,490
+useful MMAC active               6.488954%
+ABarrier try_wait issue bubbles  51.75%
+global_atomic_cmpswap -> wait    20.76%
+dKV / dQ MMAC+VALU coissue       about 1%
+```
+
+The dQ CAS loop makes the dQ role lag, which eventually prevents dKV from
+reusing a dS generation. Removing waitcnt cannot fix that dependency. The
+candidate moves the unchanged dQ atomic work to waves0-3: four dQ waves first
+cooperate on one `M16xD128` FP32 partial, publish two alternating 8 KiB LDS
+pages, and each producer wave reads one D32 before releasing the page and
+executing its atomics. This removes CAS from the dQ consumer's panel cadence.
+
+The exact LDS ledger is 64 KiB K/V + 32 KiB Q/dO + 16 KiB dS + 16 KiB dQ
+output = 128 KiB. Sidecar therefore aliases the beginning of output page0.
+Every dKV wave must latch all four panels' row-max, inverse-sum and delta
+values before arriving the initial `OutUsed0`; no later sidecar LDS read is
+legal.
+
+The focused FP32 writer probe found two mandatory code-shape rules:
+
+1. Lane acquisition must occur inside each WDRA role after
+   `s_set_vgpr_size`. Hoisting `threadIdx.x` before the role branch reproduces
+   the PMD uninitialized-VGPR warning and produces nearly all-zero output.
+2. Row-major LDS placement causes bank conflicts. The bank-free swizzle is
+   `dblock*512 + dhalf*256 + lane_group*64 + row*4` in float elements.
+
+Final focused evidence:
+
+```text
+run              /zys/sb/fa3b/layout_probes/fused5_dq_writer_20260723_040101
+semantic         16,384/16,384 FP32 values exact
+LDS path         two ds_write_b128 + two ds_read_b128 per generation
+metadata         SGPR22/VGPR48, private/spill0
+ldsBankConflict  0
+PMD VGPR warning 0
+```
+
+This opens the focused writer gate only. Production promotion still requires
+full FA correctness, unchanged MMOP, no spill, lower same-shape ticks and SQTT
+evidence that atomic debt is hidden rather than merely moved to RawFilled.

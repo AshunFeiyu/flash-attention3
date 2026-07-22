@@ -5422,3 +5422,22 @@ Correction, 2026-07-23:
 - This is `ACCEPT_CORRECTNESS`, not a performance promotion. FP32 atomic
   partial stores intentionally make the initial kernel slow; stats/SQTT and
   output-ownership redesign are next.
+
+## 2026-07-23 dQ Writer Conveyor Contract
+
+- SQTT root: dQ CAS atomic latency backpressures dS generation reuse; it is
+  not primarily a missing-MMAC or removable-waitcnt problem.
+- Four dQ waves cooperate on one M16xD128 partial. Each writes D32 to one of
+  two 8 KiB FP32 pages; producer0-3 each read the corresponding D32, release
+  the page before atomics, and become useful writer waves.
+- Exact LDS is 128 KiB. Sidecar aliases output page0 and dKV must latch all
+  four panels x three scalars before page0's first dQ write.
+- FP32 page offset in float elements is
+  `dblock*512+dhalf*256+lane_group*64+row*4`. Row-major placement is forbidden
+  because the focused probe measured bank conflicts.
+- WDRA rule: obtain lane ID only inside the role after `s_set_vgpr_size`.
+  Pre-role lane setup reproduced the PMD uninitialized-VGPR failure.
+- Focused gate PASS:
+  `/zys/sb/fa3b/layout_probes/fused5_dq_writer_20260723_040101`.
+- Production promotion still requires exact five-GEMM MMOP, CPU golden,
+  no spill/private, bank0, lower ticks and xcu proof.

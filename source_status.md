@@ -10700,3 +10700,26 @@ Status: `ACCEPT_CORRECT_OWNERSHIP_CHECKPOINT / PERFORMANCE_NOT_PROMOTED`.
 - The checkpoint is correct and structurally admitted, not the performance
   target. Next use fullperf/xcu to attribute the seven ownership tokens before
   changing arithmetic or tile size.
+
+## 2026-07-23 FP32 dQ Producer-Writer Gate
+
+Status: `ACCEPT_FOCUSED_GATE / PRODUCTION_PENDING`.
+
+- Fullperf/xcu for the persistent-owner kernel attributes 51.75% of issue
+  bubbles to ABarrier waits and 20.76% to `global_atomic_cmpswap -> wait`.
+  Producer, dKV and dQ MMAC+VALU coissue is only about 1%.
+- Added a focused 12-wave, two-page FP32 output conveyor. Four dQ waves each
+  publish one D32 of a cooperative M16xD128 partial; four producer waves read
+  the matching D32, release the page, then store the values.
+- The initial row-major LDS layout passed semantics but produced 5,376 bank
+  conflicts. The accepted swizzle is
+  `dblock*512+dhalf*256+lane_group*64+row*4` float elements.
+- Lane ID must be acquired branch-locally after WDRA resize. The pre-role
+  variant reproduced PMD `read VGPR before writing`, yielding 16,127/16,384
+  mismatches; the branch-local version is exact.
+- Accepted run
+  `/zys/sb/fa3b/layout_probes/fused5_dq_writer_20260723_040101` has
+  mismatches0, bank0, PMD VGPR warning0, SGPR22/VGPR48 and private/spill0 with vector b128 LDS
+  reads/writes and no scalar DS path.
+- Production integration requires sidecar alias plus an explicit all-panel
+  dKV latch before page0 overwrite. MMOP must remain 92,160.

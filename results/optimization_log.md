@@ -16478,3 +16478,20 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
   baseline, to 277,547,270. Active6.336%, waitVm26.503%, waitLgkm3.366% and
   barrier53.192% show ownership serialization is now the dominant debt.
 - Evidence: `/zys/sb/fa3b/5gemm_owner_rewrite_s1024_c1_20260723_033032`.
+
+## 2026-07-23 - SQTT-guided FP32 dQ writer conveyor
+
+- Classification: `ACCEPT_FOCUSED_GATE / PRODUCTION_PENDING`.
+- Fullperf checkpoint: 273,490,490 kernel ticks, 6.488954% useful MMAC active,
+  ABarrier issue bubble51.75% and atomic-CAS-to-wait20.76%. This rejects
+  waitcnt-only tuning and identifies dQ atomic backpressure as the first owner
+  dependency to restructure.
+- The first probe was a useful two-part negative result: pre-role lane setup
+  triggered PMD uninitialized-VGPR warnings and 16,127 mismatches; row-major
+  FP32 LDS placement caused 5,376 bank conflicts.
+- Moving lane setup inside each resized role restores exact semantics. A
+  D32/half/lane-group/row swizzle makes the same vector b128 handoff bank0.
+- Final probe is exact, SGPR22/VGPR48, private/spill0 and no scalar DS:
+  `/zys/sb/fa3b/layout_probes/fused5_dq_writer_20260723_040101`.
+- Next integrate one canonical output-writer path at an exact 128 KiB LDS
+  budget. Sidecar must alias output0 and be latched before overwrite.
