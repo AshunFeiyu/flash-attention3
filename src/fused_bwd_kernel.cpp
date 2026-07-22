@@ -627,7 +627,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
     __builtin_hcu_wdra_init(Wdra::kProducerVgprs, Wdra::kConsumer0Vgprs,
                             Wdra::kConsumer1Vgprs);
 #endif
-#if defined(__gfx946__) || defined(__gfx92a__)
+#if defined(__gfx946__)
     __shared__ __align__(2048) __half lds[LdsLayout::kBytes / sizeof(__half)];
     const int wave = static_cast<int>(__builtin_hcu_get_wave_id());
     if (wave == 0) {
