@@ -16413,3 +16413,22 @@ Decision: `ACCEPT_NATIVE_TRANSPORT / OBSERVE_SOURCE_LAYOUT_GAP`.
   FP16-output MMAC32, scalar matrix read0, permute0.
 - Native handoff is promoted. Production remains gated on real
   softmax/LSE/delta/causal and full five-GEMM dQ/dK/dV correctness.
+
+## 2026-07-23 - Canonical fused five-GEMM correctness
+
+- Classification: `ACCEPT_CORRECTNESS / PERF_PENDING`.
+- Implemented one M64/N128/D128 fused kernel with exactly score, dP, dV, dK
+  and dQ. No duplicated GEMM and no scalar/permutation matrix workaround.
+- Native FP16 score/dP source slots feed source-local softmax/dS, then the
+  t1/alt0/offset0 writer publishes a wave-private P/dS page for normal/trans
+  readers.
+- Real causal H1/S128 and H1/S1024 and non-causal H1/S128 pass all dQ/dK/dV
+  CPU-golden comparisons. Worst relative-L2 is `7.81275e-4`.
+- Resource gate: LDS115,456 B, WDRA24/240/240, branch usage8/123/123,
+  SGPR74/VGPR168, private/spill0. S1024 bank conflict0.
+- Harness correction: prior row generators used a row coefficient equal to
+  the modulus, making all rows identical and dS exactly zero. The new
+  coprime row strides make dS non-degenerate; tolerances were not loosened.
+- Initial H1/S1024 stats are intentionally poor because dQ/dK/dV are emitted
+  as FP32 atomic partials. Output ownership and epilogue traffic are the first
+  performance redesign, followed by SQTT-guided barrier/read scheduling.

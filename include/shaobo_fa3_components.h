@@ -43,6 +43,16 @@ int shaobo_fa3_bwd_dot_do_o(const void* dout,
                             void* packed_sidecar,
                             const ShaoboFa3Params* params);
 
+int shaobo_fa3_bwd_fused5(const void* dout,
+                          const void* q,
+                          const void* k,
+                          const void* v,
+                          const void* packed_sidecar,
+                          void* dq,
+                          void* dk,
+                          void* dv,
+                          const ShaoboFa3Params* params);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

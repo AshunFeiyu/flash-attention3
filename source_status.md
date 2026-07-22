@@ -10615,3 +10615,26 @@ unchanged.
   max_abs0/rel_l2 0; SGPR40/VGPR53, private/spill0, bank0.
 - Next gate is real softmax/LSE/delta/causal and full five-GEMM output
   integration.
+
+## 2026-07-23 Fused Five-GEMM Real-FA Correctness PASS
+
+Status: `ACCEPT_CORRECTNESS / PERFORMANCE_BASELINE_PENDING`.
+
+- `src/fused_bwd_kernel.cpp` is the only fused production kernel path. It
+  computes score, dP, dV, dK and dQ exactly once per logical tile.
+- Native dS transport is integrated without scalar matrix reads, gather,
+  bpermute or wrong-layout switches.
+- Static gate: SGPR74/VGPR168, branch usage 8/123/123 inside WDRA windows
+  24/240/240, private segment0, SGPR/VGPR spill0, LDS 115,456 B.
+- Causal H1/S128 run
+  `/zys/sb/fa3b/5gemm_fused_commit_gate_s128_c1_20260723_014944` passes;
+  dQ/dK/dV relative-L2 is 1.84e-4/2.31e-4/3.84e-4.
+- Causal H1/S1024 run
+  `/zys/sb/fa3b/5gemm_fused_correctness_s1024_20260723_013538` passes;
+  dQ/dK/dV relative-L2 is 2.28e-4/2.77e-4/4.62e-4 and bank conflict is 0.
+- Non-causal H1/S128 run
+  `/zys/sb/fa3b/5gemm_fused_commit_gate_s128_c0_20260723_015023` passes;
+  dQ/dK/dV relative-L2 is 3.65e-4/6.27e-4/7.81e-4.
+- The first S1024 stats show 92,160 useful MMOP and no LDS bank conflict, but
+  the FP32 atomic partial-output path dominates runtime. Do not treat it as the
+  50% MMAC-active candidate.

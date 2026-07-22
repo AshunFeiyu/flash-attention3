@@ -2,7 +2,7 @@
 
 Date: 2026-07-22
 
-Status: `NATIVE_D32_D128_CHAIN_PASS / REAL_FA_INTEGRATION_PENDING`
+Status: `NATIVE_D32_D128_CHAIN_PASS / REAL_FA_CORRECTNESS_PASS / PERF_PENDING`
 
 ## Why This Gate Exists
 
@@ -189,6 +189,10 @@ accumulation versus the FP32 oracle is `max_abs=0, rel_l2=0`. Metadata is
 FP16-output MMAC, no scalar matrix read and no permutation instruction. D32
 regression also remains exact at `dq_native_ds_dense_20260723_002657`.
 
-The native D128 handoff gate is open. Production integration remains gated on
-real softmax/LSE/delta/causal semantics, resource budget and full five-GEMM
-dQ/dK/dV correctness.
+The native D128 handoff is now integrated into the single canonical fused
+kernel. Real softmax/LSE/delta semantics pass for causal H1/S128 and H1/S1024,
+and non-causal H1/S128. All three outputs pass with relative-L2 below
+`7.9e-4`; metadata is SGPR74/VGPR168 with branch usage 8/123/123 and no
+private segment or spill. Performance remains pending: the initial path uses
+FP32 atomic partial stores for all three outputs and is a correctness baseline,
+not a promoted schedule.

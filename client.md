@@ -5355,3 +5355,22 @@ Correction, 2026-07-23:
   SGPR40/VGPR53, private/spill0, bank0.
 - Native handoff is now open. Next gate is real softmax/LSE/delta/causal plus
   full five-GEMM dQ/dK/dV correctness; performance kernel remains unchanged.
+
+## 2026-07-23 Canonical Five-GEMM Correctness
+
+- Added one production symbol, `fa3_bwd_5gemm_kernel`, with exactly five useful
+  GEMMs and no duplicate score/dP.
+- Tile is M64/N128/D128. Waves0-3 publish resident K/V and streamed Q/dO plus
+  sidecar; waves4-7 and waves8-11 are symmetric consumers over disjoint N64.
+- Each consumer wave owns M16 and two N32 panels. Its private 2 KiB scratch
+  page is reused for P then dS, so P/dS publication needs local waitcnt only,
+  not a cross-wave ABarrier.
+- LDS is 115,456 B. WDRA allocation is 24/240/240 = 504 physical VGPR;
+  compiler branch usage is 8/123/123, metadata SGPR74/VGPR168, private/spill0.
+- Causal H1/S128 and H1/S1024 and non-causal H1/S128 pass CPU golden for dQ,
+  dK and dV. Worst relative-L2 is `7.81275e-4`.
+- Correctness input generation was fixed after discovering that `row * modulus
+  % modulus` made every row identical and forced dS to zero.
+- This is `ACCEPT_CORRECTNESS`, not a performance promotion. FP32 atomic
+  partial stores intentionally make the initial kernel slow; stats/SQTT and
+  output-ownership redesign are next.
