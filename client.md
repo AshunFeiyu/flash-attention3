@@ -1,5 +1,24 @@
 # Client
 
+## 2026-07-23 Canonical Native-Atomic Baseline
+
+- Canonical commit replaces only dQ's HIP software-CAS `atomicAdd` with the
+  verified Shaobo native FP32 global atomic builtin. Keep this primitive in all
+  later single-die experiments.
+- Exact work and layout are unchanged: five GEMMs, MMOP92,160, LDS115456B,
+  WDRA24/240/240, role use8/191/190, SGPR100/VGPR168,
+  private/spill/scratch0 and bank0.
+- H1/S128 and H1/S1024 pass causal/noncausal. Causal fullperf is
+  `107,214,380` ticks and `16.083128%` MMAC active, a `53.92%` tick reduction
+  over the previous batch-dS checkpoint.
+- XCU no longer shows CAS/read/setup waits. The next bottleneck hierarchy is
+  ABarrier37.68%, native atomic issue/address17.95%, matrix-read
+  first-use10.98%, terminal ebarrier6.15%. Do not revisit CAS/workspace
+  reduction unless sbx4 invalidates native atomic scope.
+- Evidence:
+  `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_070840` and
+  `/zys/sb/fa3b/xcu_outputs/5gemm_native_atomic_s1024_20260723`.
+
 ## 2026-07-23 Native Atomic Integration Rule
 
 - `atomicAdd(float*)` in the canonical kernel lowers to a software

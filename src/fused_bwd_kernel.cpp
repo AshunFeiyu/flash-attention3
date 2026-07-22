@@ -402,9 +402,10 @@ __device__ __forceinline__ void atomic_store_dq_d16(
                     (lane >> 4) * 4;
 #pragma unroll
     for (int i = 0; i < 4; ++i) {
-        atomicAdd(dq + tensor_base +
-                      static_cast<int64_t>(row) * Tile::kHeadDim + col + i,
-                  dq_acc.scalar[i]);
+        (void)__builtin_hcu_global_atomic_fadd_f32(
+            dq + tensor_base +
+                static_cast<int64_t>(row) * Tile::kHeadDim + col + i,
+            dq_acc.scalar[i]);
     }
 }
 

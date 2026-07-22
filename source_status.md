@@ -1,5 +1,28 @@
 # Source Status
 
+## 2026-07-23 Native FP32 Atomic Promoted
+
+Status: `ACCEPT_CANONICAL_NATIVE_ATOMIC / MMAC50_OPEN`.
+
+- Canonical dQ keeps identical D16 partial ownership but replaces HIP
+  `atomicAdd` software CAS with `__builtin_hcu_global_atomic_fadd_f32`.
+  Formula, tile, exact five GEMMs, MMOP, LDS and ABarrier DAG are unchanged.
+- ASM has 32 statically expanded `global_atomic_add_f32`, zero
+  `atomic_cmpswap` and zero atomic-path `global_load_dword`. Static resources
+  are role `8/191/190` inside WDRA `24/240/240`, SGPR100/VGPR168,
+  private/spill/scratch0 and bank0.
+- H1/S128 and H1/S1024 causal/noncausal pass. Causal H1/S1024 fullperf improves
+  `232,668,800 -> 107,214,380` ticks (`-53.92%`) and MMAC active
+  `7.4075% -> 16.0831%`; exact `MMOP=92,160` is preserved.
+- XCU shows the software CAS chain is gone. Remaining issue gaps are ABarrier
+  `37.68%`, native atomic issue/address `17.95%`, trans/normal matrix-read
+  first-use waits `10.98%`, and terminal ebarrier `6.15%`.
+- The 50% target remains open. Next work must identify the dominant ABarrier
+  ID/lifetime and preserve this native atomic primitive.
+
+Evidence: `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_070840` and
+`/zys/sb/fa3b/xcu_outputs/5gemm_native_atomic_s1024_20260723`.
+
 ## 2026-07-23 Native FP32 Global Atomic Gate Passed
 
 Status: `ACCEPT_FOCUSED_INSTRUCTION_GATE / INTEGRATION_PENDING`.

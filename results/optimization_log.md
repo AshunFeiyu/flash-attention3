@@ -1,5 +1,26 @@
 # Optimization Log
 
+## 2026-07-23 Native FP32 Atomic Canonical Integration Accepted
+
+- Status: `ACCEPT_CANONICAL_NATIVE_ATOMIC / MMAC50_OPEN`.
+- One source primitive changed: dQ D16 owners call
+  `__builtin_hcu_global_atomic_fadd_f32`; ownership, exact MMOP92,160,
+  LDS115456B, barriers and all matrix paths are unchanged.
+- S128/S1024 causal and noncausal correctness pass. Metadata is role
+  `8/191/190` within `24/240/240`, SGPR100/VGPR168,
+  private/spill/scratch0 and bank0. ASM has native atomic32/CAS0/global-load0.
+- Causal H1/S1024 fullperf improves `232,668,800 -> 107,214,380` ticks
+  (`-53.92%`) and MMAC active `7.407455% -> 16.083128%`. waitVm falls
+  `43.85% -> 1.71%`; SCA `74,880 -> 37,504`, FLAT `19,744 -> 10,528`, while
+  MMOP/VMEM/LDS remain exact.
+- XCU now attributes issue gaps to ABarrier37.68%, native atomic issue/address
+  17.95%, matrix-read first-use10.98% and terminal ebarrier6.15%. This commits
+  the correct baseline; the next experiment must identify and shorten a
+  specific barrier ownership edge.
+
+Evidence: `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_070840` and
+`/zys/sb/fa3b/xcu_outputs/5gemm_native_atomic_s1024_20260723`.
+
 ## 2026-07-23 Native FP32 Global Atomic Focused Gate
 
 - Status: `ACCEPT_FOCUSED_INSTRUCTION_GATE / INTEGRATION_PENDING`.
