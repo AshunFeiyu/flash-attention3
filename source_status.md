@@ -10483,3 +10483,19 @@ Status: `DEFER_PMD_MATRIX_STORE_PARTIAL_COMMIT`; production source unchanged.
 - Do not infer a DS writer/reader failure from this end-to-end result. PMD-005
   must first be resolved because `matrix_store_32x16_b16` fails before the
   register roundtrip is inserted.
+
+## 2026-07-22 PMD HEAD1698 Update Rejected
+
+Status: `REJECT_TOOLCHAIN_PROMOTION / PACKAGE_ABI_MISMATCH`.
+
+- The latest fixed core package is runtime HEAD1698, but its config generator
+  identifies as HEAD1668 and rejects fields required by the packaged Python
+  configs. HEAD1698 then rejects both the old seed and a diagnostic generated
+  config for missing new schema/topology fields.
+- The target kernel is never dispatched, so this update cannot resolve or
+  reclassify PMD-005.
+- Canonical HEAD1694 remains locked. Its fresh control run passes transport,
+  bank and resource gates and reproduces the exact 240/512 matrix-store
+  mismatch.
+- Full evidence: `results/pmd_head1698_update_audit_20260722.md` and PMD-006 in
+  `docs/perf_model_pmd_compiler_issues.md`.

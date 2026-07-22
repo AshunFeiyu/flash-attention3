@@ -16305,3 +16305,16 @@ Decision: `DEFER_PMD_MATRIX_STORE_PARTIAL_COMMIT`.
   instructions. PMD completes at `simTicks=20,328,035`.
 - Keep matrix-store outside canonical epilogues. Escalate PMD-005 with this
   minimal control and re-run unchanged after a model/ABI answer.
+
+## 2026-07-22 PMD HEAD1698 Update Audit
+
+Decision: `REJECT_TOOLCHAIN_PROMOTION`.
+
+- Latest core tarball is runtime HEAD1698, but packaged config generation and
+  runtime schemas are internally incompatible; the probe never dispatches.
+- No kernel source or executable lock changed. HEAD1694 control remains PASS
+  for transport/bank/resource gates and repeats the 240/512 direct
+  matrix-store mismatch.
+- Evidence and exact hashes are in
+  `results/pmd_head1698_update_audit_20260722.md`; issue classification is
+  PMD-006 in `docs/perf_model_pmd_compiler_issues.md`.

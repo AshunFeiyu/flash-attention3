@@ -5239,3 +5239,16 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
 - The requested DS read/write full chain therefore remains deferred, not
   disproved. Re-run this probe unchanged after PMD-005 or the store descriptor
   contract is resolved.
+
+## 2026-07-22 PMD Update Gate
+
+- Fixed-url core HEAD1698 was downloaded and installed side by side, not over
+  the canonical PMD. It is not promotable: the tarball combines a HEAD1668
+  config generator with a HEAD1698 runtime and has incompatible CP-prefetch
+  schema/topology requirements.
+- Keep `scripts/toolchain_lock.sh` on HEAD1694. Do not use the isolated
+  diagnostic hotfix or any HEAD1698 tick/correctness claim; no target dispatch
+  occurred.
+- Before the next PMD update, read PMD-006 and rerun the unchanged global
+  roundtrip probe. Required closure is a matched core package or provider
+  config seed, not more hand-edited config fields.

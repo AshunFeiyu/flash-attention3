@@ -1,6 +1,6 @@
 # Shaobo Perf Model PMD And Compiler Issue Registry
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 This document tracks possible PMD, compiler, and compiler/PMD compatibility
 issues found while validating Shaobo kernels. It is an issue registry, not a
@@ -335,6 +335,67 @@ Owner question:
 - The test uses LDS byte offset zero, the full documented ABarrier lifecycle,
   SGPR18/VGPR4, private/spill0, 100,352-byte LDS and bank0. This rules out the
   earlier offset misuse and any single `t/r` choice as explanations.
+
+### PMD-006: HEAD1698 Core Package Has An Internal Config ABI Mismatch
+
+Status: `CONFIRMED PMD PACKAGE COMPATIBILITY / NOT PROMOTED`.
+
+The fixed core package URL changed on 2026-07-21 and now contains runtime
+`CoreArch:HEAD_1698(lib_ini_opt)`. The package cannot pass config generation or
+consume the locked HEAD1694 seed:
+
+- packaged `configs/gpu.py` passes `cp_prefetch`, `prefetch_obj_size`, and
+  `prefetch_args_size`, but the packaged config-generator `gem5.opt` rejects
+  `GPUDispatcher.cp_prefetch`;
+- the old seed then fails successively on new runtime requirements including
+  `cp_client_id`, `clientId`, `cp_prefetch`, and CP topology elements;
+- in an isolated diagnostic copy, removing only generator-incompatible fields
+  produces a config, but that generator identifies itself as
+  `CoreArch:HEAD:1668(exec_ini_opt)` while the loaded runtime is HEAD1698;
+- the generated config is immediately rejected by HEAD1698 for another missing
+  field, `TcaHoleArbAge`.
+
+Package and component fingerprints:
+
+```text
+core URL Last-Modified: 2026-07-21 09:35:48 GMT
+core tar SHA256: fef22f48080e48f893fb66d81736c11a42453a50d12d0ea79901821b10ddf470
+core readme commit: 029b9d17d7f0e1078fea6e9e5d8aebc7f6d95bcc
+HEAD1698 gem5.opt SHA256: a0f1b681ac8c1271731465ce1bae209d675a7a176be77923350a5a6ff2968b5c
+HEAD1698 lib SHA256: aca312fd740607d3eb80750bd1557527c682109cc1e7dfd37bc07e7a31dc6933
+Shaobo C0 SOC SHA256: d0c03538753a4b91c2aa3e110cb12f1302b66c891c3ab2d446c85de99fe24524
+```
+
+The C0 SOC fixed URL is unchanged from 2026-04-14 and its binary is identical
+to the current locked SOC. The top-level and b0 packages are older than c0.
+Therefore selecting another published Shaobo SOC package is not a valid fix.
+
+Impact and rule:
+
+- do not promote `/zys/shaobo/toolchains/pmd_20260722` or change the executable
+  lock until the provider publishes a matching config-generator/runtime pair or
+  a known-good HEAD1698 config;
+- do not use the diagnostic hotfix as performance or correctness evidence;
+- PMD-005 remains unresolved because HEAD1698 never reaches the target kernel;
+- canonical HEAD1694 remains healthy and re-runs the unchanged global
+  roundtrip probe with transport PASS, bank0, and the same 240/512 direct-store
+  mismatch.
+
+Evidence:
+
+- audit: `results/pmd_head1698_update_audit_20260722.md`;
+- failed official launch:
+  `/zys/sb/fa3b/pmd_update_audit/global_roundtrip_pmd_20260722_20260722_205355`;
+- isolated generator proof:
+  `/zys/sb/fa3b/pmd_update_audit/configgen_probe5_20260722_211152`;
+- HEAD1694 control:
+  `/zys/sb/fa3b/layout_probes/matrix_global_roundtrip_20260722_211218`.
+
+Owner question:
+
+> Can the PMD provider publish a HEAD1698 core tarball whose `gem5.opt`,
+> `libgem5_opt.so`, Python configs, and config schema are built from one
+> revision, or provide the matching Shaobo C0 `config.ini` seed?
 
 ## Compiler And Compiler/PMD Issues
 
