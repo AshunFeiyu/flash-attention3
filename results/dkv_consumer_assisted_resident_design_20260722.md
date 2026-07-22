@@ -2,7 +2,17 @@
 
 Date: 2026-07-22
 
-Status: `DESIGN_READY_FOR_STATIC_IMPLEMENTATION`
+Status: `REJECT_READINESS_DEBT_MOVED_SOURCE_RESTORED`
+
+## Final Result
+
+The resource and correctness proof was valid, but the performance hypothesis
+was false.  Three interleaved H1/S1024 pairs regressed by a paired median
+`0.1675%`, and median MMAC active fell `38.5302% -> 38.3739%`.  ABarrier stall
+fell about `3.5%`, but `waitVb` rose about `8.7%`, `waitVm` about `3.5%`, SCA
+rose `38048 -> 38624`, and VALU rose `60752 -> 60824`.  The topology moved
+readiness debt from ABarrier into BPS/VMEM and is not promotable.  Experiment
+commit `3c0b5b2` is reverted by `4502a29`; canonical source is active.
 
 ## Evidence That Selects This Boundary
 
@@ -159,4 +169,3 @@ first-use waits or to inflate MMAC count.
 - Winner-only fullperf must show lower ResidentFilled/ResidentUsed/RawFilled
   critical gaps without replacing them with more wait/SCA or broken MMAC
   islands.
-

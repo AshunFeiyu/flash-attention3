@@ -81,6 +81,32 @@ This proves that shortening the visually terminal store block does not shorten
 the CTA critical path when the added control/address work and VMEM issue occupy
 the final useful-compute window.
 
+### Consumer-Assisted Resident Publication
+
+The next structural candidate removed the producer-side serialized
+`K/V -> ResidentUsed -> Q/dO` startup chain.  Consumers published and latched
+their own K/V while the two producers published independent M64 Q/dO pages;
+sidecar reused the released K/V LDS region.  It preserved exact four-GEMM work,
+direct FP32 stores and seven ABarrier IDs.
+
+- Static gates passed at exactly 128KB LDS with SGPR55/VGPR112, role use
+  `8/152/15/152`, and no private/spill/scratch.
+- H1/S128 and all six interleaved H1/S1024 control/candidate runs passed
+  correctness with exact `MMOP=73728`, `LDS=45200`, `VMEM=2560`, `FLAT=1096`,
+  SpTaData/Addr `16384/4384` and `ldsBankConflict=0`.
+- Paired S1024 tick deltas were `+0.0366%`, `+0.5723%`, and `+0.1675%`; paired
+  median was a `+0.1675%` regression.  Median MMAC active fell
+  `38.5302% -> 38.3739%` (`-0.1562pp`).
+- Median ABarrier stall fell about `3.5%`, but `waitVb` rose about `8.7%`,
+  `waitVm` rose about `3.5%`, SCA increased `38048 -> 38624`, and VALU
+  increased `60752 -> 60824`.  Coissue was effectively flat.
+
+This is the decisive counterexample to treating fewer barrier cycles as an
+end in itself: the candidate moved readiness debt from ABarrier into BPS/VMEM
+and added scalar setup, so the terminal critical path did not shrink.  The
+experiment is preserved by commits `3c0b5b2` and `4502a29`; current source is
+restored.
+
 ## Why Matrix Store Is Not The Fix
 
 Canonical dK/dV outputs are FP32.  The currently verified Shaobo
@@ -96,17 +122,12 @@ stores are not intrinsically contrary to the FWD-style design.
 1. Retain the canonical direct `global_store_dwordx4` epilogue on e0f10535.
 2. Treat sub-percent aggregate store-latency differences as PMD run variance
    unless paired fullperf plus same-wave SQTT both reproduce them.
-3. Optimize the work immediately before store: reduce C0/C1 completion skew,
-   ownership waits and terminal AllDone convergence without adding tokens,
-   output traffic or branch predicates across WDRA/MMAC regions.
+3. Optimize the work immediately before store: reduce C0/C1 completion skew
+   without moving work into BPS/VMEM readiness or adding tokens, output
+   traffic, LDS footprint, or branch predicates across WDRA/MMAC regions.
 4. Keep store-tail experiments isolated.  Promotion still requires repeated
    same-build ticks, exact dynamic work, correctness, bank0 and no spill.
-
-The next structural candidate therefore attacks the serialized resident/raw
-publication boundary, not the epilogue: consumer groups publish and latch
-their own resident K/V while the two producer groups publish independent M64
-Q/dO pages.  This removes startup ownership from the slow-consumer critical
-path without changing the four GEMMs or the direct FP32 store contract.  Its
-resource and barrier proof is in
-`results/dkv_consumer_assisted_resident_design_20260722.md` and it must still
-pass static, correctness, repeated-ticks and SQTT gates before promotion.
+5. Do not retry consumer-assisted K/V publication in this form.  The next
+   admissible tail hypothesis must preserve the canonical 67,072-byte LDS
+   layout and BPS ownership, then use SQTT to target the specific C0/C1
+   pre-store completion skew rather than the visually attributed store block.

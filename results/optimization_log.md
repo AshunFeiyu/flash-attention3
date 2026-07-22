@@ -16175,3 +16175,18 @@ Status: `OBSERVE_NO_CODEGEN_REGRESSION_REJECT_EPILOGUE_WORKAROUNDS`.
 - Restore canonical source.  Keep latest e0f10535 plus direct vector stores.
   The next useful hypothesis must reduce pre-store consumer skew or terminal
   AllDone convergence without splitting the final MMAC island.
+
+## 2026-07-22 dKV Consumer-Assisted Resident Publication Rejected
+
+Status: `REJECT_READINESS_DEBT_MOVED_SOURCE_RESTORED`.
+
+- Consumers published and latched their own K/V while producers published two
+  M64 Q/dO pages; sidecar reused K/V storage after `ResidentUsed`. The design
+  passed exact-128KB LDS, no-spill, S128 and exact-work S1024 correctness.
+- Three interleaved S1024 pairs regress by a paired median `0.1675%`; median
+  MMAC active falls `38.5302% -> 38.3739%`.
+- ABarrier cycles fall about `3.5%`, but BPS/VMEM readiness grows (`waitVb`
+  about `+8.7%`, `waitVm` about `+3.5%`) and scalar/vector work rises by
+  `576/72` instructions. The ownership chain was relocated, not removed.
+- Revert commit `4502a29` restores canonical 67,072-byte LDS and direct FP32
+  stores. Do not promote or run fullperf for this candidate.

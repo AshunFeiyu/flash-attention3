@@ -1,5 +1,25 @@
 # Source Status
 
+## 2026-07-22 Consumer-Assisted Resident Publication Rejected
+
+Status: `REJECT_READINESS_DEBT_MOVED_SOURCE_RESTORED`; current code is the
+canonical direct-store path.
+
+- The candidate let both consumer groups publish/latch resident K/V while P0
+  and P1 published two independent M64 Q/dO pages. Sidecar overlaid K/V only
+  after eight `ResidentUsed` arrivals. Four GEMMs, seven barrier IDs and output
+  ownership stayed exact.
+- Static gates and H1/S128 correctness passed at LDS131072B, SGPR55/VGPR112,
+  role use `8/152/15/152`, private/spill/scratch0 and bank0.
+- Three interleaved H1/S1024 pairs all passed exact-work correctness. Paired
+  tick deltas were `+0.0366/+0.5723/+0.1675%`; median active fell
+  `38.5302 -> 38.3739%`.
+- Barrier cycles fell about `3.5%`, but `waitVb` rose about `8.7%`, `waitVm`
+  rose about `3.5%`, SCA rose `38048 -> 38624`, and VALU rose
+  `60752 -> 60824`. The structure moved rather than removed readiness debt.
+- Experiment/revert commits are `3c0b5b2/4502a29`; evidence is under
+  `/zys/sb/dkv_consumer_resident_20260722`. No candidate code remains active.
+
 ## 2026-07-22 dKV Store-Tail Experiments Closed
 
 Status: `OBSERVE_COMPILER_VARIANCE_AND_REJECT_WORKAROUNDS`; canonical source

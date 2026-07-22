@@ -1,5 +1,36 @@
 # Client
 
+## 2026-07-22 Resident-Publication Structural Candidate Rejected
+
+- A 128KB-LDS candidate moved K/V publication into the two consumer groups and
+  let the producers publish independent M64 Q/dO pages. It passed correctness,
+  exact work, bank0 and no-spill gates, but did not improve the critical path.
+- Three interleaved H1/S1024 pairs regress by a paired median `0.1675%`; MMAC
+  active falls `38.5302% -> 38.3739%`. Barrier cycles improve about `3.5%`,
+  while `waitVb` grows about `8.7%`, `waitVm` about `3.5%`, and SCA/VALU grow
+  by `576/72` instructions.
+- Current source is restored by `4502a29`. Keep the canonical 67,072-byte LDS
+  layout and direct FP32 stores. A future tail experiment must target measured
+  C0/C1 pre-store skew without moving readiness debt into BPS/VMEM.
+
+Skill Candidate:
+
+- Trigger / 适用场景: an ABarrier-heavy kernel appears improvable by moving a
+  producer publication step into consumer waves.
+- Rule / 可复用规则: evaluate the sum of ownership, BPS/VMEM readiness and added
+  scalar work; lower barrierCounter alone is not evidence of a shorter path.
+- Evidence / 证据: commits `3c0b5b2/4502a29`, H1/S1024 three-pair A/B under
+  e0f10535 and PMD HEAD1694. Barrier falls about 3.5%, but ticks regress and
+  MMAC active falls as waitVb/waitVm increase.
+- Boundary / 适用边界: BPS/MLS pipelines where publication and readiness can
+  move between WDRA roles. A real asynchronous path with no extra requests may
+  behave differently.
+- Counterexample / 反例或不适用情况: consumer participation removes a complete
+  dependency edge without increasing VM/BPS waits, resource footprint or
+  dynamic control work and repeated ticks improve.
+- Proposed Target / 建议进入哪个 skill 或 reference: `shaobo` ABarrier/BPS
+  evidence reference during serialized skill consolidation.
+
 ## 2026-07-22 dKV New-Compiler Store Tail Diagnosed
 
 - LLVM47a7 and e0f10535 emit the same canonical dKV target instruction stream,

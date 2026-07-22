@@ -13,13 +13,16 @@ waves12-15: producer V resident, then dO + sidecar packets
 
 The latest e0f10535 H1/S1024 fullperf baseline is
 `34,625,955 ticks / 38.538081% MMAC active`; the longest causal CTA is about
-`45.36%` active, while the one-q-tile CTA is about `16.94%`.  The next
-structural experiment is documented in
-`results/dkv_consumer_assisted_resident_design_20260722.md`: consumer groups
-publish their own K/V while producers concurrently publish two M64 Q/dO
-pages, then sidecar reuses the released resident region.  It keeps four exact
-GEMMs, seven ABarrier slots, two M64 raw pages, direct FP32 stores and a strict
-128KB LDS budget.
+`45.36%` active, while the one-q-tile CTA is about `16.94%`.
+
+The consumer-assisted resident-publication experiment in
+`results/dkv_consumer_assisted_resident_design_20260722.md` is rejected. It
+passed correctness and resource gates, but moved ABarrier debt into BPS/VMEM
+readiness and regressed paired S1024 ticks. Canonical ownership therefore
+remains producer-published K/V followed by Q/dO packets in the 67,072-byte LDS
+layout. Direct FP32 stores remain the admitted epilogue; the next hypothesis
+must target measured C0/C1 pre-store completion skew without changing store
+traffic or relocating publication into consumer roles.
 
 The older material below is retained only as historical design evolution; it
 must not override this authoritative state.
