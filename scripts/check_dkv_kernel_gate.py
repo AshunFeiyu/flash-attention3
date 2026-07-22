@@ -61,14 +61,17 @@ def main() -> int:
             r"dkv::WdraResourceWindows::kConsumerVgprs,\s*"
             r"dkv::WdraResourceWindows::kProducerVgprs\s*\)",
             failures, "missing_physical_2p2c_wdra_init")
-    require(perf_source, r"producer_resident_raw_loop", failures,
-            "missing_resident_raw_producer")
+    require(perf_source, r"producer_raw_pages_loop", failures,
+            "missing_raw_pages_producer")
     require(perf_source,
-            r"producer_resident_raw_loop<Tile,\s*Bar,\s*false>",
-            failures, "missing_k_q_producer")
+            r"producer_raw_pages_loop<Tile,\s*Bar,\s*false>",
+            failures, "missing_q_pages_producer")
     require(perf_source,
-            r"producer_resident_raw_loop<Tile,\s*Bar,\s*true>",
-            failures, "missing_v_dout_sidecar_producer")
+            r"producer_raw_pages_loop<Tile,\s*Bar,\s*true>",
+            failures, "missing_dout_sidecar_pages_producer")
+    require(perf_source,
+            r"publish_consumer_resident_kv<Tile,\s*ConsumerGroup>",
+            failures, "missing_consumer_resident_kv_publication")
     require(perf_source, r"wave_id\s*<\s*4", failures,
             "missing_producer_a_branch")
     require(perf_source, r"wave_id\s*<\s*8", failures,
@@ -95,20 +98,21 @@ def main() -> int:
             failures, "missing_raw_tail_filled_count")
     require(perf_source, r"s_abarrier_init\(Bar::kRawTailUsed,\s*8\)",
             failures, "missing_raw_tail_used_count")
-    require(perf_source, r"publish_mq_slice<Tile,\s*0,\s*kHeadMBlocks>",
-            failures, "missing_qdo_head_publisher")
+    require(perf_source, r"publish_mq_slice<Tile,\s*0,\s*kPageMBlocks>",
+            failures, "missing_qdo_page_publisher")
     require(perf_source,
-            r"publish_mq_slice<Tile,\s*kHeadMBlocks,\s*kTotalMBlocks>",
-            failures, "missing_qdo_tail_publisher")
+            r"packet_q_base\s*\+\s*Tile::kRawPageMq,\s*1,\s*wave_local",
+            failures, "missing_qdo_tail_page_publisher")
     require(perf_source,
-            r"publish_sidecar_slice_to_lds<Tile,\s*0,\s*Tile::kHeadReadyMq>",
-            failures, "missing_sidecar_head_publisher")
+            r"publish_sidecar_slice_to_lds<Tile,\s*0,\s*Tile::kRawPageMq>",
+            failures, "missing_sidecar_page_publisher")
     require(perf_source,
-            r"Tile,\s*Tile::kHeadReadyMq,\s*Tile::kTailReadyMq>",
-            failures, "missing_sidecar_tail_publisher")
+            r"wait_resident_used<Wdra>\(resident_used_phase\)"
+            r"[\s\S]{0,500}publish_sidecar_slice_to_lds",
+            failures, "missing_resident_release_before_sidecar_overlay")
     require(perf_source,
             r"wait_raw_ready<Wdra::kRawTailFilled>[\s\S]{0,500}"
-            r"kHeadMBlocks,\s*kTotalMBlocks",
+            r"q_base\s*\+\s*Tile::kRawPageMq",
             failures, "missing_tail_readiness_before_tail_consume")
     require(perf_source, r"ds_read_matrix_32x16_trans_dual_base_imm2",
             failures, "missing_dual_base_trans_matrix_read")
@@ -142,11 +146,13 @@ def main() -> int:
             r"[\s\S]{0,400}owner16_dv_dk_mmac_from_sources",
             failures, "missing_sidecar_matrix_softmax_pipeline")
     require(perf_source,
-            r"MBlockBase\s*\+\s*1\s*==\s*Tile::kBlockMq\s*/\s*16",
-            failures, "missing_tail_release_contract")
+            r"kReleaseHead\s*=\s*ReleaseHead\s*&&\s*"
+            r"MBlockBase\s*\+\s*1\s*==\s*MBlockEnd",
+            failures, "missing_head_page_release_contract")
     require(perf_source,
-            r"MBlockBase\s*\+\s*1\s*==\s*Tile::kHeadReadyMq\s*/\s*16",
-            failures, "missing_head_release_contract")
+            r"kReleaseTail\s*=\s*ReleaseTail\s*&&\s*"
+            r"MBlockBase\s*\+\s*1\s*==\s*MBlockEnd",
+            failures, "missing_tail_page_release_contract")
     require(perf_source,
             r"read_score_dp_owner16_dblock_pair<Tile,\s*NextMBlock,\s*0>"
             r"[\s\S]{0,500}wait_lgkm\(4\)",
@@ -159,11 +165,12 @@ def main() -> int:
     require(perf_source, r"arrive_raw_used<Wdra::kRawTailUsed>\(\)",
             failures, "missing_tail_lifetime_release")
     require(perf_source,
-            r"wait_raw_used<Wdra::kRawHeadUsed>[\s\S]{0,2400}"
+            r"q_tile\s*>\s*0[\s\S]{0,300}"
+            r"wait_raw_used<Wdra::kRawHeadUsed>[\s\S]{0,900}"
             r"arrive_raw_ready<Wdra::kRawHeadFilled>[\s\S]{0,500}"
-            r"wait_raw_used<Wdra::kRawTailUsed>[\s\S]{0,2400}"
+            r"wait_raw_used<Wdra::kRawTailUsed>[\s\S]{0,900}"
             r"arrive_raw_ready<Wdra::kRawTailFilled>",
-            failures, "missing_split_used_cross_packet_order")
+            failures, "missing_split_page_reuse_order")
     require(perf_source, r"q_tile\s*<\s*q_tiles", failures,
             "missing_q_tile_stream_loop")
     require(perf_source,
@@ -192,10 +199,10 @@ def main() -> int:
             "missing_active_mq128_contract")
     require(contract, r"kBlockMq\s*%\s*kWaveSize\s*==\s*0", failures,
             "missing_full_wave_sidecar_coverage_contract")
-    require(contract, r"kHeadReadyMq\s*=\s*64", failures,
+    require(contract, r"kHeadReadyMq\s*=\s*kRawPageMq", failures,
             "missing_head64_readiness_contract")
     require(contract,
-            r"kTailReadyMq\s*=\s*kBlockMq\s*-\s*kHeadReadyMq",
+            r"kTailReadyMq\s*=\s*kRawPageMq",
             failures, "missing_tail128_readiness_contract")
     require(contract, r"kNkPerConsumerWave\s*=\s*16", failures,
             "missing_owner16_contract")
@@ -211,8 +218,10 @@ def main() -> int:
             "missing_resident_nk_contract")
     require(contract, r"kResidentNk\s*==\s*128", failures,
             "missing_resident_nk128_assert")
-    require(contract, r"kRawBuffers\s*=\s*1", failures,
-            "missing_active_rawbuffer1_contract")
+    require(contract, r"kRawPageMq\s*=\s*64", failures,
+            "missing_raw_page_m64_contract")
+    require(contract, r"kRawPages\s*=\s*2", failures,
+            "missing_two_raw_pages_contract")
     require(source, r"softmax_ds_owner16<ApplyCausalMask>", failures,
             "missing_boundary_selective_softmax_helper")
     require(source,
@@ -224,8 +233,11 @@ def main() -> int:
     require(source,
             r"q_tiles\s*=\s*seqlen\s*/\s*Tile::kBlockMq\s*-\s*k_tile",
             failures, "missing_causal_q_tile_count")
-    require(contract, r"kOverlayRawOnResidentKv", failures,
-            "missing_kv_raw_overlay_contract")
+    require(contract, r"kOverlaySidecarOnResidentKv\s*=\s*true", failures,
+            "missing_sidecar_kv_overlay_contract")
+    require(contract,
+            r"kPlannedLdsBytes\s*==\s*kLdsBudgetBytes",
+            failures, "missing_exact_128kb_lds_contract")
     require(contract, r"kTargetMmacActiveSharePercent\s*=\s*60", failures,
             "missing_active_share_target")
     require(contract, r"kForbidDuplicateScoreDp\s*=\s*true", failures,
@@ -254,8 +266,8 @@ def main() -> int:
            "unsplit_raw_filled_token_must_not_remain")
     forbid(source + contract, r"\bkRawUsed\b", failures,
            "combined_raw_used_token_must_not_remain")
-    require(source, r"publish_resident_tile", failures,
-            "missing_nk128_resident_publisher")
+    require(source, r"publish_consumer_resident_kv", failures,
+            "missing_nk128_consumer_resident_publisher")
     require(source, r"latch_owner16_kv_regs", failures,
             "missing_owner16_kv_latch")
     require(source, r"store_dkv_owner16", failures,
