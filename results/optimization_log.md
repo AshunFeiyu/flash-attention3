@@ -16270,3 +16270,20 @@ Decision: `REJECT_CURRENT_NATIVE_F16_ROUTE / HARD_GATE_CLOSED`.
 - Next: retain only the probe and escalation evidence. Re-open implementation
   after compiler/PMD exposes a documented native conversion, most plausibly
   `DS_MATRIX_TRANSPOSE_4V`, and it passes the same dense test.
+
+## 2026-07-22 Raw Register DS-Matrix Roundtrip
+
+Decision: `OBSERVE_NO_IDENTITY / ESCALATE_PMD_POISON`.
+
+- Added a minimal one-wave probe with unique raw FP16 source bits and no MMAC,
+  ABarrier, cross-wave ownership, scalar LDS read, permutation or FA indexing.
+- Swept four f16 writer forms and five normal/trans reader forms. All 20 pairs
+  fail strict same-lane/same-word identity.
+- For m32 readers, 504/512 outputs are unique members of the source set and
+  eight are `0xfefe`; for m16 readers, 256/512 are source members and 256 are
+  poison. This is deterministic layout redistribution plus model poison, not
+  evidence that the original FA formulas are wrong.
+- Static and PMD transport gates pass: SGPR16/VGPR13, private/spill0, bank0,
+  `simTicks=4,986,800`. PMD emits explicit matrix-instruction testing warnings.
+- Keep the probe isolated. Escalate the exact writer source-layout and reader
+  destination-layout contract, and validate any answer with the dense oracle.

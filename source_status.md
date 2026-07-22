@@ -10442,3 +10442,21 @@ Status: `BLOCKED_CURRENT_COMPILER_PMD_CONTRACT`; production source unchanged.
   five GEMMs. Do not add a fused kernel, duplicate GEMM, gather, bpermute,
   mpermute or scalar matrix-read workaround. Await a documented compiler/PMD
   contract and re-run the same dense oracle.
+
+## 2026-07-22 Register-To-LDS Roundtrip Isolated
+
+Status: `OBSERVE_LAYOUT_REMAP_AND_PMD_POISON`; production source unchanged.
+
+- Added a one-wave bitwise probe for
+  `A-reg -> f16 ds_write_matrix -> LDS -> normal/trans ds_read_matrix -> A1-reg`.
+- All 20 writer/reader builtin combinations execute with SGPR16/VGPR13,
+  private/spill/scratch0, no scalar matrix reads or permutations, and bank0.
+- No pair returns the same lane/word fragment. m32 readers recover 504 unique
+  source words but expose eight `0xfefe` poison slots; m16 readers recover 256
+  words for this m32 source shape. PMD labels both matrix paths as testing.
+- Evidence:
+  `/zys/sb/fa3b/layout_probes/ds_matrix_reg_roundtrip_20260722_200230` and
+  `results/ds_matrix_reg_roundtrip_20260722.md`.
+- This proves the naive register-identity assumption false on the current
+  model. It does not replace the dense semantic MMAC oracle for a documented
+  writer/reader pairing.
