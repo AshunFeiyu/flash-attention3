@@ -1,5 +1,20 @@
 # Optimization Log
 
+## 2026-07-23 Native FP32 Global Atomic Focused Gate
+
+- Status: `ACCEPT_FOCUSED_INSTRUCTION_GATE / INTEGRATION_PENDING`.
+- Knowledge and compiler source agree that Shaobo has native F32 global atomic
+  add. `BuiltinsHCU.def` declares
+  `__builtin_hcu_global_atomic_fadd_f32` with signature `ff*1f`.
+- The probe compiles to one `global_atomic_add_f32 v0, v1, s[0:1]` and no
+  `atomic_cmpswap`. PMD validates 64 contending lanes over 16 addresses with
+  expected value4 and zero mismatches.
+- Static resources are SGPR10/VGPR2, private/spill0; runtime bank conflict is
+  zero. Integrate as a one-primitive A/B against commit `c5fa5b9`; do not
+  change output ownership or the batch-dS conveyor in the same experiment.
+
+Evidence: `/zys/sb/fa3b/native_f32_atomic_20260723_065926`.
+
 ## 2026-07-23 Batch-dS Resident-K Conveyor Accepted
 
 - Status: `ACCEPT_EXACT_BATCH_DS_CHECKPOINT / MMAC50_OPEN`.

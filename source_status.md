@@ -1,5 +1,22 @@
 # Source Status
 
+## 2026-07-23 Native FP32 Global Atomic Gate Passed
+
+Status: `ACCEPT_FOCUSED_INSTRUCTION_GATE / INTEGRATION_PENDING`.
+
+- Latest `BuiltinsHCU.def` exposes
+  `__builtin_hcu_global_atomic_fadd_f32(float*, float)` for Shaobo. The focused
+  probe emits one real `global_atomic_add_f32` and zero `atomic_cmpswap`.
+- PMD runs 64 lanes contending on 16 FP32 addresses; all outputs equal 4 with
+  zero mismatches. Metadata is SGPR10/VGPR2, private/spill/scratch0 and bank0.
+- This proves the current canonical HIP `atomicAdd` software-CAS lowering is
+  avoidable on `GPU_CHIP=sb`. The next commit may replace only the dQ atomic
+  primitive; formula, ownership, MMOP, LDS and barriers must stay unchanged.
+- Multi-die atomic scope is not proved by this single-die gate. `sbx4` remains
+  a separate correctness/ownership problem.
+
+Evidence: `/zys/sb/fa3b/native_f32_atomic_20260723_065926`.
+
 ## 2026-07-23 Batch-dS / Resident-K Conveyor Promoted
 
 Status: `ACCEPT_EXACT_BATCH_DS_CHECKPOINT / MMAC50_OPEN`.

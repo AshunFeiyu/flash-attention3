@@ -1,5 +1,19 @@
 # Client
 
+## 2026-07-23 Native Atomic Integration Rule
+
+- `atomicAdd(float*)` in the canonical kernel lowers to a software
+  `global_atomic_cmpswap` loop, but the latest Shaobo compiler provides
+  `__builtin_hcu_global_atomic_fadd_f32`.
+- Focused proof `/zys/sb/fa3b/native_f32_atomic_20260723_065926` emits one
+  native `global_atomic_add_f32`, no CAS, and passes PMD contention
+  correctness with SGPR10/VGPR2, private/spill0 and bank0.
+- The next kernel experiment may replace only the atomic primitive. Exact five
+  GEMMs, unique D16 partial ownership, WDRA, LDS and ABarrier graph are fixed.
+  Promote only after S128/S1024 c0+c1 correctness and same-work fullperf/xcu.
+- This is single-die evidence only. Do not infer cross-die atomic correctness
+  for `sbx4`.
+
 ## 2026-07-23 Canonical 5-GEMM Batch-dS Checkpoint
 
 - Active source is one exact 12-wave 5-GEMM kernel. Consumers latch resident
