@@ -1,5 +1,26 @@
 # Source Status
 
+## 2026-07-22 dKV Store-Tail Experiments Closed
+
+Status: `OBSERVE_COMPILER_VARIANCE_AND_REJECT_WORKAROUNDS`; canonical source
+restored at `d1e1aa9`.
+
+- Old LLVM47a7 and current e0f10535 canonical dKV machine instructions are
+  identical after debug/CUID normalization.  Store count, address/data cycles
+  and output bytes are exact.  Matched consumer waves do not reproduce a new-
+  compiler tail regression.
+- C1 reversed store order failed paired A/B stability.  Final-q-tile early
+  drain passed numerical and static resource gates, but the compact variant
+  regressed all three S1024 pairs with paired median `+1.306%`; MMAC active
+  fell `38.4912% -> 37.5363%`, SCA rose `38048 -> 39800`, and FLAT/VMEM stayed
+  exact.  No candidate code remains in the canonical path.
+- Do not roll back the compiler, introduce FP32 LDS matrix-store handoffs, or
+  split stores into the last MMAC island.  Continue from direct vector stores
+  and attack pre-store consumer/AllDone convergence using same-build SQTT.
+- Evidence: `/zys/sb/e0f_earlydrain2_ab`,
+  `work/evidence/e0f10535_toolchain_audit/tail_wavepair`, workbook 219, and
+  `results/dkv_global_store_tail_e0f_20260722.md`.
+
 ## 2026-07-22 LLVM e0f10535 Baseline Reset
 
 Status: `ACCEPT_TOOLCHAIN_BASELINE_RESET`; canonical kernel source unchanged.

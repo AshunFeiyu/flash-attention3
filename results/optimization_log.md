@@ -16154,3 +16154,24 @@ Status: `ACCEPT_TOOLCHAIN_BASELINE_RESET`; no kernel source optimization.
   build both control and candidate with e0f10535. Workbook 218 and shared
   archive `20260722_061614_latest_e0f10535_h1s1024_dkv_dq_fullperf` contain
   the complete evidence.
+
+## 2026-07-22 dKV Global-Store Tail Audit And Workaround Rejection
+
+Status: `OBSERVE_NO_CODEGEN_REGRESSION_REJECT_EPILOGUE_WORKAROUNDS`.
+
+- Normalized LLVM47a7/e0f10535 assembly has the same canonical dKV target
+  instructions.  Direct `global_store_dwordx4`, address generation, registers,
+  output bytes, SpTaData `16384` and SpTaAddr `4384` are exact.
+- Aggregate store latency varies old/new as `217728 / 221452 / 218652`, but
+  matched-wave last-MMAC-to-last-store improves `2904 -> 2888` and
+  `4872 -> 4672` under e0f.  This is PMD VMEM arbitration and terminal consumer
+  convergence variance, not a compiler store-codegen regression.
+- C1 reversed store ordering was rejected after interleaved A/B.  A final-q-
+  tile early-drain workaround was also rejected: the compact static-MMAC1028
+  form passes S128 correctness, branch `162/168`, private/spill/scratch0 and
+  bank0, but all three S1024 pairs regress `1.452% / 1.306% / 1.300%`.
+  Median active falls `38.4912% -> 37.5363%`; SCA rises `38048 -> 39800` while
+  MMOP/FLAT/VMEM remain exact.
+- Restore canonical source.  Keep latest e0f10535 plus direct vector stores.
+  The next useful hypothesis must reduce pre-store consumer skew or terminal
+  AllDone convergence without splitting the final MMAC island.

@@ -1,5 +1,44 @@
 # Client
 
+## 2026-07-22 dKV New-Compiler Store Tail Diagnosed
+
+- LLVM47a7 and e0f10535 emit the same canonical dKV target instruction stream,
+  including identical direct `global_store_dwordx4` ordering and address
+  generation.  Dynamic store count and SpTa data/address cycles are exact.
+- The apparent e0f store-tail increase is PMD VMEM arbitration plus consumer
+  convergence variance.  A representative wave is actually faster under e0f:
+  last-MMAC-to-last-store `2904 -> 2888 cycles`; another matched wave improves
+  `4872 -> 4672`.
+- Reversing C1's dK/dV store order was statistically flat/slower.  A final-tile
+  half-store drain passed correctness and resource gates but regressed all
+  three S1024 pairs by a paired median `1.306%`, lowered MMAC active about
+  `0.955pp`, and raised SCA `38048 -> 39800` while FLAT/VMEM stayed exact.
+- Canonical source is restored.  Keep e0f10535 and direct vector stores; target
+  consumer completion skew and AllDone arrival before attempting another
+  epilogue change.  Full evidence is in
+  `results/dkv_global_store_tail_e0f_20260722.md` and workbook sheet 219.
+
+Skill Candidate:
+
+- Trigger / 适用场景: a compiler update appears to lengthen a global-store tail
+  in a single SQTT visualization.
+- Rule / 可复用规则: first compare normalized target assembly, exact dynamic
+  store/address/data counts, repeated fullperf and the same wave/location.
+  Do not rewrite the epilogue when the instruction stream is identical and the
+  matched-wave tail does not reproduce the regression.
+- Evidence / 证据: LLVM47a7/e0f10535 canonical dKV A/B, workbook 219.  Target
+  instructions and traffic are exact; matched-wave tails improve under e0f.
+  Store striping is flat, while compact early drain regresses paired S1024
+  ticks `1.306%` and active about `0.955pp`.
+- Boundary / 适用边界: PMD/SQTT comparisons with fixed source, PMD, chip and
+  runtime flags.  Real silicon or changed machine instructions require a new
+  audit.
+- Counterexample / 反例或不适用情况: normalized assembly changes store width,
+  order, waits, address generation or register allocation and the regression
+  reproduces on matched waves and repeated ticks.
+- Proposed Target / 建议进入哪个 skill 或 reference: `shaobo` SQTT/compiler
+  evidence reference during serialized skill consolidation.
+
 ## 2026-07-22 Latest Compiler Is Now The Only Optimization Baseline
 
 - The rolling perf-model package advanced after the LLVM47a7 audit. Canonical
