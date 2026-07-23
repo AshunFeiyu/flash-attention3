@@ -2,7 +2,7 @@
 
 ## Decision
 
-Status: `CANONICAL_INTEGRATION_READY`.
+Status: `ACCEPT_CANONICAL_SINGLE_DS_PUBLICATION_MMAC50_OPEN`.
 
 Keep the existing q-owned score/dP orientation and its FP16-output MMAC
 source slots. Do not switch the production kernel to K/V-left score ownership.
@@ -76,3 +76,34 @@ peak because the 16 KiB P scratch remains live.
 - Main matrix path remains native MLS/BPS + `ds_read_matrix` + MMAC.
 - Same-shape ticks decrease and SQTT attributes the change to the removed dS
   local bridge rather than shifted ownership debt.
+
+## Canonical Integration Result
+
+- Static build passes at role `8/190/189` inside WDRA `24/240/240`,
+  SGPR100/VGPR168, LDS115,456 B, private/spill/scratch0.
+- H1/S128 causal and noncausal pass; H1/S1024 causal passes with exact
+  `MMOP=92,160`, bank0 and no PMD VGPR warning.
+- Fullperf versus the locked same-toolchain control:
+  - kernel ticks `103,895,610 -> 102,105,640` (`-1.722854%`)
+  - MMAC active `16.480234% -> 16.817606%` (`+0.337372 pp`)
+  - dynamic LDS `75,808 -> 73,504`
+  - `s_waitcnt` issues `34,976 -> 30,656`
+  - ABarrier share `27.558803% -> 23.536976%`
+- XCU attributes the remaining top bubble to `RawUsed` barrier id4. The
+  producer waits `11,687` cycles in the selected window with `99.99%`
+  pipeline bubble; the locked control maximum was `12,395` cycles.
+- The hypothesis is accepted because ticks, matrix traffic and exposed
+  ownership wait all improve. It is not the 50% target: failed coissue rises
+  `6,621 -> 10,224`, VM wait rises `1.768743% -> 3.374652%`, and the combined
+  Q/dO `RawUsed` lifetime remains the dominant structural blocker.
+- Fullperf:
+  `/zys/sb/fa3b/single_ds_fullperf/5gemm_owner_s1024_c1_fullperf_20260723_142126`.
+- XCU:
+  `/zys/sb/fa3b/xcu_outputs/5gemm_single_ds_s1024_20260723`.
+- Shared archive:
+  `/共享/shaobo/perf/20260723_142126_fused5_single_ds_publish_h1s1024_sqc7_fullperf`.
+
+Next gate: split Q and dO release without adding an LDS stage. dO is dead
+after dV; Q is needed through dK. First test a post-dV Q-fragment latch against
+the 240-VGPR role budget, then release the raw page before dK. Do not implement
+Q2/dO1 LDS buffering because its current budget is 132,608 B.

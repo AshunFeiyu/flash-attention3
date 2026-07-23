@@ -51,6 +51,7 @@ union Fragment {
 union Accumulator {
     ins::Vec4F32 f32;
     float scalar[4];
+    uint64_t u64[2];
 };
 
 struct ResidentFragments {
@@ -319,12 +320,12 @@ __device__ __forceinline__ void softmax_ds_stage(
 
 __device__ __forceinline__ void zero_dkv_accumulators(
     Accumulator (&dv_acc)[8], Accumulator (&dk_acc)[8]) {
-    ins::F16x8 zero;
-    ins::zero_f16x8(zero);
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
-        dv_acc[i].f32 = zero.f32;
-        dk_acc[i].f32 = zero.f32;
+        ins::zero_vgpr2(dv_acc[i].u64[0]);
+        ins::zero_vgpr2(dv_acc[i].u64[1]);
+        ins::zero_vgpr2(dk_acc[i].u64[0]);
+        ins::zero_vgpr2(dk_acc[i].u64[1]);
     }
 }
 
@@ -407,7 +408,7 @@ __device__ __forceinline__ void atomic_store_dq_d16(
 }
 
 template <int Group>
-__device__ __forceinline__ void finish_dkv_panel(
+__device__ __forceinline__ void finish_p_dv_panel(
     const __half* lds,
     __half* mutable_lds,
     int q_base,
@@ -417,12 +418,10 @@ __device__ __forceinline__ void finish_dkv_panel(
     int causal,
     float softmax_scale,
     int lane,
-    const ResidentFragments& resident,
     const Fragment& score,
     const Fragment& dp,
     Fragment& retained_ds,
-    Accumulator (&dv_acc)[8],
-    Accumulator (&dk_acc)[8]) {
+    Accumulator (&dv_acc)[8]) {
     static_assert(Group == 0 || Group == 1);
     const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
 
@@ -450,29 +449,31 @@ __device__ __forceinline__ void finish_dkv_panel(
         ins::wait_lgkm(0);
         update_dv_stage(p_normal, dout_normal, dv_acc);
     }
-
-    ins::ds_write_matrix_32x16_trans_f16(retained_ds.f16x8, mutable_lds,
-                                         page);
-    ins::wait_lgkm(0);
-
-    {
-        Fragment ds_normal{};
-        Fragment q_normal[kMatrixBlocksD];
-        ins::ds_read_matrix_32x16_normal(lds, page, ds_normal.f16x8);
-        read_raw_panel_normal<LdsLayout::kQBase>(lds, m_block, q_normal);
-        ins::wait_lgkm(0);
-        update_dk_stage(ds_normal, q_normal, dk_acc);
-    }
 }
 
 template <int MBlock, int Group>
-__device__ __forceinline__ void publish_batch_ds(
+__device__ __forceinline__ void publish_final_ds(
     const Fragment& ds,
     __half* lds,
     int owner) {
     const int page = batch_ds_group_offset<MBlock, Group>() +
                      owner * Tile::kWriterPageBytes;
     ins::ds_write_matrix_32x16_trans_f16(ds.f16x8, lds, page);
+}
+
+template <int MBlock, int Group>
+__device__ __forceinline__ void update_dk_from_final_ds(
+    const __half* lds,
+    int owner,
+    Accumulator (&dk_acc)[8]) {
+    const int page = batch_ds_group_offset<MBlock, Group>() +
+                     owner * Tile::kWriterPageBytes;
+    Fragment ds_normal{};
+    Fragment q_normal[kMatrixBlocksD];
+    ins::ds_read_matrix_32x16_normal(lds, page, ds_normal.f16x8);
+    read_raw_panel_normal<LdsLayout::kQBase>(lds, MBlock, q_normal);
+    ins::wait_lgkm(0);
+    update_dk_stage(ds_normal, q_normal, dk_acc);
 }
 
 __device__ __forceinline__ void zero_dq_accumulators(
@@ -566,23 +567,28 @@ __device__ __forceinline__ void run_consumer_group(
             ins::raise_priority_2();
             score_dp_stage(lds, m_block, resident, score, dp);
             ins::lower_priority();
-            finish_dkv_panel<Group>(
+            finish_p_dv_panel<Group>(
                 lds, mutable_lds, q_base, m_block, k_base, owner, causal,
-                softmax_scale, lane, resident, score, dp,
-                ds_panels[m_block], dv_acc, dk_acc);
+                softmax_scale, lane, score, dp, ds_panels[m_block], dv_acc);
         }
 
-        ins::abarrier_arrive_cnt<false>(Bar::kRawUsed, 1);
         if (qi != 0) {
             ins::abarrier_try_wait<true>(Bar::kKvDsUsed, kv_ds_used_phase);
         }
 
-        publish_batch_ds<0, Group>(ds_panels[0], mutable_lds, owner);
-        publish_batch_ds<1, Group>(ds_panels[1], mutable_lds, owner);
-        publish_batch_ds<2, Group>(ds_panels[2], mutable_lds, owner);
-        publish_batch_ds<3, Group>(ds_panels[3], mutable_lds, owner);
+        publish_final_ds<0, Group>(ds_panels[0], mutable_lds, owner);
+        publish_final_ds<1, Group>(ds_panels[1], mutable_lds, owner);
+        publish_final_ds<2, Group>(ds_panels[2], mutable_lds, owner);
+        publish_final_ds<3, Group>(ds_panels[3], mutable_lds, owner);
         ins::wait_lgkm(0);
         ins::abarrier_arrive_cnt<false>(kLocalBatchFilled, 1);
+
+        update_dk_from_final_ds<0, Group>(lds, owner, dk_acc);
+        update_dk_from_final_ds<1, Group>(lds, owner, dk_acc);
+        update_dk_from_final_ds<2, Group>(lds, owner, dk_acc);
+        update_dk_from_final_ds<3, Group>(lds, owner, dk_acc);
+        ins::abarrier_arrive_cnt<false>(Bar::kRawUsed, 1);
+
         int local_wait_phase = batch_filled_phase;
         ins::abarrier_try_wait<true>(kLocalBatchFilled,
                                      local_wait_phase);

@@ -10985,3 +10985,29 @@ Status: `REJECT_CURRENT_SCORE_OWNERSHIP / CANONICAL_RESTORED`.
   `5b8f550397ae0b0306b70782343816ecc89c1ec5f4352d294d0247244ef3ea4a`.
   Next gate is only the missing K/V-left dS-publication-to-dQ proof, not
   another direct-dKV or wait-deletion experiment.
+
+## 2026-07-23 Single Final dS Canonical Checkpoint
+
+Status: `ACCEPT_CANONICAL_SINGLE_DS_PUBLICATION / MMAC50_OPEN`.
+
+- Canonical q-owned score/dP is retained. The local dS writer/readback before
+  dK is removed; four retained dS fragments are written once to the final
+  page, normal-read for dK and trans-read for dQ.
+- Explicit 64-bit accumulator zeroing avoids a compiler-generated loop-entry
+  PHI that PMD reported as 224 uninitialized-VGPR reads. Final static result
+  is role8/190/189 inside24/240/240, SGPR100/VGPR168, LDS115,456 B and
+  private/spill/scratch0.
+- S128 causal/noncausal and S1024 causal pass with exact MMOP92,160, bank0,
+  panic0 and VGPR warning0.
+- Fullperf is 102,105,640 ticks and 16.817606% MMAC active versus the locked
+  103,895,610 / 16.480234% control. XCU duration falls 228,344 -> 224,408,
+  ABarrier share falls 27.558803% -> 23.536976%, and dynamic LDS falls
+  75,808 -> 73,504.
+- Remaining critical edge is barrier id4 `RawUsed`, not final dS publication.
+  One selected producer window is 11,687 cycles and 99.99% bubble while its
+  peer consumer waves execute MMAC/VALU and atomics.
+- Evidence:
+  `/zys/sb/fa3b/single_ds_fullperf/5gemm_owner_s1024_c1_fullperf_20260723_142126`;
+  `/zys/sb/fa3b/xcu_outputs/5gemm_single_ds_s1024_20260723`.
+- Next source hypothesis must split dO and Q lifetime. Do not add Q2/dO1 in
+  LDS; the current P bridge makes that layout 132,608 B.

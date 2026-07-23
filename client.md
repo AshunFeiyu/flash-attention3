@@ -5666,3 +5666,17 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
 - FA4 lag-one is deferred until a two-generation LDS/VGPR ledger passes;
   Blackwell TMEM/UMMA/2-CTA mechanisms are not assumed to exist on Shaobo.
 - Audit: `docs/tridao_fa3_fa4_bwd_source_audit_20260723.md`.
+
+## 2026-07-23 Single Final dS Publication
+
+- Accepted canonical change: retain dS in VGPR, publish it once into the final
+  page, normal-read that page for dK and trans-read it for dQ. Keep the P
+  bridge.
+- Fullperf H1/S1024 causal improves `103,895,610 -> 102,105,640` ticks and
+  `16.480234% -> 16.817606%` MMAC active. Correctness, exact MMOP, zero
+  spill/private and bank0 all pass.
+- XCU proves the next bottleneck is combined Q/dO `RawUsed`, barrier id4:
+  producer top wait `11,687` cycles at `99.99%` bubble. Split Q/dO lifetime
+  next; do not add an over-budget 132,608 B Q2/dO1 LDS design.
+- Evidence:
+  `/zys/sb/fa3b/xcu_outputs/5gemm_single_ds_s1024_20260723`.

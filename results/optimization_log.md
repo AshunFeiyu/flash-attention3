@@ -16744,3 +16744,25 @@ Production integration result:
   `/zys/sb/fa3b/layout_probes_kv_left_sweep/dq_native_ds_dense_sweep_20260723_132254`;
   `/zys/sb/fa3b/layout_probes_kv_left/dq_mpair_20260723_133734`;
   `/zys/sb/fa3b/layout_probes_d128_f16/dq_native_ds_dense_20260723_134433`.
+
+## 2026-07-23 - Canonical single final dS publication
+
+- Classification: `ACCEPT_CANONICAL_SINGLE_DS_PUBLICATION_MMAC50_OPEN`.
+- dS stays live across the four M16 panels, is published once into the final
+  dS page, then is normal-read by dK and trans-read by dQ. The P ownership
+  bridge remains, so useful work is still exactly five GEMMs.
+- Static and correctness gates pass: role8/190/189, SGPR100/VGPR168,
+  LDS115,456 B, private/spill/scratch0, H1/S128 c0+c1 PASS, H1/S1024 c1 PASS,
+  MMOP92,160, bank0 and PMD VGPR warning0.
+- Fullperf improves `103,895,610 -> 102,105,640` ticks (`-1.722854%`) and
+  `16.480234% -> 16.817606%` MMAC active. Dynamic LDS falls
+  `75,808 -> 73,504`; ABarrier share falls `27.558803% -> 23.536976%`.
+- XCU confirms the removed local dS bridge shortened ownership latency, but
+  the top remaining barrier is producer `RawUsed` id4: `11,687` cycles and
+  `99.99%` bubble in the selected window. Failed coissue and VM wait regress,
+  so the pipeline is not yet close to the 50% target.
+- Evidence:
+  `/zys/sb/fa3b/single_ds_fullperf/5gemm_owner_s1024_c1_fullperf_20260723_142126`;
+  `/zys/sb/fa3b/xcu_outputs/5gemm_single_ds_s1024_20260723`.
+- Next: resource-gate Q fragments in VGPR after dV, release combined raw LDS
+  before dK, and keep Q2/dO1 LDS staging rejected at 132,608 B.
