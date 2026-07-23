@@ -1,5 +1,23 @@
 # Optimization Log
 
+## 2026-07-23 M128 Ownership-Epoch Reduction Rejected
+
+- Status: `REJECT_PERF_CONTROL_EXPLOSION`.
+- M128 phases K/V latch -> raw Q/dO -> full-LDS dS, so every byte has one
+  explicit owner and the exact five-GEMM work remains MMOP92,160.
+- Resource exploration was informative: full unroll causes SGPR spill32;
+  disabling unroll with a dynamic fragment array causes 144B private memory.
+  One loop body plus six named dS fragments passes at SGPR63/VGPR168,
+  role15/185/184, private/spill/scratch0 and bank0.
+- Correctness passes S128 c0/c1 and S1024 c1, but S1024 ticks regress
+  103,895,610 -> 136,609,655 (+31.49%) and active falls 16.480234% ->
+  12.394543%. Halving ownership epochs saves too little barrier time to repay
+  VALU/SCA growth and loss of the hidden next-raw window.
+- Restore a108ec7. Revisit larger M only if source publication can remain
+  overlapped and panel dispatch stays compile-time regular without spills.
+
+Evidence: `/zys/sb/fa3b/5gemm_symmetric_s1024_c1_20260723_084158`.
+
 ## 2026-07-23 FWD Priority Cadence Accepted; Batched Score Rejected
 
 - Status: `ACCEPT_FWD_PRIORITY_CADENCE / MMAC50_OPEN`.

@@ -1,5 +1,29 @@
 # Source Status
 
+## 2026-07-23 M128 Phased-LDS Candidate Rejected
+
+Status: `REJECT_PERF_CONTROL_EXPLOSION / SOURCE_RESTORE_REQUIRED`.
+
+- Workbook sheet `18 M128 Lifetime Stress` tested M128/N128/D128 to double
+  useful work per ownership epoch and halve causal S1024 q epochs from 72 to
+  36 without changing the exact 92,160 MMOP workload.
+- The native phased LDS design is valid: consumers latch resident K/V, raw
+  Q/dO uses 64KB, panel scratch and sidecar bring the raw phase to 83,456B,
+  and eight dS panels later occupy the full 128KB. Panels0/1 publish into the
+  high 32KB before raw release; panels2-7 use named VGPR fragments.
+- S128 causal/noncausal and S1024 causal pass with bank0. The final static gate
+  is SGPR63/VGPR168, role15/185/184, private/spill/scratch0. Intermediate
+  forms proved the compiler boundary: full panel unroll spills 32 SGPRs;
+  dynamic `ds_panels[8]` allocates 144B private memory.
+- Performance rejects the architecture: H1/S1024 causal is 136,609,655 ticks
+  and 12.394543% MMAC active versus the a108ec7 control at 103,895,610 ticks
+  and 16.480234%. VALU rises 182,880 -> 310,208 and SCA 40,400 -> 101,232;
+  barrier share only falls 27.559% -> 26.390%.
+- Do not merge the M128 source. The next design must increase island size
+  without runtime panel dispatch or losing the hidden next-raw publication.
+
+Evidence: `/zys/sb/fa3b/5gemm_symmetric_s1024_c1_20260723_084158`.
+
 ## 2026-07-23 FWD-Style Per-Panel Priority Promoted
 
 Status: `ACCEPT_FWD_PRIORITY_CADENCE / MMAC50_OPEN`.

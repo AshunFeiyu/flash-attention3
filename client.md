@@ -1,5 +1,20 @@
 # Client
 
+## 2026-07-23 M128 Negative Boundary
+
+- Do not promote M128/N128/D128. It is mathematically exact, correctness
+  passes, and phased LDS reaches 128KB with no bank conflict, but the only
+  spill-free expression requires runtime panel dispatch.
+- Measured H1/S1024 causal result is `136,609,655` ticks and `12.394543%`
+  active, versus best M64 `103,895,610 / 16.480234%`. VALU and SCA expand by
+  about 70% and 151%; ownership/barrier share improves by only 1.17pp.
+- Preserve tag `best/fused5-prio-m64-20260723`. A larger tile is admissible
+  only when it keeps compile-time-regular matrix islands and the next Q/dO
+  publication overlap; fewer tokens alone are not sufficient.
+
+Evidence: `/zys/sb/fa3b/5gemm_symmetric_s1024_c1_20260723_084158` and workbook
+sheet `18 M128 Lifetime Stress`.
+
 ## 2026-07-23 FWD Priority Cadence Checkpoint
 
 - Canonical scheduling now follows FWD: each M16 panel raises priority2 for
