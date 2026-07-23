@@ -1,5 +1,21 @@
 # Client
 
+## 2026-07-23 Single Final dS Publication Admitted
+
+- The K/V-left direct dV/dK oracle cannot natively publish the q-owned dQ
+  source view. A 20-format D128 sweep and an adjacent-M pair probe both fail,
+  so production score/dP ownership remains unchanged.
+- The current q-owned FP16 MMAC writer/read contract is exact: one final dS
+  page can be read normal for dK and transposed for dQ.
+- Next canonical edit removes only the duplicate local dS write/read. The P
+  bridge remains, exact five-GEMM work remains, and LDS remains 115,456B.
+- Q2/dO1 is not yet legal: with the retained 16 KiB P scratch it would require
+  132,608B. Do not claim lag-one or LDS reduction from the single-publication
+  change.
+- Design and probe evidence:
+  `results/fused5_single_ds_publication_gate_20260723.md`, workbook sheets
+  `25-28`.
+
 ## 2026-07-23 Direct-RS Transfer Boundary
 
 - Tri Dao's D128 P-to-dV and dS-to-dK register-source path is not directly

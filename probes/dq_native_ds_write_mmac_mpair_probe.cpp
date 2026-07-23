@@ -14,6 +14,14 @@ namespace {
 using Vec4F16 = __attribute__((__vector_size__(4 * sizeof(_Float16)))) _Float16;
 using Vec8F16 = __attribute__((__vector_size__(8 * sizeof(_Float16)))) _Float16;
 
+#ifndef SHAOBO_DQ_MPAIR_KV_LEFT
+#define SHAOBO_DQ_MPAIR_KV_LEFT 0
+#endif
+
+static_assert(SHAOBO_DQ_MPAIR_KV_LEFT == 0 ||
+                  SHAOBO_DQ_MPAIR_KV_LEFT == 1,
+              "K/V-left ownership must be disabled or enabled");
+
 constexpr int kWaveSize = 64;
 constexpr int kReaderPageElems = 64 * 16;
 constexpr int kMmacModeCount = 4;
@@ -174,6 +182,16 @@ __global__ void __launch_bounds__(kWaveSize, 1)
     ins::F32x4 m1_lit0_lts1{};
     ins::F32x4 m0_lit1_lts1{};
     ins::F32x4 m1_lit1_lts1{};
+#if SHAOBO_DQ_MPAIR_KV_LEFT
+    m0_lit0_lts0.f32 = mmac_mode<0, 0>(score_k, q_m0, zero.f32);
+    m1_lit0_lts0.f32 = mmac_mode<0, 0>(score_k, q_m1, zero.f32);
+    m0_lit1_lts0.f32 = mmac_mode<1, 0>(score_k, q_m0, zero.f32);
+    m1_lit1_lts0.f32 = mmac_mode<1, 0>(score_k, q_m1, zero.f32);
+    m0_lit0_lts1.f32 = mmac_mode<0, 1>(score_k, q_m0, zero.f32);
+    m1_lit0_lts1.f32 = mmac_mode<0, 1>(score_k, q_m1, zero.f32);
+    m0_lit1_lts1.f32 = mmac_mode<1, 1>(score_k, q_m0, zero.f32);
+    m1_lit1_lts1.f32 = mmac_mode<1, 1>(score_k, q_m1, zero.f32);
+#else
     m0_lit0_lts0.f32 = mmac_mode<0, 0>(q_m0, score_k, zero.f32);
     m1_lit0_lts0.f32 = mmac_mode<0, 0>(q_m1, score_k, zero.f32);
     m0_lit1_lts0.f32 = mmac_mode<1, 0>(q_m0, score_k, zero.f32);
@@ -182,6 +200,7 @@ __global__ void __launch_bounds__(kWaveSize, 1)
     m1_lit0_lts1.f32 = mmac_mode<0, 1>(q_m1, score_k, zero.f32);
     m0_lit1_lts1.f32 = mmac_mode<1, 1>(q_m0, score_k, zero.f32);
     m1_lit1_lts1.f32 = mmac_mode<1, 1>(q_m1, score_k, zero.f32);
+#endif
 
     const Vec8F16 source = select_source(
         mmac_mode_id, join_mpair(m0_lit0_lts0, m1_lit0_lts0),
@@ -276,6 +295,8 @@ int main() {
                     h_out[best_slot], mmac_names[mode], writer_names[writer],
                     reader_names[reader]);
     }
+    std::printf("native_ds_write_mmac_mpair_owner=%s\n",
+                SHAOBO_DQ_MPAIR_KV_LEFT ? "kv_left" : "q_left");
     std::printf("native_ds_write_mmac_mpair_any_pass=%d\n",
                 any_pass ? 1 : 0);
     std::printf("native_ds_write_mmac_mpair_no_pack_pass=%d\n",

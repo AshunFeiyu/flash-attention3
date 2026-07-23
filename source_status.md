@@ -1,5 +1,24 @@
 # Source Status
 
+## 2026-07-23 Single Final dS Publication Ready
+
+Status: `CANONICAL_INTEGRATION_READY / PERF_NOT_CLAIMED`.
+
+- K/V-left direct dV/dK remains an isolated oracle, not a composable
+  production ownership. All 20 native dS publication formats fail dQ, and the
+  adjacent-M source-slot probe still has 448 mismatches in its best case.
+- The q-owned FP16-output MMAC path is exact through native dS writer, normal
+  dK reader and transposed dQ reader. Stress-value FP16-vs-FP32 relative-L2 is
+  `4.26e-4` for score, `4.10e-4` for dP, `1.16e-4` for causal P and
+  `5.47e-4` for causal dS.
+- The admitted canonical hypothesis is one final dS publication. Retain the P
+  bridge, retain exact five-GEMM ownership, write dS once into the K/V-aliased
+  final page, read it normal for dK and later transposed for dQ.
+- No canonical source has changed yet. LDS remains 115,456B; Q2/dO1 remains
+  rejected at 132,608B until P or dS storage is compacted.
+
+Evidence: `results/fused5_single_ds_publication_gate_20260723.md`.
+
 ## 2026-07-23 M128 Phased-LDS Candidate Rejected
 
 Status: `REJECT_PERF_CONTROL_EXPLOSION / SOURCE_RESTORE_REQUIRED`.

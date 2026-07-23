@@ -16722,3 +16722,25 @@ Production integration result:
   score/dP ownership publication probe. Reuse `src/dkv_kernel.cpp` as the
   accepted K/V-left direct dV/dK oracle; prove only its dS fragment can be
   published once and consumed by dQ.
+
+## 2026-07-23 - Native dS publication ownership closure
+
+- Classification:
+  `REJECT_KV_LEFT_PUBLICATION / ACCEPT_Q_LEFT_SINGLE_PUBLISH_GATE`.
+- A D128 K/V-left sweep tested 20 native writer/reader combinations; every
+  combination fails dQ publication. An adjacent-M source-slot join also finds
+  no exact pair; the best result has 448 mismatches with SGPR14/VGPR37,
+  spill/private0 and bank0.
+- The q-left FP16-output MMAC path remains exact through native dS write,
+  normal dK read and transposed dQ read. Stress-value FP16 accumulation versus
+  FP32 has relative-L2 below `5.5e-4` for score, dP, causal P and causal dS.
+- This closes the transposed score/dP production rewrite. The next minimal
+  canonical experiment writes dS only once to the final batch page and reuses
+  that page for dK and dQ. The P bridge stays unchanged.
+- Resource correction: this removes a synchronization/data-motion chain but
+  does not lower the 115,456B peak because P still occupies a 16 KiB scratch.
+  Q2/dO1 would currently require 132,608B and is not admitted.
+- Evidence:
+  `/zys/sb/fa3b/layout_probes_kv_left_sweep/dq_native_ds_dense_sweep_20260723_132254`;
+  `/zys/sb/fa3b/layout_probes_kv_left/dq_mpair_20260723_133734`;
+  `/zys/sb/fa3b/layout_probes_d128_f16/dq_native_ds_dense_20260723_134433`.

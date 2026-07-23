@@ -45,6 +45,14 @@ namespace {
 #define SHAOBO_DENSE_HEAD_DIM 32
 #endif
 
+#ifndef SHAOBO_DENSE_KV_LEFT_OWNER
+#define SHAOBO_DENSE_KV_LEFT_OWNER 0
+#endif
+
+#ifndef SHAOBO_DENSE_STRESS_VALUES
+#define SHAOBO_DENSE_STRESS_VALUES 0
+#endif
+
 static_assert(SHAOBO_DENSE_NATIVE_F16_LTS == 0 ||
                   SHAOBO_DENSE_NATIVE_F16_LTS == 1,
               "native FP16 MMAC LTS must be 0 or 1");
@@ -58,6 +66,14 @@ static_assert(SHAOBO_DENSE_DQ_READER >= 0 && SHAOBO_DENSE_DQ_READER <= 4,
               "dQ reader must be 0..4");
 static_assert(SHAOBO_DENSE_DK_READER >= 0 && SHAOBO_DENSE_DK_READER <= 4,
               "dK reader must be 0..4");
+static_assert(SHAOBO_DENSE_KV_LEFT_OWNER == 0 ||
+                  SHAOBO_DENSE_KV_LEFT_OWNER == 1,
+              "K/V-left ownership must be disabled or enabled");
+static_assert(!SHAOBO_DENSE_KV_LEFT_OWNER || !SHAOBO_DENSE_NATIVE_F16_SCORE,
+              "K/V-left gate validates the production FP32 score path");
+static_assert(SHAOBO_DENSE_STRESS_VALUES == 0 ||
+                  SHAOBO_DENSE_STRESS_VALUES == 1,
+              "stress values must be disabled or enabled");
 
 constexpr int kWaveSize = 64;
 constexpr int kWaves = 4;
@@ -149,6 +165,14 @@ __host__ __device__ __forceinline__ float make_ds(float score,
     return half_round(score16 * 0.3125f + dp16 * 0.4375f + row_bias + col_bias);
 }
 
+__host__ __device__ __forceinline__ float make_p(float score,
+                                                 int qrow,
+                                                 int krow) {
+    const float row_bias = (static_cast<float>(qrow) - 7.5f) * 0.001953125f;
+    const float col_bias = (static_cast<float>(krow) - 15.5f) * 0.0009765625f;
+    return half_round(half_round(score) * 0.25f + row_bias + col_bias);
+}
+
 __device__ __forceinline__ void t1_trans_source_qk(int src_lane,
                                                     int src_word,
                                                     int& qrow,
@@ -173,6 +197,18 @@ __device__ __forceinline__ void mmac_score_accumulate(
         lhs.f16x4[0], rhs.f16x4[0], out.f32, 1, 1);
     out.f32 = __builtin_hcu_mmac_f32_16x16x16_f16_lit_lts(
         lhs.f16x4[1], rhs.f16x4[1], out.f32, 1, 1);
+#else
+    (void)lhs;
+    (void)rhs;
+    (void)out;
+#endif
+}
+
+__device__ __forceinline__ void mmac_kv_left_accumulate(
+    const FragF16x8& lhs, const FragF16x8& rhs, AccF32x4& out) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    out.f32 = ins::mmac_f16_lit(lhs.f16x4[0], rhs.f16x4[0], out.f32);
+    out.f32 = ins::mmac_f16_lit(lhs.f16x4[1], rhs.f16x4[1], out.f32);
 #else
     (void)lhs;
     (void)rhs;
@@ -337,6 +373,8 @@ __global__ void __launch_bounds__(kThreads, 1)
         float* __restrict__ ds_out,
         float* __restrict__ dq_out,
         float* __restrict__ dk_out,
+        float* __restrict__ direct_dv_out,
+        float* __restrict__ direct_dk_out,
         float* __restrict__ trans_view_out,
         float* __restrict__ normal_view_out) {
 #if defined(__gfx946__) || defined(__gfx92a__)
@@ -411,10 +449,17 @@ __global__ void __launch_bounds__(kThreads, 1)
                 dout_trans.f16x8);
             ins::wait_lgkm(0);
 
+#if SHAOBO_DENSE_KV_LEFT_OWNER
+            mmac_kv_left_accumulate(k_trans_n0, q_trans, score_n0);
+            mmac_kv_left_accumulate(k_trans_n1, q_trans, score_n1);
+            mmac_kv_left_accumulate(v_trans_n0, dout_trans, dp_n0);
+            mmac_kv_left_accumulate(v_trans_n1, dout_trans, dp_n1);
+#else
             mmac_score_accumulate(q_trans, k_trans_n0, score_n0);
             mmac_score_accumulate(q_trans, k_trans_n1, score_n1);
             mmac_score_accumulate(dout_trans, v_trans_n0, dp_n0);
             mmac_score_accumulate(dout_trans, v_trans_n1, dp_n1);
+#endif
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
             mmac_score_f16_accumulate(q_trans, k_trans_n0, k_trans_n1,
                                       writer, d_block == 0);
@@ -429,6 +474,8 @@ __global__ void __launch_bounds__(kThreads, 1)
         store_qk(dp_out, 0, lane, dp_n0);
         store_qk(dp_out, 16, lane, dp_n1);
 
+        ins::Vec4F16 p_n0{};
+        ins::Vec4F16 p_n1{};
         ins::Vec4F16 ds_n0{};
         ins::Vec4F16 ds_n1{};
         const int q_base = (lane >> 4) * 4;
@@ -436,6 +483,10 @@ __global__ void __launch_bounds__(kThreads, 1)
 #pragma unroll
         for (int vec = 0; vec < 4; ++vec) {
             const int qrow = q_base + vec;
+            p_n0[vec] = static_cast<_Float16>(
+                make_p(score_n0.scalar[vec], qrow, krow));
+            p_n1[vec] = static_cast<_Float16>(
+                make_p(score_n1.scalar[vec], qrow, krow + 16));
             ds_n0[vec] = static_cast<_Float16>(
                 make_ds(score_n0.scalar[vec], dp_n0.scalar[vec], qrow, krow));
             ds_n1[vec] = static_cast<_Float16>(make_ds(
@@ -443,6 +494,38 @@ __global__ void __launch_bounds__(kThreads, 1)
         }
         store_ds(ds_out, 0, lane, ds_n0);
         store_ds(ds_out, 16, lane, ds_n1);
+
+#if SHAOBO_DENSE_KV_LEFT_OWNER
+#pragma unroll
+        for (int d_block = 0; d_block < kDBlocks; ++d_block) {
+            FragF16x8 q_normal{};
+            FragF16x8 dout_normal{};
+            const int matrix_lds_offset = d_block * kMatrixSliceBytes;
+            ins::ds_read_matrix_32x16_normal(
+                lds, kQBase + matrix_lds_offset, q_normal.f16x8);
+            ins::ds_read_matrix_32x16_normal(
+                lds, kDoutBase + d_block * kDoutSliceBytes,
+                dout_normal.f16x8);
+            ins::wait_lgkm(0);
+            const int d_base = d_block * kDSlice;
+            store_dk(direct_dv_out, 0, d_base, lane,
+                     mmac_one(p_n0, dout_normal.f16x4[0]));
+            store_dk(direct_dv_out, 16, d_base, lane,
+                     mmac_one(p_n1, dout_normal.f16x4[0]));
+            store_dk(direct_dv_out, 0, d_base + 16, lane,
+                     mmac_one(p_n0, dout_normal.f16x4[1]));
+            store_dk(direct_dv_out, 16, d_base + 16, lane,
+                     mmac_one(p_n1, dout_normal.f16x4[1]));
+            store_dk(direct_dk_out, 0, d_base, lane,
+                     mmac_one(ds_n0, q_normal.f16x4[0]));
+            store_dk(direct_dk_out, 16, d_base, lane,
+                     mmac_one(ds_n1, q_normal.f16x4[0]));
+            store_dk(direct_dk_out, 0, d_base + 16, lane,
+                     mmac_one(ds_n0, q_normal.f16x4[1]));
+            store_dk(direct_dk_out, 16, d_base + 16, lane,
+                     mmac_one(ds_n1, q_normal.f16x4[1]));
+        }
+#endif
 
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
 #if SHAOBO_DENSE_NATIVE_F16_DS
@@ -540,6 +623,8 @@ __global__ void __launch_bounds__(kThreads, 1)
     (void)ds_out;
     (void)dq_out;
     (void)dk_out;
+    (void)direct_dv_out;
+    (void)direct_dk_out;
     (void)trans_view_out;
     (void)normal_view_out;
 #endif
@@ -606,23 +691,50 @@ int main() {
     for (int row = 0; row < kN; ++row) {
         for (int d = 0; d < kD; ++d) {
             if (row < kM) {
+#if SHAOBO_DENSE_STRESS_VALUES
+                q[row * kD + d] = __float2half(
+                    static_cast<float>((row * 73 + d * 29 + row * d * 7 + 17) %
+                                           251 -
+                                       125) /
+                    127.0f);
+                dout[row * kD + d] = __float2half(
+                    static_cast<float>((row * 37 + d * 43 + row * d * 11 + 5) %
+                                           241 -
+                                       120) /
+                    113.0f);
+#else
                 q[row * kD + d] = __float2half(
                     static_cast<float>((row * 73 + d * 29 + 17) % 17 - 8) /
                     64.0f);
                 dout[row * kD + d] = __float2half(
                     static_cast<float>((row * 37 + d * 43 + 5) % 23 - 11) /
                     64.0f);
+#endif
             }
+#if SHAOBO_DENSE_STRESS_VALUES
+            k[row * kD + d] = __float2half(
+                static_cast<float>((row * 47 + d * 31 + row * d * 13 + 11) %
+                                       239 -
+                                   119) /
+                131.0f);
+            v[row * kD + d] = __float2half(
+                static_cast<float>((row * 53 + d * 41 + row * d * 17 + 13) %
+                                       233 -
+                                   116) /
+                109.0f);
+#else
             k[row * kD + d] = __float2half(
                 static_cast<float>((row * 47 + d * 31 + 11) % 19 - 9) / 64.0f);
             v[row * kD + d] = __float2half(
                 static_cast<float>((row * 53 + d * 41 + 13) % 29 - 14) /
                 64.0f);
+#endif
         }
     }
 
     std::vector<float> score_expected(kScoreElems, 0.0f);
     std::vector<float> dp_expected(kScoreElems, 0.0f);
+    std::vector<float> p_expected(kScoreElems, 0.0f);
     std::vector<float> ds_expected(kScoreElems, 0.0f);
     std::vector<float> score_f16_expected(kScoreElems, 0.0f);
     std::vector<float> dp_f16_expected(kScoreElems, 0.0f);
@@ -653,6 +765,7 @@ int main() {
             const int index = qrow * kN + krow;
             score_expected[index] = score;
             dp_expected[index] = dp;
+            p_expected[index] = make_p(score, qrow, krow);
             ds_expected[index] = make_ds(score, dp, qrow, krow);
             score_f16_expected[index] = score_f16;
             dp_f16_expected[index] = dp_f16;
@@ -660,6 +773,63 @@ int main() {
                 make_ds(score_f16, dp_f16, qrow, krow);
         }
     }
+
+    std::vector<float> p_f32_fa(kScoreElems, 0.0f);
+    std::vector<float> p_f16_fa(kScoreElems, 0.0f);
+    std::vector<float> ds_f32_fa(kScoreElems, 0.0f);
+    std::vector<float> ds_f16_fa(kScoreElems, 0.0f);
+    const float fa_scale = 1.0f / std::sqrt(static_cast<float>(kD));
+    for (int qrow = 0; qrow < kM; ++qrow) {
+        float max_f32 = -INFINITY;
+        float max_f16 = -INFINITY;
+        for (int krow = 0; krow <= qrow; ++krow) {
+            const int index = qrow * kN + krow;
+            max_f32 = std::max(max_f32, score_expected[index] * fa_scale);
+            max_f16 =
+                std::max(max_f16, score_f16_expected[index] * fa_scale);
+        }
+        float sum_f32 = 0.0f;
+        float sum_f16 = 0.0f;
+        for (int krow = 0; krow <= qrow; ++krow) {
+            const int index = qrow * kN + krow;
+            p_f32_fa[index] =
+                std::exp(score_expected[index] * fa_scale - max_f32);
+            p_f16_fa[index] =
+                std::exp(score_f16_expected[index] * fa_scale - max_f16);
+            sum_f32 += p_f32_fa[index];
+            sum_f16 += p_f16_fa[index];
+        }
+        float delta_f32 = 0.0f;
+        float delta_f16 = 0.0f;
+        for (int krow = 0; krow <= qrow; ++krow) {
+            const int index = qrow * kN + krow;
+            p_f32_fa[index] /= sum_f32;
+            p_f16_fa[index] /= sum_f16;
+            delta_f32 += p_f32_fa[index] * dp_expected[index];
+            delta_f16 += p_f16_fa[index] * dp_f16_expected[index];
+        }
+        for (int krow = 0; krow <= qrow; ++krow) {
+            const int index = qrow * kN + krow;
+            ds_f32_fa[index] = half_round(
+                p_f32_fa[index] * (dp_expected[index] - delta_f32) * fa_scale);
+            ds_f16_fa[index] = half_round(
+                p_f16_fa[index] *
+                (dp_f16_expected[index] - delta_f16) * fa_scale);
+        }
+    }
+    std::printf(
+        "dense_native_ds_precision stress=%d "
+        "score_max_abs=%g score_rel_l2=%g dp_max_abs=%g dp_rel_l2=%g "
+        "p_max_abs=%g p_rel_l2=%g ds_max_abs=%g ds_rel_l2=%g\n",
+        SHAOBO_DENSE_STRESS_VALUES,
+        max_abs_diff(score_f16_expected, score_expected),
+        relative_l2(score_f16_expected, score_expected),
+        max_abs_diff(dp_f16_expected, dp_expected),
+        relative_l2(dp_f16_expected, dp_expected),
+        max_abs_diff(p_f16_fa, p_f32_fa),
+        relative_l2(p_f16_fa, p_f32_fa),
+        max_abs_diff(ds_f16_fa, ds_f32_fa),
+        relative_l2(ds_f16_fa, ds_f32_fa));
 
     const std::vector<float>& published_expected =
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
@@ -673,6 +843,7 @@ int main() {
 #endif
     std::vector<float> dq_expected(kGradientElems, 0.0f);
     std::vector<float> dk_expected(kDkElems, 0.0f);
+    std::vector<float> dv_expected(kDkElems, 0.0f);
     for (int qrow = 0; qrow < kM; ++qrow) {
         for (int krow = 0; krow < kN; ++krow) {
             const float ds = half_round(
@@ -682,6 +853,9 @@ int main() {
                     ds * __half2float(k[krow * kD + d]);
                 dk_expected[krow * kD + d] +=
                     ds * __half2float(q[qrow * kD + d]);
+                dv_expected[krow * kD + d] +=
+                    half_round(p_expected[qrow * kN + krow]) *
+                    __half2float(dout[qrow * kD + d]);
             }
         }
     }
@@ -695,6 +869,8 @@ int main() {
     float* d_ds = nullptr;
     float* d_dq = nullptr;
     float* d_dk = nullptr;
+    float* d_direct_dv = nullptr;
+    float* d_direct_dk = nullptr;
     float* d_trans_view = nullptr;
     float* d_normal_view = nullptr;
     std::vector<float> score(kScoreElems);
@@ -702,6 +878,8 @@ int main() {
     std::vector<float> ds(kScoreElems);
     std::vector<float> dq(kGradientElems);
     std::vector<float> dk(kDkElems);
+    std::vector<float> direct_dv(kDkElems);
+    std::vector<float> direct_dk(kDkElems);
     std::vector<float> trans_view(kScoreElems);
     std::vector<float> normal_view(kScoreElems);
 
@@ -714,6 +892,10 @@ int main() {
     check_hip(hipMalloc(&d_ds, kScoreElems * sizeof(float)), "hipMalloc dS");
     check_hip(hipMalloc(&d_dq, kGradientElems * sizeof(float)), "hipMalloc dQ");
     check_hip(hipMalloc(&d_dk, kDkElems * sizeof(float)), "hipMalloc dK");
+    check_hip(hipMalloc(&d_direct_dv, kDkElems * sizeof(float)),
+              "hipMalloc direct dV");
+    check_hip(hipMalloc(&d_direct_dk, kDkElems * sizeof(float)),
+              "hipMalloc direct dK");
     check_hip(hipMalloc(&d_trans_view, kScoreElems * sizeof(float)),
               "hipMalloc trans view");
     check_hip(hipMalloc(&d_normal_view, kScoreElems * sizeof(float)),
@@ -732,6 +914,10 @@ int main() {
     check_hip(hipMemset(d_ds, 0, kScoreElems * sizeof(float)), "clear dS");
     check_hip(hipMemset(d_dq, 0, kGradientElems * sizeof(float)), "clear dQ");
     check_hip(hipMemset(d_dk, 0, kDkElems * sizeof(float)), "clear dK");
+    check_hip(hipMemset(d_direct_dv, 0, kDkElems * sizeof(float)),
+              "clear direct dV");
+    check_hip(hipMemset(d_direct_dk, 0, kDkElems * sizeof(float)),
+              "clear direct dK");
     check_hip(hipMemset(d_trans_view, 0, kScoreElems * sizeof(float)),
               "clear trans view");
     check_hip(hipMemset(d_normal_view, 0, kScoreElems * sizeof(float)),
@@ -739,7 +925,8 @@ int main() {
 
     hipLaunchKernelGGL(dq_native_ds_write_dense_probe_kernel, dim3(1),
                        dim3(kThreads), 0, 0, d_q, d_k, d_v, d_dout, d_score,
-                       d_dp, d_ds, d_dq, d_dk, d_trans_view, d_normal_view);
+                       d_dp, d_ds, d_dq, d_dk, d_direct_dv, d_direct_dk,
+                       d_trans_view, d_normal_view);
     check_hip(hipGetLastError(), "launch");
     check_hip(hipDeviceSynchronize(), "sync");
 
@@ -753,6 +940,12 @@ int main() {
                         hipMemcpyDeviceToHost), "copy dQ");
     check_hip(hipMemcpy(dk.data(), d_dk, kDkElems * sizeof(float),
                         hipMemcpyDeviceToHost), "copy dK");
+    check_hip(hipMemcpy(direct_dv.data(), d_direct_dv,
+                        kDkElems * sizeof(float), hipMemcpyDeviceToHost),
+              "copy direct dV");
+    check_hip(hipMemcpy(direct_dk.data(), d_direct_dk,
+                        kDkElems * sizeof(float), hipMemcpyDeviceToHost),
+              "copy direct dK");
     check_hip(hipMemcpy(trans_view.data(), d_trans_view,
                         kScoreElems * sizeof(float), hipMemcpyDeviceToHost),
               "copy trans view");
@@ -769,6 +962,12 @@ int main() {
                                 kTolerance, kD);
     const bool dk_pass = report("dK_normal_reader", dk, dk_expected,
                                 kTolerance, kD);
+#if SHAOBO_DENSE_KV_LEFT_OWNER
+    const bool direct_dv_pass = report(
+        "dV_direct_register", direct_dv, dv_expected, kTolerance, kD);
+    const bool direct_dk_pass = report(
+        "dK_direct_register", direct_dk, dk_expected, kTolerance, kD);
+#endif
     std::vector<float> published_half(kScoreElems);
     for (int i = 0; i < kScoreElems; ++i) {
         published_half[i] = half_round(published_expected[i]);
@@ -786,7 +985,7 @@ int main() {
         "dense_native_ds f16_accum_vs_f32 max_abs=%g rel_l2=%g pass=%d\n",
         native_ds_max_abs, native_ds_rel_l2,
         native_precision_pass ? 1 : 0);
-    const bool pass = score_pass && dp_pass && ds_pass &&
+    bool pass = score_pass && dp_pass && ds_pass &&
 #if SHAOBO_DENSE_NATIVE_F16_SCORE
 #if SHAOBO_DENSE_NATIVE_F16_DS
                       native_precision_pass && trans_view_pass &&
@@ -796,17 +995,23 @@ int main() {
 #else
                       dq_pass && dk_pass;
 #endif
+#if SHAOBO_DENSE_KV_LEFT_OWNER
+    pass = pass && direct_dv_pass && direct_dk_pass;
+#endif
     std::printf(
         "dense_native_ds_final M=16 N=32 D=%d writer=t%d_alt%d "
-        "dq_reader=%d dk_reader=%d source=%s lts=%d pass=%d\n",
+        "dq_reader=%d dk_reader=%d owner=%s source=%s lts=%d pass=%d\n",
         kD, SHAOBO_DENSE_WRITER_T, SHAOBO_DENSE_WRITER_ALT,
         SHAOBO_DENSE_DQ_READER, SHAOBO_DENSE_DK_READER,
+        SHAOBO_DENSE_KV_LEFT_OWNER ? "kv_left" : "q_left",
         SHAOBO_DENSE_NATIVE_F16_DS
             ? "f16_mmac_ds"
             : (SHAOBO_DENSE_NATIVE_F16_SCORE ? "f16_mmac_score"
                                              : "f32_ds_downcast"),
         SHAOBO_DENSE_NATIVE_F16_LTS, pass ? 1 : 0);
 
+    check_hip(hipFree(d_direct_dk), "hipFree direct dK");
+    check_hip(hipFree(d_direct_dv), "hipFree direct dV");
     check_hip(hipFree(d_dk), "hipFree dK");
     check_hip(hipFree(d_dq), "hipFree dQ");
     check_hip(hipFree(d_normal_view), "hipFree normal view");

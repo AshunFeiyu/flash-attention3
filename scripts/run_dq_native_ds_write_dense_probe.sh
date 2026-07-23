@@ -21,6 +21,8 @@ WRITER_T="${DQ_DENSE_WRITER_T:-1}"
 DQ_READER="${DQ_DENSE_DQ_READER:-0}"
 DK_READER="${DQ_DENSE_DK_READER:-0}"
 HEAD_DIM="${DQ_DENSE_HEAD_DIM:-32}"
+KV_LEFT_OWNER="${DQ_DENSE_KV_LEFT_OWNER:-0}"
+STRESS_VALUES="${DQ_DENSE_STRESS_VALUES:-0}"
 REQUIRE_SEMANTIC_PASS="${DQ_DENSE_REQUIRE_SEMANTIC_PASS:-1}"
 
 case "${NATIVE_F16_SCORE}:${NATIVE_F16_DS}:${NATIVE_F16_LTS}:${REQUIRE_SEMANTIC_PASS}" in
@@ -39,6 +41,14 @@ case "${HEAD_DIM}" in
   32|128) ;;
   *) echo "invalid dense head dimension: ${HEAD_DIM}" >&2; exit 2 ;;
 esac
+case "${KV_LEFT_OWNER}" in
+  0|1) ;;
+  *) echo "invalid K/V-left owner mode: ${KV_LEFT_OWNER}" >&2; exit 2 ;;
+esac
+case "${STRESS_VALUES}" in
+  0|1) ;;
+  *) echo "invalid stress-value mode: ${STRESS_VALUES}" >&2; exit 2 ;;
+esac
 
 TARGET_GFX=946 \
 BUILD_ASM=1 \
@@ -48,7 +58,7 @@ BIN="${BIN}" \
 ASM="${ASM}" \
 SHAOBO_DISABLE_WDRA_FLAGS=1 \
 SHAOBO_EXPLICIT_WDRA_INIT=0 \
-EXTRA_CXXFLAGS="-DSHAOBO_DENSE_NATIVE_F16_SCORE=${NATIVE_F16_SCORE} -DSHAOBO_DENSE_NATIVE_F16_DS=${NATIVE_F16_DS} -DSHAOBO_DENSE_NATIVE_F16_LTS=${NATIVE_F16_LTS} -DSHAOBO_DENSE_WRITER_ALT=${WRITER_ALT} -DSHAOBO_DENSE_WRITER_T=${WRITER_T} -DSHAOBO_DENSE_DQ_READER=${DQ_READER} -DSHAOBO_DENSE_DK_READER=${DK_READER} -DSHAOBO_DENSE_HEAD_DIM=${HEAD_DIM}" \
+EXTRA_CXXFLAGS="-DSHAOBO_DENSE_NATIVE_F16_SCORE=${NATIVE_F16_SCORE} -DSHAOBO_DENSE_NATIVE_F16_DS=${NATIVE_F16_DS} -DSHAOBO_DENSE_NATIVE_F16_LTS=${NATIVE_F16_LTS} -DSHAOBO_DENSE_WRITER_ALT=${WRITER_ALT} -DSHAOBO_DENSE_WRITER_T=${WRITER_T} -DSHAOBO_DENSE_DQ_READER=${DQ_READER} -DSHAOBO_DENSE_DK_READER=${DK_READER} -DSHAOBO_DENSE_HEAD_DIM=${HEAD_DIM} -DSHAOBO_DENSE_KV_LEFT_OWNER=${KV_LEFT_OWNER} -DSHAOBO_DENSE_STRESS_VALUES=${STRESS_VALUES}" \
 ./build.sh
 
 BIN_ABS="$(realpath "${BIN}")"
@@ -119,8 +129,8 @@ source_name=f32_ds_downcast
 [[ "${NATIVE_F16_DS}" == "1" ]] && source_name=f16_mmac_ds
 
 grep -E '^dense_native_ds |^dense_native_ds_final' pmd_stdout.log | tee result.txt || true
-printf 'dq_native_ds_dense transport=%s semantic=%s D=%s source=%s lts=%s writer=t%s_alt%s dq_reader=%s dk_reader=%s pmd_status=%s panic=%s stats=%s bank=%s run=%s\n' \
-  "${transport}" "${semantic}" "${HEAD_DIM}" "${source_name}" "${NATIVE_F16_LTS}" \
+printf 'dq_native_ds_dense transport=%s semantic=%s D=%s owner=%s stress=%s source=%s lts=%s writer=t%s_alt%s dq_reader=%s dk_reader=%s pmd_status=%s panic=%s stats=%s bank=%s run=%s\n' \
+  "${transport}" "${semantic}" "${HEAD_DIM}" "${KV_LEFT_OWNER}" "${STRESS_VALUES}" "${source_name}" "${NATIVE_F16_LTS}" \
   "${WRITER_T}" "${WRITER_ALT}" "${DQ_READER}" "${DK_READER}" \
   "${pmd_status}" "${panic_lines}" "${stats_found}" "${bank_conflicts}" \
   "${RUN_DIR}" | tee -a result.txt

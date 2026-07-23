@@ -13,6 +13,12 @@ ASM="${BUILD_DIR}/dq_native_ds_write_mmac_mpair_probe.asm"
 RUN_ROOT="${DQ_MPAIR_RUN_ROOT:-${SHAOBO_RUN_ROOT}/layout_probes}"
 RUN_DIR="${RUN_ROOT}/dq_mpair_$(date +%Y%m%d_%H%M%S)"
 PMD_TIMEOUT="${DQ_MPAIR_PMD_TIMEOUT:-300}"
+KV_LEFT_OWNER="${DQ_MPAIR_KV_LEFT_OWNER:-0}"
+
+case "${KV_LEFT_OWNER}" in
+  0|1) ;;
+  *) echo "invalid K/V-left owner mode: ${KV_LEFT_OWNER}" >&2; exit 2 ;;
+esac
 
 TARGET_GFX=946 \
 BUILD_ASM=1 \
@@ -22,6 +28,7 @@ BIN="${BIN}" \
 ASM="${ASM}" \
 SHAOBO_DISABLE_WDRA_FLAGS=1 \
 SHAOBO_EXPLICIT_WDRA_INIT=0 \
+EXTRA_CXXFLAGS="-DSHAOBO_DQ_MPAIR_KV_LEFT=${KV_LEFT_OWNER}" \
 ./build.sh
 
 BIN_ABS="$(realpath "${BIN}")"
@@ -87,9 +94,9 @@ fi
 
 grep -E '^(PASS|BEST|native_ds_write_mmac_mpair_)' pmd_stdout.log \
   | tee result.txt || true
-printf 'dq_mpair_probe transport=%s semantic=%s pmd_status=%s panic=%s bank=%s run=%s\n' \
-  "${transport}" "${semantic}" "${pmd_status}" "${panic_lines}" \
-  "${bank_conflicts}" "${RUN_DIR}" | tee -a result.txt
+printf 'dq_mpair_probe transport=%s semantic=%s owner=%s pmd_status=%s panic=%s bank=%s run=%s\n' \
+  "${transport}" "${semantic}" "${KV_LEFT_OWNER}" "${pmd_status}" \
+  "${panic_lines}" "${bank_conflicts}" "${RUN_DIR}" | tee -a result.txt
 sha256sum "${BIN_ABS}" "${ASM_ABS}" | tee artifact_sha256.txt
 
 [[ "${transport}" == "PASS" ]]
