@@ -11034,3 +11034,17 @@ Status: `ACCEPT_CANONICAL_Q_LATCH_EARLY_RAW_RELEASE / MMAC50_OPEN`.
   q-owned P/dS cannot yet directly feed dV/dK, and dQ atomics remain exposed.
 - Evidence:
   `results/fused5_q_latch_early_raw_release_20260723.md`.
+
+## 2026-07-23 Native Lag-One Role Gate
+
+Status: `FOCUSED_GATE_ACCEPTED / CANONICAL_UNCHANGED`.
+
+- Added one isolated 16-wave probe and runner. Production kernel and API are
+  unchanged.
+- Exact dynamic MMOP1280 and dense dQ/dK correctness pass with role windows
+  `32/176/176/96`, private/spill/scratch0 and bank0.
+- A failed first run proved that common lane setup before the WDRA branch can
+  allocate a heavy-role VGPR under the 96-VGPR dQ role. Lane setup is now
+  branch-local and PMD warning/panic free.
+- Next source change is one coherent canonical role split, not another phase
+  or template fork.

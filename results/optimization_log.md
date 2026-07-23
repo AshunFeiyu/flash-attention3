@@ -16789,3 +16789,20 @@ Production integration result:
   `/zys/sb/fa3b/q_latch_fullperf_20260723/5gemm_owner_s1024_c1_fullperf_20260723_161812`,
   `/zys/sb/fa3b/xcu_outputs/5gemm_q_latch_s1024_20260723`, and
   `/共享/shaobo/perf/20260723_161812_fused5_q_latch_early_raw_release_h1s1024_sqc7_fullperf`.
+
+## 2026-07-23 - Native lag-one 16-wave role gate
+
+- Classification: `ACCEPT_FOCUSED_GATE / CANONICAL_PENDING`.
+- Workbook sheet `31 Native Lag-One Gate` derives P0 waves0-3, symmetric dKV
+  groups waves4-7/8-11 and a D32 dQ writer on waves12-15. Exact work is
+  `8*128 + 4*64 = 1280` MMAC.
+- The first PMD run reproduced `VGPR index 158 out of range [0,96]`.
+  ASM mapped a branch-common `threadIdx.x % 64` to `v158` before role
+  selection. Moving lane acquisition into each role branch removed it.
+- Final usage is `1/159/159/32` inside `32/176/176/96`; SGPR22/VGPR120,
+  private/spill/scratch0. Dense dQ/dK/pressure checks mismatch0, dynamic
+  MMOP1280 and bank0.
+- Run:
+  `/zys/sb/fa3b/layout_probes/fused5_native_lagone_20260723_172647`.
+- This proves resources and ownership only. Next integrate once into the
+  canonical kernel and require CPU golden, same-shape ticks and xcu evidence.

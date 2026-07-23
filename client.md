@@ -5697,3 +5697,15 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   add a second raw LDS page while the P bridge keeps the design over budget.
 - Detailed evidence:
   `results/fused5_q_latch_early_raw_release_20260723.md`.
+
+## 2026-07-23 16-Wave Lag-One Gate
+
+- Accepted focused evidence:
+  `results/fused5_native_lagone_role_gate_20260723.md`.
+- The admitted production topology is P0 loader + two N64 dKV groups +
+  one D32 dQ writer. It preserves exactly five GEMMs and 1280 useful MMAC.
+- Do not compute lane/index/address values before the WDRA role branch.
+  The probe reproduced a `v158` access under the 96-VGPR dQ role and proved
+  branch-local lane acquisition fixes it.
+- The gate is not a production promotion. Full fused correctness, no-spill,
+  bank0, lower H1/S1024 ticks and xcu proof remain mandatory.
