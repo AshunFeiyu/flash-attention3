@@ -119,9 +119,11 @@ dS -> ds_write again -> dQ MMAC
 
 Current source: `src/fused_bwd_kernel.cpp:429-465,468-476`.
 
-This is an avoidable matrix-data serialization chain and is a stronger
-candidate than another ABarrier/waitcnt micro-adjustment. The first two new
-tests must therefore be focused native-fragment probes:
+This is a strong transfer hypothesis, but not an automatically avoidable
+chain: Hopper's RS fragment converter is part of its MMA contract. Shaobo must
+prove that its current score-owned register fragment already has the downstream
+dV/dK operand ownership. The first two tests are therefore focused
+native-fragment probes:
 
 ```text
 score MMAC output -> FP16 P source fragment -> dV MMAC
@@ -130,6 +132,43 @@ dP/softmax output -> FP16 dS source fragment -> dK MMAC
 ```
 
 No `bpermute`, scalar `ds_read_b32`, gather or wrong-layout path is admitted.
+
+### Shaobo direct-register transfer result
+
+Both isolated full-kernel probes were run with the canonical
+M64/N128/D128 ownership and exact five-GEMM work:
+
+```text
+P-reg -> dV:
+  dK PASS
+  dV FAIL, max_abs=0.62529, rel_l2=1.34211
+  role use 8/175/174, SGPR98/VGPR168, spill/private0, bank0
+
+dS-reg -> dK:
+  dV PASS
+  dK FAIL, max_abs=0.0321551, rel_l2=1.25076
+  role use 8/179/177, SGPR98/VGPR168, spill/private0, bank0
+```
+
+Evidence:
+
+- `/zys/sb/fa3b/direct_p_probe/5gemm_symmetric_s128_c1_20260723_124108`
+- `/zys/sb/fa3b/direct_ds_probe/5gemm_symmetric_s128_c1_20260723_124252`
+
+The clean single-output failures prove that the local matrix
+write/read is currently an ownership conversion, not a redundant readiness
+wait. Tri Dao's RS idea remains architecturally valuable, but the current
+Shaobo `Q @ K^T` / `dO @ V^T` register orientation cannot consume it directly.
+The repository already contains the first half of the answer:
+`src/dkv_kernel.cpp:448-469,571-603,639-678` computes score/dP with K/V as the
+left operands and feeds its P/dS fragments directly into dV/dK. Its accepted
+H1/S128 and H1/S1024 runs prove dK/dV correctness, no spill and bank0. This is
+the native dKV oracle; it should be reused rather than rediscovered.
+
+The remaining focused question is narrower: can the same K/V-left dS ownership
+be published once through `ds_write_matrix`, then consumed through the native
+matrix-reader view by dQ? That publication gate must pass at D128 before the
+five-GEMM production kernel changes orientation.
 
 ### dQ output is a separate pipeline
 
@@ -257,15 +296,21 @@ exact 5 GEMMs, 1280 useful MMAC/tile
 
 Change in this order:
 
-1. Prove and integrate direct P-register to dV MMAC.
-2. Prove and integrate direct dS-register to dK MMAC while publishing dS once
-   for dQ.
-3. Split Q and dO release lifetimes. A feasible conservative steady budget is
+1. Keep the current P/dS matrix roundtrips in the canonical kernel. Direct
+   register use with the current score ownership is rejected by isolated dV
+   and dK correctness failures.
+2. Reuse the accepted `src/dkv_kernel.cpp` K/V-left direct dV/dK path as the
+   dKV oracle. Build only the missing focused D128 gate:
+   K/V-left dS fragment -> one native matrix publication -> dQ MMAC.
+3. Only if the publication gate passes, integrate the orientation as one canonical
+   ownership change. Otherwise retain the current native writer/read bridge.
+4. Split Q and dO release lifetimes. A feasible conservative steady budget is
    Q stage2 32 KiB + dO stage1 16 KiB + current padded dS 64 KiB + sidecar
    about 1.5 KiB = 113.5 KiB.
-4. Re-profile. Only if atomic/store remains critical, try a dedicated dQ
+5. Re-profile. Only if atomic/store remains critical, try a dedicated dQ
    writer wave with explicit LDS alias and backpressure proof.
-5. Only after steps 1-4 pass, design a symmetric prologue/main/tail lag-one
+6. Only after the ownership and lifetime gates pass, design a symmetric
+   prologue/main/tail lag-one
    recurrence. It must preserve both D64 dQ owners and fit two live
    generations without spill.
 

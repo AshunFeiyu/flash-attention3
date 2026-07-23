@@ -10928,13 +10928,41 @@ Status: `DESIGN_CORRECTION / KERNEL_UNCHANGED`.
   `b54df166ebb69b896892826014759d09b9c3c9c6`.
 - Keep canonical M64/N128/D128 and symmetric N64 dKV plus D64 dQ ownership.
 - Supersede the D128 C0-full-dQ/C1-no-dQ draft.
-- Next P0 gate: prove `P-reg -> dV MMAC` without the current local LDS
-  write/read pair.
-- Next P0 gate: prove `dS-reg -> dK MMAC` while publishing dS exactly once for
-  dQ.
-- Then integrate the two direct paths before splitting Q/dO lifetimes or
+- The current score-owned P/dS direct substitutions are rejected below.
+- `src/dkv_kernel.cpp` is the accepted K/V-left oracle: it already proves
+  direct P-to-dV and dS-to-dK with dK/dV correctness, no spill and bank0.
+- Next P0 gate: publish that K/V-left dS ownership exactly once and consume it
+  through the native dQ matrix-reader path.
+- Then integrate the ownership change before splitting Q/dO lifetimes or
   attempting FA4 lag-one.
 - Keep the 5-GEMM limitation explicit: the official dQ writer still performs
   a cross-K-tile reduction and does not prove sbx4 cross-die atomic legality.
 - Detailed evidence:
   `docs/tridao_fa3_fa4_bwd_source_audit_20260723.md`.
+
+## 2026-07-23 Direct Register Transfer Gates
+
+Status: `REJECT_CURRENT_SCORE_OWNERSHIP / CANONICAL_RESTORED`.
+
+- P-only direct use removed the local P writer/normal-reader pair and kept all
+  other paths unchanged. Static gates passed at role `8/175/174`,
+  SGPR98/VGPR168, private/spill0 and bank0. S128 isolated the failure to dV:
+  `max_abs=0.62529`, `rel_l2=1.34211`; dK remained correct.
+- dS-only direct use restored P and removed only the local dS
+  writer/normal-reader pair before dK. Static gates passed at role
+  `8/179/177`, SGPR98/VGPR168, private/spill0 and bank0. S128 isolated the
+  failure to dK: `max_abs=0.0321551`, `rel_l2=1.25076`; dV remained correct.
+- Runs:
+  `/zys/sb/fa3b/direct_p_probe/5gemm_symmetric_s128_c1_20260723_124108`
+  and
+  `/zys/sb/fa3b/direct_ds_probe/5gemm_symmetric_s128_c1_20260723_124252`.
+- Conclusion: the current P/dS LDS roundtrip performs a required fragment
+  ownership conversion. Hopper RS chaining is not directly transferable to
+  the current Shaobo `Q@K^T` / `dO@V^T` output orientation.
+- Existing positive oracle: `src/dkv_kernel.cpp:448-469,571-603,639-678`
+  already computes K/V-left score/dP, directly chains P/dS into dV/dK, and has
+  accepted H1/S128 and H1/S1024 dK/dV correctness with bank0.
+- Both local and remote production sources are restored to SHA256
+  `5b8f550397ae0b0306b70782343816ecc89c1ec5f4352d294d0247244ef3ea4a`.
+  Next gate is only the missing K/V-left dS-publication-to-dQ proof, not
+  another direct-dKV or wait-deletion experiment.

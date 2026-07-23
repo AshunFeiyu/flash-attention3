@@ -16701,3 +16701,24 @@ Production integration result:
   separate Q/dO lifetimes, then resource-gated symmetric lag-one.
 - Audit:
   `docs/tridao_fa3_fa4_bwd_source_audit_20260723.md`.
+## 2026-07-23 - Direct P/dS register transfer gates
+
+- Classification: `REJECT_CURRENT_SCORE_OWNERSHIP / CANONICAL_RESTORED`.
+- Hypothesis P: remove only P `ds_write -> wait -> normal read` and feed the
+  softmax P fragment directly to dV. Static gates passed with role
+  `8/175/174`, SGPR98/VGPR168, spill/private0 and bank0. S128 dK passed, while
+  dV failed at `max_abs=0.62529`, `rel_l2=1.34211`.
+- Hypothesis dS: restore P, remove only dS local writer/normal-reader before
+  dK, and keep the later dS publication for dQ. Static gates passed with role
+  `8/179/177`, SGPR98/VGPR168, spill/private0 and bank0. S128 dV passed, while
+  dK failed at `max_abs=0.0321551`, `rel_l2=1.25076`.
+- Interpretation: both LDS roundtrips currently convert score-owned fragments
+  into dKV operand ownership. Official Hopper RS chaining is a design clue,
+  not a legal Shaobo substitution.
+- Evidence:
+  `/zys/sb/fa3b/direct_p_probe/5gemm_symmetric_s128_c1_20260723_124108`;
+  `/zys/sb/fa3b/direct_ds_probe/5gemm_symmetric_s128_c1_20260723_124252`.
+- Canonical local and remote source restored. Next: focused D128 transposed
+  score/dP ownership publication probe. Reuse `src/dkv_kernel.cpp` as the
+  accepted K/V-left direct dV/dK oracle; prove only its dS fragment can be
+  published once and consumed by dQ.

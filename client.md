@@ -1,5 +1,24 @@
 # Client
 
+## 2026-07-23 Direct-RS Transfer Boundary
+
+- Tri Dao's D128 P-to-dV and dS-to-dK register-source path is not directly
+  compatible with the canonical Shaobo score-owned fragment layout.
+- Isolated P-direct and dS-direct experiments passed all static/resource/bank
+  gates but failed only their intended output: dV `rel_l2=1.34211` and dK
+  `rel_l2=1.25076`, respectively.
+- Canonical source is restored to
+  `best/fused5-prio-m64-20260723` content. Do not delete these LDS
+  write/read pairs as wait cleanup; they currently perform an ownership
+  conversion.
+- Next admitted experiment is a dense D128 transposed score/dP ownership probe
+  that reuses the already-correct K/V-left direct dKV path in
+  `src/dkv_kernel.cpp`. The missing proof is one native dS publication from
+  that ownership into dQ; no production topology edit is allowed before it.
+- Evidence:
+  `/zys/sb/fa3b/direct_p_probe/5gemm_symmetric_s128_c1_20260723_124108` and
+  `/zys/sb/fa3b/direct_ds_probe/5gemm_symmetric_s128_c1_20260723_124252`.
+
 ## 2026-07-23 M128 Negative Boundary
 
 - Do not promote M128/N128/D128. It is mathematically exact, correctness
