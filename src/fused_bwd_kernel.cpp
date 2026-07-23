@@ -64,6 +64,11 @@ struct DqResidentFragments {
                       Tile::kWavesPerConsumerGroup];
 };
 
+struct ProbabilityPanel {
+    Fragment f16;
+    float f32[8];
+};
+
 __device__ __forceinline__ int matrix_block_offset(int row_block,
                                                    int d_block) {
     return (row_block * kMatrixBlocksD + d_block) * kMatrixBlockBytes;
@@ -249,27 +254,46 @@ __device__ __forceinline__ void latch_dq_k_normal(
     }
 }
 
-// Logical GEMMs 1 and 2: one M16xN16 score/dP panel, computed once.
-__device__ __forceinline__ void score_dp_stage(const __half* lds,
-                                               int m_block,
-                                               const ResidentFragments& resident,
-                                               Fragment& score,
-                                               Fragment& dp) {
+// Logical GEMM 1 or 2: four matrix reads, one first-use wait, eight MMAC.
+template <int RegionBase>
+__device__ __forceinline__ void matrix_product_stage(
+    const __half* lds,
+    int m_block,
+    const Fragment (&rhs)[kMatrixBlocksD],
+    Fragment& out) {
+    Fragment lhs[kMatrixBlocksD];
+    const int panel_offset = m16_matrix_offset(m_block, 0);
+    const auto* base = reinterpret_cast<const __half*>(
+        reinterpret_cast<const char*>(lds) + RegionBase + panel_offset);
+    ins::ds_read_matrix_32x16_trans_imm4<0, 2048, 4096, 6144>(
+        base, lhs[0].f16x8, lhs[1].f16x8, lhs[2].f16x8,
+        lhs[3].f16x8);
+    ins::wait_lgkm(0);
+    ins::raise_priority_2();
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
-        Fragment q_frag{};
-        Fragment dout_frag{};
-        const int q_offset = m16_matrix_offset(m_block, d_block);
-        ins::ds_read_matrix_32x16_trans(
-            lds, LdsLayout::kQBase + q_offset, q_frag.f16x8);
-        ins::ds_read_matrix_32x16_trans(
-            lds, LdsLayout::kDoutBase + q_offset, dout_frag.f16x8);
-        ins::wait_lgkm(0);
-        f16_mmac_single(q_frag, resident.k_trans[d_block], score,
-                        d_block == 0);
-        f16_mmac_single(dout_frag, resident.v_trans[d_block], dp,
+        f16_mmac_single(lhs[d_block], rhs[d_block], out,
                         d_block == 0);
     }
+    ins::lower_priority();
+}
+
+__device__ __forceinline__ void score_stage(
+    const __half* lds,
+    int m_block,
+    const ResidentFragments& resident,
+    Fragment& score) {
+    matrix_product_stage<LdsLayout::kQBase>(
+        lds, m_block, resident.k_trans, score);
+}
+
+__device__ __forceinline__ void dp_stage(
+    const __half* lds,
+    int m_block,
+    const ResidentFragments& resident,
+    Fragment& dp) {
+    matrix_product_stage<LdsLayout::kDoutBase>(
+        lds, m_block, resident.v_trans, dp);
 }
 
 template <int RegionBase>
@@ -286,9 +310,8 @@ __device__ __forceinline__ void read_raw_panel_normal(
         normal[3].f16x8);
 }
 
-__device__ __forceinline__ void softmax_ds_stage(
+__device__ __forceinline__ void probability_stage(
     const Fragment& score,
-    const Fragment& dp,
     int lane,
     int q_base,
     int m_block,
@@ -297,10 +320,8 @@ __device__ __forceinline__ void softmax_ds_stage(
     int causal,
     float row_max_log2,
     float row_inv_sum,
-    float row_delta,
     float softmax_scale,
-    Fragment& p,
-    Fragment& ds) {
+    ProbabilityPanel& p) {
     const float scale_log2 = softmax_scale * kLog2E;
 #pragma unroll
     for (int word = 0; word < 8; ++word) {
@@ -317,9 +338,22 @@ __device__ __forceinline__ void softmax_ds_stage(
                         row_max_log2) *
                       row_inv_sum
                 : 0.0f;
-        p.scalar[word] = static_cast<_Float16>(probability);
+        p.f32[word] = probability;
+        p.f16.scalar[word] = static_cast<_Float16>(probability);
+    }
+}
+
+__device__ __forceinline__ void ds_stage(
+    const ProbabilityPanel& p,
+    const Fragment& dp,
+    float row_delta,
+    float softmax_scale,
+    Fragment& ds) {
+#pragma unroll
+    for (int word = 0; word < 8; ++word) {
         ds.scalar[word] = static_cast<_Float16>(
-            probability * (static_cast<float>(dp.scalar[word]) - row_delta) *
+            p.f32[word] *
+            (static_cast<float>(dp.scalar[word]) - row_delta) *
             softmax_scale);
     }
 }
@@ -423,35 +457,17 @@ __device__ __forceinline__ void atomic_store_dq_d32(
 }
 
 template <int Group>
-__device__ __forceinline__ void finish_p_dv_panel(
+__device__ __forceinline__ void update_dv_from_probability(
     const __half* lds,
     __half* mutable_lds,
-    int q_base,
     int m_block,
-    int k_base,
     int owner,
-    int causal,
-    float softmax_scale,
-    int lane,
-    const Fragment& score,
-    const Fragment& dp,
-    Fragment& retained_ds,
+    const ProbabilityPanel& p,
     Accumulator (&dv_acc)[8]) {
     static_assert(Group == 0 || Group == 1);
-    const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
-
-    Fragment p{};
-    const int sidecar_row =
-        m_block * Tile::kMqPerPanel + (lane & 15);
-    softmax_ds_stage(
-        score, dp, lane, q_base, m_block, k_base, n_owner, causal,
-        sidecar_field(mutable_lds, 0)[sidecar_row],
-        sidecar_field(mutable_lds, 1)[sidecar_row],
-        sidecar_field(mutable_lds, 2)[sidecar_row], softmax_scale, p,
-        retained_ds);
 
     const int page = scratch_page_offset<Group>(owner);
-    ins::ds_write_matrix_32x16_trans_f16(p.f16x8, mutable_lds, page);
+    ins::ds_write_matrix_32x16_trans_f16(p.f16.f16x8, mutable_lds, page);
     ins::wait_lgkm(0);
     Fragment p_normal{};
     ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
@@ -462,7 +478,9 @@ __device__ __forceinline__ void finish_p_dv_panel(
         read_raw_panel_normal<LdsLayout::kDoutBase>(lds, m_block,
                                                     dout_normal);
         ins::wait_lgkm(0);
+        ins::raise_priority_2();
         update_dv_stage(p_normal, dout_normal, dv_acc);
+        ins::lower_priority();
     }
 }
 
@@ -580,12 +598,36 @@ __device__ __forceinline__ void run_consumer_group(
         for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
             Fragment score{};
             Fragment dp{};
-            ins::raise_priority_2();
-            score_dp_stage(lds, m_block, resident, score, dp);
-            ins::lower_priority();
-            finish_p_dv_panel<Group>(
-                lds, mutable_lds, q_base, m_block, k_base, owner, causal,
-                softmax_scale, lane, score, dp, ds_panels[m_block], dv_acc);
+            ProbabilityPanel p{};
+            const int sidecar_row =
+                m_block * Tile::kMqPerPanel + (lane & 15);
+            if constexpr (Group == 0) {
+                score_stage(lds, m_block, resident, score);
+                probability_stage(
+                    score, lane, q_base, m_block, k_base, n_owner, causal,
+                    sidecar_field(mutable_lds, 0)[sidecar_row],
+                    sidecar_field(mutable_lds, 1)[sidecar_row],
+                    softmax_scale, p);
+                update_dv_from_probability<Group>(
+                    lds, mutable_lds, m_block, owner, p, dv_acc);
+                dp_stage(lds, m_block, resident, dp);
+                ds_stage(
+                    p, dp, sidecar_field(mutable_lds, 2)[sidecar_row],
+                    softmax_scale, ds_panels[m_block]);
+            } else {
+                dp_stage(lds, m_block, resident, dp);
+                score_stage(lds, m_block, resident, score);
+                probability_stage(
+                    score, lane, q_base, m_block, k_base, n_owner, causal,
+                    sidecar_field(mutable_lds, 0)[sidecar_row],
+                    sidecar_field(mutable_lds, 1)[sidecar_row],
+                    softmax_scale, p);
+                ds_stage(
+                    p, dp, sidecar_field(mutable_lds, 2)[sidecar_row],
+                    softmax_scale, ds_panels[m_block]);
+                update_dv_from_probability<Group>(
+                    lds, mutable_lds, m_block, owner, p, dv_acc);
+            }
         }
 
         if (qi != 0) {

@@ -11068,3 +11068,22 @@ Status: `ACCEPT_CANONICAL_NATIVE_LAGONE_16WAVE / MMAC50_OPEN`.
   useful C0/C1 staggering by legal operation order; it must preserve this
   exact-work and resource contract.
 - Evidence: `results/fused5_native_lagone_canonical_20260723.md`.
+
+## 2026-07-23 Useful Stagger Canonical Candidate
+
+Status: `ACCEPT_MICRO_TICKS_USEFUL_STAGGER / MMAC50_OPEN`.
+
+- Branch `exp/fused5-useful-stagger` keeps one canonical production kernel.
+- C0 order is `score -> P -> dV -> dP -> dS`; C1 order is
+  `dP -> score -> P -> dS -> dV`.
+- Exactly five GEMMs, output ownership, LDS and ABarrier tokens are unchanged.
+  Score/dP matrix reads are batched four at a time with one first-use wait.
+- Static/runtime gates pass: role `8/165/168/84`, SGPR60/VGPR124,
+  LDS115,456 B, private/spill/scratch0, S128 causal/noncausal and S1024 causal
+  PASS, MMOP92,160 and bank0.
+- Fullperf ticks improve `73,280,025 -> 73,016,580`, while MMAC active changes
+  `21.809889% -> 21.641706%`.
+- XCU proves local coissue/read-wait improvement but larger ABarrier and atomic
+  tails. This is a valid micro scheduling checkpoint, not completion of the
+  50% target.
+- Evidence: `results/fused5_useful_stagger_20260723.md`.

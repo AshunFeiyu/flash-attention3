@@ -16831,3 +16831,29 @@ Production integration result:
   legally stagger group order. Do not micro-optimize `s_xor`, add empty delay,
   or change the exact-work ledger.
 - Evidence: `results/fused5_native_lagone_canonical_20260723.md`.
+
+## 2026-07-23 - Useful C0/C1 schedule stagger
+
+- Classification:
+  `ACCEPT_MICRO_TICKS_USEFUL_STAGGER / MMAC50_OPEN`.
+- The canonical ownership, pages, tokens, output owners and five-GEMM MMOP
+  ledger stay unchanged. C0 uses `score -> P -> dV -> dP -> dS`; C1 uses
+  `dP -> score -> P -> dS -> dV`.
+- Score and dP are now explicit matrix-product islands. Each batches four
+  transposed matrix reads, performs one first-use wait and issues eight MMAC.
+  FP32 P remains live for dS while its FP16 fragment feeds dV.
+- Static and correctness gates pass: role `8/165/168/84`, SGPR60/VGPR124,
+  LDS115,456 B, private/spill/scratch0, S128 causal/noncausal and S1024 causal
+  PASS, exact MMOP92,160 and bank0.
+- Fullperf improves `73,280,025 -> 73,016,580` ticks (`-0.3595%`) while MMAC
+  active changes `21.809889% -> 21.641706%`.
+- XCU proves useful staggering rather than an empty delay: C0/C1 MMAC+VALU
+  coissue improves `10.91%/11.24% -> 12.79%/12.69%`, and transposed
+  matrix-read-to-wait bubble falls `6.58% -> 5.11%`.
+- The exposed limiter moves to ownership/output boundaries. The top
+  ABarrier-following bubble grows 1.79%, atomic-to-atomic grows 5.83%, and the
+  final ebarrier edge grows 3.42%. These absorb nearly all local schedule
+  savings and explain why aggregate MMAC active does not rise.
+- Keep this clean schedule base. Next map the dominant ABarrier to its exact
+  page lifetime and change ownership, not consumer order.
+- Evidence: `results/fused5_useful_stagger_20260723.md`.

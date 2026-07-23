@@ -5728,3 +5728,19 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   explicit score/P, dP, dV and dS schedule islands with different legal C0/C1
   orders. Empty delay, phase forks and `s_xor` tuning are prohibited.
 - Evidence: `results/fused5_native_lagone_canonical_20260723.md`.
+
+## 2026-07-23 Useful Stagger Checkpoint
+
+- The one canonical kernel now exposes explicit score, dP, probability, dV
+  and dS helpers. It does not add a phase or alternate production path.
+- C0 and C1 use different legal work orders, preserving exactly five GEMMs,
+  output ownership, LDS115,456 B and the existing ABarrier map.
+- Resource/correctness gates pass at role `8/165/168/84`,
+  private/spill/scratch0, S128 causal/noncausal and S1024 causal PASS,
+  MMOP92,160 and bank0.
+- Fullperf is 73,016,580 ticks, 0.3595% below the native lag-one checkpoint.
+  MMAC active is 21.641706%, so the 50% goal remains open.
+- XCU shows real C0/C1 MMAC+VALU improvement but larger ownership and atomic
+  tails. Preserve the read batching and stage order; the next architecture
+  change must shorten the dominant page ownership lifetime.
+- Evidence: `results/fused5_useful_stagger_20260723.md`.
