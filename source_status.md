@@ -11011,3 +11011,26 @@ Status: `ACCEPT_CANONICAL_SINGLE_DS_PUBLICATION / MMAC50_OPEN`.
   `/zys/sb/fa3b/xcu_outputs/5gemm_single_ds_s1024_20260723`.
 - Next source hypothesis must split dO and Q lifetime. Do not add Q2/dO1 in
   LDS; the current P bridge makes that layout 132,608 B.
+
+## 2026-07-23 Q-Latch Early Raw Release
+
+Status: `ACCEPT_CANONICAL_Q_LATCH_EARLY_RAW_RELEASE / MMAC50_OPEN`.
+
+- Commit `d7308d4` latches all four Q normal panels after dV, then signals
+  `RawUsed` before final dS publication, dK, dQ and dQ atomics.
+- Exactly five GEMMs and dynamic MMOP92,160 are unchanged. H1/S128 c0+c1 and
+  H1/S1024 c1 pass; SGPR100/VGPR168/LDS115,456 B, private/spill/scratch0 and
+  bank0.
+- Three paired stats runs improve median ticks
+  `101,732,540 -> 100,594,585` (`-1.119%`).
+- Locked fullperf improves `102,105,640 -> 101,053,680` (`-1.030%`) and MMAC
+  active `16.817606% -> 16.978666%`.
+- The top producer `RawUsed` wait grows `11,687 -> 12,099` cycles because the
+  producer now reaches the next-generation wait earlier. In that same SIMD
+  window peer consumer MMAC rises `163 -> 186` and bubble share falls
+  `96.23% -> 96.12%`; the wait overlaps useful work rather than extending the
+  kernel critical path.
+- The 50% target remains open. P still roundtrips through a 16 KiB scratch,
+  q-owned P/dS cannot yet directly feed dV/dK, and dQ atomics remain exposed.
+- Evidence:
+  `results/fused5_q_latch_early_raw_release_20260723.md`.

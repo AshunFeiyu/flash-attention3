@@ -16766,3 +16766,26 @@ Production integration result:
   `/zys/sb/fa3b/xcu_outputs/5gemm_single_ds_s1024_20260723`.
 - Next: resource-gate Q fragments in VGPR after dV, release combined raw LDS
   before dK, and keep Q2/dO1 LDS staging rejected at 132,608 B.
+
+## 2026-07-23 - Q latch and early combined-raw release
+
+- Classification:
+  `ACCEPT_CANONICAL_Q_LATCH_EARLY_RAW_RELEASE / MMAC50_OPEN`.
+- Commit `d7308d4` batches all four Q normal panels into consumer VGPRs after
+  dV, signals `RawUsed`, then publishes final dS and executes dK/dQ.
+- Static/correctness gates pass: exactly five GEMMs, MMOP92,160,
+  SGPR100/VGPR168/LDS115,456 B, no private/spill/scratch, bank0, H1/S128
+  causal/noncausal PASS and H1/S1024 causal PASS.
+- Three same-build paired runs improve median ticks by 1.119%. Locked
+  fullperf improves `102,105,640 -> 101,053,680` (`-1.030%`) and active
+  `16.817606% -> 16.978666%`; dynamic wait issues fall by 1,152.
+- Aggregate barrier share rises because the producer prefetches earlier and
+  then waits farther ahead. XCU shows the top id4 wait grows to 12,099 cycles,
+  while peer MMAC in the same SIMD window rises `163 -> 186`, window bubble
+  falls slightly, SQTT duration falls 1.03%, and final ticks fall.
+- This accepts the lifetime change but not the overall pipeline. Direct
+  P-to-dV/dS-to-dK ownership and the dQ atomic/lag-one schedule remain open.
+- Evidence:
+  `/zys/sb/fa3b/q_latch_fullperf_20260723/5gemm_owner_s1024_c1_fullperf_20260723_161812`,
+  `/zys/sb/fa3b/xcu_outputs/5gemm_q_latch_s1024_20260723`, and
+  `/共享/shaobo/perf/20260723_161812_fused5_q_latch_early_raw_release_h1s1024_sqc7_fullperf`.

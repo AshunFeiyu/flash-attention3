@@ -5681,3 +5681,19 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   next; do not add an over-budget 132,608 B Q2/dO1 LDS design.
 - Evidence:
   `/zys/sb/fa3b/xcu_outputs/5gemm_single_ds_s1024_20260723`.
+
+## 2026-07-23 Q-Latch Canonical Checkpoint
+
+- Canonical commit `d7308d4` latches Q into consumer VGPRs after dV and
+  releases the combined Q/dO raw page before dK/dQ.
+- Fullperf H1/S1024 causal is `101,053,680` ticks and `16.978666%` useful MMAC
+  active, with exact MMOP92,160, bank0 and no private/spill/scratch.
+- The producer's id4 wait becomes longer because it prefetches the next packet
+  earlier; XCU shows more peer consumer MMAC in that window and lower whole
+  kernel duration. Do not undo the change based on aggregate barrier share
+  alone.
+- Next work must preserve this early release while solving native P/dS
+  register ownership or a producer-group dQ writer/lag-one schedule. Do not
+  add a second raw LDS page while the P bridge keeps the design over budget.
+- Detailed evidence:
+  `results/fused5_q_latch_early_raw_release_20260723.md`.
