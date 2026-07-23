@@ -16681,3 +16681,23 @@ Production integration result:
   Q/dO LDS for the 64 KiB padded dS set, reducing per-panel cross-group
   ownership to one publish/consume epoch. Atomics require a separate ownership
   solution; moving unchanged CAS work between roles is already rejected.
+
+## 2026-07-23 - FA3 / FA4 pinned-source design audit
+
+- Classification: `OBSERVE_DESIGN_CORRECTION`.
+- Pinned upstream:
+  `b54df166ebb69b896892826014759d09b9c3c9c6`.
+- D128 FA3 and FA4-SM90 use symmetric two-heavy-group ownership, matching the
+  canonical exact-work topology. The proposed single-full-dQ group is
+  superseded for D128.
+- Official D128 RS execution directly chains P registers into dV and dS
+  registers into dK, then writes dS once for dQ. Canonical Shaobo currently
+  adds two avoidable LDS write/read roundtrips.
+- No performance result is claimed. Kernel source and best tag are unchanged.
+- Official producer-side dQ reduction still combines partials from multiple
+  K-tile CTAs; it does not resolve sbx4 cross-die atomic ownership.
+- Next hypotheses, in order: focused P->dV native fragment probe, focused
+  dS->dK plus single-publication probe, canonical direct-RS integration,
+  separate Q/dO lifetimes, then resource-gated symmetric lag-one.
+- Audit:
+  `docs/tridao_fa3_fa4_bwd_source_audit_20260723.md`.

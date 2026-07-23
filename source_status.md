@@ -10919,3 +10919,22 @@ Status: `ACCEPT_EXACT_WORK_SPILL_FREE / PERFORMANCE_TARGET_OPEN`.
 - Next source change must batch all four M16 dS publications into one ownership
   epoch and must preserve exact MMOP, unique output owners and no-spill gates.
   It is not permitted to reintroduce D32 duplicate dQ partials.
+
+## 2026-07-23 Tri Dao Source Audit
+
+Status: `DESIGN_CORRECTION / KERNEL_UNCHANGED`.
+
+- Official source commit:
+  `b54df166ebb69b896892826014759d09b9c3c9c6`.
+- Keep canonical M64/N128/D128 and symmetric N64 dKV plus D64 dQ ownership.
+- Supersede the D128 C0-full-dQ/C1-no-dQ draft.
+- Next P0 gate: prove `P-reg -> dV MMAC` without the current local LDS
+  write/read pair.
+- Next P0 gate: prove `dS-reg -> dK MMAC` while publishing dS exactly once for
+  dQ.
+- Then integrate the two direct paths before splitting Q/dO lifetimes or
+  attempting FA4 lag-one.
+- Keep the 5-GEMM limitation explicit: the official dQ writer still performs
+  a cross-K-tile reduction and does not prove sbx4 cross-die atomic legality.
+- Detailed evidence:
+  `docs/tridao_fa3_fa4_bwd_source_audit_20260723.md`.

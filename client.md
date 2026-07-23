@@ -5609,3 +5609,25 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
 - Evidence lives under
   `/zys/sb/fa3b/5gemm_owner_s1024_c1_fullperf_20260723_054758` and
   `/zys/sb/fa3b/xcu_outputs/5gemm_symmetric_d16_singlepage_s1024_20260723_window`.
+
+## 2026-07-23 FA3 / FA4 Source Audit Correction
+
+- Pinned official upstream at
+  `b54df166ebb69b896892826014759d09b9c3c9c6`.
+- D128 official ownership is symmetric: both heavy consumer groups own N64
+  full-D dK/dV and D64 dQ. The single-full-dQ-group draft is superseded for
+  D128.
+- The largest missed path is not another barrier tweak. In the official D128
+  RS path, FP16 P directly feeds dV MMAC and FP16 dS directly feeds dK MMAC;
+  dS is written to shared memory once for dQ.
+- Canonical source currently roundtrips P and dS through LDS before dV/dK and
+  later publishes dS again. Next work begins with two isolated native-fragment
+  probes, then one minimal canonical integration.
+- Q and dO have independent official pipeline lifetimes. Split their Shaobo
+  ownership only after the direct-register path passes.
+- The official dQ writer does not remove cross-K-tile reduction; deterministic
+  mode also needs a semaphore. It is performance guidance, not proof of sbx4
+  cross-die atomic correctness.
+- FA4 lag-one is deferred until a two-generation LDS/VGPR ledger passes;
+  Blackwell TMEM/UMMA/2-CTA mechanisms are not assumed to exist on Shaobo.
+- Audit: `docs/tridao_fa3_fa4_bwd_source_audit_20260723.md`.
