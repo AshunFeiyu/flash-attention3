@@ -16806,3 +16806,28 @@ Production integration result:
   `/zys/sb/fa3b/layout_probes/fused5_native_lagone_20260723_172647`.
 - This proves resources and ownership only. Next integrate once into the
   canonical kernel and require CPU golden, same-shape ticks and xcu evidence.
+
+## 2026-07-23 - Native lag-one canonical integration
+
+- Classification: `ACCEPT_CANONICAL_NATIVE_LAGONE_16WAVE / MMAC50_OPEN`.
+- Integrated P0 waves0-3, dKV groups waves4-7/8-11, and D32 dQ writers
+  waves12-15 into the single canonical kernel. Exact useful work remains five
+  GEMMs and 1,280 MMAC per tile.
+- The first three WDRA allocations still spilled, including a full-budget
+  `8/208/208/88` allocation. Removing the four-panel `QNormalBatch` and
+  streaming one Q panel at a time made `8/200/200/88` spill-free. This is a
+  lifetime result, not a quota-only result.
+- S128 causal/noncausal and S1024 causal pass. Static result is role
+  `8/168/169/84`, SGPR82/VGPR124, LDS115,456 B, no private/spill/scratch,
+  exact MMOP92,160 and bank0.
+- Same-build H1/S1024 control improves from 100,667,385 to 73,271,835 ticks
+  (`-27.214%`) and 17.016302% to 21.785506% MMAC active
+  (`+4.769204 pp`). Fullperf is 73,280,025 ticks / 21.809889%.
+- SQTT rejects the claim that lag-one is complete: C0/C1 still have 216
+  MMAC-vs-MMAC bins versus 121 MMAC-vs-VALU bins, and P1 MMAC is usually
+  paired with peer waiting rather than peer VALU. Atomic-to-atomic gaps are
+  13.01% and ABarrier-following attribution remains the largest issue edge.
+- Next change must split the mathematical schedule into useful islands and
+  legally stagger group order. Do not micro-optimize `s_xor`, add empty delay,
+  or change the exact-work ledger.
+- Evidence: `results/fused5_native_lagone_canonical_20260723.md`.

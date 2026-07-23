@@ -11048,3 +11048,23 @@ Status: `FOCUSED_GATE_ACCEPTED / CANONICAL_UNCHANGED`.
   branch-local and PMD warning/panic free.
 - Next source change is one coherent canonical role split, not another phase
   or template fork.
+
+## 2026-07-23 Native Lag-One Canonical Source
+
+Status: `ACCEPT_CANONICAL_NATIVE_LAGONE_16WAVE / MMAC50_OPEN`.
+
+- Branch `exp/fused5-native-lagone-16wave` contains the only production
+  5-GEMM path. No phase selector or alternate performance kernel was added.
+- Roles are fixed at P0 waves0-3, dKV C0 waves4-7, dKV C1 waves8-11, and dQ
+  writers waves12-15. The dKV waves own unique N16 output slices; dQ writers
+  own unique D32 partials.
+- `QNormalBatch` was deleted. dK now reads Q panel-by-panel, which reduces
+  live state enough to compile without private memory or spills.
+- Static and runtime gates pass: role `8/168/169/84`, SGPR82/VGPR124,
+  LDS115,456 B, private0, scratch0, spill0, bank0, exact MMOP92,160.
+- H1/S128 causal and noncausal plus H1/S1024 causal pass CPU golden.
+- Fullperf H1/S1024 is 73,280,025 ticks and 21.809889% useful MMAC active.
+- The canonical source is ready to commit. The next source hypothesis is
+  useful C0/C1 staggering by legal operation order; it must preserve this
+  exact-work and resource contract.
+- Evidence: `results/fused5_native_lagone_canonical_20260723.md`.

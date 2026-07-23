@@ -5709,3 +5709,22 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   branch-local lane acquisition fixes it.
 - The gate is not a production promotion. Full fused correctness, no-spill,
   bank0, lower H1/S1024 ticks and xcu proof remain mandatory.
+
+## 2026-07-23 Canonical 16-Wave Native Lag-One
+
+- The production kernel now has one 16-wave path: P0 0-3, dKV C0 4-7, dKV
+  C1 8-11, and D32 dQ writers 12-15.
+- Five-GEMM work is conserved exactly. dS is published once; dK consumes its
+  normal view and dQ its trans view. There is no duplicate score or dP.
+- Do not restore whole-batch Q latching. It spilled even when the four WDRA
+  windows consumed the full 512-VGPR physical budget. Read Q one M16 panel at
+  a time after dS publication.
+- Accepted resource point: target `8/200/200/88`, compiled role use
+  `8/168/169/84`, SGPR82/VGPR124, LDS115,456 B, private/spill/scratch0.
+- Same-build H1/S1024 ticks improve 27.214% and MMAC active rises from
+  17.016302% to 21.785506%. This is the new canonical checkpoint, not the
+  final 50% target.
+- SQTT shows incomplete useful staggering. The next admitted source change is
+  explicit score/P, dP, dV and dS schedule islands with different legal C0/C1
+  orders. Empty delay, phase forks and `s_xor` tuning are prohibited.
+- Evidence: `results/fused5_native_lagone_canonical_20260723.md`.

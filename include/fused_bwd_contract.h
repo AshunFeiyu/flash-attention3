@@ -12,19 +12,22 @@ struct FusedBwdContract {
     static constexpr int kWavesPerProducer = 4;
     static constexpr int kConsumerGroups = 2;
     static constexpr int kWavesPerConsumerGroup = 4;
+    static constexpr int kDqWriterWaves = 4;
     static constexpr int kProducerWaveBegin = 0;
     static constexpr int kConsumer0WaveBegin = 4;
     static constexpr int kConsumer1WaveBegin = 8;
+    static constexpr int kDqWriterWaveBegin = 12;
     static constexpr int kWavesPerCta =
-        kWavesPerProducer + kConsumerGroups * kWavesPerConsumerGroup;
+        kWavesPerProducer + kConsumerGroups * kWavesPerConsumerGroup +
+        kDqWriterWaves;
     static constexpr int kThreadsPerCta = kWavesPerCta * kWaveSize;
     static constexpr int kMqPerPanel = 16;
     static constexpr int kMqPanels = kMq / kMqPerPanel;
     static constexpr int kNkPerConsumerWave =
         kNk / (kConsumerGroups * kWavesPerConsumerGroup);
     static constexpr int kNkPerConsumerGroup = kNk / kConsumerGroups;
-    static constexpr int kHeadDimPerConsumerWave =
-        kHeadDim / (kConsumerGroups * kWavesPerConsumerGroup);
+    static constexpr int kHeadDimPerDqWriter =
+        kHeadDim / kDqWriterWaves;
 
     static constexpr int kMmacM = 16;
     static constexpr int kMmacN = 16;
@@ -35,11 +38,9 @@ struct FusedBwdContract {
     static constexpr int kMmacPerConsumerWaveDkv =
         4 * (kMq / kMmacM) * (kNkPerConsumerWave / kMmacN) *
         (kHeadDim / kMmacK);
-    static constexpr int kMmacPerConsumerWaveDq =
+    static constexpr int kMmacPerDqWriterWave =
         (kMq / kMmacM) * (kNk / kMmacN) *
-        (kHeadDimPerConsumerWave / kMmacK);
-    static constexpr int kMmacPerConsumerWave =
-        kMmacPerConsumerWaveDkv + kMmacPerConsumerWaveDq;
+        (kHeadDimPerDqWriter / kMmacK);
 
     enum class LogicalGemm : uint8_t {
         kScore,
@@ -60,7 +61,7 @@ struct FusedBwdContract {
     static constexpr int kMmacPerTile =
         kLogicalGemmCount * kMmacPerLogicalGemm;
     static constexpr bool kDkvHasUniqueOutputOwner = true;
-    static constexpr bool kDqHasUniqueD16Owner = true;
+    static constexpr bool kDqHasUniqueD32Owner = true;
     static constexpr bool kDqUsesFp32AtomicAdd = true;
 
     static constexpr int kResidentKvBytes =
@@ -105,13 +106,15 @@ struct FusedBwdContract {
 
     static_assert(kMq == 64 && kNk == 128 && kHeadDim == 128,
                   "fused FA3 BWD contract is fixed to M64/N128/D128");
-    static_assert(kWavesPerCta == 12 && kProducerWaveBegin == 0 &&
-                      kConsumer0WaveBegin == 4 && kConsumer1WaveBegin == 8,
-                  "wave roles must be producer 0-3 and symmetric groups 4-7/8-11");
+    static_assert(kWavesPerCta == 16 && kProducerWaveBegin == 0 &&
+                      kConsumer0WaveBegin == 4 &&
+                      kConsumer1WaveBegin == 8 &&
+                      kDqWriterWaveBegin == 12,
+                  "roles must be P0 0-3, dKV 4-11 and dQ writer 12-15");
     static_assert(kMqPanels == 4 && kNkPerConsumerWave == 16 &&
                       kNkPerConsumerGroup == 64 &&
-                      kHeadDimPerConsumerWave == 16,
-                  "each consumer must own N16 dKV and globally unique D16 dQ");
+                      kHeadDimPerDqWriter == 32,
+                  "dKV waves own N16 and dQ writers own unique D32");
     static_assert(kMq % kMmacM == 0 && kNk % kMmacN == 0 &&
                       kHeadDim % kMmacK == 0,
                   "tile dimensions must be MMAC aligned");
@@ -122,12 +125,16 @@ struct FusedBwdContract {
     static_assert(kMmacPerLogicalGemm == 256 && kMmacPerTile == 1280,
                   "five-GEMM tile work must be 256 MMAC per GEMM and 1280 total");
     static_assert(kConsumerGroups * kWavesPerConsumerGroup *
-                          kMmacPerConsumerWave ==
+                              kMmacPerConsumerWaveDkv +
+                          kDqWriterWaves * kMmacPerDqWriterWave ==
                       kMmacPerTile,
                   "owner work must equal exactly five logical GEMMs");
-    static_assert(kDkvHasUniqueOutputOwner && kDqHasUniqueD16Owner &&
+    static_assert(kMmacPerConsumerWaveDkv == 128 &&
+                      kMmacPerDqWriterWave == 64,
+                  "per-role MMAC ledger must match the 16-wave design");
+    static_assert(kDkvHasUniqueOutputOwner && kDqHasUniqueD32Owner &&
                       kDqUsesFp32AtomicAdd,
-                  "dKV must store once and dQ must emit one D16 partial");
+                  "dKV must store once and dQ must emit one D32 partial");
     static_assert(kResidentKvBytes == 64 * 1024 &&
                       kRawQDoBytes == 32 * 1024 &&
                       kPdsLogicalBytes == 16 * 1024 &&
@@ -161,11 +168,13 @@ struct FusedBwdBarrierLedger {
 };
 
 struct FusedBwdWdraResourceWindow {
-    static constexpr int kProducerVgprs = 24;
-    static constexpr int kConsumer0Vgprs = 240;
-    static constexpr int kConsumer1Vgprs = 240;
+    static constexpr int kProducerVgprs = 8;
+    static constexpr int kConsumer0Vgprs = 200;
+    static constexpr int kConsumer1Vgprs = 200;
+    static constexpr int kDqWriterVgprs = 88;
     static constexpr int kPhysicalVgprTarget =
-        kProducerVgprs + kConsumer0Vgprs + kConsumer1Vgprs;
+        kProducerVgprs + kConsumer0Vgprs + kConsumer1Vgprs +
+        kDqWriterVgprs;
     static constexpr int kPhysicalVgprGuard = 504;
     static constexpr int kPhysicalVgprBudget = 512;
     static constexpr bool kRequireNoSpill = true;
@@ -176,8 +185,8 @@ struct FusedBwdWdraResourceWindow {
                   "physical WDRA target exceeds the admitted guard");
     static_assert(kPhysicalVgprTarget <= kPhysicalVgprBudget,
                   "physical WDRA target must fit the 512 VGPR budget");
-    static_assert(kPhysicalVgprTarget == 504,
-                  "K/V-resident WDRA average must satisfy the 8-VGPR granularity");
+    static_assert(kPhysicalVgprTarget == 496,
+                  "panel-streamed Q leaves 16 physical VGPRs of guard");
     static_assert(kRequireNoSpill, "fused path must be spill-free");
     static_assert(kRequireNoPrivateSegment && kRequireNoScratch,
                   "fused path must not allocate private or scratch storage");
