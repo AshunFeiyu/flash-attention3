@@ -61,6 +61,13 @@ struct ResidentFragments {
                           Tile::kWavesPerConsumerGroup];
 };
 
+struct QNormalBatch {
+    Fragment panel0[kMatrixBlocksD];
+    Fragment panel1[kMatrixBlocksD];
+    Fragment panel2[kMatrixBlocksD];
+    Fragment panel3[kMatrixBlocksD];
+};
+
 __device__ __forceinline__ int matrix_block_offset(int row_block,
                                                    int d_block) {
     return (row_block * kMatrixBlocksD + d_block) * kMatrixBlockBytes;
@@ -461,19 +468,45 @@ __device__ __forceinline__ void publish_final_ds(
     ins::ds_write_matrix_32x16_trans_f16(ds.f16x8, lds, page);
 }
 
+__device__ __forceinline__ void latch_q_normal_batch(
+    const __half* lds,
+    QNormalBatch& q) {
+    read_raw_panel_normal<LdsLayout::kQBase>(lds, 0, q.panel0);
+    read_raw_panel_normal<LdsLayout::kQBase>(lds, 1, q.panel1);
+    read_raw_panel_normal<LdsLayout::kQBase>(lds, 2, q.panel2);
+    read_raw_panel_normal<LdsLayout::kQBase>(lds, 3, q.panel3);
+    ins::wait_lgkm(0);
+}
+
 template <int MBlock, int Group>
-__device__ __forceinline__ void update_dk_from_final_ds(
+__device__ __forceinline__ void read_final_ds_normal(
     const __half* lds,
     int owner,
-    Accumulator (&dk_acc)[8]) {
+    Fragment& ds) {
     const int page = batch_ds_group_offset<MBlock, Group>() +
                      owner * Tile::kWriterPageBytes;
-    Fragment ds_normal{};
-    Fragment q_normal[kMatrixBlocksD];
-    ins::ds_read_matrix_32x16_normal(lds, page, ds_normal.f16x8);
-    read_raw_panel_normal<LdsLayout::kQBase>(lds, MBlock, q_normal);
+    ins::ds_read_matrix_32x16_normal(lds, page, ds.f16x8);
+}
+
+template <int Group>
+__device__ __forceinline__ void update_dk_from_final_batch(
+    const __half* lds,
+    int owner,
+    const QNormalBatch& q,
+    Accumulator (&dk_acc)[8]) {
+    Fragment ds0{};
+    Fragment ds1{};
+    Fragment ds2{};
+    Fragment ds3{};
+    read_final_ds_normal<0, Group>(lds, owner, ds0);
+    read_final_ds_normal<1, Group>(lds, owner, ds1);
+    read_final_ds_normal<2, Group>(lds, owner, ds2);
+    read_final_ds_normal<3, Group>(lds, owner, ds3);
     ins::wait_lgkm(0);
-    update_dk_stage(ds_normal, q_normal, dk_acc);
+    update_dk_stage(ds0, q.panel0, dk_acc);
+    update_dk_stage(ds1, q.panel1, dk_acc);
+    update_dk_stage(ds2, q.panel2, dk_acc);
+    update_dk_stage(ds3, q.panel3, dk_acc);
 }
 
 __device__ __forceinline__ void zero_dq_accumulators(
@@ -572,10 +605,13 @@ __device__ __forceinline__ void run_consumer_group(
                 softmax_scale, lane, score, dp, ds_panels[m_block], dv_acc);
         }
 
+        QNormalBatch q_normal;
+        latch_q_normal_batch(lds, q_normal);
+        ins::abarrier_arrive_cnt<false>(Bar::kRawUsed, 1);
+
         if (qi != 0) {
             ins::abarrier_try_wait<true>(Bar::kKvDsUsed, kv_ds_used_phase);
         }
-
         publish_final_ds<0, Group>(ds_panels[0], mutable_lds, owner);
         publish_final_ds<1, Group>(ds_panels[1], mutable_lds, owner);
         publish_final_ds<2, Group>(ds_panels[2], mutable_lds, owner);
@@ -583,11 +619,7 @@ __device__ __forceinline__ void run_consumer_group(
         ins::wait_lgkm(0);
         ins::abarrier_arrive_cnt<false>(kLocalBatchFilled, 1);
 
-        update_dk_from_final_ds<0, Group>(lds, owner, dk_acc);
-        update_dk_from_final_ds<1, Group>(lds, owner, dk_acc);
-        update_dk_from_final_ds<2, Group>(lds, owner, dk_acc);
-        update_dk_from_final_ds<3, Group>(lds, owner, dk_acc);
-        ins::abarrier_arrive_cnt<false>(Bar::kRawUsed, 1);
+        update_dk_from_final_batch<Group>(lds, owner, q_normal, dk_acc);
 
         int local_wait_phase = batch_filled_phase;
         ins::abarrier_try_wait<true>(kLocalBatchFilled,
