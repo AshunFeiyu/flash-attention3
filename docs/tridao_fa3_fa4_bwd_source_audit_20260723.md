@@ -8,8 +8,175 @@ Pinned upstream commit:
 b54df166ebb69b896892826014759d09b9c3c9c6
 ```
 
+Local read-only sparse clone:
+
+```text
+/Users/zhangyushun/Documents/Codex/2026-06-08/shaobo-hip-shaobo-demo/work/upstream/flash-attention-main
+```
+
+The clone contains `hopper`, `flash_attn/cute` and
+`csrc/flash_attn/src`. Its `origin/main` and `HEAD` both resolve to the pinned
+commit above.
+
 This audit separates source facts from Shaobo transfer hypotheses. It does not
 change the canonical kernel.
+
+## Source-Derived Top-Level Design
+
+### Complete backward lifecycle
+
+The official path is not a single kernel:
+
+| Dispatch | Source responsibility | Output contract |
+| --- | --- | --- |
+| preprocess | compute `dPsum_i = sum_d(dO_i,d * O_i,d)`, convert LSE to log2 form and clear FP32 `dQaccum` | FP32 sidecar and zeroed reduction buffer |
+| main backward | one CTA owns one `N=128` K/V tile, loops over `M=64` Q/dO tiles, executes exactly five GEMMs, accumulates dK/dV and emits one dQ partial per K tile | final dK/dV tile plus FP32 dQ partial reduction |
+| postprocess | multiply FP32 `dQaccum` by `softmax_scale`, convert to FP16/BF16 and store final dQ | final b16 dQ |
+
+Sources:
+
+- `hopper/flash_bwd_launch_template.h:49-75`
+- `hopper/flash_bwd_preprocess_kernel.h:202-239`
+- `hopper/flash_bwd_launch_template.h:176-248`
+- `hopper/flash_bwd_postprocess_kernel.h:200-216`
+
+### D128 tile and exact ownership
+
+For causal/local D128, the launch arguments instantiate:
+
+```text
+M=64, N=128, D=128
+Q stages=2, dO stages=2, dS stages=2
+SdP_swapAB=true, dKV_swapAB=false, dQ_swapAB=false
+NumMmaWarpGroups=2
+AtomLayoutMSdP=1, AtomLayoutNdKV=2, AtomLayoutMdQ=1
+```
+
+The resulting two heavy warpgroups are symmetric:
+
+| Work per heavy WG | Matrix shape | Shaobo-equivalent 16x16x16 MMAC count |
+| --- | --- | ---: |
+| score | `K[N64,D128] @ Q^T[D128,M64] -> S^T[N64,M64]` | 128 |
+| dP | `V[N64,D128] @ dO^T[D128,M64] -> dP^T[N64,M64]` | 128 |
+| dV | `P^T[N64,M64] @ dO[M64,D128] -> dV[N64,D128]` | 128 |
+| dQ | `dS[M64,N128] @ K[N128,D64] -> dQ[M64,D64]` | 128 |
+| dK | `dS^T[N64,M64] @ Q[M64,D128] -> dK[N64,D128]` | 128 |
+
+Each heavy WG therefore owns 640 useful equivalent MMACs; the CTA owns 1280.
+Score and dP are split in N and computed exactly once. dK/dV are split in N,
+while dQ is split in D. This equal-volume mapping is the central D128 load
+balance, not an incidental code-generation detail.
+
+Sources:
+
+- `hopper/flash_bwd_launch_template.h:293-304,347-354`
+- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:69-134`
+- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:742-774`
+
+### Twelve-warp role map
+
+The kernel has one load warpgroup and two MMA warpgroups, with
+`24/240/240` target registers:
+
+```text
+warps 0-3   load / output warpgroup
+  warp 0    TMA K/V once; Q/dO/LSE/dPsum streaming
+  warp 1    dQ shared-to-global bulk reduce-add writer
+  warp 2-3  no duplicate loader or heavy MMA body
+
+warps 4-7   MMA WG0
+  N0:64 dK/dV owner, D0:64 dQ owner
+
+warps 8-11  MMA WG1
+  N64:128 dK/dV owner, D64:128 dQ owner
+```
+
+The dQ writer is therefore a specialization inside the existing load
+warpgroup. It is not a fourth heavy warpgroup and does not compute another dQ
+GEMM.
+
+Sources:
+
+- `hopper/flash_bwd_kernel_sm90.h:57-65`
+- `hopper/flash_bwd_kernel_sm90.h:211-266`
+
+### Mainloop pipeline
+
+The source implements this prologue/steady/tail schedule for one fixed K/V
+tile:
+
+```text
+prologue:
+  producer warp0: publish Q0 + LSE0
+  producer warp0: publish K + V under one combined transaction barrier
+
+steady producer recurrence for m:
+  publish dO[m] + dPsum[m]
+  publish Q[m+1] + LSE[m+1]
+
+steady heavy-WG step for m:
+  wait Q[m]
+  enqueue score[m]
+  wait dO[m]
+  enqueue dP[m]
+  wait until <=1 GMMA group remains
+  softmax(P[m]) while dP may still be outstanding
+  wait all score/dP GMMA
+  form dS[m]
+  convert P and dS to b16
+  publish dS once to shared
+  enqueue dV[m] directly from register P
+  synchronize the two heavy WGs on the full dS tile
+  enqueue dQ[m] from shared dS and resident K
+  release dO[m] after its last use
+  enqueue dK[m] directly from register dS and Q
+  publish FP32 dQ[m] to the per-WG shared output slice
+  wait all GMMA, release Q[m]
+
+concurrent writer recurrence:
+  wait dQFull[WG0], bulk reduce-add D0:64 to global dQaccum
+  wait dQFull[WG1], bulk reduce-add D64:128 to global dQaccum
+  signal dQEmpty[WG0/1]
+
+tail:
+  scale accumulated dK
+  convert dK/dV to b16
+  register-to-shared matrix store
+  TMA store dK/dV once
+```
+
+The GMMA helper only executes `warpgroup_wait<N>` when `wg_wait >= 0`.
+Consequently the `-1`, explicit `wait<1>`, elementwise work, then `wait<0>`
+sequence is intentional latency overlap rather than compiler accident.
+
+Sources:
+
+- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:506-557`
+- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:834-965`
+- `hopper/utils.h:254-321`
+- `hopper/epilogue_bwd.hpp:164-222`
+
+### Shared-memory views and ownership synchronization
+
+- K and V are loaded once for the CTA under one combined transaction barrier.
+- Q and dO have independent two-stage TMA pipelines.
+- One physical Q allocation exposes Q and Q-transpose views; dO and K use the
+  same view-composition technique. No in-memory transpose is performed.
+- P remains in registers for dV because `Mma_dKV_is_RS=true`.
+- dS remains in registers for dK and is written once to shared for dQ.
+- The `PdS` named barrier joins both heavy WGs because each D64 dQ owner needs
+  the full N128 dS tile produced as two N64 halves.
+- Each heavy WG has its own `dQEmpty/dQFull` handshake with the writer warp.
+- dK/dV FP32 accumulators live across all M iterations and are stored only in
+  the epilogue.
+
+Sources:
+
+- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:136-209`
+- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:242-289`
+- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:510-557`
+- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:898-957`
+- `hopper/named_barrier.hpp:61-70`
 
 ## Executive Correction
 
@@ -62,8 +229,9 @@ Source: `hopper/flash_bwd_kernel_sm90.h:211-240`.
 
 This is materially different from the rejected Shaobo experiment where the
 same producer waves both published raw input and executed atomics before the
-next publication. A future dedicated dQ writer must be evaluated as its own
-role and pipeline, not inferred from that negative result.
+next publication. The official design gives loading and dQ reduction to
+different warps inside the producer group, so the Shaobo transfer must preserve
+that internal specialization.
 
 ### One physical shared tensor supports normal and transposed views
 
@@ -80,14 +248,15 @@ out of the canonical matrix path.
 ### Q and dO have different logical lifetimes
 
 FA3 creates independent Q and dO pipelines. The loader issues dO for the
-current step and Q for the next step, and the consumers release dO after dV
-while Q remains needed through dK.
+current step and Q for the next step. dO's last mathematical use is dV; the
+source schedules its pipeline release after issuing dQ. Q remains needed
+through dK and is released only after the final GMMA wait.
 
 Sources:
 
 - `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:242-245`
 - `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:510-557`
-- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:941-949`
+- `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:927-1000`
 
 The current Shaobo fused kernel uses one combined `RawFilled/RawUsed` lifetime
 for Q and dO. That is too coarse, but splitting the token is the second design
@@ -182,8 +351,10 @@ Sources:
 - `hopper/mainloop_bwd_sm90_tma_gmma_ws.hpp:951-957`
 
 Our heavy consumers currently execute native scalar FP32 atomics directly.
-Moving this work is a valid later experiment only if SQTT still shows the
-atomic tail on the critical path after the direct P/dS chain is integrated.
+The accepted single-dS SQTT now measures atomic latency at about 19% of the
+selected source window, so moving this work is no longer a speculative
+afterthought. It is the next source-backed structural experiment after the
+already-built Q-latch candidate is classified.
 
 ### The writer does not remove the mathematical dQ reduction
 
@@ -307,8 +478,10 @@ Change in this order:
 4. Split Q and dO release lifetimes. A feasible conservative steady budget is
    Q stage2 32 KiB + dO stage1 16 KiB + current padded dS 64 KiB + sidecar
    about 1.5 KiB = 113.5 KiB.
-5. Re-profile. Only if atomic/store remains critical, try a dedicated dQ
-   writer wave with explicit LDS alias and backpressure proof.
+5. Re-profile the Q-lifetime candidate, then specialize a warp inside the
+   existing producer group as the dQ writer. Reuse the dead dS/output LDS
+   lifetime where possible and prove the per-WG empty/full backpressure; do not
+   add a fourth heavy warpgroup.
 6. Only after the ownership and lifetime gates pass, design a symmetric
    prologue/main/tail lag-one
    recurrence. It must preserve both D64 dQ owners and fit two live

@@ -691,8 +691,9 @@ evidence are required before any performance claim.
 - PMD/compiler issue registry:
   `docs/perf_model_pmd_compiler_issues.md`. Check it before attributing a PMD
   panic, invalid opcode, WDRA register warning, or codegen regression.
-- Active PMD host: `vega20`, reached through jump host `192.168.162.67` with
-  `ssh -F work/ssh/liuchang_common_config liuchang-common`.
+- Active PMD host: `vega20`, reached through the canonical `sb-liuchang`
+  alias. Connection details and handoff prompts live in the local `shaobo`
+  skill at `references/shaobo-remote-access.md`.
 - Active container is `zys1`; the remote repository is
   `/zys/shaobo/fa3_bwd_wasp_7gemm_consumer_conveyor_20260717`.
 - The new-machine `shaobo_dev_8426` environment remains a deferred fallback
