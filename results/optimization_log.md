@@ -17114,3 +17114,19 @@ Production integration result:
 - Classification: `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. Keep the
   double-page ownership at `d62c645`; close page-control micro-tuning.
 - Evidence: `results/fused5_raw_page_specialization_20260812.md`.
+
+## 2026-08-12 - Producer sidecar prefetch rejected
+
+- The compiler emits the requested `global_load_dwordx3 -> four BPS loads ->
+  wait -> three LDS stores` order, and producer VGPR remains legal at12/16.
+- S128 causal/noncausal and repeated S1024 causal correctness, exact MMOP,
+  bank0 and no-spill gates all pass.
+- VM wait falls 2.589% -> 1.633%, but splitting the lane-predicated sidecar
+  helper adds928 VALU,1088 SCA and38 static instructions; LGKM wait rises
+  0.830 pp.
+- Compute/complete means regress 2.522%/2.016%, and MMAC active falls to
+  31.059025%. Classification:
+  `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`.
+- Keep `d62c645`; close sidecar producer micro-scheduling and return to
+  topology-level C0/C1 readiness/coissue analysis.
+- Evidence: `results/fused5_sidecar_prefetch_before_bps_20260812.md`.

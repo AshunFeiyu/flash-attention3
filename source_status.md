@@ -11363,3 +11363,17 @@ Status: `REJECT_TICKS_REGRESSION / CANONICAL_RESTORED`.
 - Production source is byte-identical to accepted `d62c645`. Page-control
   micro-tuning is closed for LLVM `e0f10535`.
 - Evidence: `results/fused5_raw_page_specialization_20260812.md`.
+
+## 2026-08-12 Sidecar Prefetch Before BPS Rejected
+
+Status: `REJECT_TICKS_REGRESSION / CANONICAL_RESTORED`.
+
+- A single scheduling-only candidate moved producer sidecar global load before
+  four Q/dO BPS operations; ASM confirms the intended order.
+- S128 causal/noncausal and repeated S1024 causal correctness pass with exact
+  MMOP92,160, LDS131,072B, bank0 and private/spill/scratch0.
+- wait-VM improves, but VALU/SCA and wait-LGKM grow. Compute and complete mean
+  ticks regress2.522% and2.016%; MMAC active falls to31.059025%.
+- No fullperf/xcu was admitted. Production source is byte-identical to
+  accepted `d62c645`; sidecar placement is closed for this compiler.
+- Evidence: `results/fused5_sidecar_prefetch_before_bps_20260812.md`.

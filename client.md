@@ -5962,3 +5962,14 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   and complete mean regresses 0.310%. Source is restored to `d62c645`.
 - Do not pursue another page-control variation on this toolchain. The next
   tier must improve useful C0/C1 staggering without cloning packet code.
+
+## 2026-08-12 Sidecar Prefetch Before BPS Rejected
+
+- The intended ISA schedule is proven and lowers wait-VM by0.956 pp, but the
+  split prefetch/publish form duplicates lane-mask/address control and extends
+  three producer VGPRs across BPS.
+- All correctness/resource/MMOP/bank gates pass at role `12/161/163/86`, yet
+  complete ticks regress2.016% and MMAC active falls0.417 pp.
+- Source is restored to `d62c645`. Do not retry sidecar-load placement on
+  LLVM `e0f10535`; the next round must reanalyze C0/C1 readiness and useful
+  staggering on the accepted two-page topology.
