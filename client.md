@@ -1,5 +1,19 @@
 # Client
 
+## 2026-08-12 Current Fused5 Optimization State
+
+- Canonical best remains `b28e73d` (`best/fused5-consumer-zero-hoist-20260811`):
+  fullperf `71,950,060` ticks and 22.725077% MMAC active.
+- Consumer1 read8 was tested end to end and rejected. It raised MMAC active to
+  23.055142% but regressed ticks to `72,120,230` because dP/score became
+  adjacent MMAC islands and useful coissue fell sharply.
+- Next admissible hypothesis keeps the canonical staggering: consumer0 issues
+  dP matrix reads immediately after score, runs independent softmax+dV while
+  those reads mature, then waits and consumes dP. No barrier, LDS, math, or
+  ownership change is allowed in that experiment.
+
+Evidence: `docs/fused5_c1_read_ahead_design_20260812.md`.
+
 ## 2026-08-11 Complete Fused5 Lifecycle Baseline
 
 - Optimization branch `work/gfx946-fused5-opt` starts exactly at `d44ff33`

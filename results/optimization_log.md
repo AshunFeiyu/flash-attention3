@@ -1,5 +1,19 @@
 # Optimization Log
 
+## 2026-08-12 Consumer1 Read8 Rejected
+
+- Status: `REJECT_TICKS_REGRESSION / CANONICAL_RESTORED`.
+- Batched consumer1's dP and score operands as eight reads, then used
+  `lgkmcnt(4)` and dP MMAC to cover the younger score reads.
+- ISA, H1/S128 causal/noncausal, H1/S1024 causal, no-spill/resource and bank0
+  gates all passed; consumer1 rose only `166 -> 178` VGPR.
+- Fullperf ticks regressed `71,950,060 -> 72,120,230` (+0.2365%). MMAC active
+  rose 0.330pp, but coissue success fell 32.7% and wait-LGKM share rose.
+- Reject the adjacent-MMAC read8 form. Future operand prefetch must be covered
+  by independent softmax/dV/dS work rather than another MMAC island.
+
+Evidence: `/zys/shaobo_runs/fused5_c1_read_ahead_20260812/`.
+
 ## 2026-08-11 Consumer MMAC Zero Hoist Accepted
 
 - Status: `ACCEPT_MICRO_TICKS / CANONICAL_CANDIDATE`.

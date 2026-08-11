@@ -1,5 +1,22 @@
 # Source Status
 
+## 2026-08-12 Consumer1 dP/Score Read-Ahead
+
+Status: `REJECT_TICKS_REGRESSION / CANONICAL_SOURCE_RESTORED`.
+
+- Consumer1 emitted the intended `read8 -> lgkmcnt(4) -> dP MMAC8 ->
+  lgkmcnt(0) -> score MMAC8`; role use was 178/200 VGPR and all hard gates
+  passed, including full lifecycle correctness and bank0.
+- Fullperf regressed `71,950,060 -> 72,120,230` ticks despite MMAC active
+  improving `22.725077% -> 23.055142%`.
+- Coissue success fell `17,378 -> 11,699`, and wait-LGKM share rose
+  `7.344969% -> 7.591733%`. Back-to-back MMAC islands traded away the useful
+  MMAC/VALU staggering that the canonical schedule already had.
+- Restore `b28e73d`; retain only the design/evidence note.
+
+Evidence: `docs/fused5_c1_read_ahead_design_20260812.md`,
+`/zys/shaobo_runs/fused5_c1_read_ahead_20260812/`.
+
 ## 2026-08-11 Consumer MMAC Zero Hoist
 
 Status: `ACCEPT_MICRO_TICKS / CANONICAL_CANDIDATE`.
