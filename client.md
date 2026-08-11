@@ -5801,3 +5801,15 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   header library therefore remains unchanged by this experiment.
 - Next zero-seed work, if any, must target fixed score/dP consumer islands in
   a separate branch and prove lower ticks independently.
+
+## 2026-08-11 Consumer Zero Hoist Checkpoint
+
+- Reuse one consumer-role zero only for fixed score/dP first-MMAC islands.
+  This is the admitted FWD-style pattern; do not generalize it to long-lived
+  dQ/dK/dV accumulators without a separate first-update proof.
+- The change removes 48,576 dynamic VALU instructions, lowers fullperf ticks
+  by 0.2523%, raises MMAC active by 0.618pp and reduces heavy-role VGPR use.
+- A lower raw coissue count is expected because deleted moves can no longer
+  coissue. Treat it as healthy when exact MMOP is unchanged and ticks fall.
+- Probe/header promotion boundary: fixed first-MMAC zero reuse is a reusable
+  gfx946 candidate; long-lived accumulator zero seeding remains unadmitted.

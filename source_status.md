@@ -1,5 +1,22 @@
 # Source Status
 
+## 2026-08-11 Consumer MMAC Zero Hoist
+
+Status: `ACCEPT_MICRO_TICKS / CANONICAL_CANDIDATE`.
+
+- One consumer-role zero fragment now seeds every fixed score/dP first MMAC;
+  no algorithm, ownership, LDS, barrier or output path changed.
+- Static `v_mov_b64 208 -> 84`, heavy-role VGPR `165/168 -> 163/166`, MMAC320.
+- Full lifecycle H1/S128 causal/noncausal and H1/S1024 causal pass with exact
+  MMOP92,160, LDS115,456B, bank0 and no private/spill/scratch.
+- Fullperf ticks improve `72,132,060 -> 71,950,060` (`-0.2523%`); MMAC active
+  rises `22.106908% -> 22.725077%`; dynamic VALU falls 28.7%.
+- XCU issued instructions fall 12.4%. Lower coissue success reflects deleted
+  move instructions, not lost useful overlap.
+
+Evidence: `docs/fused5_consumer_zero_hoist_design_20260811.md`,
+`/zys/shaobo_runs/fused5_consumer_zero_hoist_20260811/`.
+
 ## 2026-08-11 dQ First-MMAC Zero Seed
 
 Status: `OBSERVE_INSTRUCTION_WIN / PERF_NEUTRAL / SOURCE_RESTORED`.

@@ -188,10 +188,9 @@ __device__ __forceinline__ void producer_load_raw(
 
 __device__ __forceinline__ void f16_mmac_single(const Fragment& lhs,
                                                  const Fragment& rhs,
+                                                 const ins::F16x8& zero,
                                                  Fragment& out,
                                                  bool first_d_block) {
-    ins::F16x8 zero;
-    ins::zero_f16x8(zero);
     const ins::Vec4F16 acc =
         first_d_block ? zero.f16x4[0] : out.f16x4[0];
     out.f16x4[0] = __builtin_hcu_mmac_16x16x16_f16_lit_lts(
@@ -260,6 +259,7 @@ __device__ __forceinline__ void matrix_product_stage(
     const __half* lds,
     int m_block,
     const Fragment (&rhs)[kMatrixBlocksD],
+    const ins::F16x8& zero,
     Fragment& out) {
     Fragment lhs[kMatrixBlocksD];
     const int panel_offset = m16_matrix_offset(m_block, 0);
@@ -272,7 +272,7 @@ __device__ __forceinline__ void matrix_product_stage(
     ins::raise_priority_2();
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
-        f16_mmac_single(lhs[d_block], rhs[d_block], out,
+        f16_mmac_single(lhs[d_block], rhs[d_block], zero, out,
                         d_block == 0);
     }
     ins::lower_priority();
@@ -282,18 +282,20 @@ __device__ __forceinline__ void score_stage(
     const __half* lds,
     int m_block,
     const ResidentFragments& resident,
+    const ins::F16x8& zero,
     Fragment& score) {
     matrix_product_stage<LdsLayout::kQBase>(
-        lds, m_block, resident.k_trans, score);
+        lds, m_block, resident.k_trans, zero, score);
 }
 
 __device__ __forceinline__ void dp_stage(
     const __half* lds,
     int m_block,
     const ResidentFragments& resident,
+    const ins::F16x8& zero,
     Fragment& dp) {
     matrix_product_stage<LdsLayout::kDoutBase>(
-        lds, m_block, resident.v_trans, dp);
+        lds, m_block, resident.v_trans, zero, dp);
 }
 
 template <int RegionBase>
@@ -585,6 +587,8 @@ __device__ __forceinline__ void run_consumer_group(
     Accumulator dv_acc[8];
     Accumulator dk_acc[8];
     zero_dkv_accumulators(dv_acc, dk_acc);
+    ins::F16x8 mmac_zero;
+    ins::zero_f16x8(mmac_zero);
     int raw_phase = 0;
     constexpr int kLocalBatchFilled =
         Group == 0 ? Bar::kBatchDsFilled0 : Bar::kBatchDsFilled1;
@@ -602,7 +606,7 @@ __device__ __forceinline__ void run_consumer_group(
             const int sidecar_row =
                 m_block * Tile::kMqPerPanel + (lane & 15);
             if constexpr (Group == 0) {
-                score_stage(lds, m_block, resident, score);
+                score_stage(lds, m_block, resident, mmac_zero, score);
                 probability_stage(
                     score, lane, q_base, m_block, k_base, n_owner, causal,
                     sidecar_field(mutable_lds, 0)[sidecar_row],
@@ -610,13 +614,13 @@ __device__ __forceinline__ void run_consumer_group(
                     softmax_scale, p);
                 update_dv_from_probability<Group>(
                     lds, mutable_lds, m_block, owner, p, dv_acc);
-                dp_stage(lds, m_block, resident, dp);
+                dp_stage(lds, m_block, resident, mmac_zero, dp);
                 ds_stage(
                     p, dp, sidecar_field(mutable_lds, 2)[sidecar_row],
                     softmax_scale, ds_panels[m_block]);
             } else {
-                dp_stage(lds, m_block, resident, dp);
-                score_stage(lds, m_block, resident, score);
+                dp_stage(lds, m_block, resident, mmac_zero, dp);
+                score_stage(lds, m_block, resident, mmac_zero, score);
                 probability_stage(
                     score, lane, q_base, m_block, k_base, n_owner, causal,
                     sidecar_field(mutable_lds, 0)[sidecar_row],

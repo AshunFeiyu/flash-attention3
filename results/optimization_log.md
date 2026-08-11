@@ -1,5 +1,24 @@
 # Optimization Log
 
+## 2026-08-11 Consumer MMAC Zero Hoist Accepted
+
+- Status: `ACCEPT_MICRO_TICKS / CANONICAL_CANDIDATE`.
+- Hoisted score/dP's fixed first-MMAC zero from `f16_mmac_single` into one
+  branch-local value per heavy consumer. No phase or alternate kernel exists.
+- Static `v_mov_b64` falls `208 -> 84`, MMAC stays 320 and heavy-role VGPR
+  improves `165/168 -> 163/166`. All correctness/resource gates pass.
+- Repeated stats runs are `72,208,045/71,888,180`; fullperf improves
+  `72,132,060 -> 71,950,060` (`-0.2523%`).
+- Fullperf MMAC active rises `22.106908% -> 22.725077%`; dynamic VALU falls
+  `169,376 -> 120,800`; XCU issued instructions fall 12.4% and atomic gap
+  share falls `14.06% -> 12.60%`.
+- Coissue success falls because 48,576 mostly hidden move instructions are no
+  longer present. Use ticks and useful MMAC active, not raw coissue count, to
+  judge this change.
+
+Evidence: `/zys/shaobo_runs/fused5_consumer_zero_hoist_20260811/fullperf/`,
+`/zys/shaobo_runs/fused5_consumer_zero_hoist_20260811/xcu/`.
+
 ## 2026-08-11 dQ First-MMAC Zero Seed Observed
 
 - Status: `OBSERVE_INSTRUCTION_WIN / PERF_NEUTRAL / CANONICAL_RESTORED`.
