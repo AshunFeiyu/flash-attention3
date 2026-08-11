@@ -1,5 +1,20 @@
 # Client
 
+## 2026-08-12 Matrix-Read Schedule Tier Closed
+
+- Consumer1 read8 and consumer0 dP-under-softmax prefetch both passed all hard
+  gates but failed elapsed ticks. Do not continue matrix-read placement tweaks
+  on this source shape.
+- The verified dominant edge remains producer `RawUsed(id4)` plus consumer
+  `RawFilled(id3)`. The next design will latch the Q-normal fragments required
+  by dK into heavy-consumer VGPRs, signal RawUsed before dK, and let producer
+  MLS for the next q tile overlap current dK/dQ work.
+- This ownership candidate may add about 32 VGPR per heavy consumer but adds no
+  MMAC, LDS bytes, token, or output operation. It must fit the existing 200
+  role window or be rejected before PMD.
+
+Evidence: `docs/fused5_c0_dp_prefetch_design_20260812.md`.
+
 ## 2026-08-12 Current Fused5 Optimization State
 
 - Canonical best remains `b28e73d` (`best/fused5-consumer-zero-hoist-20260811`):

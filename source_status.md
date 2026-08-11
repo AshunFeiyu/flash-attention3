@@ -1,5 +1,21 @@
 # Source Status
 
+## 2026-08-12 Consumer0 dP Prefetch
+
+Status: `REJECT_STATS_TICKS_AND_PIPELINE / CANONICAL_SOURCE_RESTORED`.
+
+- Kept consumer staggering and issued only consumer0's dP lhs before existing
+  softmax+dV work. Correctness, exact MMOP, bank0 and no-spill gates passed;
+  consumer0 rose `163 -> 181` VGPR within its 200 window.
+- S1024 fused ticks were `72,171,645`, 0.171% slower than the accepted stats
+  mean. MMAC active fell to 22.578767%; wait-LGKM and barrier shares rose.
+- This is the second failed matrix-read scheduling experiment. Restore the
+  canonical source and move back to the dominant RawUsed/RawFilled ownership
+  edge rather than continuing instruction placement tweaks.
+
+Evidence: `docs/fused5_c0_dp_prefetch_design_20260812.md`,
+`/zys/shaobo_runs/fused5_c0_dp_prefetch_20260812/`.
+
 ## 2026-08-12 Consumer1 dP/Score Read-Ahead
 
 Status: `REJECT_TICKS_REGRESSION / CANONICAL_SOURCE_RESTORED`.

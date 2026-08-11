@@ -1,5 +1,19 @@
 # Optimization Log
 
+## 2026-08-12 Consumer0 dP Prefetch Rejected
+
+- Status: `REJECT_STATS_TICKS_AND_PIPELINE / CANONICAL_RESTORED`.
+- Issued consumer0 dP reads before independent softmax+dV, without changing
+  consumer1 or joining adjacent MMAC islands.
+- Static and full correctness gates passed; role use was `8/181/166/84`, with
+  no private/spill/scratch and bank0.
+- S1024 ticks were `72,171,645`, +0.171% versus the accepted stats mean;
+  MMAC active fell to 22.578767% and wait-LGKM/barrier shares rose.
+- Stop this schedule tier after two failures. The next change must shorten the
+  RawUsed/RawFilled ownership interval itself.
+
+Evidence: `/zys/shaobo_runs/fused5_c0_dp_prefetch_20260812/`.
+
 ## 2026-08-12 Consumer1 Read8 Rejected
 
 - Status: `REJECT_TICKS_REGRESSION / CANONICAL_RESTORED`.
