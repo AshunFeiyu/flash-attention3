@@ -5791,3 +5791,13 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   `72,254,455` with exact MMOP92,160, bank0 and no spill/scratch.
 - Continue from canonical useful-stagger. Do not revive alternating-Q through
   another wait placement; select the next hypothesis from canonical SQTT.
+
+## 2026-08-11 Zero-Seed Admission Boundary
+
+- dQ first-MMAC zero seeding is correct and removes 4,032 dynamic moves, but
+  same-runtime fullperf ticks are neutral. The source is restored.
+- A reusable helper is admitted only after A6 shows lower operator ticks, not
+  merely fewer instructions or slightly higher MMAC active. The gfx946 probe
+  header library therefore remains unchanged by this experiment.
+- Next zero-seed work, if any, must target fixed score/dP consumer islands in
+  a separate branch and prove lower ticks independently.

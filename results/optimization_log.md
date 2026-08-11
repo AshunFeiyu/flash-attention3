@@ -1,5 +1,22 @@
 # Optimization Log
 
+## 2026-08-11 dQ First-MMAC Zero Seed Observed
+
+- Status: `OBSERVE_INSTRUCTION_WIN / PERF_NEUTRAL / CANONICAL_RESTORED`.
+- Replaced per-q-tile clearing of eight dQ accumulator vectors with a fixed
+  first-MMAC seed. Revision A held one zero across the loop and raised dQ role
+  use to 88; revision B scoped it per q-tile and restored role use to 84.
+- Both revisions pass correctness, exact MMOP92,160, bank0 and no
+  private/spill/scratch. Static `v_mov_b64` falls `208 -> 194`.
+- Revision B stats runs are `72,117,955/72,092,020` versus canonical median
+  `72,254,455`, but fullperf is `72,138,430` versus `72,132,060` control.
+- Fullperf improves MMAC active `22.106908% -> 22.141693%` and lowers dynamic
+  VALU `169,376 -> 165,344`; atomic issue-gap share rises to 14.57%, leaving
+  total ticks neutral. Do not promote code or a shared helper from this A6.
+
+Evidence: `/zys/shaobo_runs/fused5_dq_zero_seed_b_20260811/fullperf/`,
+`/zys/shaobo_runs/fused5_dq_zero_seed_b_20260811/xcu/`.
+
 ## 2026-08-11 Alternating Q / P-Scratch Rejected
 
 - Status: `REJECT_CORRECTNESS / CANONICAL_RESTORED / PERF_NOT_RUN`.

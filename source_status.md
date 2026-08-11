@@ -1,5 +1,22 @@
 # Source Status
 
+## 2026-08-11 dQ First-MMAC Zero Seed
+
+Status: `OBSERVE_INSTRUCTION_WIN / PERF_NEUTRAL / SOURCE_RESTORED`.
+
+- FWD-style first-MMAC seeding removed 4,032 dynamic `v_mov_b64`/VALU in
+  fullperf and improved MMAC active `22.106908% -> 22.141693%`.
+- Scoping zero per q-tile kept dQ role use at 84; H1/S128 and H1/S1024 passed,
+  exact MMOP92,160 and all resource/bank gates held.
+- Stats-only repeated about a 0.21% median tick reduction, but fullperf was
+  neutral/slightly worse: `72,132,060 -> 72,138,430` (`+0.009%`). Atomic gap
+  share rose `14.06% -> 14.57%`, absorbing the local instruction saving.
+- Canonical source matches `c58272f`. The helper is not promoted to the gfx946
+  header library because same-runtime A6 performance is not positive.
+
+Evidence: `docs/fused5_dq_zero_seed_design_20260811.md`,
+`/zys/shaobo_runs/fused5_dq_zero_seed_b_20260811/`.
+
 ## 2026-08-11 Alternating Q / P-Scratch Candidate
 
 Status: `REJECT_CORRECTNESS / CANONICAL_SOURCE_RESTORED`.
