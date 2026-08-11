@@ -5899,3 +5899,17 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
 - Next bottleneck is ownership: `s_abarrier_try_wait -> s_xor_b32` is 40.72%
   of candidate issue-gap cycles. Do not tune reduction before addressing that
   larger boundary unless reduction exceeds 5% of total ticks.
+
+## 2026-08-12 M32 Raw Conveyor Resource Boundary
+
+- Four-role SQTT tomography maps steady producer `RawUsed` waits to about
+  5,820 cycles each and consumer `RawFilled` waits to 1,510/1,021 cycles.
+- An M32 half-release design attempted to capture two Q panels, release their
+  LDS half, and hide producer refill under 16 dK MMAC.
+- Both paired Q+dS and Q-only live-range expressions compile with a 16-byte
+  private segment and three VGPR spills under `8/200/200/88`.
+- `8/204/204/88` violates WDRA average-size granularity. The next legal full
+  pool `8/208/208/88` still spills three VGPRs.
+- No PMD run is admissible. Canonical source/contract are restored to
+  `197e5d9`; revisit only after a focused resource probe finds a lower-register
+  M32 capture expression.

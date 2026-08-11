@@ -11289,3 +11289,18 @@ Status: `ACCEPT_CANONICAL_STRUCTURAL_WIN / MMAC50_OPEN`.
   C0/C1 MMAC/VALU pattern remains nearly unchanged. The dominant remaining
   edge is ABarrier-following at 40.72%.
 - Evidence: `results/fused5_dq_workspace_reduction_20260812.md`.
+
+## 2026-08-12 M32 Raw Conveyor Rejected At Resource Gate
+
+Status: `REJECT_STATIC_RESOURCE / CANONICAL_RESTORED`.
+
+- XCU role tomography shows producer raw-page waits dominate the remaining
+  ownership cycle, motivating two ordered M32 releases per M64 tile.
+- Capturing two Q panels simultaneously creates `private=16B` and
+  `vgpr_spill_count=3`; reading dS only after release does not remove it.
+- The legal WDRA step after 496 total is 512 total. Even
+  `8/208/208/88` retains the same spill, so quota redistribution cannot admit
+  this expression.
+- PMD correctness/performance was intentionally skipped. Production code is
+  byte-identical to `197e5d9`.
+- Evidence: `results/fused5_m32_raw_conveyor_20260812.md`.

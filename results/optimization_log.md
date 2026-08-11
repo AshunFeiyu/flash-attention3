@@ -17048,3 +17048,16 @@ Production integration result:
   falls 11.49% -> 6.12%. C0/C1 useful staggering is nearly unchanged, so the
   next target is the 40.72% ABarrier-following edge.
 - Evidence: `results/fused5_dq_workspace_reduction_20260812.md`.
+
+## 2026-08-12 - M32 raw conveyor rejected before PMD
+
+- SQTT-derived hypothesis: release Q/dO in two M32 halves and overlap the next
+  MLS packet with 16 dK MMAC per half.
+- Paired Q+dS and Q-only expressions both generate private16B/VGPR spill3 at
+  `8/200/200/88`. The 504-total allocation is compiler-illegal; the next legal
+  `8/208/208/88=512` allocation still spills.
+- Stop at the static resource gate. No correctness or performance number is
+  claimed, and source/contract are restored to accepted `197e5d9`.
+- Reusable boundary: a coarse ownership wait cannot be shortened by retaining
+  two Q panels unless the fragment representation first passes an isolated
+  no-spill resource probe.
