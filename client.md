@@ -11,12 +11,25 @@
   spill, scratch, private segment, or LDS bank conflict is present.
 - Locked H1/S1024 stats-only baseline: dot `2,433,340` ticks (3.256%), fused5
   `72,300,410` ticks (96.744%), lifecycle sum `74,733,750`. Fused work remains
-  exact at MMOP92,160 with coissue `22,922/15,493` success/fail.
+  exact at MMOP92,160 with coissue `22,922/15,493` success/fail and
+  MMAC active `22.085209%`.
+- Complete-lifecycle fullperf also passes: fused5 `72,132,060` kernel ticks,
+  MMAC active `22.106908%`, coissue `22,863/15,580`, bank0. XCU attributes
+  29.38% of issue-gap duration to ABarrier waits, 14.06% to the dQ atomic
+  chain, 10.28% to terminal ebarrier, and 10.15% to normal/trans matrix-read
+  first-use waits.
+- Barrier-ID parsing resolves the misleading `s_xor_b32` headline: producer
+  `RawUsed` ID4 contributes 1,777,244 cycles and consumer `RawFilled` ID3
+  contributes 1,369,332 cycles in top5000, about 51% and 39% of captured
+  ABarrier duration. Existing rejected branches already prove that a split
+  lifetime or dual BPS producer merely moves this debt into `vbcnt`.
 - This is an `ACCEPT_BASELINE_HARNESS`, not a performance promotion. Compare
   future changes with the same harness/runtime mode; do not compare its
   stats-only ticks directly with the historical d44 fullperf number.
 - Evidence:
-  `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_20260811_201535`.
+  `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_20260811_201535`,
+  `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_fullperf_20260811_202625`,
+  and `/zys/sb/fa3b/xcu_outputs/fused5_d44_complete_lifecycle_s1024_20260811`.
 
 ## 2026-07-23 Single Final dS Publication Admitted
 

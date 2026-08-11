@@ -11,11 +11,20 @@
 - H1/S128 causal and noncausal pass. H1/S1024 causal passes with dot
   `2,433,340` ticks, fused5 `72,300,410`, lifecycle `74,733,750`, MMOP92,160,
   coissue `22,922/15,493`, and no spill/scratch/private segment.
-- No performance hypothesis was tested and no performance gain is claimed.
-  The next step is same-runtime fullperf/xcu on this named correct kernel, then
-  one SQTT-derived kernel hypothesis.
+- Fullperf/xcu also passes: fused5 `72,132,060` kernel ticks, MMAC
+  active22.106908%, coissue22,863/15,580 and bank0. ABarrier issue gaps are
+  29.38%, atomic chain14.06%, terminal ebarrier10.28%, and matrix-read
+  first-use waits10.15%.
+- ABarrier top5000 maps producer RawUsed ID4 to 1,777,244 cycles and consumer
+  RawFilled ID3 to 1,369,332 cycles. The apparent `s_xor_b32` hotspot is the
+  instruction after `s_abarrier_try_wait`, not useful scalar work.
+- No performance hypothesis was tested and no gain is claimed. The next
+  hypothesis must break the single-page ownership cycle without repeating the
+  rejected split-token (`4170797`) or dual-producer (`9e19075`) BPS schedules.
 
-Evidence: `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_20260811_201535`.
+Evidence: `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_20260811_201535`,
+`/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_fullperf_20260811_202625`, and
+`/zys/sb/fa3b/xcu_outputs/fused5_d44_complete_lifecycle_s1024_20260811`.
 
 ## 2026-07-23 M128 Ownership-Epoch Reduction Rejected
 

@@ -2,7 +2,7 @@
 
 ## 2026-08-11 d44 Complete-Lifecycle Baseline Admitted
 
-Status: `ACCEPT_BASELINE_HARNESS / KERNEL_UNCHANGED / XCU_PENDING`.
+Status: `ACCEPT_BASELINE_HARNESS / KERNEL_UNCHANGED / XCU_COMPLETE`.
 
 - Branch `work/gfx946-fused5-opt` is rooted at `d44ff33`; this checkpoint adds
   only the complete `dot_do_o -> fused5` test and dispatch parser.
@@ -12,12 +12,22 @@ Status: `ACCEPT_BASELINE_HARNESS / KERNEL_UNCHANGED / XCU_PENDING`.
   sum is `74,733,750` ticks and dot share is 3.256%.
 - Fresh static metadata is SGPR60/VGPR124, role use `8/165/168/84` inside
   `8/200/200/88`, LDS115,456B, private/spill/scratch0.
+- Fullperf preserves correctness and exact work: fused5 `72,132,060` kernel
+  ticks, MMAC active22.106908%, coissue22,863/15,580 and bank0. XCU issue-gap
+  hierarchy is ABarrier29.38%, dQ atomic14.06%, terminal ebarrier10.28%, and
+  matrix-read first-use waits10.15%.
+- The ABarrier headline is not scalar-XOR work. Top5000 parsing maps 51% of
+  captured ABarrier duration to producer `RawUsed` ID4 and 39% to consumer
+  `RawFilled` ID3. Prior commits `4170797` and `9e19075` already reject naive
+  split-lifetime and dual-producer BPS schedules; do not repeat them.
 - The PMD launcher failed to regenerate config.ini because its Python config
   exposes `ASTCA.num_phase` while the locked core does not; the run then used
   the explicitly seeded locked config and completed correctly. Keep this as an
   environment risk and do not silently run without `PMD_CONFIG_SEED`.
 
-Evidence: `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_20260811_201535`.
+Evidence: `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_20260811_201535`,
+`/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_fullperf_20260811_202625`, and
+`/zys/sb/fa3b/xcu_outputs/fused5_d44_complete_lifecycle_s1024_20260811`.
 
 ## 2026-07-23 Single Final dS Publication Ready
 

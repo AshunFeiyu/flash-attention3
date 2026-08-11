@@ -16,6 +16,17 @@ BUILD_DIR="${FUSED5_FULL_BUILD_DIR:-build/fused5_full}"
 BIN="${FUSED5_FULL_BIN:-${BUILD_DIR}/fa3_bwd_fused5_full_correctness}"
 RUN_ROOT="${FUSED5_FULL_RUN_ROOT:-${SHAOBO_RUN_ROOT}/fused5_full}"
 TIMEOUT="${FUSED5_FULL_PMD_TIMEOUT:-1800}"
+CAPTURE_PERF="${FUSED5_FULL_CAPTURE_PERF:-0}"
+HELPER="${HSA_TOOLS_LIB:-/opt/rocm-6.3.3/lib/xprofiler/libperf_gen_helper.so}"
+PERF_DFLAGS="${FUSED5_FULL_GPU_DFLAGS:-['StatLog','SQAbar','SQEbar','MMUCheck','TT','Perf']}"
+
+if [[ "${CAPTURE_PERF}" != 0 && "${CAPTURE_PERF}" != 1 ]]; then
+  echo "FUSED5_FULL_CAPTURE_PERF must be 0 or 1" >&2
+  exit 2
+fi
+if [[ "${CAPTURE_PERF}" == 1 ]]; then
+  [[ -r "${HELPER}" ]]
+fi
 
 golden_output="$(python3 scripts/generate_full_bwd_golden.py \
   --root "${GOLDEN_ROOT}" --batch "${B}" --heads "${H}" \
@@ -31,7 +42,11 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
 fi
 
 bin_abs="$(realpath "${BIN}")"
-case_dir="${RUN_ROOT}/b${B}_h${H}_s${S}_d${D}_c${CAUSAL}_$(date +%Y%m%d_%H%M%S)"
+case_suffix=""
+if [[ "${CAPTURE_PERF}" == 1 ]]; then
+  case_suffix="_fullperf"
+fi
+case_dir="${RUN_ROOT}/b${B}_h${H}_s${S}_d${D}_c${CAUSAL}${case_suffix}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "${case_dir}/m5out"
 cp "${PMD_CONFIG_SEED}" "${case_dir}/m5out/config.ini"
 cp "${BUILD_DIR}/toolchain_fingerprint.txt" "${case_dir}/"
@@ -53,7 +68,12 @@ if [[ ! -f "${run_py}" ]]; then
 fi
 
 cd "${case_dir}"
-unset GPU_DFLAGS HSA_TOOLS_LIB
+if [[ "${CAPTURE_PERF}" == 1 ]]; then
+  export GPU_DFLAGS="${PERF_DFLAGS}"
+  export HSA_TOOLS_LIB="${HELPER}"
+else
+  unset GPU_DFLAGS HSA_TOOLS_LIB
+fi
 set +e
 timeout --kill-after=5 "${TIMEOUT}" python3 "${run_py}" \
   -c "${GPU_CHIP}" -m m5out -e "${case_script}" \
@@ -61,12 +81,13 @@ timeout --kill-after=5 "${TIMEOUT}" python3 "${run_py}" \
 pmd_status="$?"
 set -e
 
-grep -E '^fa3_bwd_full_correctness path=fused5 ' pmd_stdout.log \
+grep -E 'fa3_bwd_full_correctness path=fused5 ' pmd_stdout.log \
   | tee correctness.txt || true
 semantic="$(grep -c 'fa3_bwd_full_correctness path=fused5 .*dot_pass=1 dkv_pass=1 dq_pass=1 pass=1' pmd_stdout.log || true)"
 panic="$(grep -ciE 'panic:|fatal:|not init or has been freed|Program aborted|core dumped' pmd_stdout.log || true)"
 vgpr_warning="$(grep -ciE 'read vgpr.*before writing' pmd_stdout.log || true)"
 mapfile -t stats_files < <(find m5out -type f -name stats.txt -size +0c | sort)
+mapfile -t perf_files < <(find . -type f -name '*.perf' -size +0c | sort)
 bank=0
 if [[ "${#stats_files[@]}" -gt 0 ]]; then
   bank="$(awk '/ldsBankConflict/ { sum += $2 } END { print sum + 0 }' \
@@ -79,17 +100,24 @@ if [[ "${#stats_files[@]}" -eq 2 ]]; then
     --json-out full_bwd_metrics.json | tee dispatch_summary.txt
 fi
 
+perf_ok=1
+if [[ "${CAPTURE_PERF}" == 1 && "${#perf_files[@]}" -lt 1 ]]; then
+  perf_ok=0
+fi
+
 if [[ "${pmd_status}" == 0 && "${semantic}" == 1 && "${panic}" == 0 &&
       "${vgpr_warning}" == 0 && "${#stats_files[@]}" == 2 &&
-      "${bank}" == 0 ]]; then
+      "${bank}" == 0 && "${perf_ok}" == 1 ]]; then
   status=PASS
 else
   status=FAIL
 fi
 
-printf 'fused5_full_status=%s pmd=%s semantic=%s panic=%s vgpr_warning=%s dispatches=%s bank=%s run=%s\n' \
+printf '%s\n' "${perf_files[@]}" > perf_files.txt
+printf 'fused5_full_status=%s pmd=%s semantic=%s panic=%s vgpr_warning=%s dispatches=%s bank=%s capture_perf=%s perf=%s run=%s\n' \
   "${status}" "${pmd_status}" "${semantic}" "${panic}" \
-  "${vgpr_warning}" "${#stats_files[@]}" "${bank}" "${case_dir}" \
+  "${vgpr_warning}" "${#stats_files[@]}" "${bank}" "${CAPTURE_PERF}" \
+  "${#perf_files[@]}" "${case_dir}" \
   | tee result.txt
 
 [[ "${status}" == PASS ]]
