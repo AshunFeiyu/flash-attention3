@@ -1,5 +1,25 @@
 # Source Status
 
+## 2026-08-12 Q-Double A5 Rejected; Canonical Restored
+
+Status: `REJECT_A5_DK_LIFETIME / SOURCE_B28E73D_RESTORED`.
+
+- Probe A0-A2: native dS/P writer touches only lower 1KB of its 2KB page;
+  upper 1KB is a valid side-data overlay under e0f10535/HEAD1694.
+- Full integration used dedicated Q0/Q1 pages, LDS131072B, role
+  `8/163/166/84`, SGPR60/VGPR124, private/spill/scratch0, exact MMOP2560 and
+  bank0.
+- Publishing raw(t+1) before QUsed(t) passed dV/dQ but failed dK in causal and
+  noncausal smoke. Moving only QUsed ahead of raw(t+1) restored dK.
+- Classification is an A5 ownership/instruction-lifecycle failure; it is not
+  proof of a hardware defect or a standalone MLS layout defect. No perf run is
+  admissible.
+- Production source and contract are byte-identical to `b28e73d`. The next
+  admitted direction must use a compile-time-regular topology and must not
+  repeat split dO/sidecar prefetch, which already regressed ticks by 0.65%.
+
+Evidence: `results/fused5_qdouble_sidecar_overlay_20260812.md`.
+
 ## 2026-08-12 Consumer0 dP Prefetch
 
 Status: `REJECT_STATS_TICKS_AND_PIPELINE / CANONICAL_SOURCE_RESTORED`.

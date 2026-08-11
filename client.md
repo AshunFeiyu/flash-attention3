@@ -1,17 +1,34 @@
 # Client
 
+## 2026-08-12 Q-Double Ownership Rejected
+
+- Canonical source is restored to `b28e73d`; best remains 71,950,060
+  fullperf ticks and 22.725077% MMAC active.
+- A focused native writer probe proves that one 2KB
+  `ds_write_matrix_32x16_trans_f16` page touches `[0,1024)` and leaves the
+  aligned upper 1KB available for side data.
+- A dedicated second Q page plus sidecar overlay stayed spill-free at exact
+  128KB LDS and exact work, but overlapping raw(t+1) MLS/BPS with dK(t)
+  corrupted only dK. Causal/noncausal dK rel-L2 was 0.650/1.018; moving QUsed
+  before the next raw load restored causal dK to 0.00124.
+- No performance claim is valid. Do not repeat whole-Q latch (64 VGPR),
+  alternating Q/P pages, Q-double overlap, or split dO/sidecar lifetime. The
+  next topology must amortize the raw ownership epoch while keeping matrix
+  islands compile-time regular.
+
+Evidence: `results/fused5_qdouble_sidecar_overlay_20260812.md`.
+
 ## 2026-08-12 Matrix-Read Schedule Tier Closed
 
 - Consumer1 read8 and consumer0 dP-under-softmax prefetch both passed all hard
   gates but failed elapsed ticks. Do not continue matrix-read placement tweaks
   on this source shape.
 - The verified dominant edge remains producer `RawUsed(id4)` plus consumer
-  `RawFilled(id3)`. The next design will latch the Q-normal fragments required
-  by dK into heavy-consumer VGPRs, signal RawUsed before dK, and let producer
-  MLS for the next q tile overlap current dK/dQ work.
-- This ownership candidate may add about 32 VGPR per heavy consumer but adds no
-  MMAC, LDS bytes, token, or output operation. It must fit the existing 200
-  role window or be rejected before PMD.
+  `RawFilled(id3)`. A whole-Q normal latch is 64 VGPR per heavy wave, not 32;
+  it has already spilled in the current 16-wave WDRA topology and is closed.
+- The subsequent dedicated Q-double experiment also failed A5 dK
+  correctness. Move the next hypothesis to tile/ownership topology rather
+  than another matrix-read or raw-page micro-schedule.
 
 Evidence: `docs/fused5_c0_dp_prefetch_design_20260812.md`.
 

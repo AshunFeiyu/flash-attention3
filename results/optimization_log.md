@@ -1,5 +1,21 @@
 # Optimization Log
 
+## 2026-08-12 Fused5 Q-Double Ownership Rejected
+
+- Hypothesis: use a dedicated second 16KB Q page and overlay sidecar in the
+  probed writer padding so raw(t+1) MLS/BPS overlaps dK/dQ(t).
+- Probe passed: writer footprint `[0,1024)`, untouched `[1024,2048)`, no
+  private/spill/scratch or PMD panic.
+- Integration gates passed resources and exact work: LDS131072B, role
+  `8/163/166/84`, SGPR60/VGPR124, MMOP2560, bank0.
+- Correctness rejected before perf: dV/dQ pass, dK rel-L2 0.650 causal and
+  1.018 noncausal. A single ordering control that waits QUsed before the next
+  raw packet restores dK rel-L2 to 0.00124.
+- Conclusion: next-generation raw MLS/BPS cannot currently overlap this dK
+  LDS-consumer path in A5. Cause is not yet separated between PMD and an
+  undocumented instruction-lifecycle rule. Restore `b28e73d`; do not repeat
+  this ownership tier.
+
 ## 2026-08-12 Consumer0 dP Prefetch Rejected
 
 - Status: `REJECT_STATS_TICKS_AND_PIPELINE / CANONICAL_RESTORED`.
