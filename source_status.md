@@ -1,5 +1,24 @@
 # Source Status
 
+## 2026-08-11 d44 Complete-Lifecycle Baseline Admitted
+
+Status: `ACCEPT_BASELINE_HARNESS / KERNEL_UNCHANGED / XCU_PENDING`.
+
+- Branch `work/gfx946-fused5-opt` is rooted at `d44ff33`; this checkpoint adds
+  only the complete `dot_do_o -> fused5` test and dispatch parser.
+- H1/S128 causal/noncausal and H1/S1024 causal pass one cached CPU golden for
+  delta, dQ, dK and dV. The S1024 fused dispatch has MMOP92,160,
+  coissue22,922/15,493, bank0, and `72,300,410` stats-only ticks. Full lifecycle
+  sum is `74,733,750` ticks and dot share is 3.256%.
+- Fresh static metadata is SGPR60/VGPR124, role use `8/165/168/84` inside
+  `8/200/200/88`, LDS115,456B, private/spill/scratch0.
+- The PMD launcher failed to regenerate config.ini because its Python config
+  exposes `ASTCA.num_phase` while the locked core does not; the run then used
+  the explicitly seeded locked config and completed correctly. Keep this as an
+  environment risk and do not silently run without `PMD_CONFIG_SEED`.
+
+Evidence: `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_20260811_201535`.
+
 ## 2026-07-23 Single Final dS Publication Ready
 
 Status: `CANONICAL_INTEGRATION_READY / PERF_NOT_CLAIMED`.

@@ -1,5 +1,22 @@
 # Optimization Log
 
+## 2026-08-11 Complete Lifecycle Harness Accepted
+
+- Status: `ACCEPT_BASELINE_HARNESS / NO_KERNEL_CHANGE`.
+- Hypothesis: the old fused-only test is insufficient because it copies a CPU
+  sidecar and cannot rank `dot_do_o` inside the real backward lifecycle.
+- The new harness generates/caches one CPU golden, executes GPU `dot_do_o`
+  followed by the canonical fused5 kernel, checks delta/dQ/dK/dV, and requires
+  exactly two PMD dispatches with bank0.
+- H1/S128 causal and noncausal pass. H1/S1024 causal passes with dot
+  `2,433,340` ticks, fused5 `72,300,410`, lifecycle `74,733,750`, MMOP92,160,
+  coissue `22,922/15,493`, and no spill/scratch/private segment.
+- No performance hypothesis was tested and no performance gain is claimed.
+  The next step is same-runtime fullperf/xcu on this named correct kernel, then
+  one SQTT-derived kernel hypothesis.
+
+Evidence: `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_20260811_201535`.
+
 ## 2026-07-23 M128 Ownership-Epoch Reduction Rejected
 
 - Status: `REJECT_PERF_CONTROL_EXPLOSION`.

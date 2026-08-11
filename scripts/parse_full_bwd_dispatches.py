@@ -121,7 +121,15 @@ def main() -> int:
     parser.add_argument("--m5out", required=True, type=Path)
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--max-dot-share", type=float)
+    parser.add_argument(
+        "--labels",
+        default=",".join(LABELS),
+        help="comma-separated dispatch labels in PMD execution order",
+    )
     args = parser.parse_args()
+    labels = tuple(label.strip() for label in args.labels.split(",") if label.strip())
+    if not labels or labels[0] != "dot_do_o":
+        raise SystemExit("dispatch labels must begin with dot_do_o")
 
     stats_paths = []
     for path in args.m5out.rglob("stats.txt"):
@@ -129,13 +137,13 @@ def main() -> int:
         if "firstWaveStartTick" in text and "lastWaveEndTick" in text:
             stats_paths.append(path)
     stats_paths.sort(key=stats_sort_key)
-    if len(stats_paths) != len(LABELS):
+    if len(stats_paths) != len(labels):
         raise SystemExit(
-            f"expected {len(LABELS)} dispatch stats, found {len(stats_paths)}"
+            f"expected {len(labels)} dispatch stats, found {len(stats_paths)}"
         )
 
     dispatches = []
-    for label, path in zip(LABELS, stats_paths):
+    for label, path in zip(labels, stats_paths):
         text = path.read_text(encoding="utf-8", errors="replace")
         first = parse_counter(text, "firstWaveStartTick")
         last = parse_counter(text, "lastWaveEndTick")
@@ -174,6 +182,15 @@ def main() -> int:
 
     for row in dispatches:
         print(f"{row['label']}_kernel_ticks={row['kernel_ticks']}")
+    for rank, row in enumerate(
+        sorted(dispatches, key=lambda item: item["kernel_ticks"], reverse=True),
+        start=1,
+    ):
+        share = row["kernel_ticks"] / total if total else 0.0
+        print(
+            f"dispatch_rank={rank},label={row['label']},"
+            f"kernel_ticks={row['kernel_ticks']},share={share:.8%}"
+        )
     dot_evidence = dispatches[0]["evidence"]
     dot_balance = dot_evidence["simd_balance"]
     print(

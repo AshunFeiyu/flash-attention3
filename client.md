@@ -1,5 +1,23 @@
 # Client
 
+## 2026-08-11 Complete Fused5 Lifecycle Baseline
+
+- Optimization branch `work/gfx946-fused5-opt` starts exactly at `d44ff33`
+  (`best/fused5-useful-stagger-ticks-20260723`). No kernel schedule or math has
+  changed in this checkpoint.
+- A new cached-golden harness dispatches the real GPU `dot_do_o` kernel before
+  `fa3_bwd_5gemm_kernel`, then validates GPU `delta/dQ/dK/dV`. H1/S128 causal
+  and noncausal plus H1/S1024 causal all pass; no panic, uninitialized VGPR,
+  spill, scratch, private segment, or LDS bank conflict is present.
+- Locked H1/S1024 stats-only baseline: dot `2,433,340` ticks (3.256%), fused5
+  `72,300,410` ticks (96.744%), lifecycle sum `74,733,750`. Fused work remains
+  exact at MMOP92,160 with coissue `22,922/15,493` success/fail.
+- This is an `ACCEPT_BASELINE_HARNESS`, not a performance promotion. Compare
+  future changes with the same harness/runtime mode; do not compare its
+  stats-only ticks directly with the historical d44 fullperf number.
+- Evidence:
+  `/zys/sb/fa3b/fused5_full/b1_h1_s1024_d128_c1_20260811_201535`.
+
 ## 2026-07-23 Single Final dS Publication Admitted
 
 - The K/V-left direct dV/dK oracle cannot natively publish the q-owned dQ

@@ -1,9 +1,12 @@
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
 
+#include "shaobo_fa3_components.h"
+
+#if !defined(SHAOBO_FULL_BWD_FUSED5)
 #include "dkv_contract.h"
 #include "dq_contract.h"
-#include "shaobo_fa3_components.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -14,8 +17,10 @@
 #include <string>
 #include <vector>
 
+#if !defined(SHAOBO_FULL_BWD_FUSED5)
 namespace dkv = shaobo::fa3::bwd::dkv;
 namespace dq = shaobo::fa3::bwd::dq;
+#endif
 
 namespace {
 
@@ -284,13 +289,29 @@ int main(int argc, char** argv) {
     params.dtype = SHAOBO_FA3_DTYPE_FP16;
     params.layout = SHAOBO_FA3_LAYOUT_BHSD;
     params.softmax_aux_mode = SHAOBO_FA3_SOFTMAX_AUX_SMAX_SSUM;
+#if defined(SHAOBO_FULL_BWD_FUSED5)
+    params.dkv_path = 0;
+    params.dq_path = 0;
+#else
     params.dkv_path = dkv::kDkvPathCanonicalDkv;
     params.dq_path = dq::kDqPathCanonicalDq;
+#endif
     params.sync_after_launch = 0;
 
     const int dot_status = shaobo_fa3_bwd_dot_do_o(
         dout_dev, out_dev, scores_max_dev, scores_sum_dev, delta_dev,
         packed_sidecar_dev, &params);
+#if defined(SHAOBO_FULL_BWD_FUSED5)
+    const int fused_status = dot_status == SHAOBO_FA3_STATUS_SUCCESS
+                                 ? shaobo_fa3_bwd_fused5(
+                                       dout_dev, q_dev, k_dev, v_dev,
+                                       packed_sidecar_dev, dq_dev, dk_dev,
+                                       dv_dev, &params)
+                                 : dot_status;
+    const int dkv_status = fused_status;
+    const int dq_status = fused_status;
+    constexpr const char* kPathName = "fused5";
+#else
     params.reserved_ptr[3] = packed_sidecar_dev;
     const int dkv_status = dot_status == SHAOBO_FA3_STATUS_SUCCESS
                                ? shaobo_fa3_bwd_dkv(
@@ -305,6 +326,8 @@ int main(int argc, char** argv) {
                                     scores_max_dev, scores_sum_dev, dq_dev,
                                     nullptr, nullptr, &params)
                               : dkv_status;
+    constexpr const char* kPathName = "seven_gemm";
+#endif
     const hipError_t sync_error = hipDeviceSynchronize();
 
     std::vector<float> delta_actual(rows), dq_actual(elems), dk_actual(elems),
@@ -331,6 +354,19 @@ int main(int argc, char** argv) {
     const bool delta_pass = outputs_copied && delta_metrics.nonfinite == 0 &&
                             delta_metrics.max_abs <= 5.0e-5f &&
                             delta_metrics.rel_l2 <= 1.0e-4f;
+#if defined(SHAOBO_FULL_BWD_FUSED5)
+    constexpr float kGradientMaxAbsLimit = 3.0e-2f;
+    constexpr float kGradientRelL2Limit = 3.0e-2f;
+    const bool dkv_pass = outputs_copied && dk_metrics.nonfinite == 0 &&
+                          dv_metrics.nonfinite == 0 &&
+                          dk_metrics.max_abs <= kGradientMaxAbsLimit &&
+                          dv_metrics.max_abs <= kGradientMaxAbsLimit &&
+                          dk_metrics.rel_l2 <= kGradientRelL2Limit &&
+                          dv_metrics.rel_l2 <= kGradientRelL2Limit;
+    const bool dq_pass = outputs_copied && dq_metrics.nonfinite == 0 &&
+                         dq_metrics.max_abs <= kGradientMaxAbsLimit &&
+                         dq_metrics.rel_l2 <= kGradientRelL2Limit;
+#else
     const bool dkv_pass = outputs_copied && dk_metrics.nonfinite == 0 &&
                           dv_metrics.nonfinite == 0 &&
                           dk_metrics.max_abs <= 5.0e-4f &&
@@ -342,13 +378,14 @@ int main(int argc, char** argv) {
     const bool dq_pass = outputs_copied && dq_metrics.nonfinite == 0 &&
                          dq_metrics.max_abs <= 5.0e-4f &&
                          dq_metrics.rmse <= 5.0e-5f;
+#endif
     const bool pass = dot_status == SHAOBO_FA3_STATUS_SUCCESS &&
                       dkv_status == SHAOBO_FA3_STATUS_SUCCESS &&
                       dq_status == SHAOBO_FA3_STATUS_SUCCESS && delta_pass &&
                       dkv_pass && dq_pass;
 
     std::printf(
-        "fa3_bwd_full_correctness B=%d H=%d S=%d D=%d causal=%d scale=%g "
+        "fa3_bwd_full_correctness path=%s B=%d H=%d S=%d D=%d causal=%d scale=%g "
         "dot_status=%s dkv_status=%s dq_status=%s "
         "delta_max_abs=%g delta_mean_abs=%g delta_rmse=%g "
         "delta_rel_l2=%g delta_cosine_error=%g delta_nonfinite=%d "
@@ -359,7 +396,8 @@ int main(int argc, char** argv) {
         "dq_max_abs=%g dq_mean_abs=%g dq_rmse=%g dq_rel_l2=%g "
         "dq_cosine_error=%g dq_nonfinite=%d "
         "dot_pass=%d dkv_pass=%d dq_pass=%d pass=%d\n",
-        batch, heads, seqlen, dim, params.causal, params.softmax_scale,
+        kPathName, batch, heads, seqlen, dim, params.causal,
+        params.softmax_scale,
         status_string(dot_status),
         status_string(dkv_status), status_string(dq_status),
         delta_metrics.max_abs, delta_metrics.mean_abs, delta_metrics.rmse,
