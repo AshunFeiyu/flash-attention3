@@ -17072,3 +17072,14 @@ Production integration result:
   itself admit a second raw page or claim operator speedup.
 - Evidence run:
   `/zys/shaobo_runs/fused5_packed_stride_probe_20260812/ds_write_matrix_packed_stride_20260812_045436`.
+
+## 2026-08-12 - Packed P/dS stride passes A5 but is performance-neutral
+
+- Changed only P/dS writer spacing and the corresponding reader offsets;
+  raw/resident MLS matrix spacing remains 2KB.
+- S128 causal/noncausal and S1024 causal correctness PASS; role resources are
+  unchanged and LDS falls to 107,264B.
+- Repeated total ticks are 58,929,325 and 59,367,490, mean 59,148,407.5:
+  +0.771% versus accepted canonical. MMAC active mean is 28.760%.
+- Decision: `OBSERVE_ENABLER_NOT_PROMOTED`. The released LDS is useful only if
+  a later complete raw Q+dO double page measurably shortens ownership waits.

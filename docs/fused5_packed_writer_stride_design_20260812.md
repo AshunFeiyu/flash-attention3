@@ -2,7 +2,7 @@
 
 Date: 2026-08-12
 
-Status: `A0_A4_PASS / OPERATOR_INTEGRATION_PENDING`.
+Status: `A0_A5_PASS / OBSERVE_ENABLER_NOT_PROMOTED`.
 
 ## Trigger
 
@@ -81,3 +81,14 @@ Generated ASM contains two native writers, two normal readers, two trans
 readers and two MMAC instructions. This admits 1024-byte writer stride through
 A4. The next step is one operator-consumer integration that changes only P/dS
 page stride and LDS accounting; double buffering remains a later hypothesis.
+
+## Operator A5 Result
+
+The canonical fused kernel passes H1/S128 causal and noncausal plus H1/S1024
+causal correctness with exact MMOP92,160, bank0, and unchanged role resources
+`8/163/166/86`. Physical LDS falls from 115,456B to 107,264B.
+
+Two S1024 total-lifecycle runs average 59,148,407.5 ticks, 0.771% slower than
+the accepted 58,696,137.5-tick mean. Compute MMAC active averages 28.760%
+versus 28.897% for the paired baseline. The compact layout is therefore an
+admitted resource enabler, not a performance promotion by itself.

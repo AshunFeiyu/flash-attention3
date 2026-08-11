@@ -5924,3 +5924,14 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
 - Next integrate only the compact stride into the canonical fused kernel and
   require complete correctness/resource gates before attempting raw double
   buffering.
+
+## 2026-08-12 Packed P/dS Stride Operator Gate
+
+- A5 passes S128 causal/noncausal and S1024 causal CPU-golden correctness;
+  compute MMOP92,160, bank0, role `8/163/166/86`, no spill/private/scratch.
+- Physical LDS falls from 115,456B to 107,264B without changing the five-GEMM
+  DAG or ownership.
+- Repeated S1024 total ticks average 59,148,407.5, 0.771% slower than the
+  accepted canonical mean. Classification: `OBSERVE_ENABLER`, not promotion.
+- The next hypothesis may spend the newly available LDS on a complete Q+dO
+  raw page1; do not attribute a speedup to compact stride itself.

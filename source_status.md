@@ -11317,3 +11317,17 @@ Status: `PASS_A0_A4 / A5_PENDING`.
 - The reusable implication is a 1KB writer stride, not a change to logical
   matrix shape. Operator source remains unchanged pending A5 integration.
 - Evidence: `results/ds_write_matrix_packed_stride_20260812.md`.
+
+## 2026-08-12 Packed P/dS Stride Passed Operator A5
+
+Status: `OBSERVE_A5_PASS_ENABLER / BEST_TAG_UNCHANGED`.
+
+- Canonical production path with 1KB P/dS writer spacing passes S128 causal,
+  S128 noncausal, and S1024 causal dQ/dK/dV golden checks.
+- Resource gate: role `8/163/166/86`, SGPR60/VGPR124/LDS107264B,
+  private/spill/scratch0, exact MMOP92160, bank0.
+- Two S1024 total runs average 59,148,407.5 ticks, +0.771% versus accepted
+  `197e5d9`; MMAC active averages 28.760% versus 28.897%.
+- Compact stride is kept only as a proven LDS enabler. The best performance tag
+  remains `best/fused5-dq-workspace-reduction-20260812`.
+- Evidence: `results/fused5_packed_stride_operator_20260812.md`.

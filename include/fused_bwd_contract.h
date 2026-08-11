@@ -70,14 +70,16 @@ struct FusedBwdContract {
     static constexpr int kRawQDoBytes =
         2 * kMq * kHeadDim * kHalfBytes;
     static constexpr int kPdsLogicalBytes = kMq * kNk * kHalfBytes;
-    // One t=1 m32x16 writer carries one real N16 half plus one zero-padded
-    // N16 half in a 2KB physical footprint. After K/V are latched into VGPRs,
-    // their 64KB LDS region holds all four M16 dS panels at once.
+    // Raw/resident MLS panels retain their 2KB matrix-block spacing. A focused
+    // writer/reader/MMAC probe proves native ds_write_matrix pages can be
+    // packed at their 1KB touched footprint without changing either reader
+    // fragment view.
     static constexpr int kWriterPageBytes = 64 * 16 * kHalfBytes;
+    static constexpr int kWriterStrideBytes = 32 * 16 * kHalfBytes;
     static constexpr int kActiveWriterPages =
         kConsumerGroups * kWavesPerConsumerGroup;
     static constexpr int kPdsGenerationBytes =
-        kActiveWriterPages * kWriterPageBytes;
+        kActiveWriterPages * kWriterStrideBytes;
     static constexpr int kPdsGenerationCount = 1;
     static constexpr int kPdsPageBytes =
         kPdsGenerationCount * kPdsGenerationBytes;
@@ -140,19 +142,21 @@ struct FusedBwdContract {
     static_assert(kResidentKvBytes == 64 * 1024 &&
                       kRawQDoBytes == 32 * 1024 &&
                       kPdsLogicalBytes == 16 * 1024 &&
-                      kPdsGenerationBytes == 16 * 1024 &&
-                      kPdsPageBytes == 16 * 1024,
+                      kWriterPageBytes == 2 * 1024 &&
+                      kWriterStrideBytes == 1024 &&
+                      kPdsGenerationBytes == 8 * 1024 &&
+                      kPdsPageBytes == 8 * 1024,
                   "resident/raw/P-dS LDS regions must retain their fixed sizes");
     static_assert(kPdsGenerationCount == 1,
                   "local P/dS conversion uses one private-page generation");
-    static_assert(kBatchPdsBytes == kResidentKvBytes,
-                  "four dS panels must exactly reuse the resident K/V LDS");
+    static_assert(kBatchPdsBytes == kResidentKvBytes / 2,
+                  "four packed dS panels must reuse half the resident K/V LDS");
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
                   "fused FA3 BWD LDS plan must fit within 128KB");
     static_assert(!kSidecarAliasesPds && kSidecarBytes == 768,
                   "sidecar must remain independently readable per panel");
-    static_assert(kPlannedLdsBytes == 115456,
-                  "symmetric physical LDS plan must use 112.75KB");
+    static_assert(kPlannedLdsBytes == 107264,
+                  "packed physical LDS plan must use 104.75KB");
 };
 
 struct FusedBwdBarrierLedger {

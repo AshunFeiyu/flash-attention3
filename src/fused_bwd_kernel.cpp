@@ -85,7 +85,7 @@ __host__ __device__ constexpr int scratch_page_offset(int writer) {
     static_assert(Group == 0 || Group == 1);
     return LdsLayout::kScratchBase +
            (Group * Tile::kWavesPerConsumerGroup + writer) *
-               Tile::kWriterPageBytes;
+               Tile::kWriterStrideBytes;
 }
 
 template <int MBlock, int Group>
@@ -93,7 +93,7 @@ __host__ __device__ constexpr int batch_ds_group_offset() {
     static_assert(MBlock >= 0 && MBlock < Tile::kMqPanels);
     static_assert(Group == 0 || Group == 1);
     return LdsLayout::kKBase + MBlock * Tile::kPdsGenerationBytes +
-           Group * Tile::kWavesPerConsumerGroup * Tile::kWriterPageBytes;
+           Group * Tile::kWavesPerConsumerGroup * Tile::kWriterStrideBytes;
 }
 
 template <int MBlock, int Group>
@@ -415,8 +415,8 @@ __device__ __forceinline__ void update_dq_writer_panel_group(
     Fragment ds_trans[Tile::kWavesPerConsumerGroup];
     const __half* source = batch_ds_group<MBlock, SourceGroup>(lds);
     ins::ds_read_matrix_32x16_trans_imm4<
-        0, Tile::kWriterPageBytes, 2 * Tile::kWriterPageBytes,
-        3 * Tile::kWriterPageBytes>(
+        0, Tile::kWriterStrideBytes, 2 * Tile::kWriterStrideBytes,
+        3 * Tile::kWriterStrideBytes>(
         source, ds_trans[0].f16x8, ds_trans[1].f16x8,
         ds_trans[2].f16x8, ds_trans[3].f16x8);
     ins::wait_lgkm(0);
@@ -490,7 +490,7 @@ __device__ __forceinline__ void publish_final_ds(
     __half* lds,
     int owner) {
     const int page = batch_ds_group_offset<MBlock, Group>() +
-                     owner * Tile::kWriterPageBytes;
+                     owner * Tile::kWriterStrideBytes;
     ins::ds_write_matrix_32x16_trans_f16(ds.f16x8, lds, page);
 }
 
@@ -500,7 +500,7 @@ __device__ __forceinline__ void read_final_ds_normal(
     int owner,
     Fragment& ds) {
     const int page = batch_ds_group_offset<MBlock, Group>() +
-                     owner * Tile::kWriterPageBytes;
+                     owner * Tile::kWriterStrideBytes;
     ins::ds_read_matrix_32x16_normal(lds, page, ds.f16x8);
 }
 
