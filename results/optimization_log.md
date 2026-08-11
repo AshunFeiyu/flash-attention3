@@ -1,5 +1,18 @@
 # Optimization Log
 
+## 2026-08-11 Producer Sidecar Load-Ahead Rejected
+
+- Status: `REJECT_PERF / CANONICAL_RESTORED`.
+- Moved the producer's three sidecar global loads before four Q/dO MLS issues.
+  ISA order and all correctness/resource gates passed; producer stayed 8 VGPR.
+- S1024 fused ticks regress to `72,306,780`, about 0.36% versus the accepted
+  zero-hoist stats mean. No fullperf was admitted.
+- The mapped 3.03% global-load wait was not independently removable: carrying
+  three VGPR values through MLS and exec reconvergence lengthened the producer
+  path. Do not repeat this scheduling-only load-ahead.
+
+Evidence: `/zys/shaobo_runs/fused5_sidecar_load_ahead_20260811/`.
+
 ## 2026-08-11 Consumer MMAC Zero Hoist Accepted
 
 - Status: `ACCEPT_MICRO_TICKS / CANONICAL_CANDIDATE`.

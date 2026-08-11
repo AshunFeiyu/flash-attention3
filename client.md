@@ -5813,3 +5813,11 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   coissue. Treat it as healthy when exact MMOP is unchanged and ticks fall.
 - Probe/header promotion boundary: fixed first-MMAC zero reuse is a reusable
   gfx946 candidate; long-lived accumulator zero seeding remains unadmitted.
+
+## 2026-08-11 Sidecar Load-Ahead Boundary
+
+- Do not move the producer sidecar `global_load_dwordx3` ahead of the raw MLS
+  family merely to age VMEM. The intended ISA order is legal and correct but
+  regresses S1024 ticks by about 0.36%.
+- The three-value live range and exec-mask reconvergence are part of the cost;
+  a source-level earlier issue is not automatically useful overlap.

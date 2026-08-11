@@ -1,5 +1,19 @@
 # Source Status
 
+## 2026-08-11 Producer Sidecar Load-Ahead
+
+Status: `REJECT_PERF / SOURCE_RESTORED`.
+
+- ISA achieved `global_load_dwordx3 -> four MLS -> wait -> sidecar LDS write`
+  with unchanged 8-VGPR producer resources and correct S128/S1024 output.
+- S1024 ticks regress to `72,306,780`, about 0.36% versus the accepted
+  consumer-zero-hoist stats mean. The longer three-value live range and
+  exec-mask region outweigh VMEM aging.
+- No fullperf claim. Active source remains the accepted consumer zero hoist.
+
+Evidence: `docs/fused5_sidecar_load_ahead_design_20260811.md`,
+`/zys/shaobo_runs/fused5_sidecar_load_ahead_20260811/`.
+
 ## 2026-08-11 Consumer MMAC Zero Hoist
 
 Status: `ACCEPT_MICRO_TICKS / CANONICAL_CANDIDATE`.
