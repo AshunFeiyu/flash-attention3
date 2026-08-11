@@ -17004,3 +17004,18 @@ Production integration result:
 - Keep this clean schedule base. Next map the dominant ABarrier to its exact
   page lifetime and change ownership, not consumer order.
 - Evidence: `results/fused5_useful_stagger_20260723.md`.
+
+## 2026-08-12 - M128 lexical halves rejected
+
+- Hypothesis: double useful work per raw ownership epoch with M128 while
+  retaining exact five GEMMs, fixed lexical M64 halves and the 16-wave role
+  topology.
+- Correctness/resources pass: H1/S128 c0+c1 and H1/S1024 c1, exact
+  MMOP92,160, role `8/157/158/84`, VGPR124, private/spill/scratch0 and bank0.
+- Two runs regress mean ticks `72,048,112.5 -> 72,789,990` (+1.030%) and MMAC
+  active `22.714850% -> 22.173414%`. VALU rises 6.344% despite lower SCA/LDS.
+- A wait relocation does not help: mean 72,905,105 ticks and 22.139918%
+  active. This closes wait micro-tuning for the expression.
+- ASM root cause is lost packed softmax/dS codegen. Future M128 work must first
+  recover packed VALU and prove that in generated ASM; canonical source is
+  restored to `b28e73d`.

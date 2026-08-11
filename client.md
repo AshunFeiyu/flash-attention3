@@ -5859,3 +5859,15 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   coissue. Treat it as healthy when exact MMOP is unchanged and ticks fall.
 - Probe/header promotion boundary: fixed first-MMAC zero reuse is a reusable
   gfx946 candidate; long-lived accumulator zero seeding remains unadmitted.
+
+## 2026-08-12 M128 Lexical-Halves Closure
+
+- M128 lexical halves preserve exact five-GEMM work and pass all correctness,
+  resource and bank gates, but regress mean H1/S1024 ticks by 1.030% and lower
+  MMAC active by 0.541 pp versus the accepted M64 stats runs.
+- The candidate saves SCA/LDS but raises dynamic VALU by 6.344%. Same-compiler
+  ASM maps this to lost packed softmax/dS codegen, not duplicate MMAC.
+- Moving the final half release wait across the q-tile boundary is also a
+  measured reject. Production source is restored to `b28e73d`.
+- Revisit M128 only with an explicit generated-ASM gate for packed VALU; do
+  not add another ownership/wait variation first.

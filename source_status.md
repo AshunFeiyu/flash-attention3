@@ -11243,3 +11243,18 @@ Status: `ACCEPT_MICRO_TICKS_USEFUL_STAGGER / MMAC50_OPEN`.
   tails. This is a valid micro scheduling checkpoint, not completion of the
   50% target.
 - Evidence: `results/fused5_useful_stagger_20260723.md`.
+
+## 2026-08-12 M128 Lexical-Halves Result
+
+Status: `REJECT_STATS_TICKS / CANONICAL_RESTORED`.
+
+- M128/N128/D128 with two lexical M64 halves passes H1/S128 c0+c1 and
+  H1/S1024 c1, exact MMOP92,160, bank0, role `8/157/158/84`, VGPR124 and no
+  private/spill/scratch.
+- Mean H1/S1024 fused ticks regress `72,048,112.5 -> 72,789,990`; MMAC active
+  falls `22.714850% -> 22.173414%`.
+- Dynamic VALU rises `120,800 -> 128,464`. ASM proves packed softmax/dS loss:
+  `v_pk_fma 8 -> 0`, with scalar FMA/multiply/subtract expansion.
+- A separate cross-boundary wait relocation also regresses. Source and
+  contract are restored to `b28e73d`.
+- Evidence: `results/fused5_m128_lexical_halves_20260812.md`.
