@@ -2,7 +2,7 @@
 
 ## 2026-08-11 Alternating Q / P-Scratch Candidate
 
-Status: `HYPOTHESIS_READY / SOURCE_UNCHANGED`.
+Status: `REJECT_CORRECTNESS / SOURCE_RESTORE_REQUIRED`.
 
 - The next sole performance hypothesis alternates Q between the existing 16KB
   Q page and the dead 16KB P-conversion scratch page. dO and sidecar are
@@ -12,8 +12,17 @@ Status: `HYPOTHESIS_READY / SOURCE_UNCHANGED`.
   after `EarlyUsed`, while current dK still consumes the old Q. It avoids the
   rejected split-lifetime ordering that waited QUsed between the two BPS
   families.
-- Merge the two startup ResidentFilled tokens so the seven-ID barrier ledger
-  can name `EarlyUsed` and `QUsed` without exceeding hardware limits.
+- Stress revision keeps the two startup ResidentFilled tokens unchanged and
+  uses the eighth hardware ID for `EarlyUsed`. This isolates raw-lifetime
+  behavior instead of also delaying the first resident consumer group.
+- Correctness stress found a cross-group race in the first draft: a fast
+  consumer could reuse old Q as P scratch before a slow peer completed dK.
+  The candidate now waits the prior `QUsed` only at first scratch write, after
+  independent score/dP/softmax work has already issued.
+- Both the first draft and that corrected lifetime fail only dK at H1/S128
+  (`rel_l2=0.440201/0.440202`); delta, dV and dQ pass, MMOP is exact and bank0.
+  Stop after two correctness failures, restore `d44ff33`, and admit no perf
+  result. Revisit only after an exact production-shape high-page probe.
 - No source is changed yet. Design and rejection gates are in
   `docs/fused5_alternating_q_scratch_design_20260811.md`.
 

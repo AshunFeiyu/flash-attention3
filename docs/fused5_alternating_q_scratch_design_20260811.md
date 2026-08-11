@@ -1,6 +1,23 @@
 # Fused5 Alternating Q / P-Scratch Design
 
-Status: `HYPOTHESIS_READY / NOT_IMPLEMENTED`
+Status: `REJECT_CORRECTNESS / CANONICAL_SOURCE_RESTORED`
+
+## Experiment Outcome
+
+Two H1/S128 causal implementations were rejected before performance capture:
+
+1. The direct alternating-page implementation preserved static resources and
+   passed delta/dV/dQ, but dK failed with `rel_l2=0.440201`.
+2. A lifetime correction waited the previous `QUsed` before the first reuse
+   of old Q as P scratch. It produced the same isolated dK failure
+   (`rel_l2=0.440202`), so the initial race was real but not the only defect.
+
+Both forms retained MMOP2,560, bank0, no spill/private/scratch and the exact
+five-GEMM source contract. No performance claim is valid. The existing
+high-page probe uses a different MLS shape from this production path, so it
+does not prove the exact `matrix_load_32x32 -> high-page normal dK` chain.
+Per the two-failure rule, restore `d44ff33` and require an isolated exact-shape
+layout/lifetime probe before revisiting this architecture.
 
 ## Evidence And Constraint
 
@@ -75,13 +92,21 @@ The producer may issue `Q(t+1)` into the opposite page and overwrite
 dO/sidecar immediately after `EarlyUsed(t)`. Reuse of the same Q page occurs
 only at `t+2`, so `QUsed(t)` should already be complete when checked.
 
-Merge `ResidentFilled0/1` into one token because every non-producer role
-currently waits both before any resident read. The barrier ledger remains at
-seven IDs, below the eight-ID limit:
+Stress correction: the two consumer groups are not lockstep. A faster group
+can enter iteration `t+1` and reuse the old Q page as P scratch while a slower
+group is still reading Q for `dK(t)`. Therefore every consumer waits
+`QUsed(t)` immediately before its first P-scratch write in iteration `t+1`.
+Score, dP, softmax and dS work that does not touch that scratch page remains
+before the wait so the ownership latency can age behind useful work.
+
+Stress revision before implementation: retain `ResidentFilled0/1`. Although
+all non-producer roles eventually wait both, merging them would delay the
+first consumer group and contaminate the raw-lifetime experiment with a
+startup scheduling change. Use the eighth hardware ID for `EarlyUsed`:
 
 ```text
-ResidentFilled, KvDsUsed, RawFilled, EarlyUsed, QUsed,
-BatchDsFilled0, BatchDsFilled1
+ResidentFilled0, ResidentFilled1, KvDsUsed, RawFilled, QUsed,
+BatchDsFilled0, BatchDsFilled1, EarlyUsed
 ```
 
 ## Expected Pipeline
@@ -103,7 +128,8 @@ time2:
   WQ:     consume dS(t), with useful work overlapping next raw publication
 
 time3:
-  C0/C1: RawFilled(t+1) should be ready or substantially aged
+  C0/C1: RawFilled(t+1) should be ready or substantially aged; execute
+         score/dP/softmax, then wait QUsed(t) only before first scratch reuse
   page roles swap; no tensor transpose, gather or duplicate GEMM is added
 ```
 
@@ -116,7 +142,7 @@ time3:
 - No `ds_read_b32`, bpermute, gather, duplicate Q/dO loads, or empty delay.
 - H1/S128 causal/noncausal and complete H1/S1024 causal correctness pass.
 
-## Performance Gate
+## Performance Gate (Not Reached)
 
 Compare against the same complete-lifecycle baseline. Promotion requires lower
 fused and summed lifecycle ticks. XCU must show a lower consumer RawFilled ID3

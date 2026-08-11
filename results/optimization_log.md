@@ -1,5 +1,27 @@
 # Optimization Log
 
+## 2026-08-11 Alternating Q / P-Scratch Rejected
+
+- Status: `REJECT_CORRECTNESS / CANONICAL_RESTORED / PERF_NOT_RUN`.
+- Hypothesis: after dO/sidecar/P-scratch die, preload the next Q into the dead
+  scratch page while current Q remains live for dK; alternate the two 16KB
+  pages without increasing LDS115,456B or changing five-GEMM work.
+- First implementation kept role `8/165/168/84`, SGPR60/VGPR124 and no
+  spill/private/scratch, but H1/S128 failed only dK (`rel_l2=0.440201`).
+- A real cross-group race was found: a fast consumer could reuse old Q as P
+  scratch while a slow peer still read it for dK. Waiting prior `QUsed` at
+  first scratch write raised SGPR60->64 but kept every hard resource gate.
+- The corrected form failed dK identically (`rel_l2=0.440202`), while delta,
+  dV and dQ passed, MMOP2,560 and bank0 held. This proves the race was not the
+  sole defect; no stats/fullperf result is admissible.
+- Stop after two same-tier failures. Restore the `d44ff33` source exactly.
+  Before revisiting, build an exact `matrix_load_32x32_b16 t bps lds` probe at
+  base98,304 with production normal/trans readers and delayed page reuse; the
+  existing 32x16 page-offset probe is not an exact oracle for this chain.
+
+Evidence: `/zys/sb/fa3b/fused5_full/b1_h1_s128_d128_c1_20260811_205951`
+and `/zys/sb/fa3b/fused5_full/b1_h1_s128_d128_c1_20260811_210423`.
+
 ## 2026-08-11 Complete Lifecycle Harness Accepted
 
 - Status: `ACCEPT_BASELINE_HARNESS / NO_KERNEL_CHANGE`.
