@@ -17083,3 +17083,21 @@ Production integration result:
   +0.771% versus accepted canonical. MMAC active mean is 28.760%.
 - Decision: `OBSERVE_ENABLER_NOT_PROMOTED`. The released LDS is useful only if
   a later complete raw Q+dO double page measurably shortens ownership waits.
+
+## 2026-08-12 - Full raw Q/dO double page accepted
+
+- Classification: `ACCEPT_CANONICAL_STRUCTURAL_WIN / MMAC50_OPEN`.
+- Two physically disjoint 32KB raw pages replace the single Q+dO ownership
+  epoch. Filled/Used tokens are page-local; packet refill is two generations
+  behind consumption. Five GEMMs and MMOP92,160 remain exact.
+- S128 causal/noncausal and repeated S1024 causal checks pass. Resources are
+  SGPR60/VGPR128/LDS131,072B, role `9/161/163/86`, no private/spill/scratch,
+  and bank0.
+- Complete mean ticks improve 58,696,137.5 -> 53,207,245 (-9.351%);
+  fullperf improves 8.879%. MMAC active rises 2.579 pp and barrier share falls
+  6.873 pp.
+- XCU duration falls 9.433% and ABarrier-following issue gap falls
+  40.72% -> 29.23%, proving the expected ownership shortening.
+- Runtime page selection raises SCA 38,192 -> 58,336. The next single
+  hypothesis is compile-time page specialization, preserving all semantics.
+- Evidence: `results/fused5_raw_qdo_double_page_20260812.md`.

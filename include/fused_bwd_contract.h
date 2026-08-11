@@ -69,6 +69,9 @@ struct FusedBwdContract {
         2 * kNk * kHeadDim * kHalfBytes;
     static constexpr int kRawQDoBytes =
         2 * kMq * kHeadDim * kHalfBytes;
+    static constexpr int kRawQDoPages = 2;
+    static constexpr int kRawQDoPhysicalBytes =
+        kRawQDoPages * kRawQDoBytes;
     static constexpr int kPdsLogicalBytes = kMq * kNk * kHalfBytes;
     // Raw/resident MLS panels retain their 2KB matrix-block spacing. A focused
     // writer/reader/MMAC probe proves native ds_write_matrix pages can be
@@ -85,10 +88,14 @@ struct FusedBwdContract {
         kPdsGenerationCount * kPdsGenerationBytes;
     static constexpr int kBatchPdsBytes = kMqPanels * kPdsGenerationBytes;
     static constexpr int kSidecarBytes = 3 * kMq * sizeof(float);
+    static constexpr int kSidecarPages = 2;
     static constexpr bool kSidecarAliasesPds = false;
     static constexpr int kLdsBudgetBytes = 128 * 1024;
-    static constexpr int kPlannedLdsBytes =
-        kResidentKvBytes + kRawQDoBytes + kPdsPageBytes + kSidecarBytes;
+    static constexpr int kStartupLdsBytes =
+        kResidentKvBytes + kRawQDoPhysicalBytes;
+    static constexpr int kSteadyKvReuseBytes =
+        kBatchPdsBytes + kPdsPageBytes + kSidecarPages * kSidecarBytes;
+    static constexpr int kPlannedLdsBytes = kStartupLdsBytes;
 
     enum class LifetimeState : uint8_t {
         kResidentKvPublished,
@@ -141,6 +148,7 @@ struct FusedBwdContract {
                   "dKV stores once; dQ emits one uniquely owned partial");
     static_assert(kResidentKvBytes == 64 * 1024 &&
                       kRawQDoBytes == 32 * 1024 &&
+                      kRawQDoPhysicalBytes == 64 * 1024 &&
                       kPdsLogicalBytes == 16 * 1024 &&
                       kWriterPageBytes == 2 * 1024 &&
                       kWriterStrideBytes == 1024 &&
@@ -151,37 +159,40 @@ struct FusedBwdContract {
                   "local P/dS conversion uses one private-page generation");
     static_assert(kBatchPdsBytes == kResidentKvBytes / 2,
                   "four packed dS panels must reuse half the resident K/V LDS");
+    static_assert(kSteadyKvReuseBytes <= kResidentKvBytes,
+                  "P/dS and sidecar pages must fit released resident K/V LDS");
     static_assert(kPlannedLdsBytes <= kLdsBudgetBytes,
                   "fused FA3 BWD LDS plan must fit within 128KB");
     static_assert(!kSidecarAliasesPds && kSidecarBytes == 768,
                   "sidecar must remain independently readable per panel");
-    static_assert(kPlannedLdsBytes == 107264,
-                  "packed physical LDS plan must use 104.75KB");
+    static_assert(kPlannedLdsBytes == 131072,
+                  "raw Q/dO double pages plus resident K/V must use 128KB");
 };
 
 struct FusedBwdBarrierLedger {
-    static constexpr int kResidentFilled0 = 0;
-    static constexpr int kResidentFilled1 = 1;
-    static constexpr int kKvDsUsed = 2;
-    static constexpr int kRawFilled = 3;
-    static constexpr int kRawUsed = 4;
-    static constexpr int kBatchDsFilled0 = 5;
-    static constexpr int kBatchDsFilled1 = 6;
-    static constexpr int kCount = 7;
+    static constexpr int kResidentFilled = 0;
+    static constexpr int kKvDsUsed = 1;
+    static constexpr int kRawFilled0 = 2;
+    static constexpr int kRawUsed0 = 3;
+    static constexpr int kRawFilled1 = 4;
+    static constexpr int kRawUsed1 = 5;
+    static constexpr int kBatchDsFilled0 = 6;
+    static constexpr int kBatchDsFilled1 = 7;
+    static constexpr int kCount = 8;
 
     static_assert(kBatchDsFilled1 + 1 == kCount,
                   "barrier IDs must be contiguous and explicit");
 };
 
 struct FusedBwdWdraResourceWindow {
-    static constexpr int kProducerVgprs = 8;
-    static constexpr int kConsumer0Vgprs = 200;
-    static constexpr int kConsumer1Vgprs = 200;
+    static constexpr int kProducerVgprs = 16;
+    static constexpr int kConsumer0Vgprs = 204;
+    static constexpr int kConsumer1Vgprs = 204;
     static constexpr int kDqWriterVgprs = 88;
     static constexpr int kPhysicalVgprTarget =
         kProducerVgprs + kConsumer0Vgprs + kConsumer1Vgprs +
         kDqWriterVgprs;
-    static constexpr int kPhysicalVgprGuard = 504;
+    static constexpr int kPhysicalVgprGuard = 512;
     static constexpr int kPhysicalVgprBudget = 512;
     static constexpr bool kRequireNoSpill = true;
     static constexpr bool kRequireNoPrivateSegment = true;
@@ -191,8 +202,8 @@ struct FusedBwdWdraResourceWindow {
                   "physical WDRA target exceeds the admitted guard");
     static_assert(kPhysicalVgprTarget <= kPhysicalVgprBudget,
                   "physical WDRA target must fit the 512 VGPR budget");
-    static_assert(kPhysicalVgprTarget == 496,
-                  "panel-streamed Q leaves 16 physical VGPRs of guard");
+    static_assert(kPhysicalVgprTarget == 512,
+                  "double-page roles use the legal full-pool WDRA quantum");
     static_assert(kRequireNoSpill, "fused path must be spill-free");
     static_assert(kRequireNoPrivateSegment && kRequireNoScratch,
                   "fused path must not allocate private or scratch storage");

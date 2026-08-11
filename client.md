@@ -5935,3 +5935,18 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   accepted canonical mean. Classification: `OBSERVE_ENABLER`, not promotion.
 - The next hypothesis may spend the newly available LDS on a complete Q+dO
   raw page1; do not attribute a speedup to compact stride itself.
+
+## 2026-08-12 Full Raw Q/dO Double-Page Checkpoint
+
+- The canonical kernel now owns two complete, disjoint 32KB Q+dO pages with
+  page-local Filled/Used tokens. Packet `t+1` is loaded while consumers use
+  packet `t`; page reuse waits for `t-2`.
+- Correctness passes S128 causal/noncausal and S1024 causal. Compute is
+  SGPR60/VGPR128/LDS131,072B, actual roles `9/161/163/86`, with
+  private/spill/scratch0, bank0 and exact MMOP92,160.
+- Repeated complete ticks improve 58,696,137.5 -> 53,207,245 (-9.351%).
+  Fullperf improves 8.879%; stats MMAC active rises 28.897% -> 31.476%.
+- XCU confirms the ownership mechanism: ABarrier-following issue gap falls
+  40.72% -> 29.23%, and fused duration falls 123,436 -> 111,792 cycles.
+- Dynamic SCA rises 38,192 -> 58,336. Preserve the accepted ownership and
+  test compile-time page specialization next; do not revisit wait-only edits.

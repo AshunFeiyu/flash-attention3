@@ -11331,3 +11331,20 @@ Status: `OBSERVE_A5_PASS_ENABLER / BEST_TAG_UNCHANGED`.
 - Compact stride is kept only as a proven LDS enabler. The best performance tag
   remains `best/fused5-dq-workspace-reduction-20260812`.
 - Evidence: `results/fused5_packed_stride_operator_20260812.md`.
+
+## 2026-08-12 Full Raw Q/dO Double Page Accepted
+
+Status: `ACCEPT_CANONICAL_STRUCTURAL_WIN / MMAC50_OPEN`.
+
+- Canonical source uses two full 32KB raw Q+dO pages with independent
+  Filled/Used tokens and one merged resident K/V readiness token.
+- S128 causal/noncausal and S1024 causal dQ/dK/dV golden checks pass.
+  Compute is SGPR60/VGPR128/LDS131,072B, actual role `9/161/163/86`,
+  private/spill/scratch0, exact MMOP92,160 and bank0.
+- Repeated complete mean ticks improve 9.351% to 53,207,245. Fullperf total is
+  53,714,570 (-8.879%); repeated MMAC active is 31.476233%.
+- XCU duration improves 9.433%, barrier share drops 6.873 pp, and the dominant
+  ABarrier-following gap drops 11.49 pp. This admits the ownership topology.
+- Remaining debt is runtime page-selection/control: SCA grows by 20,144.
+  Next test compile-time page specialization without changing exact work.
+- Evidence: `results/fused5_raw_qdo_double_page_20260812.md`.
