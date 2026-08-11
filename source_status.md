@@ -1,5 +1,22 @@
 # Source Status
 
+## 2026-08-11 Alternating Q / P-Scratch Candidate
+
+Status: `HYPOTHESIS_READY / SOURCE_UNCHANGED`.
+
+- The next sole performance hypothesis alternates Q between the existing 16KB
+  Q page and the dead 16KB P-conversion scratch page. dO and sidecar are
+  overwritten after their earlier release; the opposite page remains P
+  scratch for the active iteration.
+- This keeps LDS115,456B and lets both next Q and next dO BPS families issue
+  after `EarlyUsed`, while current dK still consumes the old Q. It avoids the
+  rejected split-lifetime ordering that waited QUsed between the two BPS
+  families.
+- Merge the two startup ResidentFilled tokens so the seven-ID barrier ledger
+  can name `EarlyUsed` and `QUsed` without exceeding hardware limits.
+- No source is changed yet. Design and rejection gates are in
+  `docs/fused5_alternating_q_scratch_design_20260811.md`.
+
 ## 2026-08-11 d44 Complete-Lifecycle Baseline Admitted
 
 Status: `ACCEPT_BASELINE_HARNESS / KERNEL_UNCHANGED / XCU_COMPLETE`.
