@@ -17032,3 +17032,19 @@ Production integration result:
   M128 tier after two failures.
 - Evidence:
   `results/fused5_m128_packed_valu_and_prelude_20260812.md`.
+
+## 2026-08-12 - dQ atomic replaced by workspace reduction
+
+- Classification: `ACCEPT_CANONICAL_STRUCTURAL_WIN / MMAC50_OPEN`.
+- One K128 compute CTA now vector-stores its unique FP32 dQ partial. A plain
+  non-WDRA reduction dispatch sums valid K tiles into the final dQ.
+- Correctness passes S128 causal/noncausal and S1024 causal. Exact five-GEMM
+  MMOP92,160, role `8/163/166/86`, SGPR60/VGPR124/LDS115,456 B, reduction
+  SGPR26/VGPR36, private/spill/scratch0 and bank0 all pass.
+- Repeated total ticks improve 72,048,112.5 -> 58,696,137.5 (-18.532%).
+  Fullperf total is 58,948,890 (-18.070%) and compute MMAC active rises to
+  28.851332%.
+- XCU confirms the 15.74% atomic issue-gap disappears and terminal ebarrier
+  falls 11.49% -> 6.12%. C0/C1 useful staggering is nearly unchanged, so the
+  next target is the 40.72% ABarrier-following edge.
+- Evidence: `results/fused5_dq_workspace_reduction_20260812.md`.

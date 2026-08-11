@@ -198,6 +198,7 @@ int main() {
     float* d_dq = nullptr;
     float* d_dk = nullptr;
     float* d_dv = nullptr;
+    void* d_workspace = nullptr;
     check_hip(hipMalloc(&d_q, half_bytes), "hipMalloc q");
     check_hip(hipMalloc(&d_k, half_bytes), "hipMalloc k");
     check_hip(hipMalloc(&d_v, half_bytes), "hipMalloc v");
@@ -236,6 +237,16 @@ int main() {
     params.dtype = SHAOBO_FA3_DTYPE_FP16;
     params.layout = SHAOBO_FA3_LAYOUT_BHSD;
     params.sync_after_launch = 1;
+    const size_t workspace_bytes =
+        shaobo_fa3_bwd_fused5_workspace_bytes(&params);
+    if (workspace_bytes == 0) {
+        std::fprintf(stderr, "invalid fused5 workspace size\n");
+        return 2;
+    }
+    check_hip(hipMalloc(&d_workspace, workspace_bytes),
+              "hipMalloc fused5 workspace");
+    params.workspace = d_workspace;
+    params.workspace_bytes = workspace_bytes;
     const int status = shaobo_fa3_bwd_fused5(
         d_dout, d_q, d_k, d_v, d_sidecar, d_dq, d_dk, d_dv, &params);
     if (status != SHAOBO_FA3_STATUS_SUCCESS) {
@@ -262,6 +273,7 @@ int main() {
     (void)hipFree(d_dv);
     (void)hipFree(d_dk);
     (void)hipFree(d_dq);
+    (void)hipFree(d_workspace);
     (void)hipFree(d_sidecar);
     (void)hipFree(d_dout);
     (void)hipFree(d_v);

@@ -5883,3 +5883,19 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   variation on compiler e0f10535 / PMD HEAD1694.
 - Reusable fact: explicit pair-vector expressions can recover packed Shaobo
   softmax/dS codegen. That ISA win alone does not admit a larger tile.
+
+## 2026-08-12 dQ Workspace Reduction Checkpoint
+
+- The canonical fused compute now writes one uniquely owned FP32 dQ partial
+  per K128 CTA and launches one plain vector reduction kernel. It no longer
+  uses global FP32 atomics.
+- Complete H1/S128 causal/noncausal and H1/S1024 causal correctness pass.
+  Compute is SGPR60/VGPR124/LDS115,456 B with role `8/163/166/86`; reduction
+  is SGPR26/VGPR36. Both are private/spill/scratch0 and bank0.
+- Repeated full-lifecycle H1/S1024 mean ticks improve 18.532%, from
+  72,048,112.5 to 58,696,137.5. Fullperf improves 18.070%.
+- XCU proves the old 15.74% atomic issue-gap is gone and terminal ebarrier
+  falls 11.49% -> 6.12%. The inner C0/C1 staggering is essentially unchanged.
+- Next bottleneck is ownership: `s_abarrier_try_wait -> s_xor_b32` is 40.72%
+  of candidate issue-gap cycles. Do not tune reduction before addressing that
+  larger boundary unless reduction exceeds 5% of total ticks.

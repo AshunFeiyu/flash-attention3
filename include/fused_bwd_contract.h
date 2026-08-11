@@ -62,7 +62,8 @@ struct FusedBwdContract {
         kLogicalGemmCount * kMmacPerLogicalGemm;
     static constexpr bool kDkvHasUniqueOutputOwner = true;
     static constexpr bool kDqHasUniqueD32Owner = true;
-    static constexpr bool kDqUsesFp32AtomicAdd = true;
+    static constexpr bool kDqUsesFp32AtomicAdd = false;
+    static constexpr bool kDqUsesWorkspaceReduction = true;
 
     static constexpr int kResidentKvBytes =
         2 * kNk * kHeadDim * kHalfBytes;
@@ -133,8 +134,9 @@ struct FusedBwdContract {
                       kMmacPerDqWriterWave == 64,
                   "per-role MMAC ledger must match the 16-wave design");
     static_assert(kDkvHasUniqueOutputOwner && kDqHasUniqueD32Owner &&
-                      kDqUsesFp32AtomicAdd,
-                  "dKV must store once and dQ must emit one D32 partial");
+                      !kDqUsesFp32AtomicAdd &&
+                      kDqUsesWorkspaceReduction,
+                  "dKV stores once; dQ emits one uniquely owned partial");
     static_assert(kResidentKvBytes == 64 * 1024 &&
                       kRawQDoBytes == 32 * 1024 &&
                       kPdsLogicalBytes == 16 * 1024 &&

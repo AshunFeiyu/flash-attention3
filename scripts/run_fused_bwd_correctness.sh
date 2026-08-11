@@ -13,6 +13,7 @@ CAUSAL="${CAUSAL:-1}"
 RUN_ROOT="${FUSED5_RUN_ROOT:-${SHAOBO_RUN_ROOT}}"
 RUN_DIR="${RUN_ROOT}/5gemm_symmetric_s${S}_c${CAUSAL}_$(date +%Y%m%d_%H%M%S)"
 TIMEOUT="${FUSED5_PMD_TIMEOUT:-900}"
+EXPECTED_DISPATCHES="${FUSED5_EXPECT_DISPATCHES:-2}"
 
 [[ -x "${BIN}" ]]
 mkdir -p "${RUN_DIR}/m5out"
@@ -33,21 +34,26 @@ S="${S}" CAUSAL="${CAUSAL}" timeout --kill-after=5 "${TIMEOUT}" \
 pmd_status="$?"
 set -e
 
-grep -E '^fused5_correctness|^fused5_correctness_final' pmd_stdout.log \
+grep -E 'fused5_correctness|fused5_correctness_final' pmd_stdout.log \
   | tee correctness.txt || true
 semantic="$(grep -c "fused5_correctness_final S=${S} D=128 causal=${CAUSAL} pass=1" pmd_stdout.log || true)"
 panic="$(grep -ciE 'panic:|fatal:|not init or has been freed' pmd_stdout.log || true)"
 vgpr_warning="$(grep -ciE 'read vgpr.*before writing' pmd_stdout.log || true)"
-mapfile -t stats_files < <(find m5out -type f -name stats.txt -size +0c)
+mapfile -t stats_files < <(find m5out -type f -name stats.txt -size +0c | sort -V)
 bank=0
-if [[ "${#stats_files[@]}" -eq 1 ]]; then
-  python3 "${ROOT}/scripts/parse_fused_bwd_stats.py" "${stats_files[0]}" \
-    | tee stats_summary.txt
-  bank="$(awk '/ldsBankConflict/ { sum += $2 } END { print sum + 0 }' "${stats_files[0]}")"
+if [[ "${#stats_files[@]}" -eq "${EXPECTED_DISPATCHES}" ]]; then
+  : > stats_summary.txt
+  for index in "${!stats_files[@]}"; do
+    printf 'dispatch=%s stats=%s\n' "$((index + 1))" "${stats_files[index]}" \
+      | tee -a stats_summary.txt
+    python3 "${ROOT}/scripts/parse_fused_bwd_stats.py" "${stats_files[index]}" \
+      | tee -a stats_summary.txt
+  done
+  bank="$(awk '/ldsBankConflict/ { sum += $2 } END { print sum + 0 }' "${stats_files[@]}")"
 fi
 
 if [[ "${pmd_status}" == 0 && "${semantic}" == 1 && "${panic}" == 0 &&
-      "${vgpr_warning}" == 0 && "${#stats_files[@]}" == 1 &&
+      "${vgpr_warning}" == 0 && "${#stats_files[@]}" == "${EXPECTED_DISPATCHES}" &&
       "${bank}" == 0 ]]; then
   status=PASS
 else

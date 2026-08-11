@@ -11271,3 +11271,21 @@ Status: `REJECT_M128_OWNERSHIP_TIER / CANONICAL_RESTORED`.
 - Canonical source and contract now match `b28e73d`. M128 is closed on the
   current compiler/PMD after two same-tier failures.
 - Evidence: `results/fused5_m128_packed_valu_and_prelude_20260812.md`.
+
+## 2026-08-12 dQ Workspace Reduction Accepted
+
+Status: `ACCEPT_CANONICAL_STRUCTURAL_WIN / MMAC50_OPEN`.
+
+- Canonical output ownership is now `compute dQ partial -> vector reduction`.
+  Exactly five GEMMs and dynamic MMOP92,160 are unchanged; compute contains no
+  global atomic.
+- H1/S128 causal/noncausal and H1/S1024 causal pass CPU golden. Compute role
+  use is `8/163/166/86`, SGPR60/VGPR124/LDS115,456 B; reduction is
+  SGPR26/VGPR36. Both are private/spill/scratch0 and bank0.
+- Repeated complete-lifecycle mean ticks are 58,696,137.5 versus
+  72,048,112.5 baseline, an 18.532% improvement. Fullperf total is
+  58,948,890 ticks and fused MMAC active is 28.851332%.
+- XCU removes the atomic edge and shortens terminal ebarrier, while the inner
+  C0/C1 MMAC/VALU pattern remains nearly unchanged. The dominant remaining
+  edge is ABarrier-following at 40.72%.
+- Evidence: `results/fused5_dq_workspace_reduction_20260812.md`.

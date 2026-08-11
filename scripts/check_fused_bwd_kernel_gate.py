@@ -155,6 +155,7 @@ def main() -> int:
         ("forbidden_bpermute", r"\bbpermute\b|__builtin_hcu_bpermute"),
         ("forbidden_explicit_ds_read_b32", r"\bds_read_b32\b"),
         ("forbidden_gather", r"\bgather\b"),
+        ("forbidden_dq_atomic", r"global_atomic|atomicAdd|atomic_add"),
         ("forbidden_fallback", r"\bfallback\b"),
         ("forbidden_phase_version_stack",
          r"production[_ -]?phase|\bphase[_ -]?\d+\b|\bversion[_ -]?\d+\b|"

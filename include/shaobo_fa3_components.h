@@ -43,6 +43,9 @@ int shaobo_fa3_bwd_dot_do_o(const void* dout,
                             void* packed_sidecar,
                             const ShaoboFa3Params* params);
 
+size_t shaobo_fa3_bwd_fused5_workspace_bytes(
+    const ShaoboFa3Params* params);
+
 int shaobo_fa3_bwd_fused5(const void* dout,
                           const void* q,
                           const void* k,
