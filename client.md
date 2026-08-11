@@ -5871,3 +5871,15 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   measured reject. Production source is restored to `b28e73d`.
 - Revisit M128 only with an explicit generated-ASM gate for packed VALU; do
   not add another ownership/wait variation first.
+
+## 2026-08-12 M128 Packed-VALU Closure
+
+- Explicit `PairF32` expressions recover packed probability/dS ISA and reduce
+  dynamic VALU below M64, but M128 still regresses mean ticks by 0.575%.
+- Moving legal half1 work ahead of the ownership wait regresses further:
+  72,852,780 mean ticks, 22.063894% MMAC active and 29.019252% barrier share.
+- This is the second M128 ownership-tier failure. Production source is back at
+  `b28e73d`; do not resume M128 with another wait placement or live-range
+  variation on compiler e0f10535 / PMD HEAD1694.
+- Reusable fact: explicit pair-vector expressions can recover packed Shaobo
+  softmax/dS codegen. That ISA win alone does not admit a larger tile.

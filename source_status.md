@@ -11258,3 +11258,16 @@ Status: `REJECT_STATS_TICKS / CANONICAL_RESTORED`.
 - A separate cross-boundary wait relocation also regresses. Source and
   contract are restored to `b28e73d`.
 - Evidence: `results/fused5_m128_lexical_halves_20260812.md`.
+
+## 2026-08-12 M128 Packed VALU And Prelude Result
+
+Status: `REJECT_M128_OWNERSHIP_TIER / CANONICAL_RESTORED`.
+
+- Explicit packed probability/dS codegen succeeds and lowers dynamic VALU to
+  118,032, but repeated M128 ticks still regress 0.575% versus accepted M64.
+- A second candidate moves useful half1 work ahead of `KvDsUsed`; it passes
+  correctness/resources/bank0 but regresses 1.117%, with 22.063894% MMAC
+  active and 29.019252% barrier share.
+- Canonical source and contract now match `b28e73d`. M128 is closed on the
+  current compiler/PMD after two same-tier failures.
+- Evidence: `results/fused5_m128_packed_valu_and_prelude_20260812.md`.

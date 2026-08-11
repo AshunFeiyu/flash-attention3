@@ -17019,3 +17019,16 @@ Production integration result:
 - ASM root cause is lost packed softmax/dS codegen. Future M128 work must first
   recover packed VALU and prove that in generated ASM; canonical source is
   restored to `b28e73d`.
+
+## 2026-08-12 - M128 packed VALU observed, useful prelude rejected
+
+- Explicit two-float vectors restore packed softmax/dS ISA and reduce dynamic
+  VALU `120,800 -> 118,032`, but M128 still averages 72,462,617.5 ticks
+  (`+0.575%`) and 22.211146% MMAC active.
+- Moving legal half1 work ahead of the half0 ownership wait passes every hard
+  gate but averages 72,852,780 ticks (`+1.117%`) and 22.063894% MMAC active.
+- Barrier share remains 29.019252%; the page ownership handoff, not missing
+  movable instructions, limits this topology. Restore `b28e73d` and close the
+  M128 tier after two failures.
+- Evidence:
+  `results/fused5_m128_packed_valu_and_prelude_20260812.md`.
