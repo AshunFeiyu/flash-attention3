@@ -5950,3 +5950,15 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   40.72% -> 29.23%, and fused duration falls 123,436 -> 111,792 cycles.
 - Dynamic SCA rises 38,192 -> 58,336. Preserve the accepted ownership and
   test compile-time page specialization next; do not revisit wait-only edits.
+
+## 2026-08-12 Raw-Page Specialization Rejected
+
+- Compile-time page0/page1 pairing reduces dynamic SCA 58,336 -> 38,988, so
+  the prior page-CFG attribution was correct.
+- The compiler duplicates the heavy packet body: static kernel instruction
+  lines grow 2,076 -> 4,255, SGPR rises 60 -> 70 and role use becomes
+  `12/167/169/86`.
+- Correctness/resource/bank/MMOP gates pass, but compute mean regresses 0.503%
+  and complete mean regresses 0.310%. Source is restored to `d62c645`.
+- Do not pursue another page-control variation on this toolchain. The next
+  tier must improve useful C0/C1 staggering without cloning packet code.

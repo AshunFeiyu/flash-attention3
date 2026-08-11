@@ -17101,3 +17101,16 @@ Production integration result:
 - Runtime page selection raises SCA 38,192 -> 58,336. The next single
   hypothesis is compile-time page specialization, preserving all semantics.
 - Evidence: `results/fused5_raw_qdo_double_page_20260812.md`.
+
+## 2026-08-12 - Raw-page compile-time specialization rejected
+
+- The xcu-derived page-CFG hypothesis is confirmed: paired page0/page1
+  specializations reduce dynamic SCA 58,336 -> 38,988.
+- Correctness, exact MMOP, bank0 and no-spill gates pass, but generated static
+  kernel instructions grow 2,076 -> 4,255, SGPR grows 60 -> 70 and actual
+  roles grow to `12/167/169/86`.
+- Repeated compute mean regresses 0.503% and complete mean regresses 0.310%.
+  The slight MMAC-active rise to31.629456% does not admit the candidate.
+- Classification: `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. Keep the
+  double-page ownership at `d62c645`; close page-control micro-tuning.
+- Evidence: `results/fused5_raw_page_specialization_20260812.md`.

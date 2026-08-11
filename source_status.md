@@ -11348,3 +11348,18 @@ Status: `ACCEPT_CANONICAL_STRUCTURAL_WIN / MMAC50_OPEN`.
 - Remaining debt is runtime page-selection/control: SCA grows by 20,144.
   Next test compile-time page specialization without changing exact work.
 - Evidence: `results/fused5_raw_qdo_double_page_20260812.md`.
+
+## 2026-08-12 Raw-Page Compile-Time Specialization Rejected
+
+Status: `REJECT_TICKS_REGRESSION / CANONICAL_RESTORED`.
+
+- S128 causal/noncausal and repeated S1024 causal correctness pass with
+  MMOP92,160, bank0 and private/spill/scratch0.
+- Dynamic SCA falls 58,336 -> 38,988, but static kernel instructions more
+  than double 2,076 -> 4,255; SGPR rises to70 and role use to
+  `12/167/169/86`.
+- Mean compute and complete ticks regress 0.503% and 0.310%, respectively.
+  MMAC active rises only 0.153 pp and cannot override the tick regression.
+- Production source is byte-identical to accepted `d62c645`. Page-control
+  micro-tuning is closed for LLVM `e0f10535`.
+- Evidence: `results/fused5_raw_page_specialization_20260812.md`.
