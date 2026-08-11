@@ -2,6 +2,53 @@
 
 Status: `REJECT_CORRECTNESS / CANONICAL_SOURCE_RESTORED`
 
+## 2026-08-11 A5 Retry Gate
+
+The exact reusable tuple now passes A0-A4 in
+`dcu-kernel-toolkit` commit `0afa714`:
+
+```text
+matrix_load_32x32_b16 t bps lds
+  -> LDS base 0 or 98304
+  -> normal/trans ds_read_matrix
+  -> dense score-like and dK-like FP32 MMAC
+```
+
+All low/high/generation-1 fragment permutations and CPU dense oracles pass;
+LDS bank conflict, private, scratch and spill are zero. Therefore the two
+earlier dK failures are not evidence against the MLS32 high-page tuple. They
+leave one newly informed A5 retry: make the selected Q page explicit at every
+score and dK call site, make the P scratch page its exact opposite, and prove
+the cross-group release ledger below. No other algorithm, tile, instruction,
+or scheduling change is admitted in this retry.
+
+The retry is `ACCEPT` only if H1/S128 causal and noncausal plus H1/S1024 causal
+pass the complete lifecycle, exact MMOP remains unchanged, and the same-build
+baseline comparison lowers fused and summed ticks. A correctness failure
+returns immediately to the canonical source and closes this architecture.
+
+### Retry Result
+
+Status: `REJECT_CORRECTNESS / ARCHITECTURE_CLOSED`.
+
+- The exact selected Q page was threaded through every score and dK call site;
+  P scratch always used the opposite page. Generated ISA selected bases `0`
+  and `98304` as intended, with no spill, scratch or bank conflict.
+- The explicit `QUsed` retry still passed delta/dV/dQ but failed dK. Replacing
+  the new token with the already-proven `KvDsUsed` release also failed dK
+  (`rel_l2=0.339` causal and `0.685` noncausal).
+- Per-K16 diagnostics localized the corruption to q-tile0 contributions: the
+  final causal K tile, whose q-tile0 contribution is empty, was nearly exact,
+  while all tiles that consume q-tile0 were wrong.
+- Since the isolated tuple passes A0-A4, the rejected result is an A5
+  cross-iteration page-lifetime/integration failure, not a failure of
+  MLS32 normal/trans dual-view itself. No performance result is admitted.
+
+The canonical kernel, contract and correctness harness are restored exactly to
+`c58272f`. Future work must retain the canonical one-page ownership protocol or
+introduce a separately proven generation ledger; it must not revive this
+alternating-Q implementation through another local wait adjustment.
+
 ## Experiment Outcome
 
 Two H1/S128 causal implementations were rejected before performance capture:

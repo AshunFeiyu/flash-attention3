@@ -2,7 +2,21 @@
 
 ## 2026-08-11 Alternating Q / P-Scratch Candidate
 
-Status: `REJECT_CORRECTNESS / SOURCE_RESTORE_REQUIRED`.
+Status: `REJECT_CORRECTNESS / CANONICAL_SOURCE_RESTORED`.
+
+- Toolkit commit `0afa714` now proves the exact production-shaped FP16
+  MLS32 low/high-page normal/trans tuple through dense score-like and dK-like
+  CPU oracles, with no spill/private memory or bank conflict.
+- The informed A5 retry threaded the selected page through every score/dK
+  call site and used the opposite page for P scratch. Both an explicit
+  `QUsed` ledger and the proven `KvDsUsed` release still failed only dK; the
+  latter measured `rel_l2=0.339` causal and `0.685` noncausal.
+- Per-K16 diagnostics localize the failure to q-tile0 contributions. This is
+  an operator integration/page-lifetime failure, not an MLS32 dual-view
+  primitive failure. The alternating-Q architecture is closed.
+- Kernel, contract and full-lifecycle harness now match `c58272f` exactly.
+  Fresh H1/S128 and H1/S1024 causal runs pass; S1024 fused ticks are
+  `72,254,455`, MMOP92,160, bank0, no spill/scratch/private segment.
 
 - The next sole performance hypothesis alternates Q between the existing 16KB
   Q page and the dead 16KB P-conversion scratch page. dO and sidecar are
@@ -23,7 +37,7 @@ Status: `REJECT_CORRECTNESS / SOURCE_RESTORE_REQUIRED`.
   (`rel_l2=0.440201/0.440202`); delta, dV and dQ pass, MMOP is exact and bank0.
   Stop after two correctness failures, restore `d44ff33`, and admit no perf
   result. Revisit only after an exact production-shape high-page probe.
-- No source is changed yet. Design and rejection gates are in
+- Design and rejection gates are in
   `docs/fused5_alternating_q_scratch_design_20260811.md`.
 
 ## 2026-08-11 d44 Complete-Lifecycle Baseline Admitted

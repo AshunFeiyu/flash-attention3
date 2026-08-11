@@ -22,6 +22,25 @@
 Evidence: `/zys/sb/fa3b/fused5_full/b1_h1_s128_d128_c1_20260811_205951`
 and `/zys/sb/fa3b/fused5_full/b1_h1_s128_d128_c1_20260811_210423`.
 
+### Exact-Tuple Retry And Closure
+
+- Toolkit commit `0afa714` passes A0-A4 for the exact MLS32 low/high-page
+  normal/trans tuple and dense score/dK consumers. That removes the earlier
+  uncertainty about the high-page instruction/layout pairing.
+- An A5 retry made Q-page selection explicit at every score/dK call and kept
+  P scratch on the opposite page. Explicit `QUsed` and existing `KvDsUsed`
+  release variants both preserve delta/dV/dQ but corrupt dK; the latter gives
+  `rel_l2=0.339` causal and `0.685` noncausal.
+- K16-slice diagnostics show the last causal K tile, which has no q-tile0
+  contribution, is nearly exact; every slice consuming q-tile0 is wrong.
+  Classification remains `REJECT_CORRECTNESS`; no ticks are promoted.
+- Canonical source was restored exactly to `c58272f`. Fresh full-lifecycle
+  H1/S128 and H1/S1024 runs pass. S1024 fused ticks are `72,254,455`, exact
+  MMOP92,160, coissue `22,678/15,426`, bank0 and no spill/scratch/private.
+
+Evidence: toolkit contract `gfx946/fp16-mls32-dual-view`,
+`/zys/shaobo_runs/fused5_canonical_restore_20260811/runs/`.
+
 ## 2026-08-11 Complete Lifecycle Harness Accepted
 
 - Status: `ACCEPT_BASELINE_HARNESS / NO_KERNEL_CHANGE`.

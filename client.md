@@ -5775,3 +5775,19 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
   tails. Preserve the read batching and stage order; the next architecture
   change must shorten the dominant page ownership lifetime.
 - Evidence: `results/fused5_useful_stagger_20260723.md`.
+
+## 2026-08-11 Probe Admission And A5 Boundary
+
+- Reusable gfx946 header `fp16_mls32_dual_view.hpp` and its focused probe
+  prove the exact low/high-page MLS32 normal/trans fragment tuple through
+  dense score-like and dK-like MMAC consumers. A0-A4 pass at toolkit commit
+  `0afa714`; do not duplicate this layout experiment in an operator repo.
+- Full-operator alternating-Q integration remains rejected. Explicit page
+  operands and two independently checked release ledgers still corrupt only
+  dK, while dV/dQ pass. The defect is cross-generation page integration, not
+  the dual-view primitive.
+- Canonical kernel/contract/harness are restored to `c58272f`. Fresh S128 and
+  S1024 complete-lifecycle correctness pass; S1024 fused ticks are
+  `72,254,455` with exact MMOP92,160, bank0 and no spill/scratch.
+- Continue from canonical useful-stagger. Do not revive alternating-Q through
+  another wait placement; select the next hypothesis from canonical SQTT.
