@@ -11304,3 +11304,16 @@ Status: `REJECT_STATIC_RESOURCE / CANONICAL_RESTORED`.
 - PMD correctness/performance was intentionally skipped. Production code is
   byte-identical to `197e5d9`.
 - Evidence: `results/fused5_m32_raw_conveyor_20260812.md`.
+
+## 2026-08-12 Packed Writer Stride Probe Passed
+
+Status: `PASS_A0_A4 / A5_PENDING`.
+
+- `ds_write_matrix_32x16_trans_f16` pages at bases 0 and 1024 produce exactly
+  the same normal/trans reader fragments and MMAC outputs as 2KB-spaced
+  control pages.
+- Both writers report zero fragment/MMAC mismatches. Metadata is
+  SGPR18/VGPR26 with private/spill/scratch0.
+- The reusable implication is a 1KB writer stride, not a change to logical
+  matrix shape. Operator source remains unchanged pending A5 integration.
+- Evidence: `results/ds_write_matrix_packed_stride_20260812.md`.

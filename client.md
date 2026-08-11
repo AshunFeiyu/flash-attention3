@@ -5913,3 +5913,14 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
 - No PMD run is admissible. Canonical source/contract are restored to
   `197e5d9`; revisit only after a focused resource probe finds a lower-register
   M32 capture expression.
+
+## 2026-08-12 Packed ds_write_matrix Stride Probe
+
+- A 1024-byte writer stride is bit-exact against the current 2048-byte control
+  for both native normal/trans readers and a dense MMAC consumer.
+- Probe metadata is SGPR18/VGPR26 with private/spill/scratch0; PMD has no panic.
+- This can reduce four-panel batch dS storage from 64KB to 32KB and P scratch
+  from 16KB to 8KB. It is an A0-A4 fact, not yet an operator promotion.
+- Next integrate only the compact stride into the canonical fused kernel and
+  require complete correctness/resource gates before attempting raw double
+  buffering.

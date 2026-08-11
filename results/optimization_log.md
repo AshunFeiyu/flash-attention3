@@ -17061,3 +17061,14 @@ Production integration result:
 - Reusable boundary: a coarse ownership wait cannot be shortened by retaining
   two Q panels unless the fragment representation first passes an isolated
   no-spill resource probe.
+
+## 2026-08-12 - Packed ds_write_matrix stride admitted through A4
+
+- Tested writer bases `0/1024` against safe controls `4096/6144` in one
+  dispatch.
+- Both normal/trans reader fragments and dense MMAC outputs are bit-exact for
+  two distinct writer fragments; SGPR18/VGPR26, private/spill/scratch0.
+- This proves production can test 1KB P/dS writer spacing. It does not by
+  itself admit a second raw page or claim operator speedup.
+- Evidence run:
+  `/zys/shaobo_runs/fused5_packed_stride_probe_20260812/ds_write_matrix_packed_stride_20260812_045436`.
