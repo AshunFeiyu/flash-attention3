@@ -11409,3 +11409,20 @@ Status: `ACCEPT_TICKS_AND_ACTIVE_WIN / MMAC50_OPEN`.
   private/spill/scratch debt are preserved.
 - The current PMD run is stats-only: no `.perf`, so SQTT/xcu remains pending.
 - Evidence: `results/fused5_group_local_dk_readahead_20260812.md`.
+
+## 2026-08-12 dK Three-Slot Read-Ahead Rejected
+
+The three-slot Q/dS prefetch compiled and passed H1/S128 and H1/S1024 full
+lifecycle correctness, with roles `176/175/86`, no spill/scratch/private
+segment, exact MMOP92,160 and bank0. It regressed H1/S1024 to fused
+`48,043,450` / complete `53,473,420` ticks and `33.004612%` MMAC active.
+Restore the two-slot canonical `da0b918`; classify this as
+`REJECT_TICKS_AND_ACTIVE_REGRESSION`.
+
+## 2026-08-12 Score/dP Pair Read Rejected
+
+The pair-read source was removed from the canonical path. It was correct and
+resource-clean, but H1/S1024 regressed to `49,330,645` fused ticks /
+`54,762,890` complete ticks; MMAC active fell to `31.995634%` and LGKM wait
+rose to `12.648060%`. This is `REJECT_TICKS_AND_WAIT_REGRESSION`, not an
+algorithm or layout correctness failure.

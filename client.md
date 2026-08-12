@@ -6001,3 +6001,19 @@ cross-group lockstep.
   layout correctness.
 - PMD current fullperf remains blocked by the ASTCA config warning; report
   stats-only results as `xcu pending` until a `.perf` is generated.
+
+## 2026-08-12 dK Three-Slot Negative
+
+The deeper dK read-ahead was reverted. It passed correctness and resource
+gates, but H1/S1024 fused ticks rose to `48,043,450`, complete ticks to
+`53,473,420`, and MMAC active fell to `33.004612%`. Keep the two-slot
+canonical implementation at `da0b918`; deeper prefetch is not the path to
+50% active on this compiler.
+
+## 2026-08-12 Pair-Read Negative
+
+The score/dP paired matrix-read experiment was reverted. Correctness and
+resource gates passed, but fused ticks increased to `49,330,645`, complete
+ticks to `54,762,890`, MMAC active fell to `31.995634%`, and LGKM wait rose
+to `12.648060%`. Keep the accepted dK read-ahead source at `da0b918` and do
+not accumulate read-island variants.

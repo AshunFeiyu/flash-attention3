@@ -17165,3 +17165,30 @@ Production integration result:
   normal and transposed source-layout fragments are distinct ABI views.
 - Current SQTT is pending: the PMD ASTCA config warning prevents the current
   helper from producing `.perf`; no Wavefronts conclusion is claimed here.
+
+## 2026-08-12 Score/dP Pair Read Rejected
+
+- The four score and four dP matrix reads were grouped behind one wait.
+- H1/S128 and H1/S1024 correctness, exact MMOP92,160, bank0 and no-spill
+  gates passed, but the candidate measured fused `49,330,645` ticks and
+  complete `54,762,890` ticks with `31.995634%` MMAC active and
+  `12.648060%` LGKM wait.
+- Decision: `REJECT_TICKS_AND_WAIT_REGRESSION`. Restore the canonical
+  `da0b918` source; read batching alone did not form a useful conveyor.
+- Evidence: `results/fused5_score_dp_pair_read_20260812.md`.
+
+## 2026-08-12 dK Three-Slot Read-Ahead Rejected
+
+- The candidate staged Q/dS panels 0, 1 and 2 before the first dK MMAC, then
+  reused the first slot for panel 3.
+- Resource and correctness gates passed: consumer roles were `176/175` out of
+  `204`, dQ writer `86/88`, SGPR/VGPR spill and private/scratch were zero,
+  MMOP92,160 and bank0 remained exact; H1/S128 and H1/S1024 full lifecycle
+  correctness passed.
+- H1/S1024 candidate was fused `48,043,450` and complete `53,473,420` ticks,
+  with fused MMAC active `33.004612%`; canonical dK read-ahead was fused
+  `47,559,633` and complete `52,774,995` on the same toolchain.
+- Decision: `REJECT_TICKS_AND_ACTIVE_REGRESSION`. Deeper read-ahead increased
+  live/control pressure without removing the critical ownership path. Restore
+  the two-slot canonical implementation.
+- Evidence: `docs/fused5_dk_three_slot_readahead_design_20260812.md`.
