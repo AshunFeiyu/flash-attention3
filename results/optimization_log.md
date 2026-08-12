@@ -17368,3 +17368,14 @@ Production integration result:
 The dK helper was changed from lag-one read-ahead to `10 reads -> wait -> 16 MMAC` for adjacent M16 panels. H1/S128 and H1/S1024 full lifecycle correctness passed; static resources remained clean at role use `9/163/165/86` under `16/204/204/88`, exact `MMOP=92,160`, and bank0. The S1024 fused dispatch was `48,063,015` ticks and the complete chain was `53,181,765`, versus the current wait-pruned canonical `47,430,868` and `52,596,180` means. Structured stats reported fused coissue `21,377/24,527`, `VALU=127,352`, `LDS=63,872`, `SCA=58,720`, `VMEM=1,408`, and `ldsBankConflict=0`.
 
 Decision: `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. The larger read island exposes one first-use LGKM wait and removes the accepted lag-one overlap. No current `.perf` was generated because the PMD ASTCA fullperf issue remains open. Next work targets repeated `RawFilled/RawUsed` ownership cadence, not another dK read batching variant.
+# 2026-08-12 Tri Dao D64 Ownership Probe
+
+The dQ panel-pair read attempt is closed. The resource-clean schedule passed
+correctness but regressed H1/S1024 fused ticks on both repeats
+(`47,810,035`, `47,832,785`) against `47,624,850`; the larger dual-read
+schedule spilled. The canonical source is restored at `efa0923`.
+
+The next experiment is structural: move the D64 dQ ownership into the two
+heavy consumers, matching the Tri Dao D128 role map. It preserves exactly five
+GEMMs and native matrix paths. First gate: no private/spill/scratch and a
+feasible per-consumer VGPR ledger.

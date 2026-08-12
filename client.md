@@ -6112,3 +6112,11 @@ change a measured read/MMAC island or ownership lifetime.
 ## 2026-08-12 Pair-Island Closure
 
 The dK same-group `10 reads -> wait -> 16 MMAC` experiment is closed and its source is removed. It passed correctness, no-spill/scratch, exact MMOP and bank0, but regressed H1/S1024 fused ticks by about `1.33%` versus the current lag-one canonical. Keep the lag-one two-slot read-ahead. This is evidence that read island size must be judged together with first-use readiness, not by MMAC adjacency alone. The next useful tier is the repeated raw-page ownership handshake (`RawFilled/RawUsed`), with one complete design hypothesis before editing.
+# 2026-08-12 Structural Route
+
+The current canonical checkpoint is `efa0923`. Do not stack dQ writer read
+placement variants: one spilled and one resource-clean variant regressed
+ticks. The next route is an isolated Tri Dao D128 ownership probe where each
+heavy four-wave consumer owns `N64 dK/dV + D64 dQ`. The probe must preserve
+five GEMMs, MLS/BPS plus `ds_read_matrix` plus MMAC, and pass static resource,
+S128 correctness, then S1024 stats before any promotion discussion.

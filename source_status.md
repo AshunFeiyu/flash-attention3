@@ -1,5 +1,20 @@
 # Source Status
 
+## 2026-08-12 Tri Dao D64 Ownership Probe Open
+
+Canonical source remains `efa0923`: H1/S1024 fused ticks are about
+`47.625M`, MMAC active is `33.37%`, correctness passes, metadata is
+`9/163/165/86`, private/spill/scratch are zero and LDS bank conflict is zero.
+The dQ panel-pair read candidate passed correctness/resources but regressed two
+repeats to `47.810M/47.833M`; the dual-read variant spilled. Both are removed
+from the active source.
+
+The only open structural hypothesis is the Tri Dao D128 ownership map: two
+four-wave heavy groups each own `N64 dK/dV + D64 dQ`, with one four-wave
+producer/output group. The first implementation gate is compile-time resource
+feasibility; no performance result is admitted until correctness and no-spill
+gates pass.
+
 ## 2026-08-12 dK Static Panel Read Accepted
 
 Canonical source now uses compile-time dK panel addresses while preserving the
