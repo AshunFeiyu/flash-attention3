@@ -11433,3 +11433,15 @@ The direct register dS to dK experiment passed static resources but failed
 H1/S128 dK correctness (`rel_l2=1.33595`, `cosine_error=0.847635`) while dV
 and dQ passed. The source was restored to `da0b918`; no permutation or gather
 workaround is admitted to the canonical matrix path.
+## 2026-08-12 dKV Zero-Seed Rejected
+
+The temporary dKV zero-seed source was removed from the canonical path. It
+used `mmac_zero` for the first dV/dK accumulation and preserved later q-tile
+accumulation. H1/S128 and H1/S1024 correctness passed, with no spill,
+private/scratch segment, or bank conflict, but repeated H1/S1024 fused means
+were about `48.21M` ticks versus the canonical `47.56M`. The full lifecycle
+mean was about `53.37M` versus `52.77M`. Classification:
+`REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`.
+
+Do not use a runtime first-update branch for long-lived dKV accumulators.
+Keep the proven MMAC zero-seed form limited to fixed score/dP islands.

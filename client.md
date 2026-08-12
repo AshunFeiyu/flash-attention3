@@ -6024,3 +6024,10 @@ Directly feeding the `ds_stage` register fragment into dK reduced consumer
 register usage, but failed dK correctness at H1/S128 (`rel_l2=1.33595`). The
 normal dK source-layout view still requires the validated LDS publication and
 normal `ds_read_matrix`; keep the canonical path and do not add permutes.
+## 2026-08-12 Zero-Seed Decision
+
+The dKV long-lived accumulator zero-seed experiment was correctness/resource
+clean but slower. It is removed from the canonical source and recorded as
+`REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. Future zero-seed changes must
+be compile-time-peeled fixed MMAC islands; a runtime first-update branch around
+dV/dK accumulation is not admitted without a measured gain.

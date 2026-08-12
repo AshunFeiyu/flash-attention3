@@ -17205,3 +17205,20 @@ Production integration result:
   gather or bpermute to force this path; restore the two-slot LDS-reader
   canonical implementation.
 - Evidence: `docs/fused5_dk_register_ds_design_20260812.md`.
+## 2026-08-12 Fused5 dKV MMAC Zero-Seed Rejected
+
+- Replaced explicit dV/dK accumulator zeroing with the existing branch-local
+  `mmac_zero` for only the first q-tile accumulation; later q tiles retained
+  the original live accumulators.
+- H1/S128 and H1/S1024 full lifecycle correctness passed. Static resources
+  passed with roles `9/165/167/86`, private/spill/scratch zero, exact
+  `MMOP=92160`, and `ldsBankConflict=0`.
+- H1/S1024 fused ticks were `47,841,885`, `48,595,365`, `48,191,325`, versus
+  the canonical mean `47,559,633`; full lifecycle ticks were
+  `52,989,755`, `53,823,315`, `53,292,330`, versus `52,774,995`.
+- Decision: `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. The first-update
+  template did not improve the steady pipeline. Keep zero-seed for fixed
+  score/dP islands only; do not add runtime first-update branches to the
+  long-lived dKV accumulators.
+- Evidence: `docs/fused5_dkv_zero_seed_design_20260812.md`, remote runs under
+  `/zys/shaobo_runs/fused5_zero_seed*`.
