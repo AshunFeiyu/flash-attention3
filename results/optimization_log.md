@@ -17425,3 +17425,21 @@ the current workspace-reduction ownership: dQ calculation and cross-group
 `DqDone0/1` waits are placed on the dKV critical path. The next experiment
 must preserve the canonical independent dQ writer or replace it with a proven
 single handoff, not add dQ work to both heavy consumers.
+# 2026-08-13 Q/dO Read8 Island: rejected on elapsed ticks
+
+Hypothesis: imitate the reference FWD's large matrix-read island by issuing
+four Q and four dO `ds_read_matrix` operations before one first-use wait, then
+run score and dP MMAC before softmax/dV. This keeps exact work and should
+reduce `lds_matrix -> immed` exposure.
+
+The first implementation held both Q and dO fragments through the softmax
+boundary. Static gates passed, but consumer branch use increased to `181/175`
+and H1/S1024 fused ticks were `49,742,875`. A follow-up computed score+dP
+back-to-back before softmax; branch use became `175/175`, but fused ticks were
+still `49,168,210` versus canonical `48,364,680` (`+1.66%`). Both S128 and
+S1024 correctness gates passed, exact MMOP92160, bank0 and no spill.
+
+Decision: `REJECT_TICKS_CANONICAL_RESTORED`. The useful FWD read island cannot
+be copied as a simultaneous Q+dO read island in this BWD live-range shape.
+Next experiment must batch one operand family or change the ownership cadence;
+do not add more read-ahead fragments.

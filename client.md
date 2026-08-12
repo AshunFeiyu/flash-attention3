@@ -1,5 +1,25 @@
 # Client
 
+## 2026-08-13 Q/dO Read8 Island Rejected
+
+Tested a narrow FWD-style read island in the canonical 16-wave kernel. Each
+M16 panel issued four Q and four dO `ds_read_matrix` operations before one
+`s_waitcnt lgkmcnt(0)`, then consumed both score and dP operands before
+softmax/dV to shorten their live ranges. Exact five GEMMs, producer/consumer
+ownership, and ABarrier cadence were unchanged.
+
+Static/resource gates passed and H1/S128 + H1/S1024 full lifecycle correctness
+passed. Consumer branch use fell to `175/175`, private/spill/scratch remained
+zero, and bank conflict stayed zero. H1/S1024 fused ticks were `49,168,210`
+versus canonical `48,364,680` (`+1.66%`); full lifecycle was `54,547,675`.
+The first read8 form was slower at `49,742,875`, proving the extra Q/dO live
+range was part of the regression but not the whole cause. Decision:
+`REJECT_TICKS_CANONICAL_RESTORED`.
+
+The reference FWD read island cannot be copied by holding both BWD operand
+families simultaneously. Next matrix-read work must batch one operand family
+only, or preserve canonical ping-pong lifetimes.
+
 ## 2026-08-13 D64 Consumer Owner v3 Rejected
 
 The corrected D64 ownership experiment was compiled as a real 12-wave

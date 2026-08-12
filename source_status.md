@@ -1,5 +1,19 @@
 # Source Status
 
+## 2026-08-13 Q/dO Read8 Island Rejected
+
+The canonical 16-wave kernel was changed only in the score/dP operand-read
+region: each M16 panel issued eight matrix reads (Q plus dO), waited once, ran
+both score and dP MMAC islands, and then entered softmax/dV. H1/S128 and
+H1/S1024 full lifecycle correctness passed; static gate, exact MMOP, bank0,
+private0, scratch0 and spill0 passed. Actual consumer branch use was `175/175`.
+
+The performance gate failed: H1/S1024 fused ticks were `49,168,210` against
+canonical `48,364,680` (`+1.66%`), and full lifecycle ticks were `54,547,675`.
+The candidate is rejected. The FWD-style eight-read shape is not sufficient
+when Q and dO fragments are simultaneously live in BWD, even after dP is
+computed before softmax. Restore canonical source.
+
 ## 2026-08-13 D64 Consumer Owner v3 Rejected
 
 The v3 experiment corrected the v2 dQ panel accumulator ownership bug and
