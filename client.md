@@ -1,5 +1,21 @@
 # Client
 
+## 2026-08-12 Terminal RawUsed Wait Prune Rejected
+
+Removing the producer's terminal `RawUsed1` wait did not shorten the real
+critical path. Correctness/resources/bank0 passed, but two H1/S1024 repeats
+were slower than the canonical `47.431M` fused / `52.596M` complete means.
+The wait is restored. Do not spend another iteration on terminal waits;
+the next hypothesis must change the repeated RawFilled/RawUsed ownership
+cadence or the tile-level work assignment.
+
+## 2026-08-12 Consumer0 Raw Prefetch Closure
+
+Moving recurring Q/dO/sidecar BPS publication to consumer0 passed S128 but
+regressed fused ticks by about `3.60%`, and S1024 stopped in the ownership loop
+without stats. Restore producer ownership; a consumer-assisted design needs
+disjoint publisher generations and a complete lifetime ledger before code.
+
 ## 2026-08-12 Q-Double Ownership Rejected
 
 - Canonical source is restored to `b28e73d`; best remains 71,950,060

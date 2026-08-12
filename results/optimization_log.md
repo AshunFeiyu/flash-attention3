@@ -1,5 +1,24 @@
 # Optimization Log
 
+## 2026-08-12 Terminal RawUsed Wait Prune Rejected
+
+The candidate removed only the producer's final `RawUsed1` wait after all
+raw Q/dO/sidecar pages had been published. H1/S128 and H1/S1024 complete
+correctness passed, with no spill/scratch/private segment and bank0. The
+single H1/S1024 result that looked positive (`fused5=47,292,245`) was PMD
+noise: two repeats were `48,402,900` and `48,152,650`; complete lifecycle
+ticks were `53,550,770` and `53,285,050`, versus the canonical means
+`47,430,868` fused and `52,596,180` complete. The terminal wait is therefore
+restored. Decision: `REJECT_TICKS_NOISE_CANONICAL_RESTORED`.
+
+Evidence: `/zys/shaobo_runs/fused5_terminal_rawused_s1024/`,
+`/zys/shaobo_runs/fused5_terminal_rawused_s1024_repeat1/`,
+`/zys/shaobo_runs/fused5_terminal_rawused_s1024_repeat2/`.
+
+## 2026-08-12 Consumer0 Raw Prefetch Rejected
+
+The candidate moved recurring Q/dO/sidecar publication after the first page from producer waves 0-3 to consumer0 waves 4-7. It passed static gates at actual roles `6/165/165/86`, SGPR72, no private/spill/scratch, exact five-GEMM gate and bank0. H1/S128 complete correctness passed, but fused ticks increased from canonical `11,408,670` to `11,819,990`. H1/S1024 did not complete after entering the fused dispatch and produced no stats. Decision: `REJECT_CORRECTNESS_LIFECYCLE_AND_TICKS`; restore producer-owned raw publication.
+
 ## 2026-08-12 dK Same-Group Pair Island Rejected
 
 The dK helper was changed from lag-one read-ahead to `10 reads -> wait -> 16 MMAC` for adjacent M16 panels. H1/S128 and H1/S1024 full lifecycle correctness passed; static resources remained clean at role use `9/163/165/86` under `16/204/204/88`, exact `MMOP=92,160`, and bank0. The S1024 fused dispatch was `48,063,015` ticks and the complete chain was `53,181,765`, versus the current wait-pruned canonical `47,430,868` and `52,596,180` means. Structured stats reported fused coissue `21,377/24,527`, `VALU=127,352`, `LDS=63,872`, `SCA=58,720`, `VMEM=1,408`, and `ldsBankConflict=0`.

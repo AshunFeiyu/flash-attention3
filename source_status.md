@@ -1,5 +1,18 @@
 # Source Status
 
+## 2026-08-12 Terminal RawUsed Wait Prune Rejected
+
+The producer-side final `RawUsed1` wait was removed as a lifecycle-only
+experiment and is now restored. H1/S128 and H1/S1024 correctness passed,
+but two H1/S1024 repeats regressed to `48,402,900` and `48,152,650` fused
+ticks, with complete sums `53,550,770` and `53,285,050`. The apparent single
+run improvement was not repeatable. No math, ownership generation, matrix
+path, or role change is admitted from this experiment.
+
+## 2026-08-12 Consumer0 Raw Prefetch Rejected
+
+The consumer0-assisted raw-page experiment is removed. S128 correctness passed but fused ticks regressed to `11,819,990` from canonical `11,408,670`; S1024 did not complete after entering the fused dispatch and produced no stats. The candidate is rejected for lifecycle/ownership closure; canonical producer-owned raw-page publication remains.
+
 ## 2026-08-12 dK Same-Group Pair Island Rejected
 
 The temporary pair-island source was removed. It read two M16 Q/dS panels before one wait and then executed both dK islands. H1/S128 and H1/S1024 correctness passed, but S1024 fused ticks rose to `48,063,015` and complete ticks to `53,181,765`; MMAC active did not improve. Static gates remained clean, so the failure is scheduling rather than correctness/resource pressure. Canonical source is restored to the lag-one two-slot dK read-ahead.
