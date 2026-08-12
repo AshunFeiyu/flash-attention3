@@ -6038,3 +6038,9 @@ immediately before `BatchDsFilled` arrival. Correctness and resources remain
 clean, and repeated H1/S1024 stats show a small stable tick win. Keep this as
 the current source checkpoint; do not infer that it removes the larger
 cross-role ABarrier cadence.
+## 2026-08-12 dQ Writer Dual-Read Rejected
+
+Do not merge both dS consumer groups at the dQ writer entrance. Although the
+native dual-base read is correct, it waits for both groups and removes the
+useful group-local stagger. Restore the sequential group0/group1 writer path
+before any further dQ read-island work.

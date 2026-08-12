@@ -17242,3 +17242,18 @@ Production integration result:
   existing BatchDsFilled ownership edge.
 - Evidence: `docs/fused5_dkv_dS_publish_wait_audit_20260812.md`, remote runs
   `/zys/shaobo_runs/fused5_dswait_audit*`.
+## 2026-08-12 Fused5 dQ Writer Dual-Group Read Rejected
+
+- Tested native `ds_read_matrix_trans_dual_base_imm4` so the dQ writer reads
+  both consumer dS groups as `8 reads -> wait -> 16 MMAC` per M-panel.
+- The first `16/200/200/96` resource allocation spilled (`private=36`,
+  `vgpr_spill=8`). A bounded retry at `16/196/196/104` passed static gates:
+  actual roles `9/163/165/98`, no private/spill/scratch, exact MMOP and bank0.
+- H1/S128 full lifecycle correctness passed. H1/S1024 correctness passed but
+  fused ticks were `49,131,355` and full ticks `54,205,970`, versus the current
+  wait-pruned canonical about `47.43M/52.60M`.
+- Decision: `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. Waiting for both dS
+  groups before the dual read destroys the useful group0/group1 stagger; the
+  larger read island does not compensate for that ownership exposure.
+- Evidence: `docs/fused5_dq_writer_dual_group_read_20260812.md`, remote run
+  `/zys/shaobo_runs/fused5_dq_dual_read104/b1_h1_s1024_d128_c1_20260812_174740`.

@@ -11456,3 +11456,11 @@ private/scratch segment, or LDS bank conflict. Three S1024 runs average
 
 This is a measured micro-win only. The main bottleneck remains ABarrier/control
 and fragmented peer overlap; no 50% MMAC conclusion is claimed.
+## 2026-08-12 dQ Writer Dual-Group Read Rejected
+
+The native dual-base dS reader was resource-clean only after a bounded
+`16/196/196/104` reallocation; the initial `16/200/200/96` allocation had
+private/spill debt. H1/S128 and H1/S1024 correctness passed, but H1/S1024
+fused/full ticks regressed to `49,131,355/54,205,970`. Restore the canonical
+sequential group0/group1 writer schedule. The regression is a real ownership
+stagger loss, not a matrix-layout failure.
