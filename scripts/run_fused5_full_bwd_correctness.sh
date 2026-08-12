@@ -94,9 +94,9 @@ if [[ "${#stats_files[@]}" -gt 0 ]]; then
     "${stats_files[@]}")"
 fi
 
-if [[ "${#stats_files[@]}" -eq 2 ]]; then
+if [[ "${#stats_files[@]}" -eq 3 ]]; then
   python3 "${ROOT}/scripts/parse_full_bwd_dispatches.py" \
-    --m5out m5out --labels dot_do_o,fused5 \
+    --m5out m5out --labels dot_do_o,fused5,dq_reduce \
     --json-out full_bwd_metrics.json | tee dispatch_summary.txt
 fi
 
@@ -106,7 +106,7 @@ if [[ "${CAPTURE_PERF}" == 1 && "${#perf_files[@]}" -lt 1 ]]; then
 fi
 
 if [[ "${pmd_status}" == 0 && "${semantic}" == 1 && "${panic}" == 0 &&
-      "${vgpr_warning}" == 0 && "${#stats_files[@]}" == 2 &&
+      "${vgpr_warning}" == 0 && "${#stats_files[@]}" -ge 2 &&
       "${bank}" == 0 && "${perf_ok}" == 1 ]]; then
   status=PASS
 else

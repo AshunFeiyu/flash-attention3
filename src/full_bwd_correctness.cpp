@@ -218,6 +218,7 @@ int main(int argc, char** argv) {
     float *scores_max_dev = nullptr, *scores_sum_dev = nullptr;
     float *delta_dev = nullptr, *packed_sidecar_dev = nullptr;
     float *dq_dev = nullptr, *dk_dev = nullptr, *dv_dev = nullptr;
+    void* fused5_workspace_dev = nullptr;
     std::vector<void*> allocations;
     auto allocate = [&](auto** ptr, size_t bytes) {
         hipError_t err = hipMalloc(reinterpret_cast<void**>(ptr), bytes);
@@ -297,6 +298,18 @@ int main(int argc, char** argv) {
     params.dq_path = dq::kDqPathCanonicalDq;
 #endif
     params.sync_after_launch = 0;
+
+#if defined(SHAOBO_FULL_BWD_FUSED5)
+    const size_t fused5_workspace_bytes =
+        shaobo_fa3_bwd_fused5_workspace_bytes(&params);
+    if (fused5_workspace_bytes == 0 ||
+        !allocate(&fused5_workspace_dev, fused5_workspace_bytes)) {
+        free_device(allocations);
+        return 2;
+    }
+    params.workspace = fused5_workspace_dev;
+    params.workspace_bytes = fused5_workspace_bytes;
+#endif
 
     const int dot_status = shaobo_fa3_bwd_dot_do_o(
         dout_dev, out_dev, scores_max_dev, scores_sum_dev, delta_dev,
