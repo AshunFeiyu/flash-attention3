@@ -1,5 +1,16 @@
 # Optimization Log
 
+## 2026-08-12 12-Wave Atomic-Owner Structure Rejected
+
+The historical 12-wave route was compiled in isolation with the current
+compiler and run through the full correctness chain. H1/S128 and H1/S1024
+passed, bank conflicts were zero, and resource roles were `8/114/114`.
+However, the H1/S1024 fused dispatch was `260,062,530` ticks versus the
+canonical `~47.6M`; it retains only `30,720` MMOP while multiplying panel-level
+dS peer ABarrier and dQ atomic serialization. Decision:
+`REJECT_STRUCTURE_CANONICAL_RESTORED`. This proves that removing the separate
+dQ writer without preserving the canonical ownership lifetime is a regression.
+
 ## 2026-08-12 dK Static Panel Read Accepted
 
 Replaced runtime dK panel address selection with four compile-time panel

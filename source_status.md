@@ -1,5 +1,23 @@
 # Source Status
 
+## 2026-08-12 12-Wave Atomic-Owner Structure Rejected
+
+An isolated historical comparison restored the 12-wave topology where the two
+heavy consumer groups each compute dKV plus a D16 dQ owner and write dQ with
+FP32 atomics. It passed H1/S128 and H1/S1024 full correctness with bank0 and
+no PMD panic; the static resource roles were `8/114/114`. It is not a
+production candidate: H1/S1024 fused dispatch was `260,062,530` ticks versus
+the canonical `~47.6M`, with MMOP `30,720` and large per-panel dS peer
+ABarrier/atomic serialization. The independent dQ writer in the 16-wave
+canonical path is therefore not the sole cause of the 33% active ceiling.
+
+Decision: `REJECT_STRUCTURE_CANONICAL_RESTORED`. Keep this as an isolated
+comparison only; future structural work must preserve one dS publication per
+group and remove, rather than multiply, the panel-level ownership handshakes.
+Evidence: `/zys/shaobo_runs/fused5_12wave_atomic_s128/`,
+`/zys/shaobo_runs/fused5_12wave_atomic_s1024/`, compiler `e0f10535`, PMD
+`HEAD1694`, `GPU_CHIP=sb`, `GPU_ARGS=['--SQCIPfLines=7']`.
+
 ## 2026-08-12 Tri Dao D64 Ownership Probe Open
 
 Canonical source remains `efa0923`: H1/S1024 fused ticks are about

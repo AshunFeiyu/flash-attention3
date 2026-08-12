@@ -1,5 +1,14 @@
 # Client
 
+## 2026-08-12 12-Wave Atomic-Owner Structure Rejected
+
+Historical 12-wave two-consumer dKV+dQ ownership was tested in isolation.
+It was correctness-clean at S128/S1024 and resource-clean (`8/114/114`), but
+the S1024 fused dispatch took `260.06M` ticks versus canonical `~47.6M`.
+The extra dS peer ABarrier and per-panel atomic dQ path dominate. Do not
+reintroduce this topology as a shortcut to 50% MMAC active; keep the 16-wave
+canonical source as the only production route.
+
 ## 2026-08-12 dK Static Panel Read Accepted
 
 The dK lag-one read-ahead now emits four compile-time panel helpers instead of
