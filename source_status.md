@@ -1,5 +1,12 @@
 # Source Status
 
+## 2026-08-12 M32 Raw Ownership Rejected
+
+The M32 ownership experiment is removed and canonical source is restored.
+Reusing one page token for two unconsumed subblock generations hung the S128
+PMD smoke; serializing the generations eliminates the intended overlap and
+adds ABarrier control. No timing or correctness promotion is admitted.
+
 ## 2026-08-12 Q-Latch Candidate Rejected
 
 Canonical source is restored. Latching all Q panels before `RawUsed` passed

@@ -1,5 +1,15 @@
 # Client
 
+## 2026-08-12 M32 Raw Ownership Rejected
+
+Splitting one M64 raw packet into two M32 generations on the existing
+`RawFilled/RawUsed` token did not work. PMD does not queue two unconsumed
+ABarrier generations, so the first implementation hung; the strict
+`Filled -> Used -> Filled -> Used` repair removed the intended overlap and
+only added control epochs. Canonical M64 ownership is restored.
+
+Evidence: `docs/fused5_m32_raw_ownership_design_20260812.md`.
+
 ## 2026-08-12 Q-Latch Before RawUsed Rejected
 
 Reading all four Q panels before releasing `RawUsed` was correct and

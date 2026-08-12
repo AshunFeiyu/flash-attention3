@@ -1,6 +1,6 @@
 # Fused5 M32 Raw Ownership
 
-Status: `IN_PROGRESS_SINGLE_HYPOTHESIS`.
+Status: `REJECT_ABARRIER_GENERATION_CANONICAL_RESTORED`.
 
 ## Hypothesis
 
@@ -49,3 +49,18 @@ Static exact-work/resource gates, H1/S128 causal/noncausal correctness, then
 H1/S1024 correctness. Promotion requires lower repeated fused ticks and a
 lower or hidden producer RawUsed bubble; a higher MMAC active value alone is
 not sufficient.
+
+## Result
+
+The first implementation called `RawFilled(page)` twice before the matching
+consumer release. PMD did not queue two unconsumed generations and the S128
+smoke hung in the second generation. A strict repair added
+`subblock0: Filled -> Used -> subblock1: Filled -> Used`, but still required a
+full barrier round-trip between the two halves, so it could not realize the
+intended producer overlap. The implementation was removed before timing or
+correctness promotion. This closes the single-token M32 shape: without two
+independent token IDs, it adds control epochs rather than hiding them.
+
+Decision: `REJECT_ABARRIER_GENERATION_CANONICAL_RESTORED`. Keep the canonical
+M64 raw ownership and target a topology that amortizes an existing token
+instead of issuing two generations on one token.

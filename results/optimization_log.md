@@ -1,5 +1,15 @@
 # Optimization Log
 
+## 2026-08-12 M32 Raw Ownership Rejected
+
+The candidate split each M64 raw Q/dO page into two M32 ownership epochs while
+keeping the exact five GEMMs and LDS footprint. Static compilation was clean,
+but one `RawFilled` token cannot queue two unconsumed generations in PMD: the
+first form hung at S128. A strict `Filled -> Used -> Filled -> Used` repair
+removed the intended producer overlap and added control epochs, so it was
+removed before timing. Decision:
+`REJECT_ABARRIER_GENERATION_CANONICAL_RESTORED`.
+
 ## 2026-08-12 Q-Latch Before RawUsed Rejected
 
 The candidate latched all four Q panels into consumer VGPRs, waited for
