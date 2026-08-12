@@ -1,5 +1,9 @@
 # Source Status
 
+## 2026-08-12 dK Same-Group Pair Island Rejected
+
+The temporary pair-island source was removed. It read two M16 Q/dS panels before one wait and then executed both dK islands. H1/S128 and H1/S1024 correctness passed, but S1024 fused ticks rose to `48,063,015` and complete ticks to `53,181,765`; MMAC active did not improve. Static gates remained clean, so the failure is scheduling rather than correctness/resource pressure. Canonical source is restored to the lag-one two-slot dK read-ahead.
+
 ## 2026-08-12 Q-Double A5 Rejected; Canonical Restored
 
 Status: `REJECT_A5_DK_LIFETIME / SOURCE_B28E73D_RESTORED`.
@@ -11470,3 +11474,7 @@ The dK MMAC priority wrapper passed correctness and resource gates but was
 neutral in ticks and lower in average MMAC active. Restore the unwrapped dK
 island; future progress must come from useful work/read island or ownership
 cadence, not another priority hint.
+-
+## 2026-08-12 dK Same-Group Pair Island Rejected
+
+The temporary pair-island source was removed. It read two M16 Q/dS panels before one wait and then executed both dK islands. H1/S128 and H1/S1024 correctness passed, but S1024 fused ticks rose to `48,063,015` and complete ticks to `53,181,765`; MMAC active did not improve. Static gates remained clean, so the failure is scheduling rather than correctness/resource pressure. Canonical source is restored to the lag-one two-slot dK read-ahead.

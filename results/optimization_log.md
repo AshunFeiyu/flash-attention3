@@ -1,5 +1,11 @@
 # Optimization Log
 
+## 2026-08-12 dK Same-Group Pair Island Rejected
+
+The dK helper was changed from lag-one read-ahead to `10 reads -> wait -> 16 MMAC` for adjacent M16 panels. H1/S128 and H1/S1024 full lifecycle correctness passed; static resources remained clean at role use `9/163/165/86` under `16/204/204/88`, exact `MMOP=92,160`, and bank0. The S1024 fused dispatch was `48,063,015` ticks and the complete chain was `53,181,765`, versus the current wait-pruned canonical `47,430,868` and `52,596,180` means. Structured stats reported fused coissue `21,377/24,527`, `VALU=127,352`, `LDS=63,872`, `SCA=58,720`, `VMEM=1,408`, and `ldsBankConflict=0`.
+
+Decision: `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. The larger read island exposes one first-use LGKM wait and removes the accepted lag-one overlap. No current `.perf` was generated because the PMD ASTCA fullperf issue remains open. Next work targets repeated `RawFilled/RawUsed` ownership cadence, not another dK read batching variant.
+
 ## 2026-08-12 Fused5 Q-Double Ownership Rejected
 
 - Hypothesis: use a dedicated second 16KB Q page and overlay sidecar in the
@@ -17268,3 +17274,9 @@ Production integration result:
   not fix the ABarrier/readiness bottleneck. Evidence is in
   `docs/fused5_dk_mmac_setprio_20260812.md` and
   `/zys/shaobo_runs/fused5_dk_setprio*`.
+-
+## 2026-08-12 dK Same-Group Pair Island Rejected
+
+The dK helper was changed from lag-one read-ahead to `10 reads -> wait -> 16 MMAC` for adjacent M16 panels. H1/S128 and H1/S1024 full lifecycle correctness passed; static resources remained clean at role use `9/163/165/86` under `16/204/204/88`, exact `MMOP=92,160`, and bank0. The S1024 fused dispatch was `48,063,015` ticks and the complete chain was `53,181,765`, versus the current wait-pruned canonical `47,430,868` and `52,596,180` means. Structured stats reported fused coissue `21,377/24,527`, `VALU=127,352`, `LDS=63,872`, `SCA=58,720`, `VMEM=1,408`, and `ldsBankConflict=0`.
+
+Decision: `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. The larger read island exposes one first-use LGKM wait and removes the accepted lag-one overlap. No current `.perf` was generated because the PMD ASTCA fullperf issue remains open. Next work targets repeated `RawFilled/RawUsed` ownership cadence, not another dK read batching variant.

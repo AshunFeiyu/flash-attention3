@@ -6026,6 +6026,10 @@ normal dK source-layout view still requires the validated LDS publication and
 normal `ds_read_matrix`; keep the canonical path and do not add permutes.
 ## 2026-08-12 Zero-Seed Decision
 
+## 2026-08-12 Pair-Island Closure
+
+The dK same-group `10 reads -> wait -> 16 MMAC` experiment is closed and its source is removed. It passed correctness, no-spill/scratch, exact MMOP and bank0, but regressed H1/S1024 fused ticks by about `1.33%` versus the current lag-one canonical. Keep the lag-one two-slot read-ahead. This is evidence that read island size must be judged together with first-use readiness, not by MMAC adjacency alone. The next useful tier is the repeated raw-page ownership handshake (`RawFilled/RawUsed`), with one complete design hypothesis before editing.
+
 The dKV long-lived accumulator zero-seed experiment was correctness/resource
 clean but slower. It is removed from the canonical source and recorded as
 `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. Future zero-seed changes must
@@ -6049,3 +6053,7 @@ before any further dQ read-island work.
 The dK `s_setprio 2/0` audit was removed from the canonical path. It was
 correct and spill-free but performance-neutral, so the next experiment must
 change a measured read/MMAC island or ownership lifetime.
+-
+## 2026-08-12 Pair-Island Closure
+
+The dK same-group `10 reads -> wait -> 16 MMAC` experiment is closed and its source is removed. It passed correctness, no-spill/scratch, exact MMOP and bank0, but regressed H1/S1024 fused ticks by about `1.33%` versus the current lag-one canonical. Keep the lag-one two-slot read-ahead. This is evidence that read island size must be judged together with first-use readiness, not by MMAC adjacency alone. The next useful tier is the repeated raw-page ownership handshake (`RawFilled/RawUsed`), with one complete design hypothesis before editing.
