@@ -17192,3 +17192,16 @@ Production integration result:
   live/control pressure without removing the critical ownership path. Restore
   the two-slot canonical implementation.
 - Evidence: `docs/fused5_dk_three_slot_readahead_design_20260812.md`.
+
+## 2026-08-12 Register dS to dK Rejected
+
+- The candidate kept dS in the producer register fragment for dK while still
+  publishing dS once to LDS for dQ. Static resources improved to consumer
+  roles `163/165` with no private/spill/scratch debt.
+- H1/S128 full lifecycle failed only dK: `rel_l2=1.33595`,
+  `cosine_error=0.847635`; dV and dQ remained correct.
+- Decision: `REJECT_CORRECTNESS_CANONICAL_RESTORED`. Shaobo's dS producer
+  fragment is not the normal dK MMAC source-layout view. Do not add permute,
+  gather or bpermute to force this path; restore the two-slot LDS-reader
+  canonical implementation.
+- Evidence: `docs/fused5_dk_register_ds_design_20260812.md`.

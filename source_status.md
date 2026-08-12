@@ -11426,3 +11426,10 @@ resource-clean, but H1/S1024 regressed to `49,330,645` fused ticks /
 `54,762,890` complete ticks; MMAC active fell to `31.995634%` and LGKM wait
 rose to `12.648060%`. This is `REJECT_TICKS_AND_WAIT_REGRESSION`, not an
 algorithm or layout correctness failure.
+
+## 2026-08-12 Register dS to dK Rejected
+
+The direct register dS to dK experiment passed static resources but failed
+H1/S128 dK correctness (`rel_l2=1.33595`, `cosine_error=0.847635`) while dV
+and dQ passed. The source was restored to `da0b918`; no permutation or gather
+workaround is admitted to the canonical matrix path.

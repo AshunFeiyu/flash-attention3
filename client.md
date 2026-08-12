@@ -6017,3 +6017,10 @@ resource gates passed, but fused ticks increased to `49,330,645`, complete
 ticks to `54,762,890`, MMAC active fell to `31.995634%`, and LGKM wait rose
 to `12.648060%`. Keep the accepted dK read-ahead source at `da0b918` and do
 not accumulate read-island variants.
+
+## 2026-08-12 Register dS Negative
+
+Directly feeding the `ds_stage` register fragment into dK reduced consumer
+register usage, but failed dK correctness at H1/S128 (`rel_l2=1.33595`). The
+normal dK source-layout view still requires the validated LDS publication and
+normal `ds_read_matrix`; keep the canonical path and do not add permutes.
