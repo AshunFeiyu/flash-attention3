@@ -1,5 +1,23 @@
 # Client
 
+## 2026-08-13 Mixed Raw Publisher Probe Accepted
+
+An isolated 16-wave probe validated two publishers feeding one double-buffered
+raw page: producer waves publish Q, dQ-writer waves publish dO, and eight dKV
+consumer waves read both regions. The two-generation lifecycle passed with
+`q_errors=0`, `dout_errors=0`, publisher arrivals `8+8`, consumer arrivals
+`16`, no panic, no spill/private, and `ldsBankConflict=0`.
+
+The probe uses one CTA rendezvous to make the generation sequence explicit. It
+does not prove a performance win or authorize a new CTA-wide barrier in the
+kernel. The canonical integration therefore keeps the existing role-local
+pattern: producer and dQ-writer each issue the existing raw-page `seq`, then
+publish their own MLS family and contribute one of eight `RawFilled` arrivals.
+
+Evidence: `/zys/sb/fa3b/layout_probes/fused5_mixed_raw_publisher_20260813_023544`.
+Decision: `ACCEPT_PROBE_LIFECYCLE`; integrate only the Q/dO publisher split,
+then run the full correctness chain and same-shape stats.
+
 ## 2026-08-13 Consumer-Side Resident Wait Removed
 
 The canonical 16-wave fused5 path keeps one `KvDsUsed` token for the LDS

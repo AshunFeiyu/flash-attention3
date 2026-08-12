@@ -17521,3 +17521,19 @@ canonical schedule again, validate a mixed producer+dQ-writer raw-page
 publisher in an isolated probe; one publisher owns the generation sequence,
 both publishers contribute arrivals, and page reuse remains gated by the
 existing RawUsed token.
+## 2026-08-13 Mixed Raw Publisher Probe Accepted
+
+Hypothesis: the producer need not own both raw Q and raw dO publication. Let
+producer waves publish Q/sidecar while the dQ-writer waves publish dO into the
+same double-buffered raw page. The existing eight dKV consumer waves remain
+the only RawUsed releasers.
+
+The focused 16-wave probe passed two generations with native MLS/BPS and
+`ds_read_matrix`: `q_errors=0`, `dout_errors=0`, producer publisher count 8,
+dO publisher count 8, consumer count 16, no panic, no spill/private, and
+`ldsBankConflict=0`. Its CTA rendezvous is probe-only; canonical code will
+reuse the already accepted multi-wave `seq -> MLS -> arrive` convention.
+
+Decision: `ACCEPT_PROBE_LIFECYCLE`. Integrate only the publisher split and
+eight-arrival Filled tokens. Do not change the five-GEMM DAG, tile, dS handoff,
+or output ownership until correctness and same-shape stats are available.

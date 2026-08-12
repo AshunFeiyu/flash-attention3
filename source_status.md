@@ -11677,3 +11677,23 @@ next structural candidate is a focused mixed-publisher probe: producer waves
 publish Q/sidecar and dQ-writer waves publish dO into one raw page, with one
 generation sequence and eight total arrivals. It must pass lifecycle and
 resource gates before entering the canonical kernel.
+## 2026-08-13 Mixed Raw Publisher Probe Accepted
+
+Status: `ACCEPT_PROBE_LIFECYCLE`.
+
+The focused 16-wave probe assigns producer waves to Q and dQ-writer waves to
+dO. Both publisher groups use the existing double-buffered raw-page protocol;
+the eight publisher arrivals satisfy one `RawFilled` token and eight dKV
+consumer waves satisfy `RawUsed`. Two generations passed with
+`q_errors=0`, `dout_errors=0`, `producer_done=8`, `dout_publisher_done=8`,
+`consumer_done=16`, no panic, no spill/private, and bank conflict zero.
+
+The probe includes a CTA rendezvous only to make the generation sequencing
+unambiguous. The canonical integration must not add that rendezvous: producer
+and dQ-writer each follow the already accepted multi-wave `seq -> MLS ->
+arrive` pattern. Evidence:
+`/zys/sb/fa3b/layout_probes/fused5_mixed_raw_publisher_20260813_023544`.
+
+Next: split canonical raw publication so producer loads Q/sidecar and dQ
+writer loads dO, change `RawFilled0/1` counts from four to eight, and preserve
+the existing `RawUsed0/1` consumer release.
