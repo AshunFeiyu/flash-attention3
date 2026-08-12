@@ -11656,3 +11656,24 @@ Status: `ACCEPT_MICRO_TICKS_AND_ACTIVE / MMAC50_OPEN`.
 This is an ownership/lifetime win, not the 50% solution. Remaining work is
 the first-use matrix-read wait, raw-page recycle, and producer/consumer
 cadence. Do not add another token without a concrete LDS lifetime proof.
+## 2026-08-13 Consumer0 V-Sidecar Release Accepted
+
+Status: `ACCEPT_MICRO_TICKS_AND_ACTIVE / MMAC50_OPEN`.
+
+The producer reuses only consumer0's V sub-region for startup sidecar data.
+Consumer0's four waves therefore publish the release token; consumer1's V and
+the dQ writer's K remain live and do not arrive. Formula DAG, tile, five GEMMs,
+output ownership, and MLS/BPS plus `ds_read_matrix` plus MMAC paths are
+unchanged.
+
+H1/S128 and H1/S1024 causal full lifecycle correctness passed. Static/resource
+gates remain clean: `MMOP=92,160`, no private/spill/scratch, and
+`ldsBankConflict=0`. H1/S1024 fused ticks are `47,223,085` versus canonical
+`48,364,680` (`-2.36%`); MMAC active is `33.605609%`, coissue is
+`20,852/24,046`, wait-LGKM is `9.449580%`, and barrier share is `14.956641%`.
+
+This is the best current measured 5-GEMM checkpoint, not the 50% solution. The
+next structural candidate is a focused mixed-publisher probe: producer waves
+publish Q/sidecar and dQ-writer waves publish dO into one raw page, with one
+generation sequence and eight total arrivals. It must pass lifecycle and
+resource gates before entering the canonical kernel.

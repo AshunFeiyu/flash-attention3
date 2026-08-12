@@ -17497,3 +17497,27 @@ Boundary: this only shortens startup ownership; it does not restructure the
 repeated RawFilled/RawUsed page cadence or the matrix first-use dependency.
 The next candidate must address one of those measured gaps without adding
 duplicate GEMM work or broadening the ABarrier domain.
+## 2026-08-13 Consumer0 V-Sidecar Release Accepted
+
+Hypothesis: only consumer0's V sub-region is overlaid by the producer's
+startup sidecar. Consumer1 V and the dQ-writer K remain live, so the release
+token can be reduced from eight to four arrivals without changing the raw-page
+generation or any matrix schedule.
+
+Change: rename the token to `VSidecarReady`, initialize it with four arrivals,
+and make only consumer0's four waves arrive after latching resident V. The
+producer waits for that token before writing startup sidecar data. No formula,
+tile, GEMM count, output owner, or main matrix path changed.
+
+Evidence: H1/S128 and H1/S1024 causal full lifecycle correctness PASS; exact
+five GEMMs and `MMOP=92,160`; no private/spill/scratch; `ldsBankConflict=0`.
+H1/S1024 fused ticks are `47,223,085` versus canonical `48,364,680`
+(`-2.36%`), with MMAC active `33.605609%`, coissue `20,852/24,046`,
+wait-LGKM `9.449580%`, and barrier `14.956641%`.
+
+Decision: `ACCEPT_MICRO_TICKS_AND_ACTIVE / MMAC50_OPEN`. This is an ownership
+micro-win, not evidence that the 50% target is reached. Before modifying the
+canonical schedule again, validate a mixed producer+dQ-writer raw-page
+publisher in an isolated probe; one publisher owns the generation sequence,
+both publishers contribute arrivals, and page reuse remains gated by the
+existing RawUsed token.

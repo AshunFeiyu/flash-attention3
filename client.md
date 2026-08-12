@@ -44,6 +44,26 @@ This is a proven ownership improvement, not the 50% solution. The next work
 must target the remaining `matrix_read -> first-use wait`, ABarrier/page
 recycle, and producer/consumer cadence with one new hypothesis at a time.
 
+## 2026-08-13 Consumer0 V-Sidecar Release Accepted
+
+The V-backed startup reuse is narrower than the previous eight-arrival token:
+only consumer0's four waves touch the V sub-region that the producer overlays
+with startup sidecar data. Consumer1 V and the dQ-writer K remain live, so the
+release token is initialized with four arrivals from consumer0 only. No formula,
+tile, GEMM count, output ownership, or main matrix instruction changed.
+
+H1/S128 and H1/S1024 causal full lifecycle correctness passed. Static/resource
+gates remain clean: exact five GEMMs, `MMOP=92,160`, no private/spill/scratch,
+and `ldsBankConflict=0`. H1/S1024 fused ticks are `47,223,085` versus the
+canonical `48,364,680` (`-2.36%`); `MMAC active=33.605609%`,
+`coissue=20,852/24,046`, `waitLgkm=9.449580%`, and `barrier=14.956641%`.
+
+Decision: `ACCEPT_MICRO_TICKS_AND_ACTIVE / MMAC50_OPEN`. This is the best
+current measured 5-GEMM checkpoint, but it is not evidence for 50%. The next
+structural hypothesis is isolated first: let producer and dQ-writer jointly
+publish one raw page, then integrate only if the mixed ABarrier generation and
+page-reuse protocol passes a focused probe.
+
 ## 2026-08-13 Q/dO Read8 Island Rejected
 
 Tested a narrow FWD-style read island in the canonical 16-wave kernel. Each

@@ -623,7 +623,9 @@ __device__ __forceinline__ void run_consumer_group(
     // wave has latched its resident K/V fragments, waiting for the other
     // waves adds no data dependency: the producer cannot reuse the LDS
     // region until all twelve arrivals are present.
-    ins::abarrier_arrive_cnt<false>(Bar::kVResidentUsed, 1);
+    if constexpr (Group == 0) {
+        ins::abarrier_arrive_cnt<false>(Bar::kVSidecarReady, 1);
+    }
 
     Accumulator dv_acc[8];
     Accumulator dk_acc[8];
@@ -791,7 +793,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
     const int wave = static_cast<int>(__builtin_hcu_get_wave_id());
     if (wave == 0) {
         __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kVResidentUsed, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kVSidecarReady, 4);
         __builtin_hcu_s_abarrier_init(Bar::kRawFilled0, 4);
         __builtin_hcu_s_abarrier_init(Bar::kRawUsed0, 8);
         __builtin_hcu_s_abarrier_init(Bar::kRawFilled1, 4);
@@ -832,7 +834,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
                 q, dout, lds, tensor_base,
                 q_tile_begin * Tile::kMq, LdsLayout::kRaw0Base,
                 wave_local);
-            ins::abarrier_try_wait<true>(Bar::kVResidentUsed,
+            ins::abarrier_try_wait<true>(Bar::kVSidecarReady,
                                          kv_latched_phase);
             producer_load_raw_sidecar(
                 packed_sidecar, lds, row_base,
@@ -936,7 +938,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
     __builtin_hcu_s_ebarrier_sync(0);
     if (wave == 0) {
         __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
-        __builtin_hcu_s_abarrier_inv(Bar::kVResidentUsed);
+        __builtin_hcu_s_abarrier_inv(Bar::kVSidecarReady);
         __builtin_hcu_s_abarrier_inv(Bar::kRawFilled0);
         __builtin_hcu_s_abarrier_inv(Bar::kRawUsed0);
         __builtin_hcu_s_abarrier_inv(Bar::kRawFilled1);
