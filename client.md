@@ -5973,3 +5973,20 @@ Integration verdict: `REJECT_DEBT_MOVED_CANONICAL_RESTORED`.
 - Source is restored to `d62c645`. Do not retry sidecar-load placement on
   LLVM `e0f10535`; the next round must reanalyze C0/C1 readiness and useful
   staggering on the accepted two-page topology.
+
+## 2026-08-12 dV Read Under P Writer
+
+Decision: `ACCEPT_CANONICAL_READINESS_WIN`.
+
+The dV path now reads independent dO fragments under the P writer, drains the
+older writer with `lgkmcnt(4)`, then reads P and enters the dV MMAC island.
+This preserves the five-GEMM DAG, one dS page generation, native MLS/BPS plus
+`ds_read_matrix`/MMAC, and all ownership/resource gates. Fullperf improves
+`53,714,570 -> 52,466,960` ticks and MMAC active rises `31.3305% -> 31.5782%`.
+XCU explains the win as P-writer readiness removal, not a coissue breakthrough.
+
+Next controlled hypothesis: split the runtime `KvDsUsed` completion rendezvous
+into `DqDone0` and `DqDone1`, one per consumer group, while retaining the
+initial resident-latch token and the existing single physical dS page. This
+must be implemented once, tested, and reverted if it does not reduce the
+cross-group lockstep.

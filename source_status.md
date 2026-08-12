@@ -11377,3 +11377,21 @@ Status: `REJECT_TICKS_REGRESSION / CANONICAL_RESTORED`.
 - No fullperf/xcu was admitted. Production source is byte-identical to
   accepted `d62c645`; sidecar placement is closed for this compiler.
 - Evidence: `results/fused5_sidecar_prefetch_before_bps_20260812.md`.
+
+## 2026-08-12 dV Read Under P Writer Accepted
+
+Status: `ACCEPT_CANONICAL_READINESS_WIN / BEST_TAG_PENDING_COMMIT`.
+
+- The canonical source issues independent dO `ds_read_matrix` operations before
+  the P writer readiness wait, then uses `lgkmcnt(4)` and one final `lgkmcnt(0)`
+  before dV MMAC. No extra GEMM, LDS page, barrier, or layout workaround was
+  added.
+- H1/S128 and H1/S1024 correctness pass; role `16/204/204/88`, LDS
+  `131,072B`, MMOP `92,160`, bank0, no private/spill/scratch.
+- Fullperf is `52,466,960` complete ticks and `31.578244%` MMAC active versus
+  accepted baseline `53,714,570` and `31.330517%`. XCU P-writer gap is
+  `0.69%` versus `2.64%`; paired stats also reduce wait/barrier share.
+- This removes a real readiness edge but leaves MMAC-vs-MMAC lockstep. The
+  next experiment is per-consumer-group runtime completion signaling, without
+  changing the single physical dS generation.
+- Evidence: `results/fused5_dv_read_under_p_writer_20260812.md`.

@@ -17130,3 +17130,23 @@ Production integration result:
 - Keep `d62c645`; close sidecar producer micro-scheduling and return to
   topology-level C0/C1 readiness/coissue analysis.
 - Evidence: `results/fused5_sidecar_prefetch_before_bps_20260812.md`.
+
+## 2026-08-12 - dV Read Under P Writer Accepted
+
+- The canonical dV island now issues four independent dO matrix reads while
+  the P `ds_write_matrix` is outstanding, uses `lgkmcnt(4)` to retire the
+  older writer, then reads P and waits once before eight dV MMACs.
+- Correctness, exact five-GEMM/MMOP work, LDS131,072B, bank0, and no
+  private/spill/scratch gates pass. WDRA remains `16/204/204/88`.
+- Fullperf complete ticks improve 53,714,570 -> 52,466,960 (-2.3227%),
+  compute ticks improve 50,863,995 -> 49,835,240 (-2.0226%), and MMAC active
+  rises 31.3305% -> 31.5782%. Paired stats repeats show -0.9743% complete,
+  +0.5798pp active, -0.8383pp LGKM wait, and -0.5753pp barrier share.
+- XCU confirms the P-writer readiness gap drops 2.64% -> 0.69% and the
+  consumer peer-VALU MMAC counts balance 395/641 -> 511/525. Total direct
+  overlap remains 1,036/4,096, so this is not yet the coissue breakthrough.
+- Classification: `ACCEPT_CANONICAL_READINESS_WIN`.
+- Evidence: `results/fused5_dv_read_under_p_writer_20260812.md`.
+- Next hypothesis: replace only the post-startup global `KvDsUsed` completion
+  rendezvous with per-group completion tokens; retain one physical dS page
+  generation and exact output ownership.
