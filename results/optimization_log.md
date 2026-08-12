@@ -1,5 +1,17 @@
 # Optimization Log
 
+## 2026-08-12 dK Static Panel Read Accepted
+
+Replaced runtime dK panel address selection with four compile-time panel
+helpers while retaining the canonical two-slot read-ahead, exact five GEMMs,
+LDS layout and ABarrier lifetime. H1/S128 and two H1/S1024 full correctness
+runs pass; roles are `9/163/165/86`, private/spill/scratch are zero and
+bank conflict is zero. Fused H1/S1024 is `47,651,240` and `47,624,850` ticks
+versus canonical `47,757,255`; MMAC active is `33.349778%` and `33.370119%`.
+Decision: `ACCEPT_MICRO_TICKS_CANONICAL_CANDIDATE`. The gain is too small to
+explain the 50% target, so the next hypothesis must change ownership/control
+topology rather than add more address micro-tuning.
+
 ## 2026-08-12 M32 Raw Ownership Rejected
 
 The candidate split each M64 raw Q/dO page into two M32 ownership epochs while

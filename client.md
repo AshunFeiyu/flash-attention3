@@ -1,5 +1,16 @@
 # Client
 
+## 2026-08-12 dK Static Panel Read Accepted
+
+The dK lag-one read-ahead now emits four compile-time panel helpers instead of
+runtime `m_block` address arithmetic. H1/S128 and two H1/S1024 full lifecycle
+runs pass with roles `9/163/165/86`, exact MMOP92160, no spill/private/scratch,
+and bank0. H1/S1024 fused ticks are `47.651M/47.625M` versus canonical
+`47.757M`; MMAC active is `33.35%/33.37%`. This is a stable micro baseline,
+not the 50% solution. Next work must target ownership/control topology.
+
+Evidence: `docs/fused5_dk_static_panel_design_20260812.md`.
+
 ## 2026-08-12 M32 Raw Ownership Rejected
 
 Splitting one M64 raw packet into two M32 generations on the existing

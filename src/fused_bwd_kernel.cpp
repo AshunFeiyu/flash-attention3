@@ -537,6 +537,17 @@ __device__ __forceinline__ void read_final_ds_normal_runtime(
         lds, page, ds.f16x8);
 }
 
+template <int MBlock, int Group>
+__device__ __forceinline__ void read_dk_panel_static(
+    const __half* lds,
+    int raw_base,
+    int owner,
+    Fragment (&q)[kMatrixBlocksD],
+    Fragment& ds) {
+    read_raw_panel_normal(lds, raw_base, MBlock, q);
+    read_final_ds_normal<MBlock, Group>(lds, owner, ds);
+}
+
 template <int Group>
 __device__ __forceinline__ void update_dk_from_final_panels_read_ahead(
     const __half* lds,
@@ -547,25 +558,18 @@ __device__ __forceinline__ void update_dk_from_final_panels_read_ahead(
     // reads are issued while the current eight-MMAC island is active.
     Fragment q_buf[2][kMatrixBlocksD];
     Fragment ds_buf[2];
-    int current = 0;
-    read_raw_panel_normal(lds, raw_base, 0, q_buf[current]);
-    read_final_ds_normal<0, Group>(lds, owner, ds_buf[current]);
+    read_dk_panel_static<0, Group>(lds, raw_base, owner, q_buf[0], ds_buf[0]);
     ins::wait_lgkm(0);
-#pragma unroll
-    for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
-        const int next = current ^ 1;
-        if (m_block + 1 < Tile::kMqPanels) {
-            read_raw_panel_normal(lds, raw_base, m_block + 1,
-                                  q_buf[next]);
-            read_final_ds_normal_runtime<Group>(
-                lds, m_block + 1, owner, ds_buf[next]);
-        }
-        update_dk_stage(ds_buf[current], q_buf[current], dk_acc);
-        if (m_block + 1 < Tile::kMqPanels) {
-            ins::wait_lgkm(0);
-        }
-        current = next;
-    }
+    read_dk_panel_static<1, Group>(lds, raw_base, owner, q_buf[1], ds_buf[1]);
+    update_dk_stage(ds_buf[0], q_buf[0], dk_acc);
+    ins::wait_lgkm(0);
+    read_dk_panel_static<2, Group>(lds, raw_base, owner, q_buf[0], ds_buf[0]);
+    update_dk_stage(ds_buf[1], q_buf[1], dk_acc);
+    ins::wait_lgkm(0);
+    read_dk_panel_static<3, Group>(lds, raw_base, owner, q_buf[1], ds_buf[1]);
+    update_dk_stage(ds_buf[0], q_buf[0], dk_acc);
+    ins::wait_lgkm(0);
+    update_dk_stage(ds_buf[1], q_buf[1], dk_acc);
 }
 
 __device__ __forceinline__ void zero_dq_writer_accumulators(

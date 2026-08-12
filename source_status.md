@@ -1,5 +1,14 @@
 # Source Status
 
+## 2026-08-12 dK Static Panel Read Accepted
+
+Canonical source now uses compile-time dK panel addresses while preserving the
+lag-one read-ahead and all ownership tokens. H1/S128 and two H1/S1024 full
+correctness runs pass. Fused H1/S1024 ticks are `47,651,240` and `47,624,850`,
+MMAC active is `33.349778%` and `33.370119%`, with no spill/private/scratch,
+bank0 and exact MMOP92160. This is a micro optimization; the main gap to 50%
+remains ABarrier/ownership and SIMD imbalance.
+
 ## 2026-08-12 M32 Raw Ownership Rejected
 
 The M32 ownership experiment is removed and canonical source is restored.
