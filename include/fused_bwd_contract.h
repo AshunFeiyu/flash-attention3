@@ -173,7 +173,10 @@ struct FusedBwdBarrierLedger {
     static constexpr int kResidentFilled = 0;
     // One startup-only token: all non-producer waves latch resident K/V before
     // producer waves reuse the released region for raw packet sidecar data.
-    static constexpr int kKvDsUsed = 1;
+    // dKV consumers latch both K and V; the dQ writer only latches K. The
+    // producer reuses the released V region first, so its release token only
+    // needs the eight dKV consumer arrivals.
+    static constexpr int kVResidentUsed = 1;
     static constexpr int kRawFilled0 = 2;
     static constexpr int kRawUsed0 = 3;
     static constexpr int kRawFilled1 = 4;

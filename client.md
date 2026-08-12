@@ -1,5 +1,49 @@
 # Client
 
+## 2026-08-13 Consumer-Side Resident Wait Removed
+
+The canonical 16-wave fused5 path keeps one `KvDsUsed` token for the LDS
+resident K/V lifetime. Consumers and the dQ writer already latch their own
+resident fragments before the producer can reuse the V-backed scratch and
+sidecar area. Removing the consumer-side wait therefore preserves the
+producer's twelve-arrival reuse proof while deleting a redundant wait from
+each of the eight dKV waves and four dQ-writer waves.
+
+Static and full-lifecycle gates passed. H1/S128 and H1/S1024 causal both
+passed dot/dKV/dQ correctness, no panic, no VGPR warning, no private/spill/
+scratch, exact `MMOP=92,160`, and `ldsBankConflict=0`. Two H1/S1024 runs gave
+fused ticks `47,972,015` and `47,813,675` versus canonical `48,364,680`, a
+repeatable `0.81%` to `1.14%` improvement. The second run reported
+`MMAC active=33.260447%`, slightly below the canonical `33.37%`; promotion is
+therefore for ticks/control only, not for MFU. Stats-only evidence remains
+the current limit because PMD fullperf/XCU is still blocked by the ASTCA
+environment issue.
+
+Decision: `ACCEPT_MICRO_TICKS / MMAC50_OPEN`. The next hypothesis must split
+the V-resident release from the K-resident release: dQ writers consume K only,
+while producer scratch/sidecar reuse is entirely inside the V region. This
+must be tested with an eight-arrival V token; do not assume the current
+twelve-arrival token is still necessary.
+
+## 2026-08-13 V-Only Resident Release Accepted
+
+The LDS lifetime was split at the actual reuse boundary. The eight dKV waves
+latch both K and V, while the four dQ writer waves latch K only. The producer
+reuses the V-backed scratch/sidecar region, so `VResidentUsed` is initialized
+with eight arrivals; dQ writers no longer arrive on that token. K remains
+resident in the dQ writer VGPRs and is not overwritten.
+
+H1/S128 and H1/S1024 causal full lifecycle correctness passed. The static
+resource gate stayed clean: exact five GEMMs and `MMOP=92,160`, no private/
+spill/scratch, and `ldsBankConflict=0`. H1/S1024 fused ticks were
+`47,611,200`, compared with canonical `48,364,680` and the previous
+consumer-wait-removed run `47,813,675`; MMAC active was `33.426546%`.
+Decision: `ACCEPT_MICRO_TICKS_AND_ACTIVE / MMAC50_OPEN`.
+
+This is a proven ownership improvement, not the 50% solution. The next work
+must target the remaining `matrix_read -> first-use wait`, ABarrier/page
+recycle, and producer/consumer cadence with one new hypothesis at a time.
+
 ## 2026-08-13 Q/dO Read8 Island Rejected
 
 Tested a narrow FWD-style read island in the canonical 16-wave kernel. Each

@@ -11615,3 +11615,44 @@ cadence, not another priority hint.
 ## 2026-08-12 dK Same-Group Pair Island Rejected
 
 The temporary pair-island source was removed. It read two M16 Q/dS panels before one wait and then executed both dK islands. H1/S128 and H1/S1024 correctness passed, but S1024 fused ticks rose to `48,063,015` and complete ticks to `53,181,765`; MMAC active did not improve. Static gates remained clean, so the failure is scheduling rather than correctness/resource pressure. Canonical source is restored to the lag-one two-slot dK read-ahead.
+## 2026-08-13 Consumer-Side Resident Wait Removed
+
+Status: `ACCEPT_MICRO_TICKS / MMAC50_OPEN`.
+
+- Change: after each wave latches its resident K/V (dQ writers latch K), it
+  arrives `KvDsUsed` but does not wait on the same token. Only producer-side
+  LDS reuse waits for the twelve arrivals, so the lifetime proof is unchanged.
+- H1/S128 and H1/S1024 causal full lifecycle correctness passed. Static
+  resources remained spill/private/scratch-free, exact five-GEMM `MMOP=92,160`,
+  and bank conflict remained zero.
+- H1/S1024 fused ticks: `47,972,015` then `47,813,675` versus canonical
+  `48,364,680` (`-0.81%`, `-1.14%`). The second stats-only run reported
+  `MMAC active=33.260447%`, `coissue=20,594/24,527`,
+  `waitLgkm=9.643796%`, `barrier=14.894649%`.
+- Evidence: `/zys/sb/f5kvds_s1024_run/b1_h1_s1024_d128_c1_20260813_013425`
+  and `/zys/sb/f5kvds_s1024_repeat/b1_h1_s1024_d128_c1_20260813_013605`.
+
+The result is a ticks/control improvement, not an MFU improvement. Next,
+split the resident release token by LDS region: dQ writers only read K, while
+the producer's scratch and sidecar reuse are in the V region. Validate an
+eight-arrival V token before changing any matrix schedule.
+
+## 2026-08-13 V-Only Resident Release Accepted
+
+Status: `ACCEPT_MICRO_TICKS_AND_ACTIVE / MMAC50_OPEN`.
+
+- `KvDsUsed` became `VResidentUsed` with eight arrivals from dKV consumers.
+  The dQ writer no longer arrives because it latches K only; the producer's
+  reused scratch/sidecar region is the V region.
+- H1/S128 and H1/S1024 causal full lifecycle correctness passed. Exact five
+  GEMMs and `MMOP=92,160` remain; private/spill/scratch and bank conflict are
+  zero.
+- H1/S1024 fused ticks are `47,611,200`, versus canonical `48,364,680`
+  (`-1.56%`). Stats report `MMAC active=33.426546%`,
+  `coissue=20,434/23,612`, `waitLgkm=9.506609%`,
+  `barrier=15.383208%`.
+- Evidence: `/zys/sb/f5vresident_s1024/b1_h1_s1024_d128_c1_20260813_014137`.
+
+This is an ownership/lifetime win, not the 50% solution. Remaining work is
+the first-use matrix-read wait, raw-page recycle, and producer/consumer
+cadence. Do not add another token without a concrete LDS lifetime proof.

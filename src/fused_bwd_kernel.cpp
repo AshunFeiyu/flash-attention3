@@ -619,9 +619,11 @@ __device__ __forceinline__ void run_consumer_group(
     ResidentFragments resident;
     latch_resident_fragments(lds, n_owner, resident);
 
-    int kv_ds_used_phase = 0;
-    ins::abarrier_arrive_cnt<false>(Bar::kKvDsUsed, 1);
-    ins::abarrier_try_wait<true>(Bar::kKvDsUsed, kv_ds_used_phase);
+    // The producer is the only consumer of this completion token.  Once this
+    // wave has latched its resident K/V fragments, waiting for the other
+    // waves adds no data dependency: the producer cannot reuse the LDS
+    // region until all twelve arrivals are present.
+    ins::abarrier_arrive_cnt<false>(Bar::kVResidentUsed, 1);
 
     Accumulator dv_acc[8];
     Accumulator dk_acc[8];
@@ -726,10 +728,8 @@ __device__ __forceinline__ void run_dq_writer(
     DqResidentFragments resident;
     latch_dq_k_normal(lds, d_owner, resident);
 
-    int kv_ds_used_phase = 0;
-    ins::abarrier_arrive_cnt<false>(Bar::kKvDsUsed, 1);
-    ins::abarrier_try_wait<true>(Bar::kKvDsUsed, kv_ds_used_phase);
-
+    // The producer owns the reuse edge; this writer only needs its own K
+    // fragment before publishing dQ work.
     int filled0_phase = 0;
     int filled1_phase = 0;
 #pragma clang loop unroll(disable)
@@ -791,7 +791,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
     const int wave = static_cast<int>(__builtin_hcu_get_wave_id());
     if (wave == 0) {
         __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kKvDsUsed, 12);
+        __builtin_hcu_s_abarrier_init(Bar::kVResidentUsed, 8);
         __builtin_hcu_s_abarrier_init(Bar::kRawFilled0, 4);
         __builtin_hcu_s_abarrier_init(Bar::kRawUsed0, 8);
         __builtin_hcu_s_abarrier_init(Bar::kRawFilled1, 4);
@@ -832,7 +832,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
                 q, dout, lds, tensor_base,
                 q_tile_begin * Tile::kMq, LdsLayout::kRaw0Base,
                 wave_local);
-            ins::abarrier_try_wait<true>(Bar::kKvDsUsed,
+            ins::abarrier_try_wait<true>(Bar::kVResidentUsed,
                                          kv_latched_phase);
             producer_load_raw_sidecar(
                 packed_sidecar, lds, row_base,
@@ -936,7 +936,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
     __builtin_hcu_s_ebarrier_sync(0);
     if (wave == 0) {
         __builtin_hcu_s_abarrier_inv(Bar::kResidentFilled);
-        __builtin_hcu_s_abarrier_inv(Bar::kKvDsUsed);
+        __builtin_hcu_s_abarrier_inv(Bar::kVResidentUsed);
         __builtin_hcu_s_abarrier_inv(Bar::kRawFilled0);
         __builtin_hcu_s_abarrier_inv(Bar::kRawUsed0);
         __builtin_hcu_s_abarrier_inv(Bar::kRawFilled1);

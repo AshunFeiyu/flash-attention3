@@ -17443,3 +17443,57 @@ Decision: `REJECT_TICKS_CANONICAL_RESTORED`. The useful FWD read island cannot
 be copied as a simultaneous Q+dO read island in this BWD live-range shape.
 Next experiment must batch one operand family or change the ownership cadence;
 do not add more read-ahead fragments.
+## 2026-08-13 - Remove Redundant Consumer-Side KvDsUsed Wait
+
+Status: `ACCEPT_MICRO_TICKS / MMAC50_OPEN`.
+
+Hypothesis: `KvDsUsed` is a producer-side LDS reuse token. Once a consumer or
+dQ writer has latched its resident fragment, waiting for the other arrivals is
+not a local data dependency; the producer remains blocked until the complete
+count is reached.
+
+Change: remove the consumer and dQ-writer waits while preserving all twelve
+arrivals and the producer wait. No formula, tile, GEMM count, output owner,
+LDS allocation, or matrix instruction changed.
+
+Evidence:
+
+- H1/S128 full lifecycle PASS.
+- H1/S1024 full lifecycle PASS twice.
+- Fused ticks `48,364,680 -> 47,972,015 -> 47,813,675`.
+- Second run: `MMAC active=33.260447%`, `MMOP=92,160`,
+  `coissue=20,594/24,527`, `waitLgkm=9.643796%`, `barrier=14.894649%`,
+  `ldsBankConflict=0`, no spill/private/scratch.
+- Evidence paths are recorded in `source_status.md` and `perf_ledger.csv`.
+
+Boundary: the twelve-arrival token is still conservative because dQ writers
+only consume K, whereas producer scratch/sidecar overwrite the V region. The
+next experiment should test an eight-arrival V-only token and must retain the
+K resident data until all dQ writers have finished their K latch.
+
+## 2026-08-13 - Split V Resident Release From K Lifetime
+
+Status: `ACCEPT_MICRO_TICKS_AND_ACTIVE / MMAC50_OPEN`.
+
+Hypothesis: the producer overwrites the V-backed scratch/sidecar region after
+the dKV consumers latch V, while the dQ writer only needs its K fragment. A
+single twelve-arrival K/V token over-waits the producer by four dQ waves.
+
+Change: rename the token to `VResidentUsed`, initialize it with eight arrivals,
+remove dQ-writer arrivals, and keep the producer wait. No formula, tile, MMAC
+work, output ownership, or LDS address changed.
+
+Evidence:
+
+- H1/S128 and H1/S1024 causal full lifecycle PASS.
+- H1/S1024 fused ticks `47,611,200` versus canonical `48,364,680`
+  (`-1.56%`); prior wait-pruned candidate was `47,813,675`.
+- `MMAC active=33.426546%`, `MMOP=92,160`, `coissue=20,434/23,612`,
+  `waitLgkm=9.506609%`, `barrier=15.383208%`, `ldsBankConflict=0`.
+- Resources: no private segment, SGPR/VGPR spill, or scratch.
+- Evidence: `/zys/sb/f5vresident_s1024/b1_h1_s1024_d128_c1_20260813_014137`.
+
+Boundary: this only shortens startup ownership; it does not restructure the
+repeated RawFilled/RawUsed page cadence or the matrix first-use dependency.
+The next candidate must address one of those measured gaps without adding
+duplicate GEMM work or broadening the ABarrier domain.
