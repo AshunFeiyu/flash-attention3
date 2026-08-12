@@ -17257,3 +17257,14 @@ Production integration result:
   larger read island does not compensate for that ownership exposure.
 - Evidence: `docs/fused5_dq_writer_dual_group_read_20260812.md`, remote run
   `/zys/shaobo_runs/fused5_dq_dual_read104/b1_h1_s1024_d128_c1_20260812_174740`.
+## 2026-08-12 Fused5 dK Setprio Rejected
+
+- Added `s_setprio 2/0` around each dK eight-MMAC island to mirror dV.
+- H1/S128 and H1/S1024 correctness/resources passed. Three valid H1/S1024
+  runs averaged about `47.41M` fused and `52.50M` full ticks versus the
+  wait-pruned canonical `47.43M/52.60M`; MMAC active values were
+  `33.2063/33.4764/33.0167%`, not an improvement.
+- Decision: `REJECT_OBSERVE_NEUTRAL`; source restored. Priority hints alone do
+  not fix the ABarrier/readiness bottleneck. Evidence is in
+  `docs/fused5_dk_mmac_setprio_20260812.md` and
+  `/zys/shaobo_runs/fused5_dk_setprio*`.

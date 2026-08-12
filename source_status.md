@@ -11464,3 +11464,9 @@ private/spill debt. H1/S128 and H1/S1024 correctness passed, but H1/S1024
 fused/full ticks regressed to `49,131,355/54,205,970`. Restore the canonical
 sequential group0/group1 writer schedule. The regression is a real ownership
 stagger loss, not a matrix-layout failure.
+## 2026-08-12 dK Setprio Rejected
+
+The dK MMAC priority wrapper passed correctness and resource gates but was
+neutral in ticks and lower in average MMAC active. Restore the unwrapped dK
+island; future progress must come from useful work/read island or ownership
+cadence, not another priority hint.

@@ -6044,3 +6044,8 @@ Do not merge both dS consumer groups at the dQ writer entrance. Although the
 native dual-base read is correct, it waits for both groups and removes the
 useful group-local stagger. Restore the sequential group0/group1 writer path
 before any further dQ read-island work.
+## 2026-08-12 dK Setprio Decision
+
+The dK `s_setprio 2/0` audit was removed from the canonical path. It was
+correct and spill-free but performance-neutral, so the next experiment must
+change a measured read/MMAC island or ownership lifetime.
