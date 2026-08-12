@@ -1,5 +1,24 @@
 # Source Status
 
+## 2026-08-13 Tri Dao D64 Consumer Ownership Rejected
+
+The first Shaobo integration of the Tri Dao D128 work map was isolated on
+branch `exp/fused5-tridao-d64-owner-v2`. It kept the canonical M64/N128/D128
+tile, exact five GEMMs, producer waves0-3, and two heavy groups waves4-7 and
+8-11. The first two waves of each heavy group additionally owned one D32 dQ
+partial, so the four owners covered D0:128 without duplicate score/dP.
+
+Static/resource gates passed with role windows `9/200/203`, metadata
+`private=0`, `sgpr_spill=0`, `vgpr_spill=0`, exact matrix path and bank0. The
+H1/S128 full lifecycle gate failed only dQ: `dq_rel_l2=1.50937` and
+`dq_cosine_error=0.600331`; delta, dK and dV passed. No PMD performance result
+is admissible. The experiment is restored to the canonical source.
+
+Decision: `REJECT_CORRECTNESS_DQ_OWNER_MAPPING`. The official Tri Dao role map
+is a design reference, not a drop-in refactor. The next attempt needs a
+focused D64 dS/K fragment ownership oracle that compares each D32 output slot
+against the existing four-wave dQ writer before changing the fused lifecycle.
+
 ## 2026-08-12 12-Wave Atomic-Owner Structure Rejected
 
 An isolated historical comparison restored the 12-wave topology where the two

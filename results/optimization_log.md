@@ -17390,3 +17390,14 @@ The next experiment is structural: move the D64 dQ ownership into the two
 heavy consumers, matching the Tri Dao D128 role map. It preserves exactly five
 GEMMs and native matrix paths. First gate: no private/spill/scratch and a
 feasible per-consumer VGPR ledger.
+## 2026-08-13: Tri Dao D64 consumer ownership probe
+
+- Hypothesis: move four D32 dQ workspace owners into waves4-11 so each heavy
+  group owns N64 dK/dV plus D64 dQ, matching the official D128 role map.
+- Change: keep exact five GEMMs and canonical LDS/dS publication; remove the
+  separate dQ-writer branch only on the experiment branch.
+- Static: PASS, roles `9/200/203`, metadata private/spill/scratch zero, bank0.
+- Correctness: REJECT. H1/S128 full lifecycle had dQ `rel_l2=1.50937`,
+  `cosine_error=0.600331`; delta/dK/dV passed. No performance claim.
+- Decision: restore canonical. A D64 fragment/owner oracle is required before
+  another consumer ownership integration.

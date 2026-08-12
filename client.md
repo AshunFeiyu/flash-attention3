@@ -1,5 +1,14 @@
 # Client
 
+## 2026-08-13 Tri Dao D64 Ownership Probe Rejected
+
+Tried moving four D32 dQ partial owners into the two heavy consumer groups,
+while preserving M64/N128/D128, five GEMMs, producer 0-3, and workspace
+reduction. Static WDRA/resource gates passed (`9/200/203`, no spill/private/
+scratch, bank0), but H1/S128 dQ correctness failed (`rel_l2=1.50937`). Restore
+the canonical 16-wave dQ writer. Tri Dao's D64 ownership remains a design
+reference; do not reuse it without a fragment/owner focused oracle.
+
 ## 2026-08-12 12-Wave Atomic-Owner Structure Rejected
 
 Historical 12-wave two-consumer dKV+dQ ownership was tested in isolation.
