@@ -1,5 +1,12 @@
 # Source Status
 
+## 2026-08-12 Consumer-Local Raw Ready Rejected
+
+Canonical source is restored. Consumer-local Q/dO staging passed S128 but
+failed S1024 dK (`rel_l2=0.109135`) even with the startup `KvDsUsed` latch.
+The raw staging still conflicts with the long-lived dK read-ahead/P-dS reuse
+life cycle. This is a real ownership failure, not a PMD performance issue.
+
 ## 2026-08-12 Terminal RawUsed Wait Prune Rejected
 
 The producer-side final `RawUsed1` wait was removed as a lifecycle-only

@@ -1,5 +1,40 @@
 # Optimization Log
 
+## 2026-08-12 Consumer-Local Raw Ready Rejected (v2)
+
+The structural candidate moved recurring Q/dO/sidecar loads into consumer
+groups to remove producer-side RawUsed recycle waits. It compiled cleanly at
+role use `169/172/86`, SGPR73, private/spill/scratch0 and passed H1/S128 full
+correctness. H1/S1024 failed dK (`rel_l2=0.109135`) while dV/dQ passed. The
+failure persists even after retaining the startup `KvDsUsed` latch: consumer
+side raw staging still overwrites the released K/V/P-dS region before the
+long-lived dK read-ahead is complete. Decision:
+`REJECT_A5_LIFECYCLE_CANONICAL_RESTORED`.
+
+Evidence: `docs/fused5_consumer_local_raw_ready_design_20260812.md`,
+`/zys/shaobo_runs/fused5_consumer_local_raw_ready_v2_s128b/`,
+`/zys/shaobo_runs/fused5_consumer_local_raw_ready_v2_s1024/`.
+
+## 2026-08-12 Consumer-Local Raw Ready Rejected (v1)
+
+The structural candidate moved recurring Q/dO/sidecar loads into consumer
+groups to remove producer-side RawUsed recycle waits. It compiled cleanly at
+role use `169/172/86`, SGPR73, private/spill/scratch0 and passed H1/S128 full
+correctness. H1/S1024 failed dK (`rel_l2=0.136397`) while dV/dQ passed. The
+cause is an A5 lifecycle violation: removing `KvDsUsed` let consumer writes
+into the released K/V region race with dK readers; the first raw1 placement
+also crossed the 128 KiB LDS boundary. Decision:
+`REJECT_A5_LIFECYCLE_CANONICAL_RESTORED`.
+
+Evidence: `docs/fused5_consumer_local_raw_ready_design_20260812.md`,
+`/zys/shaobo_runs/fused5_consumer_local_raw_ready_s128/`,
+`/zys/shaobo_runs/fused5_consumer_local_raw_ready_s1024/`.
+
+The first version removed `KvDsUsed`; the second restored it, but both still
+failed S1024 dK. The remaining failure is an unresolved A5
+lifetime/source-generation hazard, not evidence that the consumer-local
+topology is sound.
+
 ## 2026-08-12 Terminal RawUsed Wait Prune Rejected
 
 The candidate removed only the producer's final `RawUsed1` wait after all

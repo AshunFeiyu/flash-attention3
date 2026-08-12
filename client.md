@@ -1,5 +1,12 @@
 # Client
 
+## 2026-08-12 Consumer-Local Raw Ready Rejected
+
+Tried FWD-style consumer-local Q/dO staging to remove producer-side RawUsed
+recycle waits. S128 passed, but S1024 dK failed with rel-L2 0.109135 even
+after retaining `KvDsUsed`; raw staging conflicts with the long-lived dK and
+P/dS reuse lifetime. Canonical producer-owned raw pages are restored.
+
 ## 2026-08-12 Terminal RawUsed Wait Prune Rejected
 
 Removing the producer's terminal `RawUsed1` wait did not shorten the real
