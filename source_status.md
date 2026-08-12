@@ -11729,3 +11729,25 @@ baseline; MMAC active `33.365312%`, wait-LGKM `9.413989%`, barrier
 Decision: `REJECT_TICKS_CANONICAL_RESTORED`. Repeated `seq` is not the primary
 cost. The canonical route remains `f0f2fd4`; the next useful hypothesis must
 address Q/dO readiness or first-use waits with an explicit lifetime proof.
+## 2026-08-13 dV Readiness Micro Candidate
+
+The current canonical source now reads the FP16 P scratch fragment before the
+independent raw dO panel reads and keeps one final `s_waitcnt lgkmcnt(0)`
+before the dV MMAC island. The previous split `lgkmcnt(4)`/P-read/
+`lgkmcnt(0)` sequence was removed. This is a same-packet scheduling change,
+not a new ownership protocol.
+
+Verification: H1/S128 and H1/S1024 full correctness PASS; exact five GEMMs;
+`MMOP=92,160`; roles `9/163/165/86`; no private/spill/scratch;
+`ldsBankConflict=0`. Candidate S1024 fused runs are `47,223,995` and
+`46,895,485` ticks. The canonical repeat is `47,775,455`; candidate stats
+show `waitLgkm=8.83--8.89%`, barrier `14.88--14.98%`, and MMAC active
+`33.34--33.85%`.
+
+Classification: `ACCEPT_MICRO_TICKS`, with `MMAC50_OPEN`. The result is
+promising but still below the 50% target. Fullperf/XCU remains pending due
+the known PMD ASTCA capture issue; stats-only evidence is admissible for this
+micro change.
+
+Next: stop local dV read-order tuning and analyze the repeated raw-page /
+ABarrier cadence with one new ownership hypothesis.

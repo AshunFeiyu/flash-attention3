@@ -1,5 +1,18 @@
 # Client
 
+## 2026-08-13 dV Readiness Micro Candidate
+
+The dV island now issues the P matrix read before the independent dO reads,
+then performs one `lgkmcnt(0)` before the eight dV MMACs. Full H1/S128 and
+H1/S1024 correctness, exact five-GEMM work, no spill/scratch and bank0 all
+hold. Two candidate S1024 runs are `47,223,995` and `46,895,485` fused ticks;
+the canonical repeat is `47,775,455`. MMAC active remains around 33--34%, so
+this is a narrow readiness win, not the 50% breakthrough.
+
+Do not stack more operand-read permutations. The next performance hypothesis
+must target the measured repeated RawFilled/RawUsed and ABarrier cadence with
+a complete lifetime proof.
+
 ## 2026-08-13 Mixed Raw Publisher Probe Accepted
 
 An isolated 16-wave probe validated two publishers feeding one double-buffered

@@ -491,12 +491,11 @@ __device__ __forceinline__ void update_dv_from_probability(
 
     const int page = scratch_page_offset<Group>(owner);
     Fragment dout_normal[kMatrixBlocksD];
+    Fragment p_normal{};
     ins::ds_write_matrix_32x16_trans_f16(p.f16.f16x8, mutable_lds, page);
+    ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
     read_raw_panel_normal(
         lds, raw_base + LdsLayout::kDoutOffset, m_block, dout_normal);
-    ins::wait_lgkm(4);
-    Fragment p_normal{};
-    ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
     ins::wait_lgkm(0);
     ins::raise_priority_2();
     update_dv_stage(p_normal, dout_normal, dv_acc);

@@ -1,5 +1,38 @@
 # Optimization Log
 
+## 2026-08-13 dV P-read Unified With dO Readiness
+
+Status: `ACCEPT_MICRO_TICKS / MMAC50_OPEN`.
+
+Hypothesis: the dV packet did not need a separate `lgkmcnt(4)` boundary. The
+producer writes the FP16 P fragment to the validated scratch page, while dO
+and P are independent matrix reads for the following dV MMAC island. Issue
+the P read before the dO panel reads and use one `lgkmcnt(0)` immediately
+before the first dV use. This changes only readiness scheduling; it does not
+change the five-GEMM DAG, tile, ownership, LDS address, or output layout.
+
+Evidence on compiler `e0f10535`, PMD `HEAD1694`, `GPU_CHIP=sb`, SQ7:
+
+- H1/S128 and H1/S1024 full CPU-golden lifecycle correctness PASS.
+- Canonical repeat: fused `47,775,455` ticks, MMAC active `33.590032%`,
+  `waitLgkm=9.849501%`, barrier `15.052635%`.
+- Candidate repeat: fused `46,895,485` ticks, MMAC active `33.846976%`,
+  `waitLgkm=8.888676%`, barrier `14.977174%`.
+- A second candidate run: fused `47,223,995` ticks, MMAC active `33.340786%`,
+  `waitLgkm=8.832620%`, barrier `14.881677%`.
+- Both candidate runs retain `MMOP=92,160`, `ldsBankConflict=0`, no private
+  segment, no SGPR/VGPR spill and no scratch. Roles remain within the
+  `16/204/204/88` contract.
+
+Decision: keep the narrow source change as a micro candidate. It lowers the
+measured wait share and is not a 50% solution; the next hypothesis must move
+up a tier to the repeated raw-page/ABarrier cadence or a proven useful
+producer/consumer overlap, not add another local read-order variant.
+
+Evidence: `/zys/sb/f5dv_read8_s1024/` and
+`/zys/sb/f5dv_read8_s1024_repeat/`; canonical control:
+`/zys/sb/f5canonical_repeat2/`.
+
 ## 2026-08-12 12-Wave Atomic-Owner Structure Rejected
 
 The historical 12-wave route was compiled in isolation with the current
