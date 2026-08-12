@@ -17401,3 +17401,27 @@ feasible per-consumer VGPR ledger.
   `cosine_error=0.600331`; delta/dK/dV passed. No performance claim.
 - Decision: restore canonical. A D64 fragment/owner oracle is required before
   another consumer ownership integration.
+# 2026-08-13 D64 Consumer Owner v3: correctness fixed, performance rejected
+
+Hypothesis: move the four D32 dQ partial owners into the two existing heavy
+consumer groups, producing a 12-wave producer + 2-consumer topology and
+removing the separate dQ writer role. The expected benefit was less role
+idle time and fewer writer waves while preserving exact five-GEMM work.
+
+Implementation: branch `exp/fused5-tridao-d64-owner-v3`; M64/N128/D128;
+producer waves0-3; consumer groups waves4-7 and8-11; each group owns N64 dKV
+and D64 dQ; dQ partials retain per-panel accumulators and use the existing
+workspace reducer. Compiler `e0f10535`, PMD HEAD1694, `GPU_CHIP=sb`, SQ7.
+
+Evidence: static gate PASS; roles `9/200/203`, allocated `16/200/204`,
+private/spill/scratch 0, bank0. H1/S128 PASS with fused ticks `11,764,935`.
+H1/S1024 PASS with fused ticks `58,302,790`; canonical same-shape fused
+baseline is `48,364,680`, so this is `+20.55%` slower. MMAC active was not
+admitted because the elapsed-time gate failed. PMD stats-only was used;
+XCompute remains pending due fullperf capture failure.
+
+Decision: `REJECT_PERF_CANONICAL_RESTORED`. The D64 map is not compatible with
+the current workspace-reduction ownership: dQ calculation and cross-group
+`DqDone0/1` waits are placed on the dKV critical path. The next experiment
+must preserve the canonical independent dQ writer or replace it with a proven
+single handoff, not add dQ work to both heavy consumers.

@@ -1,5 +1,30 @@
 # Source Status
 
+## 2026-08-13 D64 Consumer Owner v3 Rejected
+
+The v3 experiment corrected the v2 dQ panel accumulator ownership bug and
+used a coherent 12-wave contract: producer waves 0-3; consumer0 waves 4-7;
+consumer1 waves 8-11. The first two waves in each consumer group own D32
+partials, covering D0:128 without duplicate score/dP GEMMs. Exact work remains
+five logical GEMMs with M64/N128/D128.
+
+Static/resource gates passed: actual branches `9/200/203`, allocated windows
+`16/200/204`, private segment 0, SGPR/VGPR spill 0, scratch 0, and LDS bank
+conflict 0. H1/S128 and H1/S1024 CPU-golden lifecycle tests passed for delta,
+dK, dV, and dQ. However H1/S1024 fused ticks were `58,302,790` versus the
+canonical `48,364,680` (`+20.55%`). This is a measured performance rejection,
+not a correctness or PMD panic.
+
+The likely mechanism is structural: dQ now shares the dKV consumer critical
+path, and each q tile waits on both `DqDone0` and `DqDone1` before recycling
+raw pages. This trades away the independent dQ writer overlap and adds a
+cross-group ownership edge. No xcu perf is claimed because PMD fullperf
+capture remains unavailable; the stats-only dispatch result is sufficient for
+the same-shape rejection.
+
+Decision: `REJECT_PERF_CANONICAL_RESTORED`. Keep the experiment branch for
+reference; do not carry its source into the canonical branch.
+
 ## 2026-08-13 Tri Dao D64 Consumer Ownership Rejected
 
 The first Shaobo integration of the Tri Dao D128 work map was isolated on

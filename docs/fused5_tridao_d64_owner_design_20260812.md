@@ -1,5 +1,15 @@
 # Fused5 Tri Dao D64 Ownership Probe
 
+## v3 result (2026-08-13)
+
+The corrected implementation was tested as a real 12-wave topology. It passed
+static/resource gates and the complete H1/S128 and H1/S1024 correctness
+lifecycle, but H1/S1024 fused ticks regressed to `58,302,790` from the
+canonical `48,364,680`. The experiment is therefore rejected. The failure is
+structural rather than a dQ mapping bug: dQ work and cross-group `DqDone0/1`
+waits moved onto the dKV critical path. Keep the design as a reference only;
+the production branch remains the canonical 16-wave topology.
+
 ## Hypothesis
 
 Tri Dao's D128 backward mapping gives each heavy warpgroup the same useful

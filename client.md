@@ -1,5 +1,25 @@
 # Client
 
+## 2026-08-13 D64 Consumer Owner v3 Rejected
+
+The corrected D64 ownership experiment was compiled as a real 12-wave
+topology: producer waves 0-3, two symmetric heavy consumer groups at waves
+4-7 and 8-11, with each group owning dKV N64 and dQ D64. It preserved the
+exact five GEMMs, native MLS/BPS + ds_read_matrix + MMAC path, and workspace
+reduction.
+
+Static/resource gates passed with actual branches `9/200/203`, allocated
+windows `16/200/204`, private/spill/scratch zero, and bank conflict zero.
+H1/S128 and H1/S1024 full lifecycle correctness passed. H1/S1024 fused ticks
+were `58,302,790`, versus the current canonical `48,364,680`, a `20.55%`
+regression. The extra dQ work and cross-group DqDone ownership waits are now
+inside the dKV consumer critical path. Decision: `REJECT_PERF_CANONICAL_RESTORED`.
+
+This is a boundary result: Tri Dao's D64 consumer ownership is not a direct
+fit for this Shaobo five-GEMM workspace-reduction topology. Do not continue
+micro-tuning this 12-wave shape; return to the canonical 16-wave source and
+target the measured consumer/producer cadence there.
+
 ## 2026-08-13 Tri Dao D64 Ownership Probe Rejected
 
 Tried moving four D32 dQ partial owners into the two heavy consumer groups,
