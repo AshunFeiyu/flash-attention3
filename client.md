@@ -6031,3 +6031,10 @@ clean but slower. It is removed from the canonical source and recorded as
 `REJECT_TICKS_REGRESSION_CANONICAL_RESTORED`. Future zero-seed changes must
 be compile-time-peeled fixed MMAC islands; a runtime first-update branch around
 dV/dK accumulation is not admitted without a measured gain.
+## 2026-08-12 Current Wait-Prune Checkpoint
+
+The canonical dS publish path now omits the producer-local `wait_lgkm(0)`
+immediately before `BatchDsFilled` arrival. Correctness and resources remain
+clean, and repeated H1/S1024 stats show a small stable tick win. Keep this as
+the current source checkpoint; do not infer that it removes the larger
+cross-role ABarrier cadence.

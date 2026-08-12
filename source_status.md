@@ -11445,3 +11445,14 @@ mean was about `53.37M` versus `52.77M`. Classification:
 
 Do not use a runtime first-update branch for long-lived dKV accumulators.
 Keep the proven MMAC zero-seed form limited to fixed score/dP islands.
+## 2026-08-12 dS Publish Wait Audit Accepted
+
+The producer-side `wait_lgkm(0)` after the four final dS matrix writes was
+removed before `BatchDsFilled` arrival. H1/S128 and H1/S1024 full lifecycle
+correctness passed; consumer roles fell to `163/165`, with no spill,
+private/scratch segment, or LDS bank conflict. Three S1024 runs average
+`47,430,868` fused ticks and `52,596,180` full ticks versus canonical
+`47,559,633` and `52,774,995`. Classification: `ACCEPT_MICRO_WAIT_PRUNE`.
+
+This is a measured micro-win only. The main bottleneck remains ABarrier/control
+and fragmented peer overlap; no 50% MMAC conclusion is claimed.

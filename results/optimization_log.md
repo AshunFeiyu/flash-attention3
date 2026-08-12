@@ -17222,3 +17222,23 @@ Production integration result:
   long-lived dKV accumulators.
 - Evidence: `docs/fused5_dkv_zero_seed_design_20260812.md`, remote runs under
   `/zys/shaobo_runs/fused5_zero_seed*`.
+## 2026-08-12 Fused5 dS Publish Wait Audit Accepted
+
+- Removed only the producer-side `wait_lgkm(0)` after the four final dS
+  `ds_write_matrix` operations and before `BatchDsFilled` arrival. All
+  consumer/dQ-reader waits and ownership tokens remain unchanged.
+- H1/S128 and H1/S1024 full lifecycle correctness passed. Static gate passed;
+  roles changed from `9/165/167/86` to `9/163/165/86`, SGPR60, no
+  private/spill/scratch, exact MMOP92,160 and bank0.
+- Three H1/S1024 runs produced fused ticks `47,562,970`, `47,122,530`,
+  `47,607,105` (mean `47,430,868`) and full ticks `52,656,695`,
+  `52,189,410`, `52,942,435` (mean `52,596,180`) versus canonical
+  `47,559,633/52,774,995`. This is a small but repeatable roughly `0.27%`
+  fused and `0.34%` full improvement.
+- First parsed stats: `MMAC active=33.491677%`, `waitLgkm=9.848999%`,
+  `barrier=15.085295%`, `coissue=21137/24665`, `LDS=63872`, `VALU=127352`.
+- Decision: `ACCEPT_MICRO_WAIT_PRUNE`. This does not explain or solve the
+  50% target; it only proves one producer-local wait was redundant under the
+  existing BatchDsFilled ownership edge.
+- Evidence: `docs/fused5_dkv_dS_publish_wait_audit_20260812.md`, remote runs
+  `/zys/shaobo_runs/fused5_dswait_audit*`.

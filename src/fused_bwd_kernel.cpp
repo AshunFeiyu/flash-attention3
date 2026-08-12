@@ -709,7 +709,6 @@ __device__ __forceinline__ void run_consumer_group(
         publish_final_ds<1, Group>(ds_panels[1], mutable_lds, owner);
         publish_final_ds<2, Group>(ds_panels[2], mutable_lds, owner);
         publish_final_ds<3, Group>(ds_panels[3], mutable_lds, owner);
-        ins::wait_lgkm(0);
         ins::abarrier_arrive_cnt<false>(kLocalBatchFilled, 1);
 
         update_dk_from_final_panels_read_ahead<Group>(
