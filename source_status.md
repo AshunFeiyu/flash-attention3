@@ -1,5 +1,15 @@
 # Source Status
 
+## 2026-08-12 Q-Latch Candidate Rejected
+
+Canonical source is restored. Latching all Q panels before `RawUsed` passed
+H1/S128 and H1/S1024 correctness plus static resource gates, but the H1/S1024
+fused kernel regressed to `47,875,100` ticks versus the canonical
+`47,757,255`; MMAC active fell to `33.069957%`. The added full LDS wait raised
+wait-LGKM to `11.186619%` and barrier share to `15.238795%`. This closes the
+whole-Q latch shape; the next experiment must change ownership cadence rather
+than add a larger latch.
+
 ## 2026-08-12 Consumer-Local Raw Ready Rejected
 
 Canonical source is restored. Consumer-local Q/dO staging passed S128 but

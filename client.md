@@ -1,5 +1,16 @@
 # Client
 
+## 2026-08-12 Q-Latch Before RawUsed Rejected
+
+Reading all four Q panels before releasing `RawUsed` was correct and
+resource-clean, but regressed the canonical H1/S1024 fused kernel:
+`47,757,255 -> 47,875,100` ticks and `33.152365% -> 33.069957%` MMAC
+active. The forced `lgkmcnt(0)` increased wait-LGKM and barrier shares and
+reduced coissue. Restore the canonical lag-one two-slot Q/dS read-ahead; do
+not retry a whole-Q latch without a new ownership proof.
+
+Evidence: `docs/fused5_q_latch_before_rawused_design_20260812.md`.
+
 ## 2026-08-12 Consumer-Local Raw Ready Rejected
 
 Tried FWD-style consumer-local Q/dO staging to remove producer-side RawUsed

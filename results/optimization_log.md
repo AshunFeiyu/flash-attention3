@@ -1,5 +1,17 @@
 # Optimization Log
 
+## 2026-08-12 Q-Latch Before RawUsed Rejected
+
+The candidate latched all four Q panels into consumer VGPRs, waited for
+`lgkmcnt(0)`, then released the raw page before dK. Static use was
+`9/186/186/86`, with no spill/private/scratch and bank0; H1/S128 and H1/S1024
+correctness passed. It nevertheless increased H1/S1024 fused ticks from
+`47,757,255` to `47,875,100`, reduced MMAC active from `33.152365%` to
+`33.069957%`, raised wait-LGKM `10.134689% -> 11.186619%`, and reduced
+coissue success `21,354 -> 20,985`. Decision:
+`REJECT_TICKS_CANONICAL_RESTORED`. The canonical lag-one Q/dS read-ahead is
+restored; no whole-Q latch is admitted.
+
 ## 2026-08-12 Consumer-Local Raw Ready Rejected (v2)
 
 The structural candidate moved recurring Q/dO/sidecar loads into consumer
