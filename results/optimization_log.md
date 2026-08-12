@@ -17150,3 +17150,18 @@ Production integration result:
 - Next hypothesis: replace only the post-startup global `KvDsUsed` completion
   rendezvous with per-group completion tokens; retain one physical dS page
   generation and exact output ownership.
+
+## 2026-08-12 dK Read-Ahead
+
+- Accepted a two-slot local Q/dS read-ahead for the dK tail. The next panel is
+  issued while the current eight-MMAC island executes, with no new ABarrier or
+  formula/output change.
+- H1/S128 and H1/S1024 full lifecycle golden checks pass. Three H1/S1024
+  stats runs average fused `47,559,633` ticks and full lifecycle `52,774,995`
+  ticks, with MMAC active `33.377%`; MMOP92,160 and bank0 remain exact.
+- Consumer resources remain within WDRA and private/spill/scratch are zero.
+- The two-panel score read batch was rejected at performance (`32.53%` active,
+  waitLGKM10.42%). Single-read dO reuse was rejected at correctness because
+  normal and transposed source-layout fragments are distinct ABI views.
+- Current SQTT is pending: the PMD ASTCA config warning prevents the current
+  helper from producing `.perf`; no Wavefronts conclusion is claimed here.

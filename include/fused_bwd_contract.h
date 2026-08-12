@@ -171,6 +171,8 @@ struct FusedBwdContract {
 
 struct FusedBwdBarrierLedger {
     static constexpr int kResidentFilled = 0;
+    // One startup-only token: all non-producer waves latch resident K/V before
+    // producer waves reuse the released region for raw packet sidecar data.
     static constexpr int kKvDsUsed = 1;
     static constexpr int kRawFilled0 = 2;
     static constexpr int kRawUsed0 = 3;
@@ -178,9 +180,13 @@ struct FusedBwdBarrierLedger {
     static constexpr int kRawUsed1 = 5;
     static constexpr int kBatchDsFilled0 = 6;
     static constexpr int kBatchDsFilled1 = 7;
-    static constexpr int kCount = 8;
+    // Runtime dS ownership is group-local. Each token has four dKV waves and
+    // four dQ-writer waves, so one consumer group need not wait for its peer.
+    static constexpr int kDqDone0 = 8;
+    static constexpr int kDqDone1 = 9;
+    static constexpr int kCount = 10;
 
-    static_assert(kBatchDsFilled1 + 1 == kCount,
+    static_assert(kDqDone1 + 1 == kCount,
                   "barrier IDs must be contiguous and explicit");
 };
 

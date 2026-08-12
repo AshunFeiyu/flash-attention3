@@ -11395,3 +11395,17 @@ Status: `ACCEPT_CANONICAL_READINESS_WIN / BEST_TAG_PENDING_COMMIT`.
   next experiment is per-consumer-group runtime completion signaling, without
   changing the single physical dS generation.
 - Evidence: `results/fused5_dv_read_under_p_writer_20260812.md`.
+
+## 2026-08-12 dK Read-Ahead Accepted
+
+Status: `ACCEPT_TICKS_AND_ACTIVE_WIN / MMAC50_OPEN`.
+
+- Current canonical source uses two local Q/dS fragment slots in the dK tail.
+  The next panel's matrix reads overlap the current panel's eight MMACs.
+- H1/S128 and H1/S1024 full lifecycle correctness pass. Three H1/S1024
+  stats runs average fused `47,559,633` and full lifecycle `52,774,995` ticks;
+  MMAC active averages `33.377%`.
+- Exact MMOP92,160, bank0, MLS/BPS + ds_read_matrix + MMAC, and no
+  private/spill/scratch debt are preserved.
+- The current PMD run is stats-only: no `.perf`, so SQTT/xcu remains pending.
+- Evidence: `results/fused5_group_local_dk_readahead_20260812.md`.

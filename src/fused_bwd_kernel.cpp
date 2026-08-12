@@ -523,18 +523,49 @@ __device__ __forceinline__ void read_final_ds_normal(
     ins::ds_read_matrix_32x16_normal(lds, page, ds.f16x8);
 }
 
-template <int MBlock, int Group>
-__device__ __forceinline__ void update_dk_from_final_panel(
+template <int Group>
+__device__ __forceinline__ void read_final_ds_normal_runtime(
+    const __half* lds,
+    int m_block,
+    int owner,
+    Fragment& ds) {
+    const int page = LdsLayout::kKBase + m_block * Tile::kPdsGenerationBytes +
+                     Group * Tile::kWavesPerConsumerGroup *
+                         Tile::kWriterStrideBytes +
+                     owner * Tile::kWriterStrideBytes;
+    ins::ds_read_matrix_32x16_normal(
+        lds, page, ds.f16x8);
+}
+
+template <int Group>
+__device__ __forceinline__ void update_dk_from_final_panels_read_ahead(
     const __half* lds,
     int raw_base,
     int owner,
     Accumulator (&dk_acc)[8]) {
-    Fragment q[kMatrixBlocksD];
-    Fragment ds{};
-    read_raw_panel_normal(lds, raw_base, MBlock, q);
-    read_final_ds_normal<MBlock, Group>(lds, owner, ds);
+    // Keep one current and one next Q/dS panel. The next panel's five matrix
+    // reads are issued while the current eight-MMAC island is active.
+    Fragment q_buf[2][kMatrixBlocksD];
+    Fragment ds_buf[2];
+    int current = 0;
+    read_raw_panel_normal(lds, raw_base, 0, q_buf[current]);
+    read_final_ds_normal<0, Group>(lds, owner, ds_buf[current]);
     ins::wait_lgkm(0);
-    update_dk_stage(ds, q, dk_acc);
+#pragma unroll
+    for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
+        const int next = current ^ 1;
+        if (m_block + 1 < Tile::kMqPanels) {
+            read_raw_panel_normal(lds, raw_base, m_block + 1,
+                                  q_buf[next]);
+            read_final_ds_normal_runtime<Group>(
+                lds, m_block + 1, owner, ds_buf[next]);
+        }
+        update_dk_stage(ds_buf[current], q_buf[current], dk_acc);
+        if (m_block + 1 < Tile::kMqPanels) {
+            ins::wait_lgkm(0);
+        }
+        current = next;
+    }
 }
 
 __device__ __forceinline__ void zero_dq_writer_accumulators(
@@ -611,6 +642,9 @@ __device__ __forceinline__ void run_consumer_group(
     int raw1_phase = 0;
     constexpr int kLocalBatchFilled =
         Group == 0 ? Bar::kBatchDsFilled0 : Bar::kBatchDsFilled1;
+    constexpr int kLocalDqDone =
+        Group == 0 ? Bar::kDqDone0 : Bar::kDqDone1;
+    int local_dq_done_phase = 0;
 #pragma clang loop unroll(disable)
     for (int qi = 0; qi < q_tile_count; ++qi) {
         const int page = qi & 1;
@@ -666,7 +700,10 @@ __device__ __forceinline__ void run_consumer_group(
         }
 
         if (qi != 0) {
-            ins::abarrier_try_wait<true>(Bar::kKvDsUsed, kv_ds_used_phase);
+            // Only the matching dQ writer group must have consumed this
+            // group's dS page before the next q tile reuses it.
+            ins::abarrier_try_wait<true>(kLocalDqDone,
+                                         local_dq_done_phase);
         }
         publish_final_ds<0, Group>(ds_panels[0], mutable_lds, owner);
         publish_final_ds<1, Group>(ds_panels[1], mutable_lds, owner);
@@ -675,16 +712,14 @@ __device__ __forceinline__ void run_consumer_group(
         ins::wait_lgkm(0);
         ins::abarrier_arrive_cnt<false>(kLocalBatchFilled, 1);
 
-        update_dk_from_final_panel<0, Group>(lds, raw_base, owner, dk_acc);
-        update_dk_from_final_panel<1, Group>(lds, raw_base, owner, dk_acc);
-        update_dk_from_final_panel<2, Group>(lds, raw_base, owner, dk_acc);
-        update_dk_from_final_panel<3, Group>(lds, raw_base, owner, dk_acc);
+        update_dk_from_final_panels_read_ahead<Group>(
+            lds, raw_base, owner, dk_acc);
         if (page == 0) {
             ins::abarrier_arrive_cnt<false>(Bar::kRawUsed0, 1);
         } else {
             ins::abarrier_arrive_cnt<false>(Bar::kRawUsed1, 1);
         }
-        ins::abarrier_arrive_cnt<false>(Bar::kKvDsUsed, 1);
+        ins::abarrier_arrive_cnt<false>(kLocalDqDone, 1);
     }
 
     store_dkv_outputs(dk, dv, tensor_base, k_base, n_owner, lane, dk_acc,
@@ -719,6 +754,7 @@ __device__ __forceinline__ void run_dq_writer(
         update_dq_writer_panel_group<1, 0>(lds, resident, dq_acc[1]);
         update_dq_writer_panel_group<2, 0>(lds, resident, dq_acc[2]);
         update_dq_writer_panel_group<3, 0>(lds, resident, dq_acc[3]);
+        ins::abarrier_arrive_cnt<false>(Bar::kDqDone0, 1);
 
         ins::abarrier_try_wait<true>(Bar::kBatchDsFilled1,
                                      filled1_phase);
@@ -726,7 +762,7 @@ __device__ __forceinline__ void run_dq_writer(
         update_dq_writer_panel_group<1, 1>(lds, resident, dq_acc[1]);
         update_dq_writer_panel_group<2, 1>(lds, resident, dq_acc[2]);
         update_dq_writer_panel_group<3, 1>(lds, resident, dq_acc[3]);
-        ins::abarrier_arrive_cnt<false>(Bar::kKvDsUsed, 1);
+        ins::abarrier_arrive_cnt<false>(Bar::kDqDone1, 1);
 
         const int q_base = (q_tile_begin + qi) * Tile::kMq;
         store_dq_partial_d32(dq_partial, partial_base, q_base, 0, d_owner,
@@ -773,6 +809,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         __builtin_hcu_s_abarrier_init(Bar::kRawUsed1, 8);
         __builtin_hcu_s_abarrier_init(Bar::kBatchDsFilled0, 4);
         __builtin_hcu_s_abarrier_init(Bar::kBatchDsFilled1, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kDqDone0, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kDqDone1, 8);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
@@ -916,6 +954,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         __builtin_hcu_s_abarrier_inv(Bar::kRawUsed1);
         __builtin_hcu_s_abarrier_inv(Bar::kBatchDsFilled0);
         __builtin_hcu_s_abarrier_inv(Bar::kBatchDsFilled1);
+        __builtin_hcu_s_abarrier_inv(Bar::kDqDone0);
+        __builtin_hcu_s_abarrier_inv(Bar::kDqDone1);
     }
 #else
     (void)dout;

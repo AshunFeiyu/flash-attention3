@@ -5990,3 +5990,14 @@ into `DqDone0` and `DqDone1`, one per consumer group, while retaining the
 initial resident-latch token and the existing single physical dS page. This
 must be implemented once, tested, and reverted if it does not reduce the
 cross-group lockstep.
+## 2026-08-12 Current Canonical Checkpoint
+
+- Branch: `exp/fused5-dv-read-under-p-writer`.
+- Accepted source now includes group-local dS completion tokens and dK
+  Q/dS read-ahead. The best measured H1/S1024 fused mean is `47,559,633`
+  ticks with `33.377%` MMAC active; full lifecycle mean is `52,774,995`.
+- Do not re-admit the rejected two-panel score batch or cross-view dO reuse:
+  the former regressed active/wait, the latter failed normal/trans source
+  layout correctness.
+- PMD current fullperf remains blocked by the ASTCA config warning; report
+  stats-only results as `xcu pending` until a `.perf` is generated.
