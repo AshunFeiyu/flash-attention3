@@ -523,20 +523,6 @@ __device__ __forceinline__ void read_final_ds_normal(
     ins::ds_read_matrix_32x16_normal(lds, page, ds.f16x8);
 }
 
-template <int Group>
-__device__ __forceinline__ void read_final_ds_normal_runtime(
-    const __half* lds,
-    int m_block,
-    int owner,
-    Fragment& ds) {
-    const int page = LdsLayout::kKBase + m_block * Tile::kPdsGenerationBytes +
-                     Group * Tile::kWavesPerConsumerGroup *
-                         Tile::kWriterStrideBytes +
-                     owner * Tile::kWriterStrideBytes;
-    ins::ds_read_matrix_32x16_normal(
-        lds, page, ds.f16x8);
-}
-
 template <int MBlock, int Group>
 __device__ __forceinline__ void read_dk_panel_static(
     const __half* lds,
