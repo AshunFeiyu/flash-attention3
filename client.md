@@ -6260,3 +6260,38 @@ ticks. The next route is an isolated Tri Dao D128 ownership probe where each
 heavy four-wave consumer owns `N64 dK/dV + D64 dQ`. The probe must preserve
 five GEMMs, MLS/BPS plus `ds_read_matrix` plus MMAC, and pass static resource,
 S128 correctness, then S1024 stats before any promotion discussion.
+
+## 2026-08-13 Mixed Publisher Canonical Rejected
+
+The focused raw-page probe was narrowed to the actual ownership rule: producer
+wave0 alone issues `RawFilled.seq`, producer waves publish Q, and dQ-writer
+waves publish dO with additional arrivals. Two generations still passed with
+`q_errors=0`, `dout_errors=0`, no spill/private, and bank conflict zero at
+`/zys/sb/fa3b/layout_probes/fused5_mixed_raw_publisher_20260813_025713`.
+
+The canonical integration passed the complete S128 and S1024 correctness
+chain, but it is a performance reject. At H1/S1024 the fused dispatch was
+`68,606,720` ticks versus the accepted `47,223,085` baseline; MMAC active was
+`24.392954%` versus `33.605609%`, coissue was `17,462/14,209`, and barrier
+share rose to `32.147624%`. The reason is ownership placement: dQ-writer raw
+dO publication enters the dQ critical path and adds a cross-role raw-page
+completion dependency.
+
+Decision: `REJECT_TICKS_AND_ACTIVE_CANONICAL_RESTORED`. Canonical source is
+back at `f0f2fd4`; keep the probe as lifecycle evidence only. The next
+hypothesis must reduce an existing ownership epoch or hide an existing
+first-use wait without adding a publisher to the dQ critical path.
+
+## 2026-08-13 Raw Seq Owner Rejected
+
+A smaller control changed only raw-page generation ownership: producer
+`wave_local==0` issues one `RawFilled.seq` per page generation, while all four
+producer waves keep their existing Q+dO MLS publication and arrivals. S128 and
+S1024 full correctness passed, with no spill/private/scratch and bank conflict
+zero. At S1024 fused ticks were `48,048,910` versus `47,223,085` for the
+accepted baseline; MMAC active was `33.365312%`, wait-LGKM `9.413989%`, and
+barrier `15.321575%`.
+
+Decision: `REJECT_TICKS_CANONICAL_RESTORED`. Repeated `seq` is not the primary
+cost. Preserve the four-wave publication and choose the next experiment from
+the measured Q/dO readiness dependency, not from seq-count reduction.

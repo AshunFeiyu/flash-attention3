@@ -11697,3 +11697,35 @@ arrive` pattern. Evidence:
 Next: split canonical raw publication so producer loads Q/sidecar and dQ
 writer loads dO, change `RawFilled0/1` counts from four to eight, and preserve
 the existing `RawUsed0/1` consumer release.
+
+## 2026-08-13 Mixed Publisher Canonical Rejected
+
+The mixed raw publisher probe was rerun with a single generation owner:
+producer wave0 issues `RawFilled.seq`; four producer waves publish Q and four
+dQ-writer waves publish dO, each contributing one arrival. The two-generation
+probe passed with `q_errors=0`, `dout_errors=0`, producer/dO/consumer counts
+`8/8/16`, no panic, no spill/private, and `ldsBankConflict=0`.
+
+Canonical integration also passed S128 and S1024 full correctness. It was
+rejected on the target shape: H1/S1024 fused ticks `68,606,720` versus the
+accepted `47,223,085` baseline; MMAC active `24.392954%`, coissue
+`17,462/14,209`, wait-LGKM `7.325913%`, barrier `32.147624%`, and bank
+conflict `0`. The publisher split adds a dQ-writer raw-page ownership edge;
+the extra synchronization dominates the intended load sharing.
+
+Decision: `REJECT_TICKS_AND_ACTIVE_CANONICAL_RESTORED`. The source is restored
+to the `f0f2fd4` canonical route. Probe evidence is reusable only for the
+single-seq multi-publisher lifecycle, not as a performance topology.
+
+## 2026-08-13 Raw Seq Owner Control Rejected
+
+Only producer `wave_local==0` issued one `RawFilled.seq` per generation; the
+four producer waves retained their existing Q+dO MLS publication and arrivals.
+S128 and S1024 full correctness passed, with no spill/private/scratch and
+`ldsBankConflict=0`. S1024 fused ticks were `48,048,910` versus `47,223,085`
+baseline; MMAC active `33.365312%`, wait-LGKM `9.413989%`, barrier
+`15.321575%`, coissue `21,194/24,972`.
+
+Decision: `REJECT_TICKS_CANONICAL_RESTORED`. Repeated `seq` is not the primary
+cost. The canonical route remains `f0f2fd4`; the next useful hypothesis must
+address Q/dO readiness or first-use waits with an explicit lifetime proof.

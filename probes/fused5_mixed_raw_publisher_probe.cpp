@@ -105,11 +105,12 @@ __device__ __forceinline__ void run_mixed_publisher(
         if (generation != 0) {
             ins::abarrier_try_wait<false>(Barrier::kRawUsed, used_phase);
         }
-        // wave0 is the sole generation owner. Other publishers only arrive.
+        // The producer opens one transaction interval for the whole raw page.
+        // The dO publisher joins that interval with its own MLS packet and
+        // arrival; it must not issue a second seq for the same generation.
         if (wave == 0) {
             ins::abarrier_seq<false>(Barrier::kRawFilled);
         }
-        __builtin_hcu_s_ebarrier_sync(0);
         load_matrix_page(source, lds, generation, wave & 3, RegionOffset);
         ins::maybe_wait_bps_vbcnt_before_arrive();
         ins::abarrier_arrive_cnt<false>(Barrier::kRawFilled, 1);
@@ -128,7 +129,6 @@ __device__ __forceinline__ void run_mixed_consumer(
     int filled_phase = 0;
 #pragma unroll
     for (int generation = 0; generation < kRawGenerations; ++generation) {
-        __builtin_hcu_s_ebarrier_sync(0);
         ins::abarrier_try_wait<false>(Barrier::kRawFilled, filled_phase);
         const float q_sum = read_region_sum<0>(lds, generation);
         const float dout_sum = read_region_sum<kPublisherRegionBytes>(

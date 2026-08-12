@@ -17537,3 +17537,40 @@ reuse the already accepted multi-wave `seq -> MLS -> arrive` convention.
 Decision: `ACCEPT_PROBE_LIFECYCLE`. Integrate only the publisher split and
 eight-arrival Filled tokens. Do not change the five-GEMM DAG, tile, dS handoff,
 or output ownership until correctness and same-shape stats are available.
+
+## 2026-08-13 Mixed Raw Publisher Canonical A/B
+
+Hypothesis: move raw dO MLS publication to the dQ-writer waves, leaving the
+producer to publish Q/sidecar; use one producer-owned `RawFilled.seq` and eight
+publisher arrivals so dKV consumers can read one complete page.
+
+The focused single-seq probe passed two generations at
+`/zys/sb/fa3b/layout_probes/fused5_mixed_raw_publisher_20260813_025713` with
+native MLS/BPS and `ds_read_matrix`, no scalar matrix reads or permute, no
+spill/private, and bank conflict zero. Canonical S128 and S1024 correctness
+also passed, but S1024 fused ticks rose to `68,606,720` versus `47,223,085`
+for the accepted baseline. MMAC active fell to `24.392954%` from `33.605609%`;
+coissue was `17,462/14,209`, wait-LGKM `7.325913%`, and barrier share
+`32.147624%`.
+
+Decision: `REJECT_TICKS_AND_ACTIVE_CANONICAL_RESTORED`. The single-seq fix
+removes duplicate transaction opening but does not remove the dQ-writer
+critical-path ownership bubble. Keep the probe and its boundary; restore the
+canonical source and choose the next hypothesis from measured existing
+barrier/first-use debt.
+
+## 2026-08-13 Raw Seq Owner Control
+
+Hypothesis: reduce raw-page control by making only producer `wave_local==0`
+issue `RawFilled.seq`; leave the four-wave Q+dO publisher and eight-arrival
+consumer release unchanged.
+
+S128 and S1024 full correctness passed and resources stayed clean. S1024 fused
+ticks were `48,048,910` versus `47,223,085` for the accepted baseline;
+MMAC active was `33.365312%`, wait-LGKM `9.413989%`, barrier `15.321575%`,
+coissue `21,194/24,972`, and bank conflict `0`.
+
+Decision: `REJECT_TICKS_CANONICAL_RESTORED`. The repeated `seq` instructions
+are not the dominant gap; restore the canonical source and focus on separating
+Q and dO readiness only if the ABarrier lifetime can be proven without adding
+an unpriced token.
