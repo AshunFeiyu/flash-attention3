@@ -17727,3 +17727,18 @@ an unpriced token.
   `7.21%`, MMAC-to-MMAC `5.61%`. A dQ read-ahead using consumed fragment
   slots failed S128 (`dq_rel_l2=1.00551`) and was restored. This is a
   correctness boundary, not a performance result.
+
+## 2026-08-13 dK Read-Island Batch2 Rejected
+
+Hypothesis: issue two dK Q/dS panels before the first `s_waitcnt lgkmcnt(0)`
+to hide initial LDS latency while retaining the canonical two-slot lag-one
+conveyor. No formula, tile, role, ABarrier, or GEMM count changed.
+
+Static/resource gates passed (`roles=9/161/163/86`, private/scratch/spills=0,
+bank0), and H1/S128 plus H1/S1024 full correctness passed. H1/S1024 fused
+ticks were `47,177,585` versus canonical `46,637,955` (`+1.16%`); MMAC
+active was about `32.2%`. The larger read island exposed a longer first-use
+readiness window instead of hiding it.
+
+Decision: `REJECT_TICKS_CANONICAL_RESTORED`. Restore was completed before the
+next optimization; no rejected source is left in the canonical path.

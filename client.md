@@ -6323,6 +6323,15 @@ Do not merge both dS consumer groups at the dQ writer entrance. Although the
 native dual-base read is correct, it waits for both groups and removes the
 useful group-local stagger. Restore the sequential group0/group1 writer path
 before any further dQ read-island work.
+
+## 2026-08-13 dK Read-Island Batch2 Rejected
+
+One canonical micro-edit batched dK panel0/panel1 matrix reads before the
+first LGKM drain. It passed full correctness/resource gates, but fused
+H1/S1024 was `47,177,585` ticks versus canonical `46,637,955` (`+1.16%`),
+with MMAC active about `32.2%` and bank0. The longer first-use readiness
+window outweighed the saved early drain. Source is restored; future work must
+re-profile the whole kernel before another read-count permutation.
 ## 2026-08-12 dK Setprio Decision
 
 The dK `s_setprio 2/0` audit was removed from the canonical path. It was

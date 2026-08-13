@@ -11824,3 +11824,16 @@ the complete H1/S128 and H1/S1024 golden chain. It regressed H1/S1024 fused
 stats to `48,544,405` and `48,721,400` ticks. Merging ownership removed the
 early group0 dQ-writer overlap, so canonical group-local tokens are restored.
 Decision: `REJECT_TICKS_CANONICAL_RESTORED`; no source change remains.
+
+## 2026-08-13 dK Read-Island Batch2 Rejected
+
+The candidate issued dK panel0 and panel1 matrix reads before the first
+`s_waitcnt lgkmcnt(0)`, preserving the canonical two-slot rotation. Static
+and resource gates passed with roles `9/161/163/86`, no private/scratch or
+spill, and bank conflict zero. H1/S128 and H1/S1024 full lifecycle
+correctness passed. H1/S1024 fused ticks were `47,177,585` versus canonical
+`46,637,955` (`+1.16%`), with MMAC active about `32.2%`.
+
+Classification: `REJECT_TICKS_CANONICAL_RESTORED`. The source is restored to
+the `2d1a522` equivalent. The next change must come from a re-profiled
+whole-kernel bottleneck rather than another read-count permutation.
