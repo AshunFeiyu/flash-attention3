@@ -1,5 +1,51 @@
 # Optimization Log
 
+## 2026-08-13 Full dS Token Merge Rejected
+
+Status: `REJECT_TICKS_CANONICAL_RESTORED`.
+
+The XCU hierarchy identified ABarrier wait/xor as the largest issue-gap
+family. The focused probe merged `BatchDsFilled0/1` into one full-tile token
+and `DqDone0/1` into one full-tile token, keeping the 16-wave map, LDS layout,
+and five logical GEMMs unchanged. Static gates, no-spill/resource gates, and
+H1/S128 plus H1/S1024 correctness all passed. H1/S1024 fused stats were
+`48,544,405` and `48,721,400` ticks, regressing the canonical checkpoint by
+about 1.9% and 2.3%. The lost group-local dQ writer overlap dominates the
+removed token wait. Source is restored to `2d9bf33`; no MMAC promotion.
+
+Next hypothesis: address the measured dK `ds_read_matrix -> s_waitcnt` island
+without changing ABarrier ownership or LDS allocation.
+
+## 2026-08-13 Group0 dS Generation-2 Rejected
+
+Status: `REJECT_LIFECYCLE_CANONICAL_RESTORED`.
+
+Hypothesis: the released V-backed LDS interval could hold a second 16KB dS
+generation for consumer group0. Group0 would publish to `generation=qi&1`
+and wait `DqDone0` only when reusing a generation; group1 would retain one
+generation. The expected benefit was fewer exposed group0 dS ownership waits,
+without adding a barrier ID or changing the exact five-GEMM DAG.
+
+Static gates passed with roles `9/161/163/86`, SGPR62/VGPR128,
+private/spill/scratch zero, exact `MMOP=92,160`, and LDS bank conflict zero.
+H1/S128 full correctness passed. However, both multi-generation runs stalled
+in the fused dispatch and timed out before a semantic result:
+
+- S384 (three q generations): PMD timeout 1200s, dispatch1 incomplete;
+- S1024 (eight q generations): PMD timeout 1800s, dispatch1 incomplete.
+
+This is not a performance result and is not classified as a correctness pass.
+The failure is an ownership protocol defect: the existing single
+`BatchDsFilled0/DqDone0` token cannot represent two outstanding group0 dS
+generations. Toggling the LDS address without a second generation token leaves
+the dQ writer and the group0 consumer on incompatible phases. Do not retry by
+changing only the wait location; a future multi-generation route requires a
+separate focused ABarrier generation probe and a complete producer/consumer
+state machine.
+
+Canonical source was restored to commit `2d9bf33` after stopping the PMD jobs.
+The candidate is not admitted to the performance ledger.
+
 ## 2026-08-13 dV P-read Unified With dO Readiness
 
 Status: `ACCEPT_MICRO_TICKS / MMAC50_OPEN`.
@@ -17607,3 +17653,21 @@ Decision: `REJECT_TICKS_CANONICAL_RESTORED`. The repeated `seq` instructions
 are not the dominant gap; restore the canonical source and focus on separating
 Q and dO readiness only if the ABarrier lifetime can be proven without adding
 an unpriced token.
+# 2026-08-13 - 5-GEMM acceleration checkpoint
+
+- Baseline: canonical `2d9bf33`, H1/S1024 fused ticks `46,637,955`, MMAC
+  active `33.782085%`, MMOP `92,160`, wait-LGKM `8.902531%`, barrier
+  `14.867589%`, bank0, full lifecycle PASS.
+- `DqDone=4` candidate: S128/S1024 PASS, but `46,951,905` ticks, so
+  `REJECT_LIFECYCLE_COUNT_PERF`; source restored.
+- dQ read8 island: `REJECT_RESOURCE` because the dQ writer reached the 88
+  VGPR limit and allocated private/scratch; no PMD result.
+- dQ writer priority cadence: S128/S1024 PASS, but `47,485,165` ticks
+  (`+1.82%`), so `REJECT_TICKS`; source restored.
+- Next hypothesis: focused two-generation dS ownership/lifecycle probe with
+  explicit per-generation barriers before any canonical integration.
+- Canonical fullperf SQTT confirms the order of attack: ABarrier-to-XOR
+  `27.85%`, trans matrix-read-to-wait `11.04%`, terminal ebarrier-to-branch
+  `7.21%`, MMAC-to-MMAC `5.61%`. A dQ read-ahead using consumed fragment
+  slots failed S128 (`dq_rel_l2=1.00551`) and was restored. This is a
+  correctness boundary, not a performance result.

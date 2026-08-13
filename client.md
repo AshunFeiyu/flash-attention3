@@ -1,5 +1,29 @@
 # Client
 
+## 2026-08-13 Full dS Token Merge Rejected
+
+Merged the two group-local dS publication/completion tokens into one full-tile
+`BatchDsFilled`/`DqDone` pair without changing LDS or GEMM count. H1/S128 and
+H1/S1024 full correctness passed with resources clean, but two S1024 stats
+runs measured `48,544,405` and `48,721,400` fused ticks versus the canonical
+`~47.62M--47.78M`. The full-tile token delayed the dQ writer's group0 start.
+
+Decision: `REJECT_TICKS_CANONICAL_RESTORED`; keep group-local tokens and do not
+merge them again without a different writer schedule.
+
+## 2026-08-13 Group0 dS Generation-2 Rejected
+
+Tried to use the released V LDS interval for a second 16KB group0 dS
+generation, alternating pages across q tiles while retaining the same ten
+ABarrier IDs. Static roles/resources and H1/S128 correctness passed, but the
+three-generation S384 and eight-generation S1024 runs both timed out in the
+fused dispatch. The address alternation is therefore not enough: the single
+`BatchDsFilled0/DqDone0` phase pair cannot model two outstanding generations.
+
+Restore `2d9bf33`. Do not reintroduce this route through a wait-only patch;
+first build a focused multi-generation ABarrier probe or choose a topology
+that has one explicit token per physical dS generation.
+
 ## 2026-08-13 dV Readiness Micro Candidate
 
 The dV island now issues the P matrix read before the independent dO reads,
@@ -6308,3 +6332,30 @@ barrier `15.321575%`.
 Decision: `REJECT_TICKS_CANONICAL_RESTORED`. Repeated `seq` is not the primary
 cost. Preserve the four-wave publication and choose the next experiment from
 the measured Q/dO readiness dependency, not from seq-count reduction.
+# 2026-08-13 5-GEMM acceleration checkpoint
+
+- Canonical branch: `exp/fused5-kvds-group-local`, base `2d9bf33` plus the
+  accepted dV readiness micro. Fresh H1/S1024 baseline is fused
+  `46,637,955` ticks, `33.782085%` MMAC active, `MMOP=92,160`,
+  `waitLgkm=8.902531%`, `barrier=14.867589%`, bank0, and full lifecycle
+  correctness PASS.
+- Rejected `DqDone=4` ownership-count change: S128/S1024 correctness PASS but
+  S1024 was `46,951,905` ticks (`+0.67%`); the altered count delayed the dQ
+  writer and was restored. A transient deadlock during recovery was a test
+  harness/source restore error, not an admitted PMD result.
+- Rejected dQ `8 reads -> 16 MMAC` island at the static gate: dQ writer used
+  all 88 VGPRs and allocated private/scratch. No PMD result admitted.
+- Rejected dQ writer `s_setprio` cadence: static/resource and S128/S1024
+  correctness PASS, but S1024 was `47,485,165` ticks (`+1.82%`) versus the
+  fresh baseline. The source is restored; priority-only tuning is closed.
+- Boundary: local read/priority changes do not remove the dominant raw/dS
+  ownership lifecycle. The next candidate must be a separately gated
+  two-generation dS ownership probe with explicit token accounting; no
+  duplicate GEMM or larger dQ live set is allowed.
+- SQTT follow-up on canonical fullperf (`dispatch=1`) confirms the measured
+  hierarchy: `s_abarrier_try_wait -> s_xor_b32` 27.85%,
+  `ds_read_matrix_trans -> s_waitcnt` 11.04%,
+  `s_ebarrier_sync -> s_cbranch_vccnz` 7.21%, and MMAC-to-MMAC gaps 5.61%.
+  A dQ fragment-slot read-ahead probe was rejected by S128 correctness
+  (`dq_rel_l2=1.00551`); restored by git. Fragment slots cannot be reused
+  before the complete native MMAC/read lifecycle is proven.

@@ -11751,3 +11751,36 @@ micro change.
 
 Next: stop local dV read-order tuning and analyze the repeated raw-page /
 ABarrier cadence with one new ownership hypothesis.
+## 2026-08-13 Group0 dS Generation-2 Rejected
+
+The attempted group-local dS double buffer used the released V interval for a
+second group0 16KB page and alternated its address by `q_tile & 1`. Static
+resource and S128 correctness gates passed, but S384 and S1024 both timed out
+inside fused dispatch1 before producing semantic output. The existing single
+`BatchDsFilled0/DqDone0` phase pair cannot encode two live dS generations.
+
+Classification: `REJECT_LIFECYCLE`; source restored to `2d9bf33`. No timing or
+MMAC claim is admissible. A future two-generation dS design must first pass an
+isolated ABarrier generation probe with separate phase/token state.
+# 2026-08-13 - 5-GEMM acceleration checkpoint
+
+- Fresh canonical H1/S1024 baseline: fused `46,637,955` ticks,
+  `33.782085%` MMAC active, `MMOP=92,160`, wait-LGKM `8.902531%`, barrier
+  `14.867589%`, bank0, no spill/private/scratch, and full lifecycle PASS.
+- `DqDone=4` rejected after S128/S1024 PASS but `46,951,905` ticks; dQ writer
+  startup was delayed. dQ read8 island rejected at static resource gate.
+- dQ writer priority-only cadence passed gates but regressed S1024 to
+  `47,485,165` ticks; source restored. Next work must target dS ownership
+  generations, not local read/priority permutations.
+- Canonical SQTT dispatch1 hierarchy: ABarrier-to-XOR `27.85%`, trans matrix
+  read-to-wait `11.04%`, terminal ebarrier-to-branch `7.21%`, MMAC-to-MMAC
+  `5.61%`. A dQ fragment-slot read-ahead probe failed S128 correctness and
+  was restored; no wrong-layout/live-slot reuse is admitted.
+
+## 2026-08-13 Full dS Token Merge Rejected
+
+The full-tile `BatchDsFilled`/`DqDone` probe passed static/resource gates and
+the complete H1/S128 and H1/S1024 golden chain. It regressed H1/S1024 fused
+stats to `48,544,405` and `48,721,400` ticks. Merging ownership removed the
+early group0 dQ-writer overlap, so canonical group-local tokens are restored.
+Decision: `REJECT_TICKS_CANONICAL_RESTORED`; no source change remains.
