@@ -17742,3 +17742,17 @@ readiness window instead of hiding it.
 
 Decision: `REJECT_TICKS_CANONICAL_RESTORED`. Restore was completed before the
 next optimization; no rejected source is left in the canonical path.
+
+## 2026-08-13 dKV MMAC Zero Seed Runtime Branch Rejected
+
+Hypothesis: replace explicit dV/dK accumulator zeroing with the existing
+`mmac_zero` fragment for the first q tile, then accumulate normally.
+
+The runtime `qi == 0 && m_block == 0` selection passed static/resource gates,
+H1/S128 and H1/S1024 full correctness, and bank0. It reduced generated
+`v_mov_b64` from `70` to `6`, but increased consumer VGPR use `161/163 ->
+163/165`, increased static MMAC instructions `320 -> 400`, and regressed
+H1/S1024 fused ticks `46,637,955 -> 47,946,080` (`+2.8%`).
+
+Decision: `REJECT_TICKS_CANONICAL_RESTORED`. This validates the boundary that
+runtime first-update branches can cost more than the moves they remove.

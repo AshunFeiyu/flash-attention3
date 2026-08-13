@@ -6332,6 +6332,16 @@ H1/S1024 was `47,177,585` ticks versus canonical `46,637,955` (`+1.16%`),
 with MMAC active about `32.2%` and bank0. The longer first-use readiness
 window outweighed the saved early drain. Source is restored; future work must
 re-profile the whole kernel before another read-count permutation.
+
+## 2026-08-13 dKV MMAC Zero Seed Runtime Branch Rejected
+
+The first dV/dK zero-seed implementation removed explicit accumulator clears
+and selected the seed with `qi == 0 && m_block == 0`. It reduced generated
+`v_mov_b64` `70 -> 6`, but grew consumer VGPR use `161/163 -> 163/165`, static
+MMAC instructions `320 -> 400`, and regressed H1/S1024 fused ticks
+`46,637,955 -> 47,946,080` (`+2.8%`). Correctness, no-spill, and bank0 all
+passed. Source is restored; future zero-seed work must peel the first tile at
+compile time or remain rejected.
 ## 2026-08-12 dK Setprio Decision
 
 The dK `s_setprio 2/0` audit was removed from the canonical path. It was

@@ -11837,3 +11837,16 @@ correctness passed. H1/S1024 fused ticks were `47,177,585` versus canonical
 Classification: `REJECT_TICKS_CANONICAL_RESTORED`. The source is restored to
 the `2d1a522` equivalent. The next change must come from a re-profiled
 whole-kernel bottleneck rather than another read-count permutation.
+
+## 2026-08-13 dKV MMAC Zero Seed Runtime Branch Rejected
+
+The candidate removed explicit dV/dK accumulator clears and chose the first
+MMAC seed with a runtime `qi == 0 && m_block == 0` condition. Static/resource
+and full correctness gates passed with bank0, but generated `v_mov_b64`
+dropped `70 -> 6` while consumer VGPR rose `161/163 -> 163/165`, static MMAC
+body size rose `320 -> 400`, and H1/S1024 fused ticks regressed to
+`47,946,080` versus canonical `46,637,955`.
+
+Classification: `REJECT_TICKS_CANONICAL_RESTORED`. The source is restored; a
+future zero-seed attempt must use compile-time first-tile peeling, not a
+runtime branch.
