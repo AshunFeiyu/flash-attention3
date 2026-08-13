@@ -1,5 +1,37 @@
 # Source Status
 
+## 2026-08-13 Raw Q/dO Split-Lifetime Probe
+
+The isolated two-page/three-generation probe passed with explicit producer,
+consumer0, consumer1, and dO-publisher branches: `q_errors=0`,
+`dout_errors=0`, no PMD panic or VGPR warning, and bank conflict 0. Main
+matrix movement remained MLS+BPS plus `ds_read_matrix`; ordinary reads and
+permutes were zero. Keep canonical waves12-15 as the dQ writer; do not import
+the two-publisher role map. The next probe must keep one producer group.
+
+The full canonical Q/dO token split was rejected after H1/S128 and H1/S1024
+correctness passed: it added producer-side serialization and did not reduce
+barrier/wait counters. Sources are restored to `2d9bf33`. The next source
+experiment is narrower: original page-ready and raw-used tokens plus one
+dO-used token per page.
+
+## 2026-08-13 Relaxed ABarrier Scheduler Rejected
+
+Removing the scheduler fences around inline `s_abarrier_try_wait` compiled
+cleanly but failed H1/S128 with a WDRA read-before-write / VGPR init-free
+panic. Classification: `REJECT_PMD_ABI_CANONICAL_RESTORED`.
+
+## 2026-08-13 Relaxed ABarrier Scheduler Rejected
+
+Removing the scheduler fences immediately around the inline
+`s_abarrier_try_wait` sequence compiled with unchanged role metadata, but PMD
+failed H1/S128 with a WDRA read-before-write / `vgpr ... is not init or has
+been freed` panic. The canonical helper is restored; this is
+`REJECT_PMD_ABI_CANONICAL_RESTORED`, not a performance result.
+
+Next isolated hypothesis: separate raw-page `dO` and `Q` lifetimes. The
+physical page remains `Q[16KB] + dO[16KB]`; only ownership timing changes.
+
 ## 2026-08-13 Q/dO Read8 Island Rejected
 
 The canonical 16-wave kernel was changed only in the score/dP operand-read

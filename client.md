@@ -1,5 +1,40 @@
 # Client
 
+## 2026-08-13 Relaxed ABarrier Scheduler Rejected
+
+The `abarrier_try_wait` helper was compiled once without its surrounding
+scheduler fences. Static metadata stayed clean, but H1/S128 failed in PMD
+with a WDRA register-init/free panic. The fences are restored and remain part
+of the current PMD/compiler ABI until a focused probe proves otherwise.
+
+## 2026-08-13 Raw Q/dO Split-Lifetime Probe Accepted
+
+Two pages and three generations passed with exact Q/dO checksums under the
+canonical four-branch WDRA CFG. Metadata, spill, scratch, and bank gates were
+clean. This is lifecycle evidence only; the earlier direct mixed-publisher
+integration regressed S1024 to 68.61M ticks, so its role map is not promoted.
+The next admitted probe must retain one producer group and dQ-writer
+ownership.
+
+The single-producer lifecycle probe passed with that canonical role map. The
+full Q/dO token integration was then rejected: correctness passed, but S1024
+measured `46,888,205` and `50,151,010` fused ticks versus canonical
+`46,637,955`, while barrier/wait debt did not fall. The next trial keeps the
+original ready/release pair and adds only per-page `DoutUsed` for dO prefetch.
+
+## 2026-08-13 Relaxed ABarrier Scheduler Rejected
+
+The `abarrier_try_wait` helper was compiled once without its surrounding
+scheduler fences. Static metadata stayed clean, but H1/S128 failed in PMD
+with a WDRA register-init/free panic (`vgpr ... is not init or has been
+freed`). No timing result is admissible. The fences are restored and remain
+part of the current PMD/compiler ABI until a focused probe proves otherwise.
+
+Next hypothesis: split each raw page's `dO` release from its `Q` release.
+`dO` dies after dP/dV; Q remains live through dK. This may let the producer
+fill the next dO region while the current dK island runs, but it must first
+pass an isolated two-page, three-generation ownership probe.
+
 ## 2026-08-13 Terminal Cleanup Rejected
 
 Removing the terminal `s_ebarrier_sync` plus `s_abarrier_inv` cleanup passed

@@ -1,5 +1,45 @@
 # Optimization Log
 
+## 2026-08-13 Canonical Q/dO Token Split Rejected
+
+- Full canonical integration used separate Q/dO filled/used pairs for both
+  raw pages. H1/S128 and H1/S1024 correctness passed with roles `9/161/163/86`,
+  no private/spill/scratch, and bank0.
+- Fused S1024 was `46,888,205` ticks then `50,151,010` on a same-build repeat,
+  versus clean canonical `46,637,955`. Wait/barrier debt did not fall.
+- Decision: `REJECT_TICKS_CANONICAL_RESTORED`; source and contract are byte
+  identical to `2d9bf33`.
+- Next: preserve `RawFilled/RawUsed`; add only `DoutUsed[p]` and prefetch the
+  next dO after its current q tile's last dO use.
+
+## 2026-08-13 Raw Q/dO Split-Lifetime Probe Accepted
+
+- Two-page, three-generation probe passed on PMD HEAD1694 with compiler
+  `e0f10535`: `q_errors=0`, `dout_errors=0`, `pass=1`.
+- Explicit role branches passed static metadata/resource gates; ordinary
+  matrix reads and permutes were zero and LDS bank conflict was zero.
+- Decision: `ACCEPT_PROBE_LIFECYCLE_INTEGRATION_PENDING`.
+- Boundary: the probe uses a separate dO publisher. Earlier direct canonical
+  mixed-publisher integration regressed S1024 to `68,606,720` ticks. The next
+  probe must retain the canonical single producer and dQ writer ownership.
+
+## 2026-08-13 Relaxed ABarrier Scheduler Rejected
+
+- Removing local scheduler fences around `s_abarrier_try_wait` passed static
+  gates but PMD failed H1/S128 with a WDRA register-init/free panic.
+- Decision: `REJECT_PMD_ABI_CANONICAL_RESTORED`; no performance result.
+
+## 2026-08-13 Relaxed ABarrier Scheduler Rejected
+
+- Probe: compile `abarrier_try_wait` without the two local scheduler fences.
+- Static/resource: PASS; role windows remained `9/161/163/86`, private and
+  scratch were zero, and no spill was reported.
+- H1/S128: FAIL in PMD with WDRA register-init/free panic after a
+  read-before-write warning. No performance result is admitted.
+- Decision: `REJECT_PMD_ABI_CANONICAL_RESTORED`; restore the fences.
+- Next hypothesis: split raw-page `dO` release from `Q` release so useful dK
+  work can overlap producer refill without changing tile math or LDS size.
+
 ## 2026-08-13 Terminal Cleanup Rejected
 
 Status: `REJECT_PMD_ABI_CANONICAL_RESTORED`.
