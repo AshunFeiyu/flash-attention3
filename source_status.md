@@ -11777,6 +11777,14 @@ isolated ABarrier generation probe with separate phase/token state.
   `5.61%`. A dQ fragment-slot read-ahead probe failed S128 correctness and
   was restored; no wrong-layout/live-slot reuse is admitted.
 
+## 2026-08-13 Terminal Cleanup Rejected
+
+Removing the final CTA `s_ebarrier_sync` and wave0 ABarrier invalidation
+compiled cleanly but failed H1/S128 in PMD with a read-before-write warning
+and `vgpr84 is not init or has been freed` at a subsequent MMAC. The cleanup
+is retained as a required WDRA/PMD close protocol. Classification:
+`REJECT_PMD_ABI_CANONICAL_RESTORED`.
+
 ## 2026-08-13 Full dS Token Merge Rejected
 
 The full-tile `BatchDsFilled`/`DqDone` probe passed static/resource gates and

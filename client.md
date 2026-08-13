@@ -1,5 +1,13 @@
 # Client
 
+## 2026-08-13 Terminal Cleanup Rejected
+
+Removing the terminal `s_ebarrier_sync` plus `s_abarrier_inv` cleanup passed
+static/resource gates but failed H1/S128 in PMD with
+`vgpr84 is not init or has been freed` and a read-before-write warning at a
+following MMAC. The cleanup is therefore part of the current WDRA/PMD role
+close protocol. Decision: `REJECT_PMD_ABI`; restored canonical source.
+
 ## 2026-08-13 Full dS Token Merge Rejected
 
 Merged the two group-local dS publication/completion tokens into one full-tile

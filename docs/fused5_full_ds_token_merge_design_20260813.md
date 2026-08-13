@@ -44,6 +44,15 @@ path.
 Decision: `REJECT_TICKS_CANONICAL_RESTORED`. The source is restored to
 `2d9bf33`; retain the document as lifecycle evidence only.
 
+## Related Terminal-Cleanup Probe
+
+A separate source-only probe removed the terminal `s_ebarrier_sync` and
+`s_abarrier_inv` cleanup after all role bodies returned. It passed compilation
+and static metadata, but H1/S128 hit PMD's WDRA tracker:
+`vgpr84 is not init or has been freed` at a following MMAC, with a
+`read vgpr ... before writing` warning. This is classified as
+`REJECT_PMD_ABI`, and the terminal CTA synchronization remains required.
+
 ## Acceptance
 
 The probe is accepted only if H1/S128 and H1/S1024 full lifecycle correctness,

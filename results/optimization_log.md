@@ -1,5 +1,21 @@
 # Optimization Log
 
+## 2026-08-13 Terminal Cleanup Rejected
+
+Status: `REJECT_PMD_ABI_CANONICAL_RESTORED`.
+
+XCU attributed about 7.21% of the canonical trace to the terminal
+`s_ebarrier_sync -> s_cbranch_vccnz` tail. Removing that synchronization and
+the wave0 ABarrier invalidation passed static gates and reduced metadata SGPRs
+from 60 to 58, but H1/S128 failed in PMD before semantic output:
+`read vgpr VirId68 PhyId84 before writing`, followed by
+`vgpr84 is not init or has been freed` at `v_mmac_f32_16x16x16_f16`.
+
+This is not evidence that the tail is mathematically unnecessary. It shows
+that the terminal CTA rendezvous/invalidations are part of the current WDRA
+or PMD register-state close protocol. Restore the full cleanup and do not
+retry this deletion without a dedicated ABI probe.
+
 ## 2026-08-13 Full dS Token Merge Rejected
 
 Status: `REJECT_TICKS_CANONICAL_RESTORED`.
