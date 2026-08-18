@@ -17916,3 +17916,12 @@ Same-toolchain causal S384 rejects it: fused ticks `92,823,640` versus
 N192 also executes `17,280` MMOP versus `15,360` because causal tile padding
 adds 12.5% masked work. Classification:
 `REJECT_BARRIER_AND_CAUSAL_OVERCOMPUTE_CANONICAL_RESTORED`.
+
+## 2026-08-18 C0 dO Early Prefetch Rejected
+
+XCU-guided C0 dO-trans prefetch removed about one percentage point of
+wait-LGKM, but shifted the saved latency into dS ownership synchronization.
+S128 c0/c1 and S1024 correctness PASS; roles `9/194/179/86`; no spill;
+bank0. Candidate fused ticks `47.284M/46.151M` versus control `45.955M`;
+MMAC active `33.58--33.85%` versus `34.27%`; barrier `14.90--15.33%` versus
+`14.05%`. Decision: `REJECT_SHIFTED_TO_BARRIER_CANONICAL_RESTORED`.

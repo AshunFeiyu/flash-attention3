@@ -6556,3 +6556,8 @@ the one-page raw ownership chain drives barrier share to `35.63%`. N192 also
 adds 12.5% masked MMAC on the causal triangle. The experiment is closed and
 the clean source returns to a427; do not revive it without a resource-feasible
 two-page raw design that also prices causal padding before coding.
+
+C0 dO early-prefetch is also closed: it reduced local wait-LGKM but increased
+barrier/coissue debt and regressed same-shape ticks. The next optimization must
+change the dQ writer's measured ownership cadence, not add another read packet
+to either heavy consumer.

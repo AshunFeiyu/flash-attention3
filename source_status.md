@@ -11959,3 +11959,10 @@ runtime branch.
   and 12.5% causal masked-MMAC overhead from N192.
 - Keep `a427be9` / `best/fused5-c1-dout-lagone-20260818` as canonical best.
   The 1P3C probe remains evidence; its production code is not retained.
+
+## 2026-08-18 C0 dO Prefetch Closure
+
+- C0 dO-trans early prefetch is rejected despite reducing wait-LGKM by about
+  one point; barrier and failed coissue rise, ticks regress, MMAC active falls.
+- Source is restored to a427. Next evidence target is the dQ writer's ordered
+  group0/group1 wait cadence, not another consumer operand-read relocation.
