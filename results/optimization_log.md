@@ -17828,3 +17828,24 @@ Campaign pivot: Phase 0 micro track is closed; the next code change is the
 S1 structural redesign (dK ownership to the dQ writer) whose target debt is
 measured at scale (writer 7.6k idle cycles/wave, consumer pace-setter
 chain), plus the PR1 LTS=1 probe as the first Phase 1 item.
+
+## 2026-08-18 S1 dK-to-Writer Closed: Neutral, Mechanistic Lesson Recorded
+
+Full cycle: workbook sheet 17 design -> contract+kernel cut (dual-view dS
+reads per the dense dual-consumer tuple, RawUsed 12 arrivals, DqDone 4,
+WDRA 16/160/160/176) -> two numeric bugs found by S128 (D16 half selection,
+then D32 block offset x2) -> bit-identical PASS -> two performance
+implementations. v1 (serial per-slot ds reads) lost 28%; the bounded v2
+retry (imm4 batching mirroring the dQ island) recovered it all to paired
++0.90/+0.24% - sub-noise negative, REJECT_NEUTRAL, canonical restored.
+
+The durable lesson: on a fixed SIMD with fixed total work, ownership moves
+between waves are latency-neutral. The writer idle being "filled" bought
+nothing because idle time was already free; the consumer never paced on
+the dK block (its 2-deep read-ahead overlapped it). The measured critical
+path remains the consumer score/dP read-wait chains. Consequence for S2:
+the original delatch design must be re-examined - freeing VGPR by
+unlatching K/V adds per-panel re-reads whose latency may exceed what the
+extra lookahead depth hides. Next: PR1 (LTS=1 transposed accumulator
+probe) as an independent Phase 1 item, and an S2 redesign that delatches
+only what is actually re-read cheaply.
