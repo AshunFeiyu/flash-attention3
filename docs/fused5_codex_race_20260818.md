@@ -131,3 +131,70 @@ Result: `REJECT_TICKS_AND_CONTROL_COST_CANONICAL_RESTORED`.
 The independent-token lifetime is a verified probe fact, but the runtime
 page/token selection costs more than the removed predecessor edge. Do not
 promote the extra page into the canonical kernel.
+
+## H4: dK Owned By The dQ Writer
+
+The canonical role ledger is structurally imbalanced on every SIMD:
+
+```text
+producer / consumer0 / consumer1 / dQ-writer = 0 / 128 / 128 / 64 MMAC
+```
+
+H4 moves the complete `dK=dS^T@Q` logical GEMM from the eight N16 dKV
+consumer waves to the four D32 dQ-writer waves. It does not split or repeat a
+logical GEMM. The new exact-work ledger is:
+
+```text
+dKV consumer: score + dP + dV = 96 MMAC/wave
+dQ writer:    dQ + dK         = 128 MMAC/wave
+total:        8*96 + 4*128    = 1280 MMAC/tile
+```
+
+The writer already consumes every native dS page and owns one D32 slice. It
+can read the same dS page through transposed view for dQ and normal view for
+dK, then read only its D32 Q fragment from the raw page. This creates one
+`matrix-read -> wait -> 16 MMAC` group island: eight dQ MMAC plus eight dK
+MMAC, with no scalar matrix read, gather, permute, atomic, or wrong layout.
+
+Ownership also becomes transitive. A writer can observe `BatchDsFilled` only
+after all four matching consumers have finished their raw reads and published
+dS. Therefore the four writers alone close both reuse edges:
+
+```text
+BatchDsFilled(group, count=4) -> writer dQ+dK
+writer arrives DqDone(group, count=4)
+writer arrives RawUsed(page, count=4) after both groups
+```
+
+Consumers no longer arrive at `RawUsed` or `DqDone`. They wait on the matching
+four-writer `DqDone` only before overwriting the single group-local dS page.
+The physical LDS map and ten barrier IDs remain unchanged. The tentative WDRA
+ledger is `16/144/144/208=512`; compilation must prove the role-local use
+rather than relying on this estimate.
+
+Admission order is static exact-work/resource gates, S128 correctness,
+S1024 correctness, repeated same-binary A/B stats, then fullperf/XCU. Any
+spill, bank conflict, duplicate GEMM, layout workaround, or incorrect
+transitive reuse edge rejects H4 immediately.
+
+Result: `REJECT_LAYOUT_INTEGRATION_CANONICAL_RESTORED`.
+
+- The rebalance compiled as exact five-GEMM work with role usage
+  `9/129/155/131`, metadata `VGPR=128, SGPR=81`, no private segment,
+  spill, scratch, or LDS bank conflict.
+- H1/S128 causal kept dV and dQ correct, but dK failed with
+  `rel_l2=0.523375` and `cosine_error=0.132246`.
+- Replacing writer-side Q D32 base-address shifts with a fixed panel base and
+  compile-time matrix-read immediates emitted the intended
+  `offset:0x800/0x1000/0x1800` instructions, but produced bit-identical dK
+  errors. Splitting dQ/dK stages, changing MMAC wrappers, and keeping the dK
+  accumulator live also left the error unchanged.
+- Zeroing dK immediately before its final store produced exact zero output,
+  and block correlation kept every D32 block mapped to itself. The final
+  store owner is therefore sound; the unresolved contract is the writer-role
+  Q fragment as the right operand of `dS^T @ Q`.
+
+H4 is closed at the integration layer. Do not add another layout workaround
+to the canonical kernel. A future retry requires a focused dense-MMAC oracle
+for the exact tuple `raw-Q MLS writer -> normal D32 reader in dQ-writer role
+-> dS-normal lhs -> dK output`, including lane-level fragment evidence.

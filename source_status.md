@@ -11890,3 +11890,16 @@ body size rose `320 -> 400`, and H1/S1024 fused ticks regressed to
 Classification: `REJECT_TICKS_CANONICAL_RESTORED`. The source is restored; a
 future zero-seed attempt must use compile-time first-tile peeling, not a
 runtime branch.
+## 2026-08-18 Fused5 H4 dK Writer Rejected
+
+H4 rebalanced the canonical 16-wave role ledger to producer/C0/C1/writer
+`0/96/96/128` MMAC by assigning the exact dK GEMM to the four D32 dQ writers.
+Static/resource gates passed (`9/129/155/131`, VGPR128, SGPR81, no
+private/spill/scratch, bank0), but H1/S128 failed only dK with
+`rel_l2=0.523375`; dV and dQ remained correct. Fixed-base compile-time
+matrix-read offsets were present in ASM and did not alter the error.
+
+Classification: `REJECT_LAYOUT_INTEGRATION_CANONICAL_RESTORED`. Canonical
+source is restored. A future retry requires an isolated dense dK-MMAC oracle
+for the exact writer-role Q fragment contract, not another production-kernel
+layout patch.

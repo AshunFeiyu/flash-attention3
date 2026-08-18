@@ -1,5 +1,21 @@
 # Client
 
+## 2026-08-18 dK-Owned-by-Writer Topology Rejected
+
+The 16-wave H4 topology moved the complete dK GEMM from eight dKV consumers
+to four D32 dQ-writer waves, rebalancing useful MMAC from `0/128/128/64` to
+`0/96/96/128` without duplicate GEMMs. It compiled cleanly with actual role
+VGPR use `9/129/155/131`, metadata VGPR128/SGPR81, no spill/scratch/private
+segment, and bank0.
+
+H1/S128 retained correct dV and dQ but failed only dK
+(`rel_l2=0.523375`). Fixed-base, compile-time Q matrix-read immediates were
+confirmed in ASM and yielded the identical error, as did stage/liveness/MMAC
+wrapper variants. Decision: `REJECT_LAYOUT_INTEGRATION_CANONICAL_RESTORED`.
+The unresolved tuple is writer-role raw-Q normal D32 fragment as the RHS of
+`dS^T @ Q`; do not retry it inside the production kernel without a dense
+downstream-MMAC probe.
+
 ## 2026-08-18 N64 Split-CTA Boundary Result (Not Promoted)
 
 A 12-wave N64 CTA split (one consumer group, K/V resident 32KB, WDRA

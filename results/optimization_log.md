@@ -17807,3 +17807,18 @@ waiting on group-local BatchDsFilled; requires a complete lifetime proof
 and must keep group-local tokens. H3 (producer RawUsed spin) stays closed
 unless refill latency appears: consumers' RawFilled spin is only ~1.5k,
 so pages arrive on time and the producer spin is off the critical path.
+## 2026-08-18 H4 dK-Owned-by-dQ-Writer Rejected
+
+- Hypothesis: move the exact dK GEMM from eight consumers to four D32 dQ
+  writers, changing useful MMAC per role from `0/128/128/64` to
+  `0/96/96/128` without duplicate work.
+- Static result: PASS, role VGPR `9/129/155/131`, metadata VGPR128/SGPR81,
+  no private/spill/scratch, bank0.
+- Correctness: FAIL only dK at H1/S128 causal (`rel_l2=0.523375`, cosine
+  error `0.132246`); dV and dQ pass.
+- The compile-time immediate audit emitted normal reads at
+  `0x800/0x1000/0x1800`, but the error was unchanged. Store ownership and D32
+  block mapping were separately checked.
+- Decision: `REJECT_LAYOUT_INTEGRATION_CANONICAL_RESTORED`; no performance
+  claim. Require a focused dense-MMAC fragment oracle before revisiting this
+  ownership topology.
