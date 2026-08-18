@@ -11986,3 +11986,10 @@ runtime branch.
 - Failed coissue increases materially; the extra outstanding packet competes
   with, rather than hides behind, the current dV island.
 - Source is restored to `2b6efe5`; do not stack another dV read-count variant.
+
+## 2026-08-18 Writer Read-Ahead Closure
+
+- Writer dS panel lag-one lowers its local wait but regresses fused ticks by
+  `2.22%`; the writer is not the CTA pace setter.
+- Restore canonical `2b6efe5` and `16/204/204/88` WDRA pools. The next
+  experiment must shorten the shared heavy-consumer pace.

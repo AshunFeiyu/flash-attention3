@@ -17947,3 +17947,10 @@ Correctness/resource/bank gates pass, but paired S1024 ticks regress by
 `1.14%`, MMAC active falls `34.956% -> 34.606%`, and failed coissue rises.
 Decision: `REJECT_COISSUE_REGRESSION_CANONICAL_RESTORED`.  Keep the simple
 per-panel dV reads from `2b6efe5`.
+
+## 2026-08-18 Writer dS Panel Read-Ahead Rejected
+
+dQ writer double-buffered four-panel dS reads after a valid WDRA rebudget to
+`16/188/204/104`. Correctness/resources/bank pass and wait-LGKM falls, but
+S1024 fused ticks regress `2.22%`; barrier and VMEM shares rise. Decision:
+`REJECT_NONCRITICAL_WRITER_WAIT_CANONICAL_RESTORED`.

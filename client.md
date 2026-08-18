@@ -6573,3 +6573,7 @@ C0 dV next-panel dO-normal read-ahead is rejected: it raises failed coissue,
 slightly raises wait-LGKM and regresses ticks by `1.14%`.  Preserve the simple
 dV stage from `2b6efe5`; read-ahead depth is not independently beneficial once
 the dV work has already moved behind dS publication.
+
+Writer dS panel read-ahead is rejected. It lowers writer-local LDS wait but
+regresses CTA ticks, confirming that role-local bubble removal is insufficient
+while the heavy consumers still set completion. Keep `2b6efe5` canonical.
