@@ -1,5 +1,16 @@
 # Source Status
 
+## 2026-08-18 S1 Closed; Canonical Active; PR1 Next
+
+Remote and local are at canonical e8a629e (kernel sha aa16a946, rebuilt and
+hash-verified). The S1 candidate lives in stash `s1-dk-to-writer` with its
+ledger row and optimization-log lesson (same-SIMD work motion is
+latency-neutral). Ledger now carries today's full set: store-address,
+N64 boundary, per-half dS token, sidecar b128, and S1. Next source work is
+the PR1 instruction probe (MMOP LTS=1 transposed accumulator layout:
+compile/ASM -> MMAC-golden dense oracle -> resource gate), isolated under
+`probes/` per the registry discipline.
+
 ## 2026-08-18 N64 Boundary Closed; Canonical Active Again
 
 Both the remote clean repo and the local branch

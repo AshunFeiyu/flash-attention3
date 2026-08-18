@@ -1,5 +1,18 @@
 # Client
 
+## 2026-08-18 S1 dK-to-Writer Rejected (Latency-Neutral)
+
+The full S1 ownership move (workbook sheet 17) passed every correctness
+gate with bit-identical numerics after two fragment-mapping fixes, and its
+bounded retry (imm4-batched dual-view dS reads) recovered a 28% serial-read
+regression to paired +0.90/+0.24% - sub-noise negative, REJECT_NEUTRAL.
+Mechanism: on a fixed SIMD with fixed MMOP, moving work between waves does
+not remove latency; the writer's 7.6k idle was already free time and the
+consumer paced on score/dP read-wait chains, not on the (overlapped) dK
+block. Canonical restored; source in stash `s1-dk-to-writer`. S2's delatch
+premise is flagged for redesign (unlatching K/V adds per-panel re-read
+latency that may defeat the added lookahead depth). Next: PR1 LTS probe.
+
 ## 2026-08-18 N64 Split-CTA Boundary Result (Not Promoted)
 
 A 12-wave N64 CTA split (one consumer group, K/V resident 32KB, WDRA
