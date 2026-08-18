@@ -1,5 +1,21 @@
 # Client
 
+## 2026-08-18 First Accepted Win: Score Lag-One Prefetch (-2.09%)
+
+The packet8 partial-wait pattern (`lgkmcnt(4)` with the next panel's four
+operand reads in flight) is now applied to the score main chain, extending
+the accepted dK read-ahead family. Four interleaved S1024 pairs:
+-3.51/-2.18/+0.22/-2.90, mean -2.09% - the campaign's first ACCEPT. All
+correctness gates bit-identical (S128 c1+c0, S1024, fullperf), bank0,
+metadata clean. New canonical commit `549cf0a`.
+
+MMAC active stays 33.6-33.7% (band): the win is elapsed-time only, because
+the compiler's conservative full drains on the sidecar/dP derefs cancel
+the prefetch mid-panel. The recorded next levers, in order: convert the
+sidecar and dP waits to count-controlled asm reads (deepens the hidden
+window per panel), then extend lag-one to the dO family. This ladder is
+the concrete path toward the 40% MMAC-active benchmark.
+
 ## 2026-08-18 S1 dK-to-Writer Rejected (Latency-Neutral)
 
 The full S1 ownership move (workbook sheet 17) passed every correctness

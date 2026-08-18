@@ -1,5 +1,16 @@
 # Source Status
 
+## 2026-08-18 New Canonical 549cf0a: Score Lag-One Prefetch
+
+Local branch and remote clean repo now carry the accepted prefetch
+(commit 549cf0a): matrix_product_stage split into read_raw_panel_trans +
+mmac_product_island, panel loop issues next-panel Q reads one island
+early, retires via wait lgkmcnt(4) (full drain only on the last panel).
+Every gate bit-identical. The remote build/fused5_full binary is the
+promoted state; evidence in the ledger row fused5_score_lagone_prefetch
+and fullperf run 20260818_171120. PR1 (LTS) remains quarantined as
+PMD-ignored.
+
 ## 2026-08-18 S1 Closed; Canonical Active; PR1 Next
 
 Remote and local are at canonical e8a629e (kernel sha aa16a946, rebuilt and
