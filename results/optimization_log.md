@@ -17938,3 +17938,12 @@ bank0.  Two paired H1/S1024 runs improve mean fused ticks by `2.015%`.
 Fullperf reaches `44.795M` ticks and `35.095%` MMAC active.  Representative
 writer ABarrier bubbles fall by `11.2%`.  Decision:
 `ACCEPT_TICKS_ACTIVE_NEW_BEST`.
+
+## 2026-08-18 C0 dV Normal-Read Lag-One Rejected
+
+After early dS publication, C0 tried two dO-normal buffers with the next
+panel's four reads left outstanding across the current dV MMAC island.
+Correctness/resource/bank gates pass, but paired S1024 ticks regress by
+`1.14%`, MMAC active falls `34.956% -> 34.606%`, and failed coissue rises.
+Decision: `REJECT_COISSUE_REGRESSION_CANONICAL_RESTORED`.  Keep the simple
+per-panel dV reads from `2b6efe5`.

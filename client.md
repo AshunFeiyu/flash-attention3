@@ -6568,3 +6568,8 @@ work.  H1/S1024 paired fused ticks improve by `2.015%`; fullperf is `44.795M`
 ticks at `35.095%` MMAC active, with full correctness and resource gates PASS.
 Keep this as the new canonical; the next hypothesis must start from its xcu
 trace and must not restore per-panel dV before dS publication.
+
+C0 dV next-panel dO-normal read-ahead is rejected: it raises failed coissue,
+slightly raises wait-LGKM and regresses ticks by `1.14%`.  Preserve the simple
+dV stage from `2b6efe5`; read-ahead depth is not independently beneficial once
+the dV work has already moved behind dS publication.

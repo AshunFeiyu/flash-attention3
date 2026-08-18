@@ -11978,3 +11978,11 @@ runtime branch.
   `44.795M`, MMAC active `35.095%`.
 - xcu confirms writer barrier bubbles fall `34,831 -> 30,943` cycles.  This is
   the canonical source pending commit/tag.
+
+## 2026-08-18 C0 dV Read-Ahead Closure
+
+- Next-panel dO-normal read-ahead passes correctness/resources/bank gates but
+  regresses S1024 fused ticks by `1.14%` and lowers MMAC active.
+- Failed coissue increases materially; the extra outstanding packet competes
+  with, rather than hides behind, the current dV island.
+- Source is restored to `2b6efe5`; do not stack another dV read-count variant.
