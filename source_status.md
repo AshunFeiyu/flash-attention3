@@ -1,5 +1,15 @@
 # Source Status
 
+## 2026-08-18 C1 Selective-Wait Candidate
+
+- Branch: `exp/fused5-c1-dp-score-selective`.
+- Base: `8d0a858`, the accepted score lag-one canonical.
+- Source delta: only C1 dP/score operand issue and tied wait order.
+- Status: `ACCEPT_MICRO_TICKS_AND_ACTIVE` after correctness, resource,
+  three-pair S1024 A/B, fullperf, and xcu evidence.
+- Open target: 40% MMAC active; next isolated change is dO lag-one.
+
+
 ## 2026-08-18 New Canonical 549cf0a: Score Lag-One Prefetch
 
 Local branch and remote clean repo now carry the accepted prefetch

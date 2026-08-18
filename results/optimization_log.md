@@ -1,5 +1,24 @@
 # Optimization Log
 
+## 2026-08-18 C1 dP/Score Selective Wait Accepted as Micro Win
+
+Only consumer group1 changed. Its adjacent dP and score operands now issue as
+`4 dO-trans reads + 4 Q-trans reads -> lgkmcnt(4) -> 8 dP MMAC ->
+lgkmcnt(0) -> 8 score MMAC`. Generated ISA proves the full islands and tied
+wait order. Group0, formulas, ownership, and ABarrier lifetimes are unchanged.
+
+Static gates pass at role VGPR `9/178/175/86`, SGPR60/VGPR128, no
+private/spill/scratch. S128 causal/noncausal and S1024 causal correctness pass
+with exact MMOP92,160 and bank0. Three paired S1024 runs improve from control
+mean 46,376,785 to candidate mean 46,009,448 ticks (-0.792%, all three pairs
+same sign). Exact fullperf is noise-flat (46,149,740 control vs 46,197,060
+candidate), while MMAC active rises 33.794843% -> 33.981919% and xcu shows
+smaller trans-read, MMAC-to-MMAC, and ABarrier gaps.
+
+Decision: `ACCEPT_MICRO_TICKS_AND_ACTIVE`; 40% remains open. Next hypothesis:
+prefetch next-panel dO across current softmax/dS/dV, within the remaining C1
+204-VGPR window.
+
 ## 2026-08-13 Canonical Q/dO Token Split Rejected
 
 - Full canonical integration used separate Q/dO filled/used pairs for both

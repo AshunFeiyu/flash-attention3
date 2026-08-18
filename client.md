@@ -1,5 +1,16 @@
 # Client
 
+## 2026-08-18 Independent Race Checkpoint
+
+The active branch is `exp/fused5-c1-dp-score-selective`, based only on our
+own Shaobo knowledge/probes and accepted lag-one code. Do not inspect or
+import competing-agent implementations. C1 now overlaps Q readiness with the
+complete dP MMAC island. It passes all gates and improves three-pair S1024
+ticks by 0.792% on average; fullperf MMAC active is 33.981919% versus
+33.794843% control. The 40% target remains open. Continue with one hypothesis:
+next-panel dO lag-one across current softmax/dS/dV, bounded by C1 VGPR 204.
+
+
 ## 2026-08-18 First Accepted Win: Score Lag-One Prefetch (-2.09%)
 
 The packet8 partial-wait pattern (`lgkmcnt(4)` with the next panel's four

@@ -287,6 +287,21 @@ __device__ __forceinline__ void read_raw_panel_trans(
         lhs[3].f16x8);
 }
 
+template <int Count>
+__device__ __forceinline__ void wait_matrix_packet(
+    Fragment (&packet)[kMatrixBlocksD]) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    asm volatile(
+        "s_waitcnt lgkmcnt(%4)\n"
+        : "+v"(packet[0].f16x8), "+v"(packet[1].f16x8),
+          "+v"(packet[2].f16x8), "+v"(packet[3].f16x8)
+        : "n"(Count)
+        : "memory");
+#else
+    (void)packet;
+#endif
+}
+
 __device__ __forceinline__ void mmac_product_island(
     const Fragment (&lhs)[kMatrixBlocksD],
     const Fragment (&rhs)[kMatrixBlocksD],
@@ -671,7 +686,9 @@ __device__ __forceinline__ void run_consumer_group(
         // count-controlled so a full drain never cancels the prefetch (the
         // packet8 partial-wait pattern extended to the score main chain).
         Fragment q_buf[2][kMatrixBlocksD];
-        read_raw_panel_trans(lds, raw_base, 0, q_buf[0]);
+        if constexpr (Group == 0) {
+            read_raw_panel_trans(lds, raw_base, 0, q_buf[0]);
+        }
 #pragma unroll
         for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
             Fragment score{};
@@ -704,17 +721,19 @@ __device__ __forceinline__ void run_consumer_group(
                     sidecar_field(mutable_lds, page, 2)[sidecar_row],
                     softmax_scale, ds_panels[m_block]);
             } else {
-                dp_stage(
-                    lds, raw_base, m_block, resident, mmac_zero, dp);
-                if (m_block < Tile::kMqPanels - 1) {
-                    read_raw_panel_trans(lds, raw_base, m_block + 1,
-                                         q_buf[(m_block + 1) & 1]);
-                }
-                ins::wait_lgkm(m_block < Tile::kMqPanels - 1
-                                   ? kPrefetchAlive
-                                   : 0);
-                mmac_product_island(q_buf[m_block & 1],
-                                    resident.k_trans, mmac_zero, score);
+                Fragment dout_packet[kMatrixBlocksD];
+                Fragment score_packet[kMatrixBlocksD];
+                read_raw_panel_trans(
+                    lds, raw_base + LdsLayout::kDoutOffset, m_block,
+                    dout_packet);
+                read_raw_panel_trans(
+                    lds, raw_base, m_block, score_packet);
+                wait_matrix_packet<kMatrixBlocksD>(dout_packet);
+                mmac_product_island(
+                    dout_packet, resident.v_trans, mmac_zero, dp);
+                wait_matrix_packet<0>(score_packet);
+                mmac_product_island(
+                    score_packet, resident.k_trans, mmac_zero, score);
                 probability_stage(
                     score, lane, q_base, m_block, k_base, n_owner, causal,
                     sidecar_field(mutable_lds, page, 0)[sidecar_row],
