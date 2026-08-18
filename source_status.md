@@ -1,5 +1,20 @@
 # Source Status
 
+## 2026-08-18 N64 Boundary Closed; Canonical Active Again
+
+Both the remote clean repo and the local branch
+`perf/fused5-mmac50-20260818` are at canonical `e8a629e` (kernel sha
+`aa16a946...`); the N64 candidate lives only in local stash
+`p2-n64-split-cta-v1` and in
+`/zys/sb/fa3b/ab_storeaddr_20260818/{n64_bin,n64_kernel.asm}`. The
+canonical S1024 restoration run passed at 46,819,500 ticks with unchanged
+numerics. `results/perf_ledger.csv` gained the N64 boundary row; workbook
+sheets 13/14 carry the result, the density-vs-coverage tradeoff
+quantification, and the corrected per-CTA hypothesis ladder (A: per-panel
+dS token refinement for writer/consumer-tail overlap; B:
+softmax/causal-mask VALU diet with an instruction probe destined for
+`dcu-kernel-toolkit` under a gfx946 arch entry).
+
 ## 2026-08-18 MMAC50 Session 1: Canonical Restored, Store Tier Closed
 
 The remote clean repo and the local branch `perf/fused5-mmac50-20260818`

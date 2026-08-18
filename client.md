@@ -1,5 +1,25 @@
 # Client
 
+## 2026-08-18 N64 Split-CTA Boundary Result (Not Promoted)
+
+A 12-wave N64 CTA split (one consumer group, K/V resident 32KB, WDRA
+16/208/88=312, eight barrier tokens) passed S128 c1/c0, H1/S1024, and
+H4/S2048 with numerics bit-identical to canonical and exact useful
+MMOP=87,040 (five masked N64 tile-pairs' dead work disappears). The
+interleaved H1/S1024 A/B won by -19.8% mean (37.69/38.44/37.79M vs
+canonical 47.58/47.07/47.43M) with CU coverage 8->16.
+
+It is NOT promoted: MMAC active fell 33.73% -> 22.26% because the same
+MMOP spreads over twice the active SIMDs, and H4/S2048 regressed +25.7%
+fused / +35.4% full chain (per-SIMD consumer chains halved to one, and
+the dQ-reduce slices doubled). The user corrected the campaign goal: we
+pursue per-CU per-CTA MMAC utilization, so CU-coverage gains are the
+wrong direction. Decision: `OBSERVE_DIAGNOSTIC_WIN_SCALE_LOSS`; canonical
+e8a629e restored, rebuilt, re-verified at 46.82M PASS. Evidence:
+`/zys/sb/fa3b/ab_storeaddr_20260818` (n64_bin, n64_kernel.asm, canon_bin)
+and workbook sheet 14. The quantified lesson stands: adding CTAs is easy,
+raising per-SIMD consumer density is the hard, correct problem.
+
 ## 2026-08-18 Store-Address Strength Reduction Rejected (Noise-Neutral)
 
 Per-lane store bases with immediate Vec4 offsets replaced the per-store
