@@ -17807,3 +17807,24 @@ waiting on group-local BatchDsFilled; requires a complete lifetime proof
 and must keep group-local tokens. H3 (producer RawUsed spin) stays closed
 unless refill latency appears: consumers' RawFilled spin is only ~1.5k,
 so pages arrive on time and the producer spin is off the critical path.
+
+## 2026-08-18 Phase 0 Closed Without Accept: Admission Rule Enforced
+
+0a sidecar b128 (two layout variants) was implemented, gated, and rejected:
+row-interleaved 16B lines trip 8 LDS bank conflicts; the dKV field-major
+imm3 pattern runs bank0 with bit-identical numerics but regresses paired
+S1024 by +6.0/+8.9% because fused5 has no sidecar hotspot (0.85% latency
+share) and the pattern pays dynamic extractions, 4x LDS bytes, and an extra
+retire wait. Canonical restored and re-verified.
+
+0b (mask-predicate hoist) and 0c (V_PK_FMA_F32 swap) were then audited
+BEFORE coding: the invariant compare is already compiler-hoisted (34 static
+v_cmp sites), and the full dynamic shares are 0.55% (v_cmp) and ~1%
+(conversion families) - each below the 1.5% paired-A/B noise floor. Both
+are SKIPPED by the measured-hotspot admission rule rather than run as
+noise-unmeasurable experiments.
+
+Campaign pivot: Phase 0 micro track is closed; the next code change is the
+S1 structural redesign (dK ownership to the dQ writer) whose target debt is
+measured at scale (writer 7.6k idle cycles/wave, consumer pace-setter
+chain), plus the PR1 LTS=1 probe as the first Phase 1 item.
