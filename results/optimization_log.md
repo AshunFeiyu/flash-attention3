@@ -17901,3 +17901,18 @@ proves that an exact five-GEMM 1P3C production rewrite is admissible with only
 seven VGPRs of branch headroom. The next step is one canonical implementation
 based on the independently accepted dKV 1P3C owner16 schedule; no full-tile
 dQ accumulator or extra operand layout is allowed.
+
+## 2026-08-18 Fused5 1P3C Production Rejected
+
+The N192 production rewrite passed the strongest functional gates: exact five
+GEMMs, native dual-view K reads, native dS handoff and FP32 dQ atomic;
+S384 c0/c1 dQ/dK/dV PASS; roles `1/153/153/153`; private/spill/scratch0;
+bank0. The resource-clean realization retained K in LDS and used one raw
+Q/dO page because K48 + raw64 + dS48 cannot fit 128 KiB.
+
+Same-toolchain causal S384 rejects it: fused ticks `92,823,640` versus
+`21,430,500` for a427, MMAC active `10.2845%` versus `26.7021%`, barrier
+`35.6276%` versus `19.9126%`, and waitVM `9.7453%` versus `3.0250%`.
+N192 also executes `17,280` MMOP versus `15,360` because causal tile padding
+adds 12.5% masked work. Classification:
+`REJECT_BARRIER_AND_CAUSAL_OVERCOMPUTE_CANONICAL_RESTORED`.

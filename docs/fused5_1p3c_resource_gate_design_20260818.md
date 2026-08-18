@@ -132,3 +132,30 @@ Only seven branch VGPRs remain. The production implementation must reuse the
 accepted dKV 1P3C register schedule and keep dQ accumulation panel-local; it
 must not retain a full M tile of dQ accumulators or add a second address
 pipeline before the metadata gate.
+
+## Production Result
+
+Status: `REJECT_BARRIER_AND_CAUSAL_OVERCOMPUTE`.
+
+The first full implementation initially spilled because it retained K/V
+trans, K normal, dK/dV accumulators and raw operand ping-pong together. A
+resource-clean variant retained the 48 KiB K source layout in LDS, latched
+only V, read K through native normal/trans matrix views, and used one 32 KiB
+raw Q/dO page plus a 48 KiB dS batch. It compiled at branch usage
+`1/153/153/153`, with private/spill/scratch0, passed S384 causal and
+noncausal full dQ/dK/dV correctness, and had bank0.
+
+The same-toolchain causal S384 result rejects the topology:
+
+| Metric | a427 M64/N128 2C+writer | 1P3C M64/N192 |
+| --- | ---: | ---: |
+| fused ticks | 21,430,500 | 92,823,640 |
+| MMAC active | 26.7021% | 10.2845% |
+| barrier share | 19.9126% | 35.6276% |
+| wait VM share | 3.0250% | 9.7453% |
+| executed MMOP | 15,360 | 17,280 |
+
+The single raw page serializes every q tile behind `RawUsed`; direct sidecar
+loads add exposed VMEM, and N192 executes 12.5% more masked MMAC on the causal
+triangle than N128 at S384. The probe remains valid capability evidence, but
+this production realization must not replace `a427be9`.

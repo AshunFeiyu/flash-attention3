@@ -11948,3 +11948,14 @@ runtime branch.
   `fused5_1p3c_native_handoff_20260818_201421`.
 - Next source change may be a single production 1P3C rewrite. It must retain
   exact five GEMMs and pass metadata before PMD.
+
+## 2026-08-18 1P3C Production Closure
+
+- Full N192 implementation proved correct and resource-clean, including
+  native K normal/trans LDS reuse and three-way atomic dQ ownership.
+- It is a performance reject: S384 causal fused `92.824M` ticks and
+  `10.2845%` MMAC active versus a427 `21.431M` and `26.7021%`.
+- Root causes are the single raw-page ownership chain, direct sidecar VMEM,
+  and 12.5% causal masked-MMAC overhead from N192.
+- Keep `a427be9` / `best/fused5-c1-dout-lagone-20260818` as canonical best.
+  The 1P3C probe remains evidence; its production code is not retained.

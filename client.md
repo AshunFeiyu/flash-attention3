@@ -6546,3 +6546,13 @@ the measured Q/dO readiness dependency, not from seq-count reduction.
   bank0 and exact dense dK/dQ output.
 - This is a resource/layout admission only. Keep `a427be9` as the performance
   control until the full kernel passes correctness and same-runtime PMD/SQTT.
+
+## 2026-08-18 1P3C Decision
+
+The full M64/N192 1P3C kernel reached correctness, native layout, bank0 and
+no-spill, but failed performance decisively. On causal S384 it is 4.33x slower
+than a427 (`92.824M` vs `21.431M`) and MMAC active falls to `10.28%` because
+the one-page raw ownership chain drives barrier share to `35.63%`. N192 also
+adds 12.5% masked MMAC on the causal triangle. The experiment is closed and
+the clean source returns to a427; do not revive it without a resource-feasible
+two-page raw design that also prices causal padding before coding.
