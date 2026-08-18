@@ -1,5 +1,17 @@
 # Source Status
 
+## 2026-08-18 New Best: C1 dO Lag-One
+
+- Branch: `exp/fused5-c1-dout-lagone`.
+- Parent: `2510617`, C1 dP/score selective-wait experiment.
+- Canonical candidate keeps next-panel dO-trans live across current dV MMAC.
+- Status: `ACCEPT_TICKS_AND_ACTIVE_NEW_BEST`.
+- H1/S1024 fullperf: 45,496,815 ticks, MMAC active 34.330377%, bank0,
+  correctness/resource gates PASS.
+- Next work must preserve this packet schedule and target a new measured
+  critical-chain window.
+
+
 ## 2026-08-18 C1 Selective-Wait Candidate
 
 - Branch: `exp/fused5-c1-dp-score-selective`.

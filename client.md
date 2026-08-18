@@ -1,5 +1,16 @@
 # Client
 
+## 2026-08-18 New Best: C1 dO Lag-One
+
+Branch `exp/fused5-c1-dout-lagone` is the current independent best candidate.
+It uses only our Shaobo probes and SQTT evidence. C1 prefetches next-panel
+dO-trans before current dV, preserving it with `lgkmcnt(4)` across the dV MMAC
+island. Fullperf fused ticks improve 1.414% and MMAC active rises to
+34.330377%; all correctness/resource/bank gates pass. Do not disturb this
+schedule with token refinements or unrelated cleanup. The 40% target remains
+open.
+
+
 ## 2026-08-18 Independent Race Checkpoint
 
 The active branch is `exp/fused5-c1-dp-score-selective`, based only on our

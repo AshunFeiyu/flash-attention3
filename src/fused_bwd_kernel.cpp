@@ -302,6 +302,23 @@ __device__ __forceinline__ void wait_matrix_packet(
 #endif
 }
 
+template <int Count>
+__device__ __forceinline__ void wait_dv_packet(
+    Fragment& p, Fragment (&dout)[kMatrixBlocksD]) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    asm volatile(
+        "s_waitcnt lgkmcnt(%5)\n"
+        : "+v"(p.f16x8), "+v"(dout[0].f16x8),
+          "+v"(dout[1].f16x8), "+v"(dout[2].f16x8),
+          "+v"(dout[3].f16x8)
+        : "n"(Count)
+        : "memory");
+#else
+    (void)p;
+    (void)dout;
+#endif
+}
+
 __device__ __forceinline__ void mmac_product_island(
     const Fragment (&lhs)[kMatrixBlocksD],
     const Fragment (&rhs)[kMatrixBlocksD],
@@ -533,6 +550,35 @@ __device__ __forceinline__ void update_dv_from_probability(
     ins::lower_priority();
 }
 
+template <int Group>
+__device__ __forceinline__ void update_dv_and_prefetch_next_dout(
+    const __half* lds,
+    __half* mutable_lds,
+    int raw_base,
+    int m_block,
+    int next_m_block,
+    int owner,
+    const ProbabilityPanel& p,
+    Accumulator (&dv_acc)[8],
+    Fragment (&next_dout_trans)[kMatrixBlocksD]) {
+    static_assert(Group == 0 || Group == 1);
+
+    const int page = scratch_page_offset<Group>(owner);
+    Fragment dout_normal[kMatrixBlocksD];
+    Fragment p_normal{};
+    ins::ds_write_matrix_32x16_trans_f16(p.f16.f16x8, mutable_lds, page);
+    ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
+    read_raw_panel_normal(
+        lds, raw_base + LdsLayout::kDoutOffset, m_block, dout_normal);
+    read_raw_panel_trans(
+        lds, raw_base + LdsLayout::kDoutOffset, next_m_block,
+        next_dout_trans);
+    wait_dv_packet<kMatrixBlocksD>(p_normal, dout_normal);
+    ins::raise_priority_2();
+    update_dv_stage(p_normal, dout_normal, dv_acc);
+    ins::lower_priority();
+}
+
 template <int MBlock, int Group>
 __device__ __forceinline__ void publish_final_ds(
     const Fragment& ds,
@@ -686,8 +732,12 @@ __device__ __forceinline__ void run_consumer_group(
         // count-controlled so a full drain never cancels the prefetch (the
         // packet8 partial-wait pattern extended to the score main chain).
         Fragment q_buf[2][kMatrixBlocksD];
+        Fragment dout_buf[2][kMatrixBlocksD];
         if constexpr (Group == 0) {
             read_raw_panel_trans(lds, raw_base, 0, q_buf[0]);
+        } else {
+            read_raw_panel_trans(
+                lds, raw_base + LdsLayout::kDoutOffset, 0, dout_buf[0]);
         }
 #pragma unroll
         for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
@@ -721,16 +771,12 @@ __device__ __forceinline__ void run_consumer_group(
                     sidecar_field(mutable_lds, page, 2)[sidecar_row],
                     softmax_scale, ds_panels[m_block]);
             } else {
-                Fragment dout_packet[kMatrixBlocksD];
                 Fragment score_packet[kMatrixBlocksD];
                 read_raw_panel_trans(
-                    lds, raw_base + LdsLayout::kDoutOffset, m_block,
-                    dout_packet);
-                read_raw_panel_trans(
                     lds, raw_base, m_block, score_packet);
-                wait_matrix_packet<kMatrixBlocksD>(dout_packet);
+                wait_matrix_packet<kMatrixBlocksD>(dout_buf[m_block & 1]);
                 mmac_product_island(
-                    dout_packet, resident.v_trans, mmac_zero, dp);
+                    dout_buf[m_block & 1], resident.v_trans, mmac_zero, dp);
                 wait_matrix_packet<0>(score_packet);
                 mmac_product_island(
                     score_packet, resident.k_trans, mmac_zero, score);
@@ -743,8 +789,14 @@ __device__ __forceinline__ void run_consumer_group(
                     p, dp,
                     sidecar_field(mutable_lds, page, 2)[sidecar_row],
                     softmax_scale, ds_panels[m_block]);
-                update_dv_from_probability<Group>(
-                    lds, mutable_lds, raw_base, m_block, owner, p, dv_acc);
+                if (m_block < Tile::kMqPanels - 1) {
+                    update_dv_and_prefetch_next_dout<Group>(
+                        lds, mutable_lds, raw_base, m_block, m_block + 1,
+                        owner, p, dv_acc, dout_buf[(m_block + 1) & 1]);
+                } else {
+                    update_dv_from_probability<Group>(
+                        lds, mutable_lds, raw_base, m_block, owner, p, dv_acc);
+                }
             }
         }
 

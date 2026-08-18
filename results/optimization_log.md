@@ -1,5 +1,23 @@
 # Optimization Log
 
+## 2026-08-18 C1 dO Lag-One Accepted as New Best
+
+C1 now issues next-panel dO-trans reads after current softmax/dS and before
+the existing dV operand drain. `lgkmcnt(4)` retires P-normal+dO-normal while
+leaving four future dO reads live across the eight-MMAC dV island. The next
+panel adds Q-trans, retires dO, runs dP, then retires Q and runs score. No DAG,
+ownership, LDS, barrier, or work-count change was made.
+
+Gates pass at role VGPR `9/178/179/86`, SGPR60/VGPR128, no
+private/spill/scratch, exact MMOP92,160 and bank0. S128 causal/noncausal and
+S1024 causal pass. Fullperf improves fused ticks 46,149,740 -> 45,496,815
+(-1.414%) and MMAC active 33.794843% -> 34.330377% (+0.535534 pp). Coissue
+improves 21,933/25,812 -> 23,313/24,165; XCU normal matrix-read wait falls
+5.68% -> 4.02%.
+
+Decision: `ACCEPT_TICKS_AND_ACTIVE_NEW_BEST`. The 40% target remains open,
+but this validates cross-GEMM operand lag-one as the current productive tier.
+
 ## 2026-08-18 C1 dP/Score Selective Wait Accepted as Micro Win
 
 Only consumer group1 changed. Its adjacent dP and score operands now issue as
