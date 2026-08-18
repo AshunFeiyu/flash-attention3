@@ -11966,3 +11966,15 @@ runtime branch.
   one point; barrier and failed coissue rise, ticks regress, MMAC active falls.
 - Source is restored to a427. Next evidence target is the dQ writer's ordered
   group0/group1 wait cadence, not another consumer operand-read relocation.
+
+## 2026-08-18 New Canonical: C0 Early dS Publication
+
+- Group0 now publishes all four dS panels before its dV/dK islands, retaining
+  only four fp16 P fragments.  This lets the dQ writer overlap with existing
+  consumer work without changing arithmetic, LDS layout or token count.
+- Full correctness passes at S128 causal/noncausal and S1024 causal; roles
+  `9/172/179/86`; private/spill/scratch0; bank0.
+- Paired S1024 fused ticks improve `45.947M -> 45.021M`; fullperf is
+  `44.795M`, MMAC active `35.095%`.
+- xcu confirms writer barrier bubbles fall `34,831 -> 30,943` cycles.  This is
+  the canonical source pending commit/tag.

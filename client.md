@@ -6561,3 +6561,10 @@ C0 dO early-prefetch is also closed: it reduced local wait-LGKM but increased
 barrier/coissue debt and regressed same-shape ticks. The next optimization must
 change the dQ writer's measured ownership cadence, not add another read packet
 to either heavy consumer.
+
+The first ownership-cadence win is now accepted: group0 computes and publishes
+all dS before executing dV/dK, so the writer's dQ MMAC overlaps existing dV
+work.  H1/S1024 paired fused ticks improve by `2.015%`; fullperf is `44.795M`
+ticks at `35.095%` MMAC active, with full correctness and resource gates PASS.
+Keep this as the new canonical; the next hypothesis must start from its xcu
+trace and must not restore per-panel dV before dS publication.

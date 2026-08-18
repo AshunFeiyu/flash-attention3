@@ -17925,3 +17925,16 @@ S128 c0/c1 and S1024 correctness PASS; roles `9/194/179/86`; no spill;
 bank0. Candidate fused ticks `47.284M/46.151M` versus control `45.955M`;
 MMAC active `33.58--33.85%` versus `34.27%`; barrier `14.90--15.33%` versus
 `14.05%`. Decision: `REJECT_SHIFTED_TO_BARRIER_CANONICAL_RESTORED`.
+
+## 2026-08-18 C0 Early dS Publication Accepted
+
+The writer SQTT showed group0's dS token as the pacing input.  Group0 now
+retains four fp16 P fragments, finishes all score/dP/dS work, publishes dS,
+then performs dV and dK while the writer consumes dS for dQ.  The exact
+five-GEMM count, layouts, LDS and ABarrier ledger are unchanged.
+
+Roles are `9/172/179/86`; private/spill/scratch0; full correctness PASS;
+bank0.  Two paired H1/S1024 runs improve mean fused ticks by `2.015%`.
+Fullperf reaches `44.795M` ticks and `35.095%` MMAC active.  Representative
+writer ABarrier bubbles fall by `11.2%`.  Decision:
+`ACCEPT_TICKS_ACTIVE_NEW_BEST`.

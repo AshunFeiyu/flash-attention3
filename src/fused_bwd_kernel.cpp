@@ -533,14 +533,14 @@ __device__ __forceinline__ void update_dv_from_probability(
     int raw_base,
     int m_block,
     int owner,
-    const ProbabilityPanel& p,
+    const Fragment& probability,
     Accumulator (&dv_acc)[8]) {
     static_assert(Group == 0 || Group == 1);
 
     const int page = scratch_page_offset<Group>(owner);
     Fragment dout_normal[kMatrixBlocksD];
     Fragment p_normal{};
-    ins::ds_write_matrix_32x16_trans_f16(p.f16.f16x8, mutable_lds, page);
+    ins::ds_write_matrix_32x16_trans_f16(probability.f16x8, mutable_lds, page);
     ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
     read_raw_panel_normal(
         lds, raw_base + LdsLayout::kDoutOffset, m_block, dout_normal);
@@ -558,7 +558,7 @@ __device__ __forceinline__ void update_dv_and_prefetch_next_dout(
     int m_block,
     int next_m_block,
     int owner,
-    const ProbabilityPanel& p,
+    const Fragment& probability,
     Accumulator (&dv_acc)[8],
     Fragment (&next_dout_trans)[kMatrixBlocksD]) {
     static_assert(Group == 0 || Group == 1);
@@ -566,7 +566,7 @@ __device__ __forceinline__ void update_dv_and_prefetch_next_dout(
     const int page = scratch_page_offset<Group>(owner);
     Fragment dout_normal[kMatrixBlocksD];
     Fragment p_normal{};
-    ins::ds_write_matrix_32x16_trans_f16(p.f16.f16x8, mutable_lds, page);
+    ins::ds_write_matrix_32x16_trans_f16(probability.f16x8, mutable_lds, page);
     ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
     read_raw_panel_normal(
         lds, raw_base + LdsLayout::kDoutOffset, m_block, dout_normal);
@@ -727,6 +727,7 @@ __device__ __forceinline__ void run_consumer_group(
         const int q_base = (q_tile_begin + qi) * Tile::kMq;
 
         Fragment ds_panels[Tile::kMqPanels];
+        Fragment p_for_dv[Tile::kMqPanels];
         // Lag-one Q prefetch: the next panel's four operand reads stay in
         // flight across the whole current-panel island, and every wait is
         // count-controlled so a full drain never cancels the prefetch (the
@@ -762,8 +763,7 @@ __device__ __forceinline__ void run_consumer_group(
                     sidecar_field(mutable_lds, page, 0)[sidecar_row],
                     sidecar_field(mutable_lds, page, 1)[sidecar_row],
                     softmax_scale, p);
-                update_dv_from_probability<Group>(
-                    lds, mutable_lds, raw_base, m_block, owner, p, dv_acc);
+                p_for_dv[m_block] = p.f16;
                 dp_stage(
                     lds, raw_base, m_block, resident, mmac_zero, dp);
                 ds_stage(
@@ -792,10 +792,12 @@ __device__ __forceinline__ void run_consumer_group(
                 if (m_block < Tile::kMqPanels - 1) {
                     update_dv_and_prefetch_next_dout<Group>(
                         lds, mutable_lds, raw_base, m_block, m_block + 1,
-                        owner, p, dv_acc, dout_buf[(m_block + 1) & 1]);
+                        owner, p.f16, dv_acc,
+                        dout_buf[(m_block + 1) & 1]);
                 } else {
                     update_dv_from_probability<Group>(
-                        lds, mutable_lds, raw_base, m_block, owner, p, dv_acc);
+                        lds, mutable_lds, raw_base, m_block, owner, p.f16,
+                        dv_acc);
                 }
             }
         }
@@ -811,6 +813,15 @@ __device__ __forceinline__ void run_consumer_group(
         publish_final_ds<2, Group>(ds_panels[2], mutable_lds, owner);
         publish_final_ds<3, Group>(ds_panels[3], mutable_lds, owner);
         ins::abarrier_arrive_cnt<false>(kLocalBatchFilled, 1);
+
+        if constexpr (Group == 0) {
+#pragma unroll
+            for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
+                update_dv_from_probability<Group>(
+                    lds, mutable_lds, raw_base, m_block, owner,
+                    p_for_dv[m_block], dv_acc);
+            }
+        }
 
         update_dk_from_final_panels_read_ahead<Group>(
             lds, raw_base, owner, dk_acc);
