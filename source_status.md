@@ -1,5 +1,30 @@
 # Source Status
 
+## 2026-08-18 MMAC50 Session 1: Canonical Restored, Store Tier Closed
+
+The remote clean repo and the local branch `perf/fused5-mmac50-20260818`
+are back at canonical `e8a629e`; the rejected store-address candidate lives
+only in local stash `h1-store-addr-strength-reduction`. No kernel source
+diff remains. `results/perf_ledger.csv` gained the baseline-reverify and
+H1-reject rows; `results/optimization_log.md` carries the full session
+evidence including the unblocked fullperf/XCU chain, the re-verified
+baseline numbers, and the 16-wave per-role bubble decomposition.
+
+The shared design workbook sheet `12 MMAC50 Campaign`
+(`fa3_bwd_5gemm_design_20260812.xlsx`) now records the baseline, the XCU
+bubble ranking, the closed H1 store-address tier with its A/B numbers, and
+the H2/H3/H4/H5 ladder. The shared SMB volume was unreachable from this
+machine during the session; the workbook was updated in the local mirror
+`/Users/zhangyushun/soul/shared-disk-mirror/共享/shaobo/` and must be
+copied to `172.20.68.76:/共享/shaobo` when the share responds. Today's
+perf artifacts (fullperf run `20260818_121147` with `xcu_*` outputs and
+`sqtt_pipe_s*w*` CSVs, A/B binaries in `/zys/sb/fa3b/ab_storeaddr_20260818`)
+stay on the PMD machine until the share copy.
+
+Next source experiment (H2): dq-writer dS-wait cadence on the canonical
+16-wave kernel, group-local tokens unchanged, admission requires a
+complete dS-publication lifetime proof in the workbook before code.
+
 ## 2026-08-13 Raw Q/dO Split-Lifetime Probe
 
 The isolated two-page/three-generation probe passed with explicit producer,

@@ -17756,3 +17756,54 @@ H1/S1024 fused ticks `46,637,955 -> 47,946,080` (`+2.8%`).
 
 Decision: `REJECT_TICKS_CANONICAL_RESTORED`. This validates the boundary that
 runtime first-update branches can cost more than the moves they remove.
+
+## 2026-08-18 MMAC50 Campaign Session 1: Baseline Re-verified, Fullperf Unblocked, Store-Address Tier Closed
+
+Environment: sb-liuchang/vega20 zys1, canonical e8a629e
+(best/fused5-canonical-46m637955-mmac33p782-20260813), compiler e0f10535,
+PMD HEAD1694, seed c22d6a42, GPU_CHIP=sb, GPU_ARGS=['--SQCIPfLines=7'].
+
+Baseline re-verification (stats-only unless noted):
+
+- H1/S128 c1 PASS, fused ticks 11,381,825.
+- H1/S1024 c1 PASS, fused 47,577,985, MMOP 92,160 exact, MMAC active
+  33.7310%, coissue 20,924/25,145, bank 0. Tag nominal 46,637,955/33.782%
+  is inside the model-noise band; baseline confirmed.
+- H4/S2048 c1 PASS, fused 92,120,665 (73.6%), dq_reduce 25,274,795 (20.2%
+  share; scale-shape secondary bottleneck recorded as H5).
+- Fullperf/XCU chain is UNBLOCKED again: FUSED5_FULL_CAPTURE_PERF=1
+  completed PASS with six helper .perf files; xcu 4.6.3 CLI parsed
+  detail/hot_inst/bubble_summary/wavefronts/pipeline sections. The ASTCA
+  config warning no longer blocks trace generation on this environment.
+
+Fresh XCU decomposition (CU1/SE2, all 16 waves, ~23,450 cyc/wave window):
+
+- s_abarrier_try_wait->s_xor_b32 27.60%: producer 10,357 cyc/wave (44% of
+  its life, waiting RawUsed), dq_writer 7,597 (waiting BatchDs), consumers
+  only 1,187-1,761.
+- ds_read_matrix*->s_waitcnt 16.45%: consumerA 4,131, consumerB 4,415.
+- Terminal s_ebarrier_sync 7.15%: producer 7,712, consumerA 6,533 waits.
+- Store-address chains (NEW finding): dq_writer 6,437 cyc/wave at
+  k.cpp:476-477, consumerB 5,281, consumerA 2,033 at k.cpp:596-598.
+- Wave end order: consumerB ends latest (23,800-25,012), writer 23,456-24,960.
+
+H1 experiment (workbook sheet 12): per-lane store base + immediate Vec4
+offsets in store_dq_partial_d32/store_dkv_outputs.
+
+- Static: consumer 16 address chains -> 2 (back-to-back
+  global_store_dwordx4 off offset:0..448), writer 8 mul-chains -> 1
+  v_mad_u64 per iteration + constant adds. Metadata PASS, no spill.
+- Correctness: S128 c0+c1 PASS, S1024 PASS.
+- Interleaved A/B (3 rounds, saved binaries in /zys/sb/fa3b/ab_storeaddr_
+  20260818): paired deltas +0.89% / -0.86% / +1.06%, sign-flipping;
+  candidate 6-run mean 47.06M vs canonical 4-run mean 47.16M; MMAC active
+  33.59/33.80% flat vs 33.73%.
+- Decision: REJECT_NOISE_NEUTRAL_CANONICAL_RESTORED. Store-path issue
+  bubbles hide under sibling-wave issue; the tier is closed with direct
+  evidence. Candidate source preserved only in a local stash.
+
+Next admitted hypothesis (H2): dq-writer dS-wait cadence, 7,597 cyc/wave
+waiting on group-local BatchDsFilled; requires a complete lifetime proof
+and must keep group-local tokens. H3 (producer RawUsed spin) stays closed
+unless refill latency appears: consumers' RawFilled spin is only ~1.5k,
+so pages arrive on time and the producer spin is off the critical path.

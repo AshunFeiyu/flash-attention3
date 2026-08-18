@@ -1,5 +1,47 @@
 # Client
 
+## 2026-08-18 Store-Address Strength Reduction Rejected (Noise-Neutral)
+
+Per-lane store bases with immediate Vec4 offsets replaced the per-store
+`(int64)row*128+col` chains in `store_dq_partial_d32` and
+`store_dkv_outputs`. The consumer epilogue collapsed from 16 address
+chains to 2 (back-to-back `global_store_dwordx4 offset:0..448` in ASM);
+the writer dropped from 8 multiply chains to one `v_mad_u64_u32` per
+q-iteration. Metadata stayed clean, and S128 c0+c1 plus S1024 correctness
+passed.
+
+Interleaved same-shape A/B with saved binaries
+(`/zys/sb/fa3b/ab_storeaddr_20260818`) gave paired deltas
+`+0.89% / -0.86% / +1.06%` (sign-flipping), candidate 6-run mean `47.06M`
+vs canonical `47.16M`, and MMAC active `33.59/33.80%` vs `33.73%`. This is
+model-noise unstable by the e0f10535 precedent, so the decision is
+`REJECT_NOISE_NEUTRAL_CANONICAL_RESTORED`; the candidate source survives
+only in a local stash. Lesson: the per-wave store-address bubbles seen in
+XCU hide under sibling-wave issue and are not critical-path debt; the
+store-path tier is closed for this topology.
+
+## 2026-08-18 Fullperf/XCU Unblocked; Canonical Baseline Re-verified
+
+`FUSED5_FULL_CAPTURE_PERF=1` completed PASS again with helper `.perf`
+files and xcu 4.6.3 parsed `detail`, `hot_inst/bubble_summary`,
+`wavefronts`, and per-wave `pipeline` CSV; the ASTCA config warning no
+longer blocks trace generation on vega20/zys1 under the locked seed.
+Canonical `e8a629e`
+(`best/fused5-canonical-46m637955-mmac33p782-20260813`) re-verified:
+H1/S128 PASS `11,381,825`; H1/S1024 PASS `47,577,955`-band with MMAC
+active `33.7310%`, MMOP `92,160` exact, bank 0; H4/S2048 PASS fused
+`92,120,665` with `dq_reduce` at `20.2%` share (recorded as scale-shape
+secondary bottleneck H5). The 20260723 useful-stagger tag is superseded;
+`e8a629e` is the only performance route.
+
+Fresh 16-wave bubble decomposition (workbook sheet `12 MMAC50 Campaign`):
+abarrier spin 27.60% (producer 10,357 cyc/wave on RawUsed; writer 7,597 on
+BatchDs; consumers only ~1.5k), matrix-read first-use 16.45%, terminal
+ebarrier 7.15%, store-address chains writer 6,437 / consumerB 5,281 /
+consumerA 2,033 cyc/wave; consumerB ends latest. Next admitted hypothesis
+is H2 (dq-writer dS-wait cadence) with a complete lifetime proof; the
+producer-spin and store-path tiers are closed by today's evidence.
+
 ## 2026-08-13 Relaxed ABarrier Scheduler Rejected
 
 The `abarrier_try_wait` helper was compiled once without its surrounding
