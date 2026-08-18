@@ -17886,3 +17886,18 @@ unlatching K/V adds per-panel re-reads whose latency may exceed what the
 extra lookahead depth hides. Next: PR1 (LTS=1 transposed accumulator
 probe) as an independent Phase 1 item, and an S2 redesign that delatches
 only what is actually re-read cheaply.
+
+## 2026-08-18 Fused5 1P3C Native-Handoff Resource Gate
+
+The first independent structural gate for `P + C0 + C1 + C2` passes. The
+probe models 112 persistent consumer VGPRs, then executes native dS matrix
+write, normal/trans matrix reads, dK/dQ MMAC and native FP32 dQ atomics.
+Compiler branch usage is `1/153/153/153` inside `32/160/160/160`; metadata is
+private/spill/scratch0. Dense dK/dQ and pressure oracles pass, with bank0 and
+no PMD VGPR warning.
+
+Decision: `ACCEPT_RESOURCE_LAYOUT_GATE`, not a performance promotion. This
+proves that an exact five-GEMM 1P3C production rewrite is admissible with only
+seven VGPRs of branch headroom. The next step is one canonical implementation
+based on the independently accepted dKV 1P3C owner16 schedule; no full-tile
+dQ accumulator or extra operand layout is allowed.

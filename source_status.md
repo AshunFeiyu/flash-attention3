@@ -11934,3 +11934,17 @@ body size rose `320 -> 400`, and H1/S1024 fused ticks regressed to
 Classification: `REJECT_TICKS_CANONICAL_RESTORED`. The source is restored; a
 future zero-seed attempt must use compile-time first-tile peeling, not a
 runtime branch.
+
+## 2026-08-18 Fused5 1P3C Structural Gate
+
+- Active performance source remains `a427be9`; no canonical kernel source was
+  changed by this gate.
+- `probes/fused5_1p3c_native_handoff_probe.cpp` proves 16-wave
+  `32/160/160/160` WDRA, three group-local native dS handoffs, dK/dQ MMAC and
+  native FP32 atomic output under 112 persistent VGPR pressure.
+- Result: branch `1/153/153/153`, metadata private/spill/scratch0, dense
+  correctness PASS, bank0, PMD panic/warning0.
+- Evidence: `/zys/sb/race_codex/layout_probes/`
+  `fused5_1p3c_native_handoff_20260818_201421`.
+- Next source change may be a single production 1P3C rewrite. It must retain
+  exact five GEMMs and pass metadata before PMD.

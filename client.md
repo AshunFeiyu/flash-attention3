@@ -6534,3 +6534,15 @@ the measured Q/dO readiness dependency, not from seq-count reduction.
   A dQ fragment-slot read-ahead probe was rejected by S128 correctness
   (`dq_rel_l2=1.00551`); restored by git. Fragment slots cannot be reused
   before the complete native MMAC/read lifecycle is proven.
+
+## 2026-08-18 1P3C Fused5 Gate
+
+- New design: one four-wave producer plus three symmetric four-wave
+  consumers; each consumer wave owns N16 dK/dV and a D32 dQ partial.
+- Exact M64/N192/D128 arithmetic is 1,920 MMAC per tile, 160 per consumer
+  wave, with no duplicate score or dP.
+- The focused native handoff/atomic gate passes at branch usage
+  `1/153/153/153` in WDRA windows `32/160/160/160`, private/spill/scratch0,
+  bank0 and exact dense dK/dQ output.
+- This is a resource/layout admission only. Keep `a427be9` as the performance
+  control until the full kernel passes correctness and same-runtime PMD/SQTT.
