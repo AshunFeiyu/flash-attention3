@@ -91,12 +91,15 @@ struct FusedBwdContract {
     static constexpr int kBatchPdsBytes = kMqPanels * kPdsGenerationBytes;
     static constexpr int kSidecarBytes = 3 * kMq * sizeof(float);
     static constexpr int kSidecarPages = 2;
+    static constexpr int kC0AlternateDsBytes =
+        kMqPanels * kWavesPerConsumerGroup * kWriterStrideBytes;
     static constexpr bool kSidecarAliasesPds = false;
     static constexpr int kLdsBudgetBytes = 128 * 1024;
     static constexpr int kStartupLdsBytes =
         kResidentKvBytes + kRawQDoPhysicalBytes;
     static constexpr int kSteadyKvReuseBytes =
-        kBatchPdsBytes + kPdsPageBytes + kSidecarPages * kSidecarBytes;
+        kBatchPdsBytes + kPdsPageBytes + kSidecarPages * kSidecarBytes +
+        kC0AlternateDsBytes;
     static constexpr int kPlannedLdsBytes = kStartupLdsBytes;
 
     enum class LifetimeState : uint8_t {
@@ -156,7 +159,8 @@ struct FusedBwdContract {
                       kWriterPageBytes == 2 * 1024 &&
                       kWriterStrideBytes == 1024 &&
                       kPdsGenerationBytes == 8 * 1024 &&
-                      kPdsPageBytes == 8 * 1024,
+                      kPdsPageBytes == 8 * 1024 &&
+                      kC0AlternateDsBytes == 16 * 1024,
                   "resident/raw/P-dS LDS regions must retain their fixed sizes");
     static_assert(kPdsGenerationCount == 1,
                   "local P/dS conversion uses one private-page generation");
@@ -189,9 +193,11 @@ struct FusedBwdBarrierLedger {
     // four dQ-writer waves, so one consumer group need not wait for its peer.
     static constexpr int kDqDone0 = 8;
     static constexpr int kDqDone1 = 9;
-    static constexpr int kCount = 10;
+    static constexpr int kBatchDsFilled0Alt = 10;
+    static constexpr int kDqDone0Alt = 11;
+    static constexpr int kCount = 12;
 
-    static_assert(kDqDone1 + 1 == kCount,
+    static_assert(kDqDone0Alt + 1 == kCount,
                   "barrier IDs must be contiguous and explicit");
 };
 

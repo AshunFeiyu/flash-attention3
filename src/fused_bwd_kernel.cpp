@@ -37,6 +37,8 @@ struct LdsLayout {
     static constexpr int kSidecarBase = kScratchBase + kScratchBytes;
     static constexpr int kSidecarBytes =
         Tile::kSidecarPages * Tile::kSidecarBytes;
+    static constexpr int kC0AlternateDsBase = kVBase + 16 * 1024;
+    static constexpr int kC0AlternateDsBytes = Tile::kC0AlternateDsBytes;
     static constexpr int kRaw1Base = kVBase + kVBytes;
     static constexpr int kBytes = kRaw1Base + Tile::kRawQDoBytes;
 
@@ -44,6 +46,10 @@ struct LdsLayout {
                   "fused input tile sizes changed");
     static_assert(kScratchBase + kScratchBytes + kSidecarBytes <= kRaw1Base,
                   "steady P/dS side data must not overlap raw page1");
+    static_assert(kScratchBase + kScratchBytes + kSidecarBytes <=
+                      kC0AlternateDsBase &&
+                      kC0AlternateDsBase + kC0AlternateDsBytes <= kRaw1Base,
+                  "alternate C0 dS page must fit released V LDS");
     static_assert(kBytes == Tile::kPlannedLdsBytes,
                   "implementation and contract LDS ledgers disagree");
 };
@@ -97,19 +103,25 @@ __host__ __device__ constexpr int scratch_page_offset(int writer) {
                Tile::kWriterStrideBytes;
 }
 
-template <int MBlock, int Group>
+template <int MBlock, int Group, int Generation = 0>
 __host__ __device__ constexpr int batch_ds_group_offset() {
     static_assert(MBlock >= 0 && MBlock < Tile::kMqPanels);
     static_assert(Group == 0 || Group == 1);
+    static_assert(Generation == 0 || (Group == 0 && Generation == 1));
+    if constexpr (Generation == 1) {
+        return LdsLayout::kC0AlternateDsBase +
+               MBlock * Tile::kWavesPerConsumerGroup *
+                   Tile::kWriterStrideBytes;
+    }
     return LdsLayout::kKBase + MBlock * Tile::kPdsGenerationBytes +
            Group * Tile::kWavesPerConsumerGroup * Tile::kWriterStrideBytes;
 }
 
-template <int MBlock, int Group>
+template <int MBlock, int Group, int Generation = 0>
 __device__ __forceinline__ const __half* batch_ds_group(const __half* lds) {
     return reinterpret_cast<const __half*>(
         reinterpret_cast<const char*>(lds) +
-        batch_ds_group_offset<MBlock, Group>());
+        batch_ds_group_offset<MBlock, Group, Generation>());
 }
 
 __device__ __forceinline__ float* sidecar_field(__half* lds,
@@ -476,14 +488,15 @@ __device__ __forceinline__ void update_dk_stage(
     }
 }
 
-template <int MBlock, int SourceGroup>
+template <int MBlock, int SourceGroup, int Generation = 0>
 __device__ __forceinline__ void update_dq_writer_panel_group(
     const __half* lds,
     const DqResidentFragments& resident,
     Accumulator (&dq_acc)[2]) {
     static_assert(SourceGroup == 0 || SourceGroup == 1);
     Fragment ds_trans[Tile::kWavesPerConsumerGroup];
-    const __half* source = batch_ds_group<MBlock, SourceGroup>(lds);
+    const __half* source =
+        batch_ds_group<MBlock, SourceGroup, Generation>(lds);
     ins::ds_read_matrix_32x16_trans_imm4<
         0, Tile::kWriterStrideBytes, 2 * Tile::kWriterStrideBytes,
         3 * Tile::kWriterStrideBytes>(
@@ -579,27 +592,38 @@ __device__ __forceinline__ void update_dv_and_prefetch_next_dout(
     ins::lower_priority();
 }
 
-template <int MBlock, int Group>
+template <int MBlock, int Group, int Generation = 0>
 __device__ __forceinline__ void publish_final_ds(
     const Fragment& ds,
     __half* lds,
     int owner) {
-    const int page = batch_ds_group_offset<MBlock, Group>() +
+    const int page = batch_ds_group_offset<MBlock, Group, Generation>() +
                      owner * Tile::kWriterStrideBytes;
     ins::ds_write_matrix_32x16_trans_f16(ds.f16x8, lds, page);
 }
 
-template <int MBlock, int Group>
+template <int Group, int Generation = 0>
+__device__ __forceinline__ void publish_ds_batch(
+    const Fragment (&ds_panels)[Tile::kMqPanels],
+    __half* lds,
+    int owner) {
+    publish_final_ds<0, Group, Generation>(ds_panels[0], lds, owner);
+    publish_final_ds<1, Group, Generation>(ds_panels[1], lds, owner);
+    publish_final_ds<2, Group, Generation>(ds_panels[2], lds, owner);
+    publish_final_ds<3, Group, Generation>(ds_panels[3], lds, owner);
+}
+
+template <int MBlock, int Group, int Generation = 0>
 __device__ __forceinline__ void read_final_ds_normal(
     const __half* lds,
     int owner,
     Fragment& ds) {
-    const int page = batch_ds_group_offset<MBlock, Group>() +
+    const int page = batch_ds_group_offset<MBlock, Group, Generation>() +
                      owner * Tile::kWriterStrideBytes;
     ins::ds_read_matrix_32x16_normal(lds, page, ds.f16x8);
 }
 
-template <int MBlock, int Group>
+template <int MBlock, int Group, int Generation = 0>
 __device__ __forceinline__ void read_dk_panel_static(
     const __half* lds,
     int raw_base,
@@ -607,10 +631,10 @@ __device__ __forceinline__ void read_dk_panel_static(
     Fragment (&q)[kMatrixBlocksD],
     Fragment& ds) {
     read_raw_panel_normal(lds, raw_base, MBlock, q);
-    read_final_ds_normal<MBlock, Group>(lds, owner, ds);
+    read_final_ds_normal<MBlock, Group, Generation>(lds, owner, ds);
 }
 
-template <int Group>
+template <int Group, int Generation = 0>
 __device__ __forceinline__ void update_dk_from_final_panels_read_ahead(
     const __half* lds,
     int raw_base,
@@ -620,15 +644,19 @@ __device__ __forceinline__ void update_dk_from_final_panels_read_ahead(
     // reads are issued while the current eight-MMAC island is active.
     Fragment q_buf[2][kMatrixBlocksD];
     Fragment ds_buf[2];
-    read_dk_panel_static<0, Group>(lds, raw_base, owner, q_buf[0], ds_buf[0]);
+    read_dk_panel_static<0, Group, Generation>(
+        lds, raw_base, owner, q_buf[0], ds_buf[0]);
     ins::wait_lgkm(0);
-    read_dk_panel_static<1, Group>(lds, raw_base, owner, q_buf[1], ds_buf[1]);
+    read_dk_panel_static<1, Group, Generation>(
+        lds, raw_base, owner, q_buf[1], ds_buf[1]);
     update_dk_stage(ds_buf[0], q_buf[0], dk_acc);
     ins::wait_lgkm(0);
-    read_dk_panel_static<2, Group>(lds, raw_base, owner, q_buf[0], ds_buf[0]);
+    read_dk_panel_static<2, Group, Generation>(
+        lds, raw_base, owner, q_buf[0], ds_buf[0]);
     update_dk_stage(ds_buf[1], q_buf[1], dk_acc);
     ins::wait_lgkm(0);
-    read_dk_panel_static<3, Group>(lds, raw_base, owner, q_buf[1], ds_buf[1]);
+    read_dk_panel_static<3, Group, Generation>(
+        lds, raw_base, owner, q_buf[1], ds_buf[1]);
     update_dk_stage(ds_buf[0], q_buf[0], dk_acc);
     ins::wait_lgkm(0);
     update_dk_stage(ds_buf[1], q_buf[1], dk_acc);
@@ -645,6 +673,21 @@ __device__ __forceinline__ void zero_dq_writer_accumulators(
             dq_acc[m_block][d_half].f32 = dq_zero.f32;
         }
     }
+}
+
+template <int SourceGroup, int Generation = 0>
+__device__ __forceinline__ void update_dq_writer_group(
+    const __half* lds,
+    const DqResidentFragments& resident,
+    Accumulator (&dq_acc)[Tile::kMqPanels][2]) {
+    update_dq_writer_panel_group<0, SourceGroup, Generation>(
+        lds, resident, dq_acc[0]);
+    update_dq_writer_panel_group<1, SourceGroup, Generation>(
+        lds, resident, dq_acc[1]);
+    update_dq_writer_panel_group<2, SourceGroup, Generation>(
+        lds, resident, dq_acc[2]);
+    update_dq_writer_panel_group<3, SourceGroup, Generation>(
+        lds, resident, dq_acc[3]);
 }
 
 __device__ __forceinline__ void store_dkv_outputs(
@@ -677,6 +720,148 @@ __device__ __forceinline__ void store_dkv_outputs(
     }
 }
 
+template <int Group, int Page, bool ReuseDs>
+__device__ __forceinline__ void run_consumer_q_tile(
+    const __half* lds,
+    __half* mutable_lds,
+    int k_base,
+    int q_tile_begin,
+    int qi,
+    int causal,
+    float softmax_scale,
+    int n_owner,
+    int owner,
+    int lane,
+    const ResidentFragments& resident,
+    const ins::F16x8& mmac_zero,
+    Accumulator (&dv_acc)[8],
+    Accumulator (&dk_acc)[8],
+    int& raw_phase,
+    int& dq_done_phase) {
+    static_assert(Page == 0 || Page == 1);
+    if constexpr (Page == 0) {
+        ins::abarrier_try_wait<true>(Bar::kRawFilled0, raw_phase);
+    } else {
+        ins::abarrier_try_wait<true>(Bar::kRawFilled1, raw_phase);
+    }
+    constexpr int kDsGeneration = Group == 0 ? Page : 0;
+    const int raw_base = raw_page_base(Page);
+    const int q_base = (q_tile_begin + qi) * Tile::kMq;
+
+    Fragment ds_panels[Tile::kMqPanels];
+    Fragment p_for_dv[Tile::kMqPanels];
+    Fragment q_buf[2][kMatrixBlocksD];
+    Fragment dout_buf[2][kMatrixBlocksD];
+    if constexpr (Group == 0) {
+        read_raw_panel_trans(lds, raw_base, 0, q_buf[0]);
+    } else {
+        read_raw_panel_trans(
+            lds, raw_base + LdsLayout::kDoutOffset, 0, dout_buf[0]);
+    }
+#pragma unroll
+    for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
+        Fragment score{};
+        Fragment dp{};
+        ProbabilityPanel p{};
+        const int sidecar_row =
+            m_block * Tile::kMqPerPanel + (lane & 15);
+        constexpr int kPrefetchAlive = 4;
+        if constexpr (Group == 0) {
+            if (m_block < Tile::kMqPanels - 1) {
+                read_raw_panel_trans(lds, raw_base, m_block + 1,
+                                     q_buf[(m_block + 1) & 1]);
+            }
+            ins::wait_lgkm(m_block < Tile::kMqPanels - 1
+                               ? kPrefetchAlive
+                               : 0);
+            mmac_product_island(q_buf[m_block & 1], resident.k_trans,
+                                mmac_zero, score);
+            probability_stage(
+                score, lane, q_base, m_block, k_base, n_owner, causal,
+                sidecar_field(mutable_lds, Page, 0)[sidecar_row],
+                sidecar_field(mutable_lds, Page, 1)[sidecar_row],
+                softmax_scale, p);
+            p_for_dv[m_block] = p.f16;
+            dp_stage(lds, raw_base, m_block, resident, mmac_zero, dp);
+            ds_stage(p, dp,
+                     sidecar_field(mutable_lds, Page, 2)[sidecar_row],
+                     softmax_scale, ds_panels[m_block]);
+        } else {
+            Fragment score_packet[kMatrixBlocksD];
+            read_raw_panel_trans(lds, raw_base, m_block, score_packet);
+            wait_matrix_packet<kMatrixBlocksD>(dout_buf[m_block & 1]);
+            mmac_product_island(
+                dout_buf[m_block & 1], resident.v_trans, mmac_zero, dp);
+            wait_matrix_packet<0>(score_packet);
+            mmac_product_island(
+                score_packet, resident.k_trans, mmac_zero, score);
+            probability_stage(
+                score, lane, q_base, m_block, k_base, n_owner, causal,
+                sidecar_field(mutable_lds, Page, 0)[sidecar_row],
+                sidecar_field(mutable_lds, Page, 1)[sidecar_row],
+                softmax_scale, p);
+            ds_stage(p, dp,
+                     sidecar_field(mutable_lds, Page, 2)[sidecar_row],
+                     softmax_scale, ds_panels[m_block]);
+            if (m_block < Tile::kMqPanels - 1) {
+                update_dv_and_prefetch_next_dout<Group>(
+                    lds, mutable_lds, raw_base, m_block, m_block + 1,
+                    owner, p.f16, dv_acc,
+                    dout_buf[(m_block + 1) & 1]);
+            } else {
+                update_dv_from_probability<Group>(
+                    lds, mutable_lds, raw_base, m_block, owner, p.f16,
+                    dv_acc);
+            }
+        }
+    }
+
+    if constexpr (ReuseDs) {
+        if constexpr (Group == 0 && kDsGeneration == 1) {
+            ins::abarrier_try_wait<true>(Bar::kDqDone0Alt, dq_done_phase);
+        } else if constexpr (Group == 0) {
+            ins::abarrier_try_wait<true>(Bar::kDqDone0, dq_done_phase);
+        } else {
+            ins::abarrier_try_wait<true>(Bar::kDqDone1, dq_done_phase);
+        }
+    }
+
+    if constexpr (Group == 0 && kDsGeneration == 1) {
+        publish_ds_batch<0, 1>(ds_panels, mutable_lds, owner);
+        ins::abarrier_arrive_cnt<false>(Bar::kBatchDsFilled0Alt, 1);
+    } else if constexpr (Group == 0) {
+        publish_ds_batch<0, 0>(ds_panels, mutable_lds, owner);
+        ins::abarrier_arrive_cnt<false>(Bar::kBatchDsFilled0, 1);
+    } else {
+        publish_ds_batch<1>(ds_panels, mutable_lds, owner);
+        ins::abarrier_arrive_cnt<false>(Bar::kBatchDsFilled1, 1);
+    }
+
+    if constexpr (Group == 0) {
+#pragma unroll
+        for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
+            update_dv_from_probability<Group>(
+                lds, mutable_lds, raw_base, m_block, owner,
+                p_for_dv[m_block], dv_acc);
+        }
+    }
+
+    update_dk_from_final_panels_read_ahead<Group, kDsGeneration>(
+        lds, raw_base, owner, dk_acc);
+    if constexpr (Page == 0) {
+        ins::abarrier_arrive_cnt<false>(Bar::kRawUsed0, 1);
+    } else {
+        ins::abarrier_arrive_cnt<false>(Bar::kRawUsed1, 1);
+    }
+    if constexpr (Group == 0 && kDsGeneration == 1) {
+        ins::abarrier_arrive_cnt<false>(Bar::kDqDone0Alt, 1);
+    } else if constexpr (Group == 0) {
+        ins::abarrier_arrive_cnt<false>(Bar::kDqDone0, 1);
+    } else {
+        ins::abarrier_arrive_cnt<false>(Bar::kDqDone1, 1);
+    }
+}
+
 template <int Group>
 __device__ __forceinline__ void run_consumer_group(
     const __half* lds,
@@ -694,11 +879,6 @@ __device__ __forceinline__ void run_consumer_group(
     const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
     ResidentFragments resident;
     latch_resident_fragments(lds, n_owner, resident);
-
-    // The producer is the only consumer of this completion token.  Once this
-    // wave has latched its resident K/V fragments, waiting for the other
-    // waves adds no data dependency: the producer cannot reuse the LDS
-    // region until all twelve arrivals are present.
     if constexpr (Group == 0) {
         ins::abarrier_arrive_cnt<false>(Bar::kVSidecarReady, 1);
     }
@@ -710,131 +890,95 @@ __device__ __forceinline__ void run_consumer_group(
     ins::zero_f16x8(mmac_zero);
     int raw0_phase = 0;
     int raw1_phase = 0;
-    constexpr int kLocalBatchFilled =
-        Group == 0 ? Bar::kBatchDsFilled0 : Bar::kBatchDsFilled1;
-    constexpr int kLocalDqDone =
-        Group == 0 ? Bar::kDqDone0 : Bar::kDqDone1;
-    int local_dq_done_phase = 0;
+    int done0_phase = 0;
+    int done1_phase = 0;
+
+    int qi = 0;
+    if (q_tile_count > 0) {
+        run_consumer_q_tile<Group, 0, false>(
+            lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+            softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+            dv_acc, dk_acc, raw0_phase, done0_phase);
+        ++qi;
+    }
+    if (q_tile_count > 1) {
+        if constexpr (Group == 0) {
+            run_consumer_q_tile<0, 1, false>(
+                lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+                softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+                dv_acc, dk_acc, raw1_phase, done1_phase);
+        } else {
+            run_consumer_q_tile<1, 1, true>(
+                lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+                softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+                dv_acc, dk_acc, raw1_phase, done0_phase);
+        }
+        ++qi;
+    }
+
 #pragma clang loop unroll(disable)
-    for (int qi = 0; qi < q_tile_count; ++qi) {
-        const int page = qi & 1;
-        if (page == 0) {
-            ins::abarrier_try_wait<true>(Bar::kRawFilled0, raw0_phase);
-        } else {
-            ins::abarrier_try_wait<true>(Bar::kRawFilled1, raw1_phase);
-        }
-        const int raw_base = raw_page_base(page);
-        const int q_base = (q_tile_begin + qi) * Tile::kMq;
-
-        Fragment ds_panels[Tile::kMqPanels];
-        Fragment p_for_dv[Tile::kMqPanels];
-        // Lag-one Q prefetch: the next panel's four operand reads stay in
-        // flight across the whole current-panel island, and every wait is
-        // count-controlled so a full drain never cancels the prefetch (the
-        // packet8 partial-wait pattern extended to the score main chain).
-        Fragment q_buf[2][kMatrixBlocksD];
-        Fragment dout_buf[2][kMatrixBlocksD];
+    for (; qi + 1 < q_tile_count; qi += 2) {
+        run_consumer_q_tile<Group, 0, true>(
+            lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+            softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+            dv_acc, dk_acc, raw0_phase, done0_phase);
         if constexpr (Group == 0) {
-            read_raw_panel_trans(lds, raw_base, 0, q_buf[0]);
+            run_consumer_q_tile<0, 1, true>(
+                lds, mutable_lds, k_base, q_tile_begin, qi + 1, causal,
+                softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+                dv_acc, dk_acc, raw1_phase, done1_phase);
         } else {
-            read_raw_panel_trans(
-                lds, raw_base + LdsLayout::kDoutOffset, 0, dout_buf[0]);
+            run_consumer_q_tile<1, 1, true>(
+                lds, mutable_lds, k_base, q_tile_begin, qi + 1, causal,
+                softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+                dv_acc, dk_acc, raw1_phase, done0_phase);
         }
-#pragma unroll
-        for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
-            Fragment score{};
-            Fragment dp{};
-            ProbabilityPanel p{};
-            const int sidecar_row =
-                m_block * Tile::kMqPerPanel + (lane & 15);
-            constexpr int kPrefetchAlive = 4;
-            if constexpr (Group == 0) {
-                if (m_block < Tile::kMqPanels - 1) {
-                    read_raw_panel_trans(lds, raw_base, m_block + 1,
-                                         q_buf[(m_block + 1) & 1]);
-                }
-                ins::wait_lgkm(m_block < Tile::kMqPanels - 1
-                                   ? kPrefetchAlive
-                                   : 0);
-                mmac_product_island(q_buf[m_block & 1],
-                                    resident.k_trans, mmac_zero, score);
-                probability_stage(
-                    score, lane, q_base, m_block, k_base, n_owner, causal,
-                    sidecar_field(mutable_lds, page, 0)[sidecar_row],
-                    sidecar_field(mutable_lds, page, 1)[sidecar_row],
-                    softmax_scale, p);
-                p_for_dv[m_block] = p.f16;
-                dp_stage(
-                    lds, raw_base, m_block, resident, mmac_zero, dp);
-                ds_stage(
-                    p, dp,
-                    sidecar_field(mutable_lds, page, 2)[sidecar_row],
-                    softmax_scale, ds_panels[m_block]);
-            } else {
-                Fragment score_packet[kMatrixBlocksD];
-                read_raw_panel_trans(
-                    lds, raw_base, m_block, score_packet);
-                wait_matrix_packet<kMatrixBlocksD>(dout_buf[m_block & 1]);
-                mmac_product_island(
-                    dout_buf[m_block & 1], resident.v_trans, mmac_zero, dp);
-                wait_matrix_packet<0>(score_packet);
-                mmac_product_island(
-                    score_packet, resident.k_trans, mmac_zero, score);
-                probability_stage(
-                    score, lane, q_base, m_block, k_base, n_owner, causal,
-                    sidecar_field(mutable_lds, page, 0)[sidecar_row],
-                    sidecar_field(mutable_lds, page, 1)[sidecar_row],
-                    softmax_scale, p);
-                ds_stage(
-                    p, dp,
-                    sidecar_field(mutable_lds, page, 2)[sidecar_row],
-                    softmax_scale, ds_panels[m_block]);
-                if (m_block < Tile::kMqPanels - 1) {
-                    update_dv_and_prefetch_next_dout<Group>(
-                        lds, mutable_lds, raw_base, m_block, m_block + 1,
-                        owner, p.f16, dv_acc,
-                        dout_buf[(m_block + 1) & 1]);
-                } else {
-                    update_dv_from_probability<Group>(
-                        lds, mutable_lds, raw_base, m_block, owner, p.f16,
-                        dv_acc);
-                }
-            }
-        }
-
-        if (qi != 0) {
-            // Only the matching dQ writer group must have consumed this
-            // group's dS page before the next q tile reuses it.
-            ins::abarrier_try_wait<true>(kLocalDqDone,
-                                         local_dq_done_phase);
-        }
-        publish_final_ds<0, Group>(ds_panels[0], mutable_lds, owner);
-        publish_final_ds<1, Group>(ds_panels[1], mutable_lds, owner);
-        publish_final_ds<2, Group>(ds_panels[2], mutable_lds, owner);
-        publish_final_ds<3, Group>(ds_panels[3], mutable_lds, owner);
-        ins::abarrier_arrive_cnt<false>(kLocalBatchFilled, 1);
-
-        if constexpr (Group == 0) {
-#pragma unroll
-            for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
-                update_dv_from_probability<Group>(
-                    lds, mutable_lds, raw_base, m_block, owner,
-                    p_for_dv[m_block], dv_acc);
-            }
-        }
-
-        update_dk_from_final_panels_read_ahead<Group>(
-            lds, raw_base, owner, dk_acc);
-        if (page == 0) {
-            ins::abarrier_arrive_cnt<false>(Bar::kRawUsed0, 1);
-        } else {
-            ins::abarrier_arrive_cnt<false>(Bar::kRawUsed1, 1);
-        }
-        ins::abarrier_arrive_cnt<false>(kLocalDqDone, 1);
+    }
+    if (qi < q_tile_count) {
+        run_consumer_q_tile<Group, 0, true>(
+            lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+            softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+            dv_acc, dk_acc, raw0_phase, done0_phase);
     }
 
     store_dkv_outputs(dk, dv, tensor_base, k_base, n_owner, lane, dk_acc,
                       dv_acc);
+}
+
+template <int Generation>
+__device__ __forceinline__ void run_dq_writer_tile(
+    const __half* lds,
+    __half* dq_partial,
+    int64_t partial_base,
+    int q_tile_begin,
+    int qi,
+    int d_owner,
+    int lane,
+    const DqResidentFragments& resident,
+    int& filled0_phase,
+    int& filled1_phase) {
+    Accumulator dq_acc[Tile::kMqPanels][2];
+    zero_dq_writer_accumulators(dq_acc);
+
+    if constexpr (Generation == 0) {
+        ins::abarrier_try_wait<true>(Bar::kBatchDsFilled0, filled0_phase);
+        update_dq_writer_group<0, 0>(lds, resident, dq_acc);
+        ins::abarrier_arrive_cnt<false>(Bar::kDqDone0, 1);
+    } else {
+        ins::abarrier_try_wait<true>(Bar::kBatchDsFilled0Alt, filled0_phase);
+        update_dq_writer_group<0, 1>(lds, resident, dq_acc);
+        ins::abarrier_arrive_cnt<false>(Bar::kDqDone0Alt, 1);
+    }
+    ins::abarrier_try_wait<true>(Bar::kBatchDsFilled1, filled1_phase);
+    update_dq_writer_group<1>(lds, resident, dq_acc);
+    ins::abarrier_arrive_cnt<false>(Bar::kDqDone1, 1);
+
+    const int q_base = (q_tile_begin + qi) * Tile::kMq;
+#pragma unroll
+    for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
+        store_dq_partial_d32(dq_partial, partial_base, q_base, m_block,
+                             d_owner, lane, dq_acc[m_block]);
+    }
 }
 
 __device__ __forceinline__ void run_dq_writer(
@@ -847,41 +991,24 @@ __device__ __forceinline__ void run_dq_writer(
     int lane) {
     DqResidentFragments resident;
     latch_dq_k_normal(lds, d_owner, resident);
-
-    // The producer owns the reuse edge; this writer only needs its own K
-    // fragment before publishing dQ work.
     int filled0_phase = 0;
+    int filled0_alt_phase = 0;
     int filled1_phase = 0;
+
+    int qi = 0;
 #pragma clang loop unroll(disable)
-    for (int qi = 0; qi < q_tile_count; ++qi) {
-        Accumulator dq_acc[Tile::kMqPanels][2];
-        zero_dq_writer_accumulators(dq_acc);
-
-        ins::abarrier_try_wait<true>(Bar::kBatchDsFilled0,
-                                     filled0_phase);
-        update_dq_writer_panel_group<0, 0>(lds, resident, dq_acc[0]);
-        update_dq_writer_panel_group<1, 0>(lds, resident, dq_acc[1]);
-        update_dq_writer_panel_group<2, 0>(lds, resident, dq_acc[2]);
-        update_dq_writer_panel_group<3, 0>(lds, resident, dq_acc[3]);
-        ins::abarrier_arrive_cnt<false>(Bar::kDqDone0, 1);
-
-        ins::abarrier_try_wait<true>(Bar::kBatchDsFilled1,
-                                     filled1_phase);
-        update_dq_writer_panel_group<0, 1>(lds, resident, dq_acc[0]);
-        update_dq_writer_panel_group<1, 1>(lds, resident, dq_acc[1]);
-        update_dq_writer_panel_group<2, 1>(lds, resident, dq_acc[2]);
-        update_dq_writer_panel_group<3, 1>(lds, resident, dq_acc[3]);
-        ins::abarrier_arrive_cnt<false>(Bar::kDqDone1, 1);
-
-        const int q_base = (q_tile_begin + qi) * Tile::kMq;
-        store_dq_partial_d32(dq_partial, partial_base, q_base, 0, d_owner,
-                             lane, dq_acc[0]);
-        store_dq_partial_d32(dq_partial, partial_base, q_base, 1, d_owner,
-                             lane, dq_acc[1]);
-        store_dq_partial_d32(dq_partial, partial_base, q_base, 2, d_owner,
-                             lane, dq_acc[2]);
-        store_dq_partial_d32(dq_partial, partial_base, q_base, 3, d_owner,
-                             lane, dq_acc[3]);
+    for (; qi + 1 < q_tile_count; qi += 2) {
+        run_dq_writer_tile<0>(lds, dq_partial, partial_base, q_tile_begin,
+                              qi, d_owner, lane, resident, filled0_phase,
+                              filled1_phase);
+        run_dq_writer_tile<1>(lds, dq_partial, partial_base, q_tile_begin,
+                              qi + 1, d_owner, lane, resident,
+                              filled0_alt_phase, filled1_phase);
+    }
+    if (qi < q_tile_count) {
+        run_dq_writer_tile<0>(lds, dq_partial, partial_base, q_tile_begin,
+                              qi, d_owner, lane, resident, filled0_phase,
+                              filled1_phase);
     }
 }
 
@@ -920,6 +1047,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         __builtin_hcu_s_abarrier_init(Bar::kBatchDsFilled1, 4);
         __builtin_hcu_s_abarrier_init(Bar::kDqDone0, 8);
         __builtin_hcu_s_abarrier_init(Bar::kDqDone1, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kBatchDsFilled0Alt, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kDqDone0Alt, 8);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
@@ -1065,6 +1194,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         __builtin_hcu_s_abarrier_inv(Bar::kBatchDsFilled1);
         __builtin_hcu_s_abarrier_inv(Bar::kDqDone0);
         __builtin_hcu_s_abarrier_inv(Bar::kDqDone1);
+        __builtin_hcu_s_abarrier_inv(Bar::kBatchDsFilled0Alt);
+        __builtin_hcu_s_abarrier_inv(Bar::kDqDone0Alt);
     }
 #else
     (void)dout;

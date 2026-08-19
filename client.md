@@ -6609,3 +6609,15 @@ resource-clean, and lowers reducer ticks another 15.22% at S1024 and 34.76%
 at S2048. The S1024 lifecycle result is noise-flat; S2048 improves 1.41%.
 Reducer depth tuning is now closed until the fused ABarrier/LDS-read critical
 path is materially shorter.
+
+The fused kernel now uses a fixed two-generation dS conveyor for consumer0.
+Two physical 16 KiB pages and independent Filled/Done tokens let C0 publish the
+next q tile without waiting for the dQ writer to release the previous page;
+consumer1 remains single-generation. Runtime parity selection was a `4.84%`
+reject and is not present. The compile-time pair passes correctness through
+S2048, is SGPR76/VGPR128 with no private/spill/scratch and bank0, and preserves
+exact MMOP. It improves three-pair S1024 fused/lifecycle means by
+`1.208%/1.003%` and S2048 by `1.858%/1.948%`. SQTT confirms writer ABarrier
+bubbles fall `33,219 -> 21,983` cycles. MMAC active falls slightly, so future
+work must use same-work ticks plus SQTT critical-path movement, not active
+share alone.

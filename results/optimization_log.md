@@ -18028,3 +18028,22 @@ zero. Three paired S1024 runs improve reducer mean by `15.22%`; total mean is
 noise-flat (`-0.02%`). S2048 improves reducer by `34.76%` and total by
 `1.41%`. Fresh SQTT still exposes startup and first-load readiness, but the
 main fused kernel's ABarrier/LDS-read path has much larger end-to-end leverage.
+
+## 2026-08-19 Fused5 C0 Fixed-Pair dS Generations
+
+Status: `ACCEPT_TICKS_SCALE_SQTT`
+
+Group0 now alternates two 16 KiB dS pages with independent Filled/Done token
+pairs in a compile-time unrolled generation0/generation1 schedule. Group1
+keeps one generation. The rejected runtime-parity prototype regressed S1024 by
+`4.84%`; it is not retained.
+
+The fixed-pair version passes S128 causal/noncausal and S1024/S2048 causal
+correctness with SGPR76/VGPR128, private/spill/scratch0, bank0, and exact MMOP.
+Three S1024 pairs improve fused ticks by `1.208%` and lifecycle ticks by
+`1.003%`. S2048 improves fused ticks by `1.858%` and lifecycle ticks by
+`1.948%`. Representative SQTT writer ABarrier time falls
+`33,219 -> 21,983` cycles; S2048 wait-LGKM and barrier shares both fall.
+MMAC active drops `0.593pp`, so this is an ownership/ticks win rather than an
+active-share win. Do not add another generation; inspect the fresh matrix-read
+and terminal-tail hierarchy next.

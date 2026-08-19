@@ -12049,3 +12049,21 @@ runtime branch.
   PASS and bank0.
 - Decision: `ACCEPT_KERNEL_LOCAL_SCALE_END_TO_END`. Stop reducer depth tuning
   here; the next primary target is fused ABarrier and matrix-read readiness.
+
+## 2026-08-19 C0 Two-Generation dS Conveyor Accepted
+
+- Consumer0 alternates two 16 KiB dS pages and independent ABarrier token pairs
+  in a fixed generation0/generation1 schedule. Consumer1 remains canonical.
+- Runtime parity around the heavy body was rejected at `+4.84%` S1024 ticks;
+  only the compile-time pair schedule is retained.
+- Static metadata is SGPR76/VGPR128, private/spill/scratch0. Correctness passes
+  S128 causal/noncausal and S1024/S2048 causal; bank0 and exact MMOP hold.
+- Three paired S1024 means improve fused `1.208%` and lifecycle `1.003%`.
+  S2048 improves fused `84,345,170 -> 82,777,695` (`1.858%`) and lifecycle
+  `91,961,870 -> 90,170,080` (`1.948%`).
+- SQTT writer ABarrier bubbles fall `33,219 -> 21,983` cycles and terminal
+  arrival advances `97,280 -> 96,028`. At S2048, wait-LGKM falls
+  `8.121% -> 7.882%` and barrier `10.925% -> 10.709%`.
+- MMAC active falls `38.692% -> 38.099%` with exact work unchanged. Classify
+  this as `ACCEPT_TICKS_SCALE_SQTT`; next diagnose matrix-read first-use and
+  terminal store debt rather than adding a third generation.
