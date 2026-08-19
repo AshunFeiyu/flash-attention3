@@ -6628,3 +6628,11 @@ resource-clean at 190/204 C0 VGPR, but three S1024 pairs regress fused ticks by
 `2.323%`. wait-LGKM falls while barrier rises, proving this only moves latency
 to the next ownership gate. Keep `dee5e50`; do not continue C0-only read-count
 tuning without new final-pace SQTT evidence.
+
+C0 half-batch dS publication is also rejected and removed. Two additional
+Filled tokens reduced barrier share and shortened C0 fragment lifetime
+(`187 -> 169` VGPR), but made writer dQ contend with C0/C1 for LDS/MMAC issue.
+Three S1024 pairs regress fused ticks by `2.546%`; wait-LGKM and wait-VM both
+rise. Keep one four-panel Filled event per C0 generation. The accepted
+two-generation page conveyor remains the finest useful ownership granularity
+for this 16-wave topology.

@@ -12079,3 +12079,16 @@ runtime branch.
   `13.433% -> 13.829%` and MMAC active falls `34.060% -> 33.771%`.
 - Decision: `REJECT_LOCAL_WAIT_TO_OWNERSHIP_DEBT`. Candidate code is removed;
   canonical remains `dee5e50`.
+
+## 2026-08-19 C0 Half-Batch dS Publication Rejected
+
+- C0 publishes panels0/1 and panels2/3 with separate Filled tokens; existing
+  generation pages and full-page Done ownership remain unchanged.
+- Static/correctness/bank gates pass; C0 use drops `187 -> 169/204` VGPR.
+- Three S1024 pair means regress fused `44,718,765 -> 45,857,327` (`2.546%`)
+  and lifecycle `48,875,038 -> 49,989,182` (`2.279%`).
+- Barrier share improves `13.549% -> 12.454%`, but wait-LGKM worsens
+  `7.439% -> 8.351%`, wait-VM `2.275% -> 2.804%`, and MMAC active
+  `34.211% -> 33.949%`.
+- Decision: `REJECT_EARLY_WAKE_RESOURCE_CONTENTION`. Candidate code is
+  removed; retain the accepted four-panel Filled granularity.

@@ -18059,3 +18059,16 @@ S1024 pairs reduce mean wait-LGKM by `0.241pp`, but fused ticks regress `2.323%`
 barrier share rises `0.397pp`, and MMAC active falls `0.289pp`. The candidate
 is removed. Local LDS wait reduction is not promotable when it moves the same
 latency into a later ownership gate.
+
+## 2026-08-19 C0 Half-Batch dS Publication Rejected
+
+Status: `REJECT_EARLY_WAKE_RESOURCE_CONTENTION`
+
+C0 published panels0/1 and panels2/3 through separate Filled tokens so the dQ
+writer could begin while C0 computed the second half. Correctness, exact work,
+bank and resource gates pass; C0 use falls 187 to 169 VGPR. Three S1024 pairs
+regress fused ticks `2.546%` and lifecycle ticks `2.279%`. Barrier share falls
+`1.096pp`, but wait-LGKM rises `0.912pp`, wait-VM rises `0.529pp`, and MMAC
+active falls `0.262pp`. The early writer competes with active consumers for
+LDS/MMAC issue. Candidate code is removed; four-panel Filled granularity stays
+canonical.
