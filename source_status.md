@@ -12004,3 +12004,15 @@ runtime branch.
 - H1/S128 causal/non-causal and H1/S1024 causal full correctness pass, bank0.
   Three paired S1024 runs improve reducer mean by `2.80%` and full lifecycle
   mean by `0.19%`. Decision: `ACCEPT_MICRO_END_TO_END`.
+
+## 2026-08-19 dQ Reducer 2D Ownership Accepted
+
+- The reducer now maps `grid.x` to aligned eight-row blocks and `grid.y` to
+  batch-head ownership. Causal tile count is block-scalar rather than a
+  per-thread division result.
+- SGPR/VGPR changes `26/36 -> 25/25`; reciprocal/divide and exec-mask ISA is
+  removed. Correctness passes S128 c0/c1 and S1024 c1, bank0.
+- Three paired S1024 runs improve reducer ticks by `14.09%`, reducing its
+  lifecycle share from about `5.33%` to `4.58%`. Whole-lifecycle mean is
+  noise-flat (`-0.02%`). Decision:
+  `ACCEPT_KERNEL_LOCAL_END_TO_END_OBSERVE`.

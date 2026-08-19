@@ -16,29 +16,30 @@ namespace {
 
 using Tile = fused::ActiveFusedBwdContract;
 constexpr int kThreads = 256;
+constexpr int kVectorsPerRow = Tile::kHeadDim / 4;
+constexpr int kRowsPerBlock = kThreads / kVectorsPerRow;
+static_assert(kThreads % kVectorsPerRow == 0 &&
+                  Tile::kNk % kRowsPerBlock == 0,
+              "dQ reduction blocks must cover aligned causal row groups");
 
 __global__ void fa3_bwd_dq_reduce_kernel(const float* __restrict__ partial,
                                          __half* __restrict__ dq,
-                                         int batch,
-                                         int heads,
                                          int seqlen,
                                          int k_tiles,
                                          int causal) {
-    const int64_t vec =
-        static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const int row = static_cast<int>(blockIdx.x) * kRowsPerBlock +
+                    static_cast<int>(threadIdx.x) / kVectorsPerRow;
+    const int d_vec = static_cast<int>(threadIdx.x) % kVectorsPerRow;
+    const int bh = static_cast<int>(blockIdx.y);
     const int64_t vectors_per_tensor =
-        static_cast<int64_t>(seqlen) * Tile::kHeadDim / 4;
-    const int64_t total_vectors =
-        static_cast<int64_t>(batch) * heads * vectors_per_tensor;
-    if (vec >= total_vectors) {
-        return;
-    }
-
-    const int64_t bh = vec / vectors_per_tensor;
-    const int64_t local_vec = vec - bh * vectors_per_tensor;
-    const int row = static_cast<int>(local_vec / (Tile::kHeadDim / 4));
+        static_cast<int64_t>(seqlen) * kVectorsPerRow;
+    const int64_t local_vec =
+        static_cast<int64_t>(row) * kVectorsPerRow + d_vec;
     const int64_t slice_vectors = vectors_per_tensor;
-    const int last_k_tile = causal ? row / Tile::kNk : k_tiles - 1;
+    const int last_k_tile =
+        causal ? static_cast<int>(blockIdx.x) /
+                     (Tile::kNk / kRowsPerBlock)
+               : k_tiles - 1;
     const auto* partial4 = reinterpret_cast<const float4*>(partial);
     float4 sum = {0.0f, 0.0f, 0.0f, 0.0f};
 
@@ -55,7 +56,9 @@ __global__ void fa3_bwd_dq_reduce_kernel(const float* __restrict__ partial,
     const ins::Vec4F16 out = {
         static_cast<_Float16>(sum.x), static_cast<_Float16>(sum.y),
         static_cast<_Float16>(sum.z), static_cast<_Float16>(sum.w)};
-    reinterpret_cast<ins::Vec4F16*>(dq)[vec] = out;
+    const int64_t output_vec =
+        static_cast<int64_t>(bh) * vectors_per_tensor + local_vec;
+    reinterpret_cast<ins::Vec4F16*>(dq)[output_vec] = out;
 }
 
 bool valid_params(const ShaoboFa3Params* params) {
@@ -92,18 +95,19 @@ int launch_dq_reduction(const float* partial,
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
     const int k_tiles = params->seqlen_k / Tile::kNk;
-    const int64_t vectors =
-        static_cast<int64_t>(params->batch) * params->num_heads_q *
-        params->seqlen_q * Tile::kHeadDim / 4;
-    const int64_t blocks = (vectors + kThreads - 1) / kThreads;
-    if (blocks <= 0 || blocks > std::numeric_limits<uint32_t>::max()) {
+    const int64_t bh_count =
+        static_cast<int64_t>(params->batch) * params->num_heads_q;
+    const int64_t row_blocks = params->seqlen_q / kRowsPerBlock;
+    if (row_blocks <= 0 ||
+        row_blocks > std::numeric_limits<uint32_t>::max() ||
+        bh_count <= 0 || bh_count > std::numeric_limits<uint32_t>::max()) {
         return SHAOBO_FA3_STATUS_UNSUPPORTED;
     }
     hipLaunchKernelGGL(fa3_bwd_dq_reduce_kernel,
-                       dim3(static_cast<uint32_t>(blocks)),
+                       dim3(static_cast<uint32_t>(row_blocks),
+                            static_cast<uint32_t>(bh_count)),
                        dim3(kThreads), 0, 0, partial, dq,
-                       params->batch, params->num_heads_q, params->seqlen_q,
-                       k_tiles, params->causal);
+                       params->seqlen_q, k_tiles, params->causal);
     return hipGetLastError() == hipSuccess ? SHAOBO_FA3_STATUS_SUCCESS
                                            : SHAOBO_FA3_STATUS_HIP_ERROR;
 }

@@ -17970,3 +17970,20 @@ with bank0. Across three alternating same-build S1024 pairs, reducer mean ticks
 fall `2,785,965 -> 2,707,857` (`-2.80%`) and full lifecycle mean falls
 `50,801,812 -> 50,706,868` (`-0.19%`). Fused compute is noise-flat, which
 supports attributing the small end-to-end gain to the epilogue.
+
+## 2026-08-19 Fused5 dQ Reducer 2D Ownership
+
+Status: `ACCEPT_KERNEL_LOCAL_END_TO_END_OBSERVE`
+
+Baseline SQTT showed 12.97% issue-bubble time in vectorized batch-head/row
+division plus visible reciprocal conversion, exec-mask control and address
+moves. Mapping aligned eight-row blocks onto `grid.x` and batch-heads onto
+`grid.y` makes causal `last_k_tile` block-scalar without changing waves,
+workspace bytes or arithmetic.
+
+Reducer metadata improves SGPR26/VGPR36 to SGPR25/VGPR25; private/spill/
+scratch stay zero. Reciprocal conversion and saveexec disappear. S128 c0/c1
+and S1024 c1 correctness pass, bank0. Three alternating S1024 pairs improve
+reducer mean `2,687,382 -> 2,308,670` (`-14.09%`, all pairs positive), while
+full-lifecycle mean is noise-flat at `-0.02%`. The topology is retained; the
+next bounded experiment is workspace-load batching guided by a fresh SQTT.

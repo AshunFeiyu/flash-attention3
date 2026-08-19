@@ -6583,3 +6583,9 @@ FP32 but writes the final dQ tensor as FP16 inside the reduction kernel. The
 generated epilogue uses two packed conversions and one 8-byte store, so a
 standalone FP32-to-FP16 kernel is unnecessary. H1/S128 c0/c1 and H1/S1024 c1
 pass; paired S1024 reducer ticks improve `2.80%`, total ticks `0.19%`.
+
+The dQ reducer subsequently adopted a 2D ownership grid: one block covers
+eight D128 rows and one `grid.y` coordinate owns a batch-head. This removes
+per-thread batch/row division and exec-mask control, lowers VGPR36 to VGPR25,
+and improves paired S1024 reducer ticks by `14.09%`. End-to-end remains
+noise-flat because fused-compute variance is larger than this 4.6% stage.
