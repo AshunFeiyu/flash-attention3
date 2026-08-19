@@ -12067,3 +12067,15 @@ runtime branch.
 - MMAC active falls `38.692% -> 38.099%` with exact work unchanged. Classify
   this as `ACCEPT_TICKS_SCALE_SQTT`; next diagnose matrix-read first-use and
   terminal store debt rather than adding a third generation.
+
+## 2026-08-19 C0 dP Read-Under-Score Rejected
+
+- ASM successfully forms the requested packet schedule after pre-latching
+  sidecar values; C0 uses 190/204 VGPR and all static/correctness/bank gates
+  pass.
+- Three S1024 pair means regress fused `44,896,518 -> 45,939,530` (`2.323%`)
+  and lifecycle `49,016,543 -> 50,023,458` (`2.054%`).
+- wait-LGKM improves `7.518% -> 7.277%`, but barrier rises
+  `13.433% -> 13.829%` and MMAC active falls `34.060% -> 33.771%`.
+- Decision: `REJECT_LOCAL_WAIT_TO_OWNERSHIP_DEBT`. Candidate code is removed;
+  canonical remains `dee5e50`.

@@ -6621,3 +6621,10 @@ exact MMOP. It improves three-pair S1024 fused/lifecycle means by
 bubbles fall `33,219 -> 21,983` cycles. MMAC active falls slightly, so future
 work must use same-work ticks plus SQTT critical-path movement, not active
 share alone.
+
+C0 dO-read-under-score is rejected and removed. The generated schedule was
+correct (`8 reads -> wait8 -> score MMAC -> softmax -> wait4 -> dP MMAC`) and
+resource-clean at 190/204 C0 VGPR, but three S1024 pairs regress fused ticks by
+`2.323%`. wait-LGKM falls while barrier rises, proving this only moves latency
+to the next ownership gate. Keep `dee5e50`; do not continue C0-only read-count
+tuning without new final-pace SQTT evidence.

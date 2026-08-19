@@ -18047,3 +18047,15 @@ Three S1024 pairs improve fused ticks by `1.208%` and lifecycle ticks by
 MMAC active drops `0.593pp`, so this is an ownership/ticks win rather than an
 active-share win. Do not add another generation; inspect the fresh matrix-read
 and terminal-tail hierarchy next.
+
+## 2026-08-19 C0 dP Read-Under-Score Rejected
+
+Status: `REJECT_LOCAL_WAIT_TO_OWNERSHIP_DEBT`
+
+C0 issued current dO and next Q matrix packets before score, then consumed them
+with `lgkmcnt(8/4)` around score and dP MMAC. ASM matched the intended islands;
+C0 was 190/204 VGPR and all correctness/resource/bank gates passed. Three
+S1024 pairs reduce mean wait-LGKM by `0.241pp`, but fused ticks regress `2.323%`,
+barrier share rises `0.397pp`, and MMAC active falls `0.289pp`. The candidate
+is removed. Local LDS wait reduction is not promotable when it moves the same
+latency into a later ownership gate.
