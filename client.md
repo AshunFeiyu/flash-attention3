@@ -6577,3 +6577,9 @@ the dV work has already moved behind dS publication.
 Writer dS panel read-ahead is rejected. It lowers writer-local LDS wait but
 regresses CTA ticks, confirming that role-local bubble removal is insufficient
 while the heavy consumers still set completion. Keep `2b6efe5` canonical.
+
+The fused5 output boundary now keeps dQ partials and reduction arithmetic in
+FP32 but writes the final dQ tensor as FP16 inside the reduction kernel. The
+generated epilogue uses two packed conversions and one 8-byte store, so a
+standalone FP32-to-FP16 kernel is unnecessary. H1/S128 c0/c1 and H1/S1024 c1
+pass; paired S1024 reducer ticks improve `2.80%`, total ticks `0.19%`.

@@ -17954,3 +17954,19 @@ dQ writer double-buffered four-panel dS reads after a valid WDRA rebudget to
 `16/188/204/104`. Correctness/resources/bank pass and wait-LGKM falls, but
 S1024 fused ticks regress `2.22%`; barrier and VMEM shares rise. Decision:
 `REJECT_NONCRITICAL_WRITER_WAIT_CANONICAL_RESTORED`.
+
+## 2026-08-19 Fused5 dQ Reduction And FP16 Conversion Fused
+
+Status: `ACCEPT_MICRO_END_TO_END`
+
+The existing FP32 workspace reduction now converts its final float4 sum to a
+packed FP16 vector and performs one `global_store_dwordx2`. The five-GEMM
+kernel, workspace layout, ownership, and barriers are unchanged. Static ISA is
+two `v_cvt_pk_f16_f32` plus the 8-byte store; reducer resources are SGPR26,
+VGPR36, private/spill/scratch0.
+
+H1/S128 causal/non-causal and H1/S1024 causal pass the cached CPU golden chain
+with bank0. Across three alternating same-build S1024 pairs, reducer mean ticks
+fall `2,785,965 -> 2,707,857` (`-2.80%`) and full lifecycle mean falls
+`50,801,812 -> 50,706,868` (`-0.19%`). Fused compute is noise-flat, which
+supports attributing the small end-to-end gain to the epilogue.

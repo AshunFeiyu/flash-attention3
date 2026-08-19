@@ -11993,3 +11993,14 @@ runtime branch.
   `2.22%`; the writer is not the CTA pace setter.
 - Restore canonical `2b6efe5` and `16/204/204/88` WDRA pools. The next
   experiment must shorten the shared heavy-consumer pace.
+
+## 2026-08-19 dQ FP16 Reduction Epilogue Accepted
+
+- Fused5 dQ workspace remains FP32 and the reducer now converts the final four
+  sums to FP16 immediately before one 8-byte vector store. No extra conversion
+  dispatch is needed; dK/dV remain FP32 in the standalone prototype.
+- Generated ISA is two `v_cvt_pk_f16_f32` plus one
+  `global_store_dwordx2`; SGPR26/VGPR36, no private/spill/scratch.
+- H1/S128 causal/non-causal and H1/S1024 causal full correctness pass, bank0.
+  Three paired S1024 runs improve reducer mean by `2.80%` and full lifecycle
+  mean by `0.19%`. Decision: `ACCEPT_MICRO_END_TO_END`.

@@ -38,6 +38,24 @@ python3 scripts/check_dot_do_o_kernel_gate.py \
 python3 scripts/check_symbol_metadata_gate.py \
   --asm "${BUILD_DIR}/dot_do_o_kernel.asm" \
   --symbol-regex dot_do_o_kernel --max-vgpr-count 32
+python3 scripts/check_symbol_metadata_gate.py \
+  --asm "${BUILD_DIR}/fused_bwd_dq_reduce.asm" \
+  --symbol-regex fa3_bwd_dq_reduce_kernel \
+  --max-private-segment 0 --max-sgpr-spill 0 --max-vgpr-spill 0
+
+cvt_count="$(grep -c 'v_cvt_pk_f16_f32' \
+  "${BUILD_DIR}/fused_bwd_dq_reduce.asm" || true)"
+store_count="$(grep -c 'global_store_dwordx2' \
+  "${BUILD_DIR}/fused_bwd_dq_reduce.asm" || true)"
+if [[ "${cvt_count}" -lt 2 || "${store_count}" -lt 1 ]]; then
+  echo "dQ reduction must pack four FP32 sums into one FP16 vector store" >&2
+  exit 1
+fi
+if grep -Eq '^[[:space:]]+global_store_dwordx4' \
+    "${BUILD_DIR}/fused_bwd_dq_reduce.asm"; then
+  echo "dQ reduction unexpectedly retains an FP32 vector output store" >&2
+  exit 1
+fi
 
 TARGET_GFX="${TARGET_GFX}" BUILD_DIR="${BUILD_DIR}" \
   BIN="${BUILD_DIR}/full_bwd_correctness.o" \

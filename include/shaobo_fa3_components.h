@@ -46,6 +46,7 @@ int shaobo_fa3_bwd_dot_do_o(const void* dout,
 size_t shaobo_fa3_bwd_fused5_workspace_bytes(
     const ShaoboFa3Params* params);
 
+// Standalone fused5 prototype contract: dq is FP16; dk and dv are FP32.
 int shaobo_fa3_bwd_fused5(const void* dout,
                           const void* q,
                           const void* k,

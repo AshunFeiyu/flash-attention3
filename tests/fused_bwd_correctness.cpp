@@ -195,7 +195,7 @@ int main() {
     __half* d_v = nullptr;
     __half* d_dout = nullptr;
     float* d_sidecar = nullptr;
-    float* d_dq = nullptr;
+    __half* d_dq = nullptr;
     float* d_dk = nullptr;
     float* d_dv = nullptr;
     void* d_workspace = nullptr;
@@ -205,7 +205,7 @@ int main() {
     check_hip(hipMalloc(&d_dout, half_bytes), "hipMalloc dout");
     check_hip(hipMalloc(&d_sidecar, sidecar.size() * sizeof(float)),
               "hipMalloc sidecar");
-    check_hip(hipMalloc(&d_dq, float_bytes), "hipMalloc dq");
+    check_hip(hipMalloc(&d_dq, half_bytes), "hipMalloc dq");
     check_hip(hipMalloc(&d_dk, float_bytes), "hipMalloc dk");
     check_hip(hipMalloc(&d_dv, float_bytes), "hipMalloc dv");
     check_hip(hipMemcpy(d_q, q.data(), half_bytes, hipMemcpyHostToDevice),
@@ -219,7 +219,7 @@ int main() {
     check_hip(hipMemcpy(d_sidecar, sidecar.data(),
                         sidecar.size() * sizeof(float), hipMemcpyHostToDevice),
               "copy sidecar");
-    check_hip(hipMemset(d_dq, 0, float_bytes), "clear dq");
+    check_hip(hipMemset(d_dq, 0, half_bytes), "clear dq");
     check_hip(hipMemset(d_dk, 0, float_bytes), "clear dk");
     check_hip(hipMemset(d_dv, 0, float_bytes), "clear dv");
 
@@ -254,11 +254,16 @@ int main() {
         return 2;
     }
 
+    std::vector<__half> dq_storage(elements);
     std::vector<float> dq(elements);
     std::vector<float> dk(elements);
     std::vector<float> dv(elements);
-    check_hip(hipMemcpy(dq.data(), d_dq, float_bytes, hipMemcpyDeviceToHost),
+    check_hip(hipMemcpy(dq_storage.data(), d_dq, half_bytes,
+                        hipMemcpyDeviceToHost),
               "copy dq");
+    for (size_t i = 0; i < elements; ++i) {
+        dq[i] = __half2float(dq_storage[i]);
+    }
     check_hip(hipMemcpy(dk.data(), d_dk, float_bytes, hipMemcpyDeviceToHost),
               "copy dk");
     check_hip(hipMemcpy(dv.data(), d_dv, float_bytes, hipMemcpyDeviceToHost),

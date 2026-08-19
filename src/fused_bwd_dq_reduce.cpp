@@ -3,12 +3,14 @@
 #include "fused_bwd_contract.h"
 #include "fused_bwd_dq_reduce.h"
 #include "shaobo_fa3_components.h"
+#include "shaobo_instr.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 
 namespace fused = shaobo::fa3::bwd::fused_bwd;
+namespace ins = shaobo::fa3::bwd::instr;
 
 namespace {
 
@@ -16,7 +18,7 @@ using Tile = fused::ActiveFusedBwdContract;
 constexpr int kThreads = 256;
 
 __global__ void fa3_bwd_dq_reduce_kernel(const float* __restrict__ partial,
-                                         float* __restrict__ dq,
+                                         __half* __restrict__ dq,
                                          int batch,
                                          int heads,
                                          int seqlen,
@@ -50,7 +52,10 @@ __global__ void fa3_bwd_dq_reduce_kernel(const float* __restrict__ partial,
         sum.z += value.z;
         sum.w += value.w;
     }
-    reinterpret_cast<float4*>(dq)[vec] = sum;
+    const ins::Vec4F16 out = {
+        static_cast<_Float16>(sum.x), static_cast<_Float16>(sum.y),
+        static_cast<_Float16>(sum.z), static_cast<_Float16>(sum.w)};
+    reinterpret_cast<ins::Vec4F16*>(dq)[vec] = out;
 }
 
 bool valid_params(const ShaoboFa3Params* params) {
@@ -81,7 +86,7 @@ size_t dq_workspace_bytes(const ShaoboFa3Params* params) {
 }
 
 int launch_dq_reduction(const float* partial,
-                        float* dq,
+                        __half* dq,
                         const ShaoboFa3Params* params) {
     if (!valid_params(params) || partial == nullptr || dq == nullptr) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;

@@ -1130,7 +1130,7 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
     }
     const int reduce_status = fused::launch_dq_reduction(
         static_cast<const float*>(params->workspace),
-        static_cast<float*>(dq), params);
+        static_cast<__half*>(dq), params);
     if (reduce_status != SHAOBO_FA3_STATUS_SUCCESS) {
         return reduce_status;
     }
