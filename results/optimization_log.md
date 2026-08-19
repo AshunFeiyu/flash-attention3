@@ -18072,3 +18072,19 @@ regress fused ticks `2.546%` and lifecycle ticks `2.279%`. Barrier share falls
 active falls `0.262pp`. The early writer competes with active consumers for
 LDS/MMAC issue. Candidate code is removed; four-panel Filled granularity stays
 canonical.
+
+## 2026-08-19 Writer Lag-One After C0 Gen2 Rejected
+
+Status: `REJECT_LDS_MMAC_CONTENTION_CANONICAL_RESTORED`
+
+The dQ writer used two four-fragment buffers inside each source group, issuing
+the next four `ds_read_matrix_trans` operations before `lgkmcnt(4)` and the
+current eight-MMAC island. The generated ASM matched the design, actual roles
+fit at `9/187/101/182`, and all correctness/resource/bank gates passed.
+
+Three alternating S1024 pairs regress fused ticks
+`44,647,482 -> 45,217,445` (`+1.277%`) and lifecycle ticks
+`48,796,930 -> 49,350,362` (`+1.134%`). Even after C0 two-generation
+ownership makes the writer the last role, extra writer LDS traffic competes
+with active C0/C1 MMAC and does not shorten CTA completion. The candidate is
+removed; writer panel read-ahead is closed for the current topology.

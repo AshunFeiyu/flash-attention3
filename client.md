@@ -6636,3 +6636,10 @@ Three S1024 pairs regress fused ticks by `2.546%`; wait-LGKM and wait-VM both
 rise. Keep one four-panel Filled event per C0 generation. The accepted
 two-generation page conveyor remains the finest useful ownership granularity
 for this 16-wave topology.
+
+Retesting dQ-writer panel lag-one after that ownership win also fails. It is
+resource-clean and numerically correct, and ASM contains the requested
+four-read/`lgkmcnt(4)`/eight-MMAC cadence, but S1024 fused ticks regress
+`1.277%`. Do not spend another iteration on role-local writer read scheduling;
+the next hypothesis must address measured cross-role MMAC contention or alter
+the operator-level critical path without duplicating GEMMs.

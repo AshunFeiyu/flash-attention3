@@ -12092,3 +12092,14 @@ runtime branch.
   `34.211% -> 33.949%`.
 - Decision: `REJECT_EARLY_WAKE_RESOURCE_CONTENTION`. Candidate code is
   removed; retain the accepted four-panel Filled granularity.
+
+## 2026-08-19 Writer Lag-One After C0 Gen2 Rejected
+
+- The compiler emits four next-panel dS reads, `lgkmcnt(4)`, and eight dQ
+  MMAC; roles `9/187/101/182` fit the rebudgeted physical pool.
+- S128 causal/noncausal and three S1024 pairs pass correctness, resource, and
+  bank gates.
+- Fused/lifecycle means regress by `1.277%/1.134%` despite the writer now
+  ending last in fresh SQTT.
+- Decision: `REJECT_LDS_MMAC_CONTENTION_CANONICAL_RESTORED`. Source remains
+  `dee5e50`; writer panel read-ahead is closed on this topology.
