@@ -12016,3 +12016,12 @@ runtime branch.
   lifecycle share from about `5.33%` to `4.58%`. Whole-lifecycle mean is
   noise-flat (`-0.02%`). Decision:
   `ACCEPT_KERNEL_LOCAL_END_TO_END_OBSERVE`.
+
+## 2026-08-19 dQ Reducer Paired Loads Rejected
+
+- Two consecutive workspace float4 loads compile as requested, but increase
+  SGPR/VGPR from `25/25` to `30/36` and do not hide the first-use wait.
+- Correctness/resources/bank gates pass. Three paired S1024 runs regress
+  reducer ticks by `8.60%` and total ticks by `0.17%`.
+- Decision: `REJECT_LIVE_RANGE_AND_WAIT_REGRESSION_CANONICAL_RESTORED`.
+  Keep the 2D grid with the single-load loop from `1678545`.

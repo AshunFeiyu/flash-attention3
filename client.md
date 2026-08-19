@@ -6589,3 +6589,8 @@ eight D128 rows and one `grid.y` coordinate owns a batch-head. This removes
 per-thread batch/row division and exec-mask control, lowers VGPR36 to VGPR25,
 and improves paired S1024 reducer ticks by `14.09%`. End-to-end remains
 noise-flat because fused-compute variance is larger than this 4.6% stage.
+
+Paired workspace loads are rejected and removed. Although ASM contains the
+requested two-load island, VGPR rises 25 to 36 and reducer ticks regress 8.60%.
+Retain the 2D ownership plus single-load loop; deeper synchronous batching is
+not a substitute for an asynchronous memory-latency mechanism.

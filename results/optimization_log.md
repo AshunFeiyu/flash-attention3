@@ -17987,3 +17987,14 @@ and S1024 c1 correctness pass, bank0. Three alternating S1024 pairs improve
 reducer mean `2,687,382 -> 2,308,670` (`-14.09%`, all pairs positive), while
 full-lifecycle mean is noise-flat at `-0.02%`. The topology is retained; the
 next bounded experiment is workspace-load batching guided by a fresh SQTT.
+
+## 2026-08-19 Fused5 dQ Reducer Paired Loads Rejected
+
+Status: `REJECT_LIVE_RANGE_AND_WAIT_REGRESSION_CANONICAL_RESTORED`
+
+The 2D reducer issued two workspace float4 loads before accumulation. Generated
+ASM contains the pair, but metadata grows SGPR25/VGPR25 to SGPR30/VGPR36.
+S128 c0/c1 and S1024 c1 correctness pass with bank0. Three alternating S1024
+pairs regress reducer mean `2,133,495 -> 2,317,012` (`+8.60%`) and lifecycle
+mean `50,036,653 -> 50,122,042` (`+0.17%`). The single-load loop from
+`1678545` is restored. No deeper synchronous load batch should be attempted.
