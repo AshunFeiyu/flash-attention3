@@ -18088,3 +18088,18 @@ Three alternating S1024 pairs regress fused ticks
 ownership makes the writer the last role, extra writer LDS traffic competes
 with active C0/C1 MMAC and does not shorten CTA completion. The candidate is
 removed; writer panel read-ahead is closed for the current topology.
+
+## 2026-08-19 C0 One-Panel dV Phase Seed Rejected
+
+Status: `REJECT_DS_PUBLICATION_DELAY_CANONICAL_RESTORED`
+
+C0 moved only panel0's existing dV island to
+`score -> P -> dV -> dP -> dS`, retaining panels1-3 dV after the accepted
+four-panel dS publication. No GEMM/read/token/output work was added, C0 VGPR
+fell `187 -> 174`, and correctness/resource/bank gates passed.
+
+Three alternating S1024 pairs regress fused ticks
+`44,814,770 -> 45,324,218` (`+1.137%`) and lifecycle ticks
+`48,898,698 -> 49,424,982` (`+1.076%`). The real-work phase seed delays dS
+publication on every q tile; that ownership cost exceeds any reduction in
+C0/C1 lockstep. Candidate code is removed.

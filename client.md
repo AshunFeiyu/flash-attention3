@@ -6643,3 +6643,8 @@ four-read/`lgkmcnt(4)`/eight-MMAC cadence, but S1024 fused ticks regress
 `1.277%`. Do not spend another iteration on role-local writer read scheduling;
 the next hypothesis must address measured cross-role MMAC contention or alter
 the operator-level critical path without duplicating GEMMs.
+
+A one-panel C0 dV real-work phase seed is also rejected. It reduces C0 VGPR
+but delays dS publication on every q tile and regresses S1024 fused ticks by
+`1.137%`. Preserve the accepted early four-panel dS publication. Future
+staggering must not move any dV work ahead of that ownership event.

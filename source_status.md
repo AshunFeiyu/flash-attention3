@@ -12103,3 +12103,12 @@ runtime branch.
   ending last in fresh SQTT.
 - Decision: `REJECT_LDS_MMAC_CONTENTION_CANONICAL_RESTORED`. Source remains
   `dee5e50`; writer panel read-ahead is closed on this topology.
+
+## 2026-08-19 C0 One-Panel dV Phase Seed Rejected
+
+- One existing C0 dV panel moved before dP/dS; exact work and ownership IDs
+  stayed fixed, and C0 VGPR fell `187 -> 174`.
+- All correctness/resource/bank gates pass, but three S1024 pairs regress
+  fused/lifecycle ticks by `1.137%/1.076%`.
+- Decision: `REJECT_DS_PUBLICATION_DELAY_CANONICAL_RESTORED`. Preserve the
+  earliest four-panel dS publication; source remains `dee5e50`.
