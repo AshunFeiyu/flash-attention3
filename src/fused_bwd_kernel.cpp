@@ -506,7 +506,7 @@ __device__ __forceinline__ void update_dq_writer_panel_group(
 }
 
 __device__ __forceinline__ void store_dq_partial_d32(
-    float* dq_partial,
+    __half* dq_partial,
     int64_t partial_base,
     int q_base,
     int m_block,
@@ -519,10 +519,10 @@ __device__ __forceinline__ void store_dq_partial_d32(
     for (int d_half = 0; d_half < 2; ++d_half) {
         const int col = d_owner * Tile::kHeadDimPerDqWriter +
                         d_half * 16 + lane_col;
-        auto* output = reinterpret_cast<ins::Vec4F32*>(
+        auto* output = reinterpret_cast<ins::Vec4F16*>(
             dq_partial + partial_base +
             static_cast<int64_t>(row) * Tile::kHeadDim + col);
-        *output = dq_acc[d_half].f32;
+        *output = __builtin_convertvector(dq_acc[d_half].f32, ins::Vec4F16);
     }
 }
 
@@ -839,7 +839,7 @@ __device__ __forceinline__ void run_consumer_group(
 
 __device__ __forceinline__ void run_dq_writer(
     const __half* lds,
-    float* dq_partial,
+    __half* dq_partial,
     int64_t partial_base,
     int q_tile_begin,
     int q_tile_count,
@@ -894,7 +894,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
                      const __half* __restrict__ k,
                      const __half* __restrict__ v,
                      const float* __restrict__ packed_sidecar,
-                     float* __restrict__ dq_partial,
+                     __half* __restrict__ dq_partial,
                      float* __restrict__ dk,
                      float* __restrict__ dv,
                      int heads,
@@ -1120,7 +1120,7 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
         static_cast<const __half*>(dout), static_cast<const __half*>(q),
         static_cast<const __half*>(k), static_cast<const __half*>(v),
         static_cast<const float*>(packed_sidecar),
-        static_cast<float*>(params->workspace), static_cast<float*>(dk),
+        static_cast<__half*>(params->workspace), static_cast<float*>(dk),
         static_cast<float*>(dv),
         params->num_heads_q, params->seqlen_q, params->causal,
         params->softmax_scale);
@@ -1129,7 +1129,7 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
         return SHAOBO_FA3_STATUS_HIP_ERROR;
     }
     const int reduce_status = fused::launch_dq_reduction(
-        static_cast<const float*>(params->workspace),
+        static_cast<const __half*>(params->workspace),
         static_cast<__half*>(dq), params);
     if (reduce_status != SHAOBO_FA3_STATUS_SUCCESS) {
         return reduce_status;

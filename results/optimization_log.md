@@ -17998,3 +17998,21 @@ S128 c0/c1 and S1024 c1 correctness pass with bank0. Three alternating S1024
 pairs regress reducer mean `2,133,495 -> 2,317,012` (`+8.60%`) and lifecycle
 mean `50,036,653 -> 50,122,042` (`+0.17%`). The single-load loop from
 `1678545` is restored. No deeper synchronous load batch should be attempted.
+
+## 2026-08-19 Fused5 dQ FP16 Partial Workspace
+
+Status: `ACCEPT_END_TO_END`
+
+The fused writer keeps FP32 dQ MMAC accumulators but writes packed FP16
+partials. The reducer loads packed FP16, converts to FP32, accumulates in FP32,
+and emits final FP16. Static gates pass with fused SGPR62/VGPR128 and reducer
+SGPR20/VGPR13; both are private/spill/scratch0 and bank0. H1/S128 c0/c1,
+H1/S1024 c1 and H1/S2048 c1 all pass cached CPU golden correctness.
+
+Three alternating S1024 pairs improve reducer mean
+`2,334,453 -> 1,933,295` (`-17.18%`), fused mean
+`45,629,827 -> 45,396,108` (`-0.51%`), and total mean
+`50,415,668 -> 49,779,123` (`-1.26%`). S2048 improves reducer by `10.88%`
+and total by `1.25%`. Fresh SQTT still shows a 31.75% packed-load-to-wait
+bubble in the reducer; fused SQTT remains dominated by ABarrier and LDS
+readiness, which is the next main-kernel optimization boundary.

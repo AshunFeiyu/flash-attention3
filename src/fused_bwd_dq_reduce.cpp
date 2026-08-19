@@ -22,7 +22,7 @@ static_assert(kThreads % kVectorsPerRow == 0 &&
                   Tile::kNk % kRowsPerBlock == 0,
               "dQ reduction blocks must cover aligned causal row groups");
 
-__global__ void fa3_bwd_dq_reduce_kernel(const float* __restrict__ partial,
+__global__ void fa3_bwd_dq_reduce_kernel(const __half* __restrict__ partial,
                                          __half* __restrict__ dq,
                                          int seqlen,
                                          int k_tiles,
@@ -40,22 +40,18 @@ __global__ void fa3_bwd_dq_reduce_kernel(const float* __restrict__ partial,
         causal ? static_cast<int>(blockIdx.x) /
                      (Tile::kNk / kRowsPerBlock)
                : k_tiles - 1;
-    const auto* partial4 = reinterpret_cast<const float4*>(partial);
-    float4 sum = {0.0f, 0.0f, 0.0f, 0.0f};
+    const auto* partial4 = reinterpret_cast<const ins::Vec4F16*>(partial);
+    ins::Vec4F32 sum = {0.0f, 0.0f, 0.0f, 0.0f};
 
 #pragma clang loop unroll(disable)
     for (int k_tile = 0; k_tile <= last_k_tile; ++k_tile) {
         const int64_t offset =
             (bh * k_tiles + k_tile) * slice_vectors + local_vec;
-        const float4 value = partial4[offset];
-        sum.x += value.x;
-        sum.y += value.y;
-        sum.z += value.z;
-        sum.w += value.w;
+        const ins::Vec4F16 value = partial4[offset];
+        sum += __builtin_convertvector(value, ins::Vec4F32);
     }
-    const ins::Vec4F16 out = {
-        static_cast<_Float16>(sum.x), static_cast<_Float16>(sum.y),
-        static_cast<_Float16>(sum.z), static_cast<_Float16>(sum.w)};
+    const ins::Vec4F16 out =
+        __builtin_convertvector(sum, ins::Vec4F16);
     const int64_t output_vec =
         static_cast<int64_t>(bh) * vectors_per_tensor + local_vec;
     reinterpret_cast<ins::Vec4F16*>(dq)[output_vec] = out;
@@ -82,13 +78,13 @@ size_t dq_workspace_bytes(const ShaoboFa3Params* params) {
     const size_t elements = static_cast<size_t>(params->batch) *
                             params->num_heads_q * k_tiles *
                             params->seqlen_q * Tile::kHeadDim;
-    if (elements > std::numeric_limits<size_t>::max() / sizeof(float)) {
+    if (elements > std::numeric_limits<size_t>::max() / sizeof(__half)) {
         return 0;
     }
-    return elements * sizeof(float);
+    return elements * sizeof(__half);
 }
 
-int launch_dq_reduction(const float* partial,
+int launch_dq_reduction(const __half* partial,
                         __half* dq,
                         const ShaoboFa3Params* params) {
     if (!valid_params(params) || partial == nullptr || dq == nullptr) {

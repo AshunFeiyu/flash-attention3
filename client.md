@@ -6594,3 +6594,11 @@ Paired workspace loads are rejected and removed. Although ASM contains the
 requested two-load island, VGPR rises 25 to 36 and reducer ticks regress 8.60%.
 Retain the 2D ownership plus single-load loop; deeper synchronous batching is
 not a substitute for an asynchronous memory-latency mechanism.
+
+The accepted output boundary now also stores dQ partial workspace in FP16.
+The writer still accumulates in FP32 and the reducer converts each FP16
+partial back to FP32 before summation. This halves workspace traffic and
+reduces S1024 reducer ticks by 17.18%, fused ticks by 0.51%, and full-chain
+ticks by 1.26% across three paired runs. S2048 correctness and scaling pass.
+Do not interpret this as the MMAC-active solution: fused SQTT still points to
+ABarrier ownership and matrix-read readiness as the dominant debts.

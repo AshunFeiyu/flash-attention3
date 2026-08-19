@@ -12025,3 +12025,17 @@ runtime branch.
   reducer ticks by `8.60%` and total ticks by `0.17%`.
 - Decision: `REJECT_LIVE_RANGE_AND_WAIT_REGRESSION_CANONICAL_RESTORED`.
   Keep the 2D grid with the single-load loop from `1678545`.
+
+## 2026-08-19 dQ FP16 Partial Workspace Accepted
+
+- dQ MMAC accumulation remains FP32, but each uniquely owned partial is
+  packed to FP16 before the workspace store. The reducer reloads FP16,
+  accumulates in FP32, and writes final FP16 dQ.
+- Fused SGPR62/VGPR128 and reducer SGPR20/VGPR13 are private/spill/scratch0;
+  correctness passes S128 c0/c1, S1024 c1, and S2048 c1; bank0.
+- Three paired S1024 means improve reducer by `17.18%` and the complete
+  lifecycle by `1.26%`. S2048 confirms a `10.88%` reducer win and `1.25%`
+  total win. Decision: `ACCEPT_END_TO_END`.
+- Fresh reducer SQTT is still load-latency bound: packed workspace load to
+  wait is 31.75% of issue-bubble duration. The fused kernel remains dominated
+  by ABarrier ownership and matrix-read readiness rather than output traffic.
