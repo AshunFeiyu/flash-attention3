@@ -12039,3 +12039,13 @@ runtime branch.
 - Fresh reducer SQTT is still load-latency bound: packed workspace load to
   wait is 31.75% of issue-bubble duration. The fused kernel remains dominated
   by ABarrier ownership and matrix-read readiness rather than output traffic.
+
+## 2026-08-19 dQ FP16 Pair Load Accepted
+
+- The FP16 reducer now issues two adjacent k-tile vector loads and uses
+  `vmcnt(1)`/`vmcnt(0)` first-use waits. SGPR20/VGPR19 remains resource-clean.
+- Three S1024 pairs improve reducer ticks by `15.22%`; total is noise-flat.
+  S2048 improves reducer by `34.76%` and total by `1.41%` with correctness
+  PASS and bank0.
+- Decision: `ACCEPT_KERNEL_LOCAL_SCALE_END_TO_END`. Stop reducer depth tuning
+  here; the next primary target is fused ABarrier and matrix-read readiness.

@@ -44,11 +44,18 @@ __global__ void fa3_bwd_dq_reduce_kernel(const __half* __restrict__ partial,
     ins::Vec4F32 sum = {0.0f, 0.0f, 0.0f, 0.0f};
 
 #pragma clang loop unroll(disable)
-    for (int k_tile = 0; k_tile <= last_k_tile; ++k_tile) {
+    for (int k_tile = 0; k_tile + 1 <= last_k_tile; k_tile += 2) {
         const int64_t offset =
             (bh * k_tiles + k_tile) * slice_vectors + local_vec;
-        const ins::Vec4F16 value = partial4[offset];
-        sum += __builtin_convertvector(value, ins::Vec4F32);
+        const ins::Vec4F16 value0 = partial4[offset];
+        const ins::Vec4F16 value1 = partial4[offset + slice_vectors];
+        sum += __builtin_convertvector(value0, ins::Vec4F32);
+        sum += __builtin_convertvector(value1, ins::Vec4F32);
+    }
+    if ((last_k_tile & 1) == 0) {
+        const int64_t offset =
+            (bh * k_tiles + last_k_tile) * slice_vectors + local_vec;
+        sum += __builtin_convertvector(partial4[offset], ins::Vec4F32);
     }
     const ins::Vec4F16 out =
         __builtin_convertvector(sum, ins::Vec4F16);

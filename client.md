@@ -6602,3 +6602,10 @@ reduces S1024 reducer ticks by 17.18%, fused ticks by 0.51%, and full-chain
 ticks by 1.26% across three paired runs. S2048 correctness and scaling pass.
 Do not interpret this as the MMAC-active solution: fused SQTT still points to
 ABarrier ownership and matrix-read readiness as the dominant debts.
+
+The FP16 reducer additionally uses a two-load partial pipeline. It compiles to
+two packed loads with count-controlled first-use waits, remains VGPR19 and
+resource-clean, and lowers reducer ticks another 15.22% at S1024 and 34.76%
+at S2048. The S1024 lifecycle result is noise-flat; S2048 improves 1.41%.
+Reducer depth tuning is now closed until the fused ABarrier/LDS-read critical
+path is materially shorter.

@@ -18016,3 +18016,15 @@ Three alternating S1024 pairs improve reducer mean
 and total by `1.25%`. Fresh SQTT still shows a 31.75% packed-load-to-wait
 bubble in the reducer; fused SQTT remains dominated by ABarrier and LDS
 readiness, which is the next main-kernel optimization boundary.
+
+## 2026-08-19 Fused5 dQ FP16 Pair Load
+
+Status: `ACCEPT_KERNEL_LOCAL_SCALE_END_TO_END`
+
+The reducer issues two adjacent packed FP16 workspace loads before first use,
+then consumes them with `vmcnt(1)` and `vmcnt(0)`. Metadata remains clean at
+SGPR20/VGPR19. Correctness passes through S2048 and bank conflicts remain
+zero. Three paired S1024 runs improve reducer mean by `15.22%`; total mean is
+noise-flat (`-0.02%`). S2048 improves reducer by `34.76%` and total by
+`1.41%`. Fresh SQTT still exposes startup and first-load readiness, but the
+main fused kernel's ABarrier/LDS-read path has much larger end-to-end leverage.
