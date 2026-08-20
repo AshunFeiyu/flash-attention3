@@ -6684,3 +6684,14 @@ staggering must not move any dV work ahead of that ownership event.
   The dQ absolute/RMSE error is tiny and identical to the atomic control; the
   large relative L2 is a low-reference-norm artifact. Scale SQTT remains the
   next evidence gate before reducer tuning.
+
+## 2026-08-20 H16/S8192 LPT Scale Monitor
+
+The frozen MHA LPT-serpentine binary completed the requested
+`B1/H16/S8192/D128/causal/SQ7` PMD run in `5h18m08s` with correctness PASS and
+bank0. Ticks are dot `103,901,980`, fused `3,603,940,795`, dQ reduction
+`630,622,720`, total `4,338,465,495`; shares are `2.39%/83.07%/14.54%`.
+The fused dispatch covers all 48 CUs and 192 SIMDs with active-time CV
+`0.001318`. This proves the LPT schedule balances the large MHA shape, while
+also identifying dQ reduction as the remaining `14.54%` lifecycle tax. Do not
+attribute this frozen MHA run to the new GQA workspace-reduction commit.

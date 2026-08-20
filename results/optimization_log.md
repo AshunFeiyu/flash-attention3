@@ -18146,3 +18146,15 @@ the lifecycle. dQ `max_abs=8.63e-6` and `RMSE=1.14e-6` match the atomic
 control exactly; only relative L2 is inflated by a near-zero reference norm.
 This promotes workspace reduction for GQA. Scale SQTT, not another ownership
 rewrite, is the next evidence step.
+
+## 2026-08-20 H16/S8192 LPT Scale Monitor
+
+Status: `ACCEPT_SCALE_CORRECTNESS_AND_BALANCE`.
+
+The frozen MHA LPT-serpentine binary completed `B1/H16/S8192/D128/causal/SQ7`
+in `5h18m08s` with correctness PASS and bank0. Lifecycle ticks are
+`4,338,465,495`: dot `103,901,980` (`2.39%`), fused `3,603,940,795`
+(`83.07%`), and dQ reduction `630,622,720` (`14.54%`). The fused dispatch
+uses all 48 CUs and 192 SIMDs with active-time CV `0.001318`, so LPT balance
+holds at scale. The next scale optimization target is reduction cost; this run
+must not be represented as evidence for the new GQA workspace binary.

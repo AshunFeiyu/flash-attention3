@@ -12158,3 +12158,13 @@ Status: `ACCEPT_GQA_OWNERSHIP_AND_TICKS`; scale SQTT pending.
 - dQ scale error is `max_abs=8.63e-6`, `RMSE=1.14e-6`; atomic produces the
   same values. The correctness gate uses abs plus relative-L2-or-RMSE for FP16
   dQ so a near-zero reference norm does not produce a false failure.
+
+## 2026-08-20 H16/S8192 MHA Scale Monitor Complete
+
+- Frozen LPT-serpentine evidence:
+  `/zys/sb/mfu_lpt_820/cases/b1_h16_s8192_d128_c1_perfonly_20260820_115315`.
+- Full status PASS, bank0, PMD runtime `5h18m08s`.
+- Ticks: dot `103,901,980`, fused `3,603,940,795`, dQ reduce `630,622,720`,
+  total `4,338,465,495`; shares `2.39%/83.07%/14.54%`.
+- Fused balance: 48 active CUs, 192 active SIMDs, active-time CV `0.001318`.
+- This is a frozen MHA scale baseline, not a GQA workspace-reduction run.
