@@ -18103,3 +18103,16 @@ Three alternating S1024 pairs regress fused ticks
 `48,898,698 -> 49,424,982` (`+1.076%`). The real-work phase seed delays dS
 publication on every q tile; that ownership cost exceeds any reduction in
 C0/C1 lockstep. Candidate code is removed.
+## 2026-08-20 Fused5 GQA Atomic Baseline
+
+Status: `OBSERVE_CORRECTNESS_BASELINE_ATOMIC_COST`
+
+The canonical five-GEMM kernel now separates query-head and KV-head bases and
+uses native FP32 atomic accumulation only when `Hq != Hkv`. Full
+`B1/Hq4/Hkv2/S128/D128/causal` CPU golden passes for delta/dQ/dK/dV with
+fused `23,596,300` ticks, lifecycle `26,699,855`, bank0, and clean metadata.
+Direct and atomic store islands are role-uniform, and the MHA fast path avoids
+head division, but the GQA-capable binary still regresses MHA H1/S1024 fused
+ticks `44,524,025 -> 44,944,900` (`+0.945%`). Freeze it as the correctness
+control. The next experiment changes ownership to a KV-owned CTA that loops
+query heads, retains dK/dV accumulators, and direct-stores once.

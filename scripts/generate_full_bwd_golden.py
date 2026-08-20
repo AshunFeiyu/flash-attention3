@@ -14,6 +14,8 @@ import numpy as np
 
 SCHEMA = "shaobo-fa3-bwd-golden-v1"
 FORMULA_VERSION = "deterministic-bhsd-fp16-v1"
+GQA_SCHEMA = "shaobo-fa3-bwd-golden-v2-gqa"
+GQA_FORMULA_VERSION = "deterministic-bhsd-fp16-gqa-v1"
 LOG2_E = np.float32(1.4426950408889634)
 
 
@@ -24,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--root", required=True)
     parser.add_argument("--batch", type=int, default=1)
     parser.add_argument("--heads", type=int, default=1)
+    parser.add_argument("--heads-kv", type=int)
     parser.add_argument("--seqlen", type=int, default=128)
     parser.add_argument("--dim", type=int, default=128)
     parser.add_argument("--causal", type=int, choices=(0, 1), default=1)
@@ -55,12 +58,32 @@ def scale_bits(scale: float) -> str:
 
 
 def expected_contract(args: argparse.Namespace) -> dict[str, object]:
+    hkv = args.heads if args.heads_kv is None else args.heads_kv
+    if hkv == args.heads:
+        return {
+            "schema": SCHEMA,
+            "formula_version": FORMULA_VERSION,
+            "shape": {
+                "batch": args.batch,
+                "heads": args.heads,
+                "seqlen_q": args.seqlen,
+                "seqlen_k": args.seqlen,
+                "head_dim_qk": args.dim,
+                "head_dim_v": args.dim,
+            },
+            "causal": args.causal,
+            "layout": "BHSD-contiguous",
+            "input_dtype": "float16",
+            "output_dtype": "float32",
+            "softmax_scale_f32_bits": scale_bits(args.softmax_scale),
+        }
     return {
-        "schema": SCHEMA,
-        "formula_version": FORMULA_VERSION,
+        "schema": GQA_SCHEMA,
+        "formula_version": GQA_FORMULA_VERSION,
         "shape": {
             "batch": args.batch,
-            "heads": args.heads,
+            "heads_q": args.heads,
+            "heads_kv": hkv,
             "seqlen_q": args.seqlen,
             "seqlen_k": args.seqlen,
             "head_dim_qk": args.dim,
@@ -75,6 +98,12 @@ def expected_contract(args: argparse.Namespace) -> dict[str, object]:
 
 
 def cache_key(args: argparse.Namespace) -> str:
+    hkv = args.heads if args.heads_kv is None else args.heads_kv
+    if hkv != args.heads:
+        return (
+            f"v2_b{args.batch}_hq{args.heads}_hkv{hkv}_s{args.seqlen}"
+            f"_d{args.dim}_c{args.causal}_scale{scale_bits(args.softmax_scale)}"
+        )
     return (
         f"v1_b{args.batch}_h{args.heads}_s{args.seqlen}_d{args.dim}"
         f"_c{args.causal}_scale{scale_bits(args.softmax_scale)}"
@@ -82,22 +111,24 @@ def cache_key(args: argparse.Namespace) -> str:
 
 
 def expected_file_specs(args: argparse.Namespace) -> dict[str, tuple[str, list[int]]]:
-    b, h, s, d = args.batch, args.heads, args.seqlen, args.dim
-    tensor = [b, h, s, d]
-    rows = [b, h, s]
+    b, hq, s, d = args.batch, args.heads, args.seqlen, args.dim
+    hkv = hq if args.heads_kv is None else args.heads_kv
+    q_tensor = [b, hq, s, d]
+    kv_tensor = [b, hkv, s, d]
+    rows = [b, hq, s]
     return {
-        "q.f16": ("<f2", tensor),
-        "k.f16": ("<f2", tensor),
-        "v.f16": ("<f2", tensor),
-        "o.f16": ("<f2", tensor),
-        "dout.f16": ("<f2", tensor),
+        "q.f16": ("<f2", q_tensor),
+        "k.f16": ("<f2", kv_tensor),
+        "v.f16": ("<f2", kv_tensor),
+        "o.f16": ("<f2", q_tensor),
+        "dout.f16": ("<f2", q_tensor),
         "scores_max.f32": ("<f4", rows),
         "scores_sum.f32": ("<f4", rows),
         "delta.f32": ("<f4", rows),
-        "packed_sidecar.f32": ("<f4", [b, h, s, 3]),
-        "dq.f32": ("<f4", tensor),
-        "dk.f32": ("<f4", tensor),
-        "dv.f32": ("<f4", tensor),
+        "packed_sidecar.f32": ("<f4", [b, hq, s, 3]),
+        "dq.f32": ("<f4", q_tensor),
+        "dk.f32": ("<f4", kv_tensor),
+        "dv.f32": ("<f4", kv_tensor),
     }
 
 
@@ -110,29 +141,32 @@ def deterministic_tensor(
 
 
 def cpu_backward(args: argparse.Namespace) -> dict[str, np.ndarray]:
-    b, h, s, d = args.batch, args.heads, args.seqlen, args.dim
-    count = b * h * s * d
-    q = deterministic_tensor(count, 3, 29, 0.009).reshape(b, h, s, d)
-    k = deterministic_tensor(count, 5, 31, 0.008).reshape(b, h, s, d)
-    v = deterministic_tensor(count, 7, 37, 0.007).reshape(b, h, s, d)
-    dout = deterministic_tensor(count, 11, 41, 0.006).reshape(b, h, s, d)
+    b, hq, s, d = args.batch, args.heads, args.seqlen, args.dim
+    hkv = hq if args.heads_kv is None else args.heads_kv
+    q_count = b * hq * s * d
+    kv_count = b * hkv * s * d
+    q = deterministic_tensor(q_count, 3, 29, 0.009).reshape(b, hq, s, d)
+    k = deterministic_tensor(kv_count, 5, 31, 0.008).reshape(b, hkv, s, d)
+    v = deterministic_tensor(kv_count, 7, 37, 0.007).reshape(b, hkv, s, d)
+    dout = deterministic_tensor(q_count, 11, 41, 0.006).reshape(b, hq, s, d)
 
-    out = np.empty((b, h, s, d), dtype=np.float16)
-    scores_max = np.empty((b, h, s), dtype=np.float32)
-    scores_sum = np.empty((b, h, s), dtype=np.float32)
-    delta = np.empty((b, h, s), dtype=np.float32)
-    dq = np.empty((b, h, s, d), dtype=np.float32)
-    dk = np.empty((b, h, s, d), dtype=np.float32)
-    dv = np.empty((b, h, s, d), dtype=np.float32)
+    out = np.empty((b, hq, s, d), dtype=np.float16)
+    scores_max = np.empty((b, hq, s), dtype=np.float32)
+    scores_sum = np.empty((b, hq, s), dtype=np.float32)
+    delta = np.empty((b, hq, s), dtype=np.float32)
+    dq = np.empty((b, hq, s, d), dtype=np.float32)
+    dk = np.zeros((b, hkv, s, d), dtype=np.float32)
+    dv = np.zeros((b, hkv, s, d), dtype=np.float32)
 
     scale = np.float32(args.softmax_scale)
     scale_log2 = np.float32(scale * LOG2_E)
     causal_mask = np.triu(np.ones((s, s), dtype=bool), k=1)
     for batch_index in range(b):
-        for head_index in range(h):
+        for head_index in range(hq):
+            kv_head = head_index // (hq // hkv)
             qf = q[batch_index, head_index].astype(np.float32)
-            kf = k[batch_index, head_index].astype(np.float32)
-            vf = v[batch_index, head_index].astype(np.float32)
+            kf = k[batch_index, kv_head].astype(np.float32)
+            vf = v[batch_index, kv_head].astype(np.float32)
             dof = dout[batch_index, head_index].astype(np.float32)
 
             score = np.matmul(qf, kf.T).astype(np.float32)
@@ -160,10 +194,10 @@ def cpu_backward(args: argparse.Namespace) -> dict[str, np.ndarray]:
             scores_sum[batch_index, head_index] = row_sum
             delta[batch_index, head_index] = delta_row
             dq[batch_index, head_index] = np.matmul(ds, kf).astype(np.float32)
-            dk[batch_index, head_index] = np.matmul(ds.T, qf).astype(np.float32)
-            dv[batch_index, head_index] = np.matmul(prob.T, dof).astype(np.float32)
+            dk[batch_index, kv_head] += np.matmul(ds.T, qf).astype(np.float32)
+            dv[batch_index, kv_head] += np.matmul(prob.T, dof).astype(np.float32)
 
-    packed_sidecar = np.empty((b, h, s, 3), dtype=np.float32)
+    packed_sidecar = np.empty((b, hq, s, 3), dtype=np.float32)
     packed_sidecar[..., 0] = scores_max * scale_log2
     packed_sidecar[..., 1] = np.where(
         scores_sum != 0.0, np.float32(1.0) / scores_sum, np.float32(0.0)
@@ -258,8 +292,11 @@ def validate_cache(cache_dir: Path, args: argparse.Namespace) -> dict[str, objec
 
 def main() -> int:
     args = parse_args()
-    if min(args.batch, args.heads, args.seqlen, args.dim) <= 0:
+    hkv = args.heads if args.heads_kv is None else args.heads_kv
+    if min(args.batch, args.heads, hkv, args.seqlen, args.dim) <= 0:
         raise SystemExit("all shape dimensions must be positive")
+    if args.heads % hkv != 0:
+        raise SystemExit("heads must be divisible by heads-kv")
     root = Path(args.root).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     cache_dir = root / cache_key(args)

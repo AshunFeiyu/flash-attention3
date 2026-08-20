@@ -6,6 +6,7 @@ cd "${ROOT}"
 
 B="${B:-1}"
 H="${H:-16}"
+HKV="${HKV:-${H}}"
 S="${S:-8192}"
 D="${D:-128}"
 CAUSAL="${CAUSAL:-1}"
@@ -24,7 +25,7 @@ FUSED5_FULL_BIN="${FROZEN_DIR}/fa3_bwd_fused5_full" \
 FUSED5_FULL_PERF_ONLY=1 \
 FUSED5_FULL_CAPTURE_PERF=0 \
 FUSED5_FULL_PMD_TIMEOUT="${FUSED5_FULL_PMD_TIMEOUT:-43200}" \
-SKIP_BUILD=1 B="${B}" H="${H}" S="${S}" D="${D}" CAUSAL="${CAUSAL}" \
+SKIP_BUILD=1 B="${B}" H="${H}" HKV="${HKV}" S="${S}" D="${D}" CAUSAL="${CAUSAL}" \
 scripts/run_fused5_full_bwd_correctness.sh >"${LOG}" 2>&1
 rc="$?"
 set -e

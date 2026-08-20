@@ -1,5 +1,21 @@
 # Client
 
+## 2026-08-20 GQA Atomic Correctness Baseline
+
+Branch `exp/fused5-gqa-atomic-dkv` extends the canonical five-GEMM symbol to
+`Hq/Hkv` inputs. Q/dO/sidecar remain query-head owned; K/V map through
+`kv_head = q_head / (Hq/Hkv)`. GQA dK/dV use native FP32 atomic accumulation,
+while MHA retains vector direct stores. `Hq4/Hkv2/S128` full CPU golden passes
+with bank0 and clean resources. The best MHA fast-path build remains 0.945%
+slower in fused ticks than the frozen LPT-only control, so this branch is a
+reproducible correctness/control point, not the performance route.
+
+Next branch changes ownership rather than instructions: one CTA owns one
+`(batch,kv_head,k_tile)`, reuses K/V across its query-head group, carries all
+ABarrier phases across head epochs, accumulates dK/dV in registers, and
+direct-stores once. The first performance target is the long-sequence GQA case
+where `B*Hkv*Ktiles` covers all 48 CUs.
+
 ## 2026-08-18 New Best: C1 dO Lag-One
 
 Branch `exp/fused5-c1-dout-lagone` is the current independent best candidate.

@@ -175,6 +175,8 @@ bool hip_ok(hipError_t err, const char* operation) {
 int main(int argc, char** argv) {
     const int batch = arg_int(argc, argv, "--B", env_int("B", 1));
     const int heads = arg_int(argc, argv, "--H", env_int("H", 1));
+    const int heads_kv =
+        arg_int(argc, argv, "--Hkv", env_int("HKV", heads));
     const int seqlen = arg_int(argc, argv, "--S", env_int("S", 128));
     const int dim = arg_int(argc, argv, "--D", env_int("D", 128));
     const int causal = arg_int(argc, argv, "--causal", env_int("CAUSAL", 1));
@@ -193,6 +195,8 @@ int main(int argc, char** argv) {
 
     const size_t rows = static_cast<size_t>(batch) * heads * seqlen;
     const size_t elems = rows * dim;
+    const size_t kv_rows = static_cast<size_t>(batch) * heads_kv * seqlen;
+    const size_t kv_elems = kv_rows * dim;
     std::vector<__half> q, k, v, out, dout;
     std::vector<float> scores_max, scores_sum;
     std::vector<float> delta_expected, dq_expected, dk_expected, dv_expected;
@@ -205,16 +209,16 @@ int main(int argc, char** argv) {
         scores_sum.assign(rows, 1.0f);
     } else {
         loaded = read_raw(path("q.f16"), elems, q) &&
-                 read_raw(path("k.f16"), elems, k) &&
-                 read_raw(path("v.f16"), elems, v) &&
+                 read_raw(path("k.f16"), kv_elems, k) &&
+                 read_raw(path("v.f16"), kv_elems, v) &&
                  read_raw(path("o.f16"), elems, out) &&
                  read_raw(path("dout.f16"), elems, dout) &&
                  read_raw(path("scores_max.f32"), rows, scores_max) &&
                  read_raw(path("scores_sum.f32"), rows, scores_sum) &&
                  read_raw(path("delta.f32"), rows, delta_expected) &&
                  read_raw(path("dq.f32"), elems, dq_expected) &&
-                 read_raw(path("dk.f32"), elems, dk_expected) &&
-                 read_raw(path("dv.f32"), elems, dv_expected);
+                 read_raw(path("dk.f32"), kv_elems, dk_expected) &&
+                 read_raw(path("dv.f32"), kv_elems, dv_expected);
     }
     if (!loaded) {
         return 2;
@@ -241,7 +245,8 @@ int main(int argc, char** argv) {
     };
 
     const size_t half_bytes = elems * sizeof(__half);
-    const size_t output_bytes = elems * sizeof(float);
+    const size_t kv_half_bytes = kv_elems * sizeof(__half);
+    const size_t output_bytes = kv_elems * sizeof(float);
 #if defined(SHAOBO_FULL_BWD_FUSED5)
     const size_t dq_output_bytes = half_bytes;
 #else
@@ -249,8 +254,8 @@ int main(int argc, char** argv) {
 #endif
     const size_t row_bytes = rows * sizeof(float);
     const size_t packed_bytes = rows * 3 * sizeof(float);
-    if (!allocate(&q_dev, half_bytes) || !allocate(&k_dev, half_bytes) ||
-        !allocate(&v_dev, half_bytes) || !allocate(&out_dev, half_bytes) ||
+    if (!allocate(&q_dev, half_bytes) || !allocate(&k_dev, kv_half_bytes) ||
+        !allocate(&v_dev, kv_half_bytes) || !allocate(&out_dev, half_bytes) ||
         !allocate(&dout_dev, half_bytes) ||
         !allocate(&scores_max_dev, row_bytes) ||
         !allocate(&scores_sum_dev, row_bytes) ||
@@ -267,17 +272,17 @@ int main(int argc, char** argv) {
     if (perf_only) {
         copied =
             hip_ok(hipMemset(q_dev, 0, half_bytes), "clear q") &&
-            hip_ok(hipMemset(k_dev, 0, half_bytes), "clear k") &&
-            hip_ok(hipMemset(v_dev, 0, half_bytes), "clear v") &&
+            hip_ok(hipMemset(k_dev, 0, kv_half_bytes), "clear k") &&
+            hip_ok(hipMemset(v_dev, 0, kv_half_bytes), "clear v") &&
             hip_ok(hipMemset(out_dev, 0, half_bytes), "clear o") &&
             hip_ok(hipMemset(dout_dev, 0, half_bytes), "clear dout");
     } else {
         copied =
             hip_ok(hipMemcpy(q_dev, q.data(), half_bytes,
                              hipMemcpyHostToDevice), "copy q") &&
-            hip_ok(hipMemcpy(k_dev, k.data(), half_bytes,
+            hip_ok(hipMemcpy(k_dev, k.data(), kv_half_bytes,
                              hipMemcpyHostToDevice), "copy k") &&
-            hip_ok(hipMemcpy(v_dev, v.data(), half_bytes,
+            hip_ok(hipMemcpy(v_dev, v.data(), kv_half_bytes,
                              hipMemcpyHostToDevice), "copy v") &&
             hip_ok(hipMemcpy(out_dev, out.data(), half_bytes,
                              hipMemcpyHostToDevice), "copy o") &&
@@ -306,7 +311,7 @@ int main(int argc, char** argv) {
     params.seqlen_q = seqlen;
     params.seqlen_k = seqlen;
     params.num_heads_q = heads;
-    params.num_heads_kv = heads;
+    params.num_heads_kv = heads_kv;
     params.head_dim_qk = dim;
     params.head_dim_v = dim;
     params.causal = causal != 0 ? 1 : 0;
@@ -373,17 +378,17 @@ int main(int argc, char** argv) {
                           dq_status == SHAOBO_FA3_STATUS_SUCCESS &&
                           sync_error == hipSuccess;
         std::printf(
-            "fa3_bwd_full_perf path=%s B=%d H=%d S=%d D=%d causal=%d "
+            "fa3_bwd_full_perf path=%s B=%d Hq=%d Hkv=%d S=%d D=%d causal=%d "
             "dot_status=%s dkv_status=%s dq_status=%s pass=%d\n",
-            kPathName, batch, heads, seqlen, dim, params.causal,
+            kPathName, batch, heads, heads_kv, seqlen, dim, params.causal,
             status_string(dot_status), status_string(dkv_status),
             status_string(dq_status), pass ? 1 : 0);
         free_device(allocations);
         return pass ? 0 : 1;
     }
 
-    std::vector<float> delta_actual(rows), dq_actual(elems), dk_actual(elems),
-        dv_actual(elems);
+    std::vector<float> delta_actual(rows), dq_actual(elems),
+        dk_actual(kv_elems), dv_actual(kv_elems);
 #if defined(SHAOBO_FULL_BWD_FUSED5)
     std::vector<__half> dq_storage(elems);
 #endif
@@ -455,7 +460,7 @@ int main(int argc, char** argv) {
                       dkv_pass && dq_pass;
 
     std::printf(
-        "fa3_bwd_full_correctness path=%s B=%d H=%d S=%d D=%d causal=%d scale=%g "
+        "fa3_bwd_full_correctness path=%s B=%d Hq=%d Hkv=%d S=%d D=%d causal=%d scale=%g "
         "dot_status=%s dkv_status=%s dq_status=%s "
         "delta_max_abs=%g delta_mean_abs=%g delta_rmse=%g "
         "delta_rel_l2=%g delta_cosine_error=%g delta_nonfinite=%d "
@@ -466,7 +471,7 @@ int main(int argc, char** argv) {
         "dq_max_abs=%g dq_mean_abs=%g dq_rmse=%g dq_rel_l2=%g "
         "dq_cosine_error=%g dq_nonfinite=%d "
         "dot_pass=%d dkv_pass=%d dq_pass=%d pass=%d\n",
-        kPathName, batch, heads, seqlen, dim, params.causal,
+        kPathName, batch, heads, heads_kv, seqlen, dim, params.causal,
         params.softmax_scale,
         status_string(dot_status),
         status_string(dkv_status), status_string(dq_status),

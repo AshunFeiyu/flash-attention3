@@ -1,5 +1,19 @@
 # Source Status
 
+## 2026-08-20 GQA Atomic Baseline Ready To Freeze
+
+- Branch: `exp/fused5-gqa-atomic-dkv`, parent `6f67b87`.
+- One canonical five-GEMM symbol supports `Hq % Hkv == 0`.
+- `Hq4/Hkv2/S128`: complete CPU golden PASS, fused `23,596,300`, lifecycle
+  `26,699,855`, bank0, no panic, no spill/private/scratch.
+- Generated fused metadata: SGPR84/VGPR128; role use `9/187/87/182` within
+  WDRA windows `16/204/88/204`.
+- MHA `H1/S1024`: fused `44,944,900`, lifecycle `48,970,285`; frozen
+  LPT-only control `44,524,025` / `48,725,495`.
+- Status: `OBSERVE_CORRECTNESS_BASELINE_ATOMIC_COST`. Freeze this commit, then
+  replace GQA atomic ownership on a child branch with KV-owned in-kernel
+  reduction. Do not stack both designs in the active hot path.
+
 ## 2026-08-18 New Best: C1 dO Lag-One
 
 - Branch: `exp/fused5-c1-dout-lagone`.

@@ -7,6 +7,7 @@ source scripts/env.sh
 
 B="${B:-1}"
 H="${H:-1}"
+HKV="${HKV:-${H}}"
 S="${S:-128}"
 D="${D:-128}"
 CAUSAL="${CAUSAL:-1}"
@@ -37,6 +38,7 @@ golden_dir=""
 if [[ "${PERF_ONLY}" == 0 ]]; then
   golden_output="$(python3 scripts/generate_full_bwd_golden.py \
     --root "${GOLDEN_ROOT}" --batch "${B}" --heads "${H}" \
+    --heads-kv "${HKV}" \
     --seqlen "${S}" --dim "${D}" --causal "${CAUSAL}" \
     --softmax-scale "${SOFTMAX_SCALE}")"
   printf '%s\n' "${golden_output}"
@@ -57,7 +59,7 @@ fi
 if [[ "${PERF_ONLY}" == 1 ]]; then
   case_suffix="${case_suffix}_perfonly"
 fi
-case_dir="${RUN_ROOT}/b${B}_h${H}_s${S}_d${D}_c${CAUSAL}${case_suffix}_$(date +%Y%m%d_%H%M%S)"
+case_dir="${RUN_ROOT}/b${B}_hq${H}_hkv${HKV}_s${S}_d${D}_c${CAUSAL}${case_suffix}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "${case_dir}/m5out"
 cp "${PMD_CONFIG_SEED}" "${case_dir}/m5out/config.ini"
 cp "${BUILD_DIR}/toolchain_fingerprint.txt" "${case_dir}/"
@@ -69,7 +71,7 @@ set -euo pipefail
 cd ${case_dir}
 echo "PMD_BINARY=${bin_abs}"
 sha256sum "${bin_abs}"
-exec "${bin_abs}" --golden-dir=${golden_dir} --perf-only=${PERF_ONLY} --B=${B} --H=${H} --S=${S} --D=${D} --causal=${CAUSAL} --softmax-scale=${SOFTMAX_SCALE}
+exec "${bin_abs}" --golden-dir=${golden_dir} --perf-only=${PERF_ONLY} --B=${B} --H=${H} --Hkv=${HKV} --S=${S} --D=${D} --causal=${CAUSAL} --softmax-scale=${SOFTMAX_SCALE}
 EOF
 chmod +x "${case_script}"
 
