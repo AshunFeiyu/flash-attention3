@@ -178,13 +178,15 @@ int main(int argc, char** argv) {
     const int seqlen = arg_int(argc, argv, "--S", env_int("S", 128));
     const int dim = arg_int(argc, argv, "--D", env_int("D", 128));
     const int causal = arg_int(argc, argv, "--causal", env_int("CAUSAL", 1));
+    const bool perf_only =
+        arg_int(argc, argv, "--perf-only", env_int("PERF_ONLY", 0)) != 0;
     const float softmax_scale = arg_float(
         argc, argv, "--softmax-scale",
         env_float("SOFTMAX_SCALE", 0.08838834764831845f));
     const char* env_golden = std::getenv("GOLDEN_DIR");
     const std::string golden_dir = arg_string(
         argc, argv, "--golden-dir", env_golden != nullptr ? env_golden : "");
-    if (golden_dir.empty()) {
+    if (!perf_only && golden_dir.empty()) {
         std::fprintf(stderr, "--golden-dir is required\n");
         return 2;
     }
@@ -197,18 +199,23 @@ int main(int argc, char** argv) {
     const auto path = [&](const char* name) {
         return golden_dir + "/" + name;
     };
-    const bool loaded =
-        read_raw(path("q.f16"), elems, q) &&
-        read_raw(path("k.f16"), elems, k) &&
-        read_raw(path("v.f16"), elems, v) &&
-        read_raw(path("o.f16"), elems, out) &&
-        read_raw(path("dout.f16"), elems, dout) &&
-        read_raw(path("scores_max.f32"), rows, scores_max) &&
-        read_raw(path("scores_sum.f32"), rows, scores_sum) &&
-        read_raw(path("delta.f32"), rows, delta_expected) &&
-        read_raw(path("dq.f32"), elems, dq_expected) &&
-        read_raw(path("dk.f32"), elems, dk_expected) &&
-        read_raw(path("dv.f32"), elems, dv_expected);
+    bool loaded = true;
+    if (perf_only) {
+        scores_max.assign(rows, 0.0f);
+        scores_sum.assign(rows, 1.0f);
+    } else {
+        loaded = read_raw(path("q.f16"), elems, q) &&
+                 read_raw(path("k.f16"), elems, k) &&
+                 read_raw(path("v.f16"), elems, v) &&
+                 read_raw(path("o.f16"), elems, out) &&
+                 read_raw(path("dout.f16"), elems, dout) &&
+                 read_raw(path("scores_max.f32"), rows, scores_max) &&
+                 read_raw(path("scores_sum.f32"), rows, scores_sum) &&
+                 read_raw(path("delta.f32"), rows, delta_expected) &&
+                 read_raw(path("dq.f32"), elems, dq_expected) &&
+                 read_raw(path("dk.f32"), elems, dk_expected) &&
+                 read_raw(path("dv.f32"), elems, dv_expected);
+    }
     if (!loaded) {
         return 2;
     }
@@ -256,31 +263,38 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    bool copied =
-        hip_ok(hipMemcpy(q_dev, q.data(), half_bytes, hipMemcpyHostToDevice),
-               "copy q") &&
-        hip_ok(hipMemcpy(k_dev, k.data(), half_bytes, hipMemcpyHostToDevice),
-               "copy k") &&
-        hip_ok(hipMemcpy(v_dev, v.data(), half_bytes, hipMemcpyHostToDevice),
-               "copy v") &&
-        hip_ok(hipMemcpy(out_dev, out.data(), half_bytes,
-                         hipMemcpyHostToDevice),
-               "copy o") &&
-        hip_ok(hipMemcpy(dout_dev, dout.data(), half_bytes,
-                         hipMemcpyHostToDevice),
-               "copy dout") &&
-        hip_ok(hipMemcpy(scores_max_dev, scores_max.data(), row_bytes,
-                         hipMemcpyHostToDevice),
-               "copy scores_max") &&
-        hip_ok(hipMemcpy(scores_sum_dev, scores_sum.data(), row_bytes,
-                         hipMemcpyHostToDevice),
-               "copy scores_sum") &&
-        hip_ok(hipMemset(delta_dev, 0, row_bytes), "clear delta") &&
-        hip_ok(hipMemset(packed_sidecar_dev, 0, packed_bytes),
-               "clear packed sidecar") &&
-        hip_ok(hipMemset(dq_dev, 0, dq_output_bytes), "clear dq") &&
-        hip_ok(hipMemset(dk_dev, 0, output_bytes), "clear dk") &&
-        hip_ok(hipMemset(dv_dev, 0, output_bytes), "clear dv");
+    bool copied = true;
+    if (perf_only) {
+        copied =
+            hip_ok(hipMemset(q_dev, 0, half_bytes), "clear q") &&
+            hip_ok(hipMemset(k_dev, 0, half_bytes), "clear k") &&
+            hip_ok(hipMemset(v_dev, 0, half_bytes), "clear v") &&
+            hip_ok(hipMemset(out_dev, 0, half_bytes), "clear o") &&
+            hip_ok(hipMemset(dout_dev, 0, half_bytes), "clear dout");
+    } else {
+        copied =
+            hip_ok(hipMemcpy(q_dev, q.data(), half_bytes,
+                             hipMemcpyHostToDevice), "copy q") &&
+            hip_ok(hipMemcpy(k_dev, k.data(), half_bytes,
+                             hipMemcpyHostToDevice), "copy k") &&
+            hip_ok(hipMemcpy(v_dev, v.data(), half_bytes,
+                             hipMemcpyHostToDevice), "copy v") &&
+            hip_ok(hipMemcpy(out_dev, out.data(), half_bytes,
+                             hipMemcpyHostToDevice), "copy o") &&
+            hip_ok(hipMemcpy(dout_dev, dout.data(), half_bytes,
+                             hipMemcpyHostToDevice), "copy dout");
+    }
+    copied = copied &&
+             hip_ok(hipMemcpy(scores_max_dev, scores_max.data(), row_bytes,
+                              hipMemcpyHostToDevice), "copy scores_max") &&
+             hip_ok(hipMemcpy(scores_sum_dev, scores_sum.data(), row_bytes,
+                              hipMemcpyHostToDevice), "copy scores_sum") &&
+             hip_ok(hipMemset(delta_dev, 0, row_bytes), "clear delta") &&
+             hip_ok(hipMemset(packed_sidecar_dev, 0, packed_bytes),
+                    "clear packed sidecar") &&
+             hip_ok(hipMemset(dq_dev, 0, dq_output_bytes), "clear dq") &&
+             hip_ok(hipMemset(dk_dev, 0, output_bytes), "clear dk") &&
+             hip_ok(hipMemset(dv_dev, 0, output_bytes), "clear dv");
     if (!copied) {
         free_device(allocations);
         return 2;
@@ -352,6 +366,21 @@ int main(int argc, char** argv) {
     constexpr const char* kPathName = "seven_gemm";
 #endif
     const hipError_t sync_error = hipDeviceSynchronize();
+
+    if (perf_only) {
+        const bool pass = dot_status == SHAOBO_FA3_STATUS_SUCCESS &&
+                          dkv_status == SHAOBO_FA3_STATUS_SUCCESS &&
+                          dq_status == SHAOBO_FA3_STATUS_SUCCESS &&
+                          sync_error == hipSuccess;
+        std::printf(
+            "fa3_bwd_full_perf path=%s B=%d H=%d S=%d D=%d causal=%d "
+            "dot_status=%s dkv_status=%s dq_status=%s pass=%d\n",
+            kPathName, batch, heads, seqlen, dim, params.causal,
+            status_string(dot_status), status_string(dkv_status),
+            status_string(dq_status), pass ? 1 : 0);
+        free_device(allocations);
+        return pass ? 0 : 1;
+    }
 
     std::vector<float> delta_actual(rows), dq_actual(elems), dk_actual(elems),
         dv_actual(elems);

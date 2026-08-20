@@ -17,6 +17,7 @@ BIN="${FUSED5_FULL_BIN:-${BUILD_DIR}/fa3_bwd_fused5_full_correctness}"
 RUN_ROOT="${FUSED5_FULL_RUN_ROOT:-${SHAOBO_RUN_ROOT}/fused5_full}"
 TIMEOUT="${FUSED5_FULL_PMD_TIMEOUT:-1800}"
 CAPTURE_PERF="${FUSED5_FULL_CAPTURE_PERF:-0}"
+PERF_ONLY="${FUSED5_FULL_PERF_ONLY:-0}"
 HELPER="${HSA_TOOLS_LIB:-/opt/rocm-6.3.3/lib/xprofiler/libperf_gen_helper.so}"
 PERF_DFLAGS="${FUSED5_FULL_GPU_DFLAGS:-['StatLog','SQAbar','SQEbar','MMUCheck','TT','Perf']}"
 
@@ -24,18 +25,25 @@ if [[ "${CAPTURE_PERF}" != 0 && "${CAPTURE_PERF}" != 1 ]]; then
   echo "FUSED5_FULL_CAPTURE_PERF must be 0 or 1" >&2
   exit 2
 fi
+if [[ "${PERF_ONLY}" != 0 && "${PERF_ONLY}" != 1 ]]; then
+  echo "FUSED5_FULL_PERF_ONLY must be 0 or 1" >&2
+  exit 2
+fi
 if [[ "${CAPTURE_PERF}" == 1 ]]; then
   [[ -r "${HELPER}" ]]
 fi
 
-golden_output="$(python3 scripts/generate_full_bwd_golden.py \
-  --root "${GOLDEN_ROOT}" --batch "${B}" --heads "${H}" \
-  --seqlen "${S}" --dim "${D}" --causal "${CAUSAL}" \
-  --softmax-scale "${SOFTMAX_SCALE}")"
-printf '%s\n' "${golden_output}"
-golden_dir="$(printf '%s\n' "${golden_output}" | \
-  awk -F= '/^golden_cache_path=/{print substr($0, index($0, "=") + 1)}')"
-[[ -n "${golden_dir}" && -s "${golden_dir}/manifest.json" ]]
+golden_dir=""
+if [[ "${PERF_ONLY}" == 0 ]]; then
+  golden_output="$(python3 scripts/generate_full_bwd_golden.py \
+    --root "${GOLDEN_ROOT}" --batch "${B}" --heads "${H}" \
+    --seqlen "${S}" --dim "${D}" --causal "${CAUSAL}" \
+    --softmax-scale "${SOFTMAX_SCALE}")"
+  printf '%s\n' "${golden_output}"
+  golden_dir="$(printf '%s\n' "${golden_output}" | \
+    awk -F= '/^golden_cache_path=/{print substr($0, index($0, "=") + 1)}')"
+  [[ -n "${golden_dir}" && -s "${golden_dir}/manifest.json" ]]
+fi
 
 if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
   scripts/build_fused5_full_bwd_correctness.sh
@@ -45,6 +53,9 @@ bin_abs="$(realpath "${BIN}")"
 case_suffix=""
 if [[ "${CAPTURE_PERF}" == 1 ]]; then
   case_suffix="_fullperf"
+fi
+if [[ "${PERF_ONLY}" == 1 ]]; then
+  case_suffix="${case_suffix}_perfonly"
 fi
 case_dir="${RUN_ROOT}/b${B}_h${H}_s${S}_d${D}_c${CAUSAL}${case_suffix}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "${case_dir}/m5out"
@@ -58,7 +69,7 @@ set -euo pipefail
 cd ${case_dir}
 echo "PMD_BINARY=${bin_abs}"
 sha256sum "${bin_abs}"
-exec "${bin_abs}" --golden-dir=${golden_dir} --B=${B} --H=${H} --S=${S} --D=${D} --causal=${CAUSAL} --softmax-scale=${SOFTMAX_SCALE}
+exec "${bin_abs}" --golden-dir=${golden_dir} --perf-only=${PERF_ONLY} --B=${B} --H=${H} --S=${S} --D=${D} --causal=${CAUSAL} --softmax-scale=${SOFTMAX_SCALE}
 EOF
 chmod +x "${case_script}"
 
@@ -81,9 +92,13 @@ timeout --kill-after=5 "${TIMEOUT}" python3 "${run_py}" \
 pmd_status="$?"
 set -e
 
-grep -E 'fa3_bwd_full_correctness path=fused5 ' pmd_stdout.log \
+grep -E 'fa3_bwd_full_(correctness|perf) path=fused5 ' pmd_stdout.log \
   | tee correctness.txt || true
-semantic="$(grep -c 'fa3_bwd_full_correctness path=fused5 .*dot_pass=1 dkv_pass=1 dq_pass=1 pass=1' pmd_stdout.log || true)"
+if [[ "${PERF_ONLY}" == 1 ]]; then
+  semantic="$(grep -c 'fa3_bwd_full_perf path=fused5 .*pass=1' pmd_stdout.log || true)"
+else
+  semantic="$(grep -c 'fa3_bwd_full_correctness path=fused5 .*dot_pass=1 dkv_pass=1 dq_pass=1 pass=1' pmd_stdout.log || true)"
+fi
 panic="$(grep -ciE 'panic:|fatal:|not init or has been freed|Program aborted|core dumped' pmd_stdout.log || true)"
 vgpr_warning="$(grep -ciE 'read vgpr.*before writing' pmd_stdout.log || true)"
 mapfile -t stats_files < <(find m5out -type f -name stats.txt -size +0c | sort)
@@ -114,9 +129,9 @@ else
 fi
 
 printf '%s\n' "${perf_files[@]}" > perf_files.txt
-printf 'fused5_full_status=%s pmd=%s semantic=%s panic=%s vgpr_warning=%s dispatches=%s bank=%s capture_perf=%s perf=%s run=%s\n' \
+printf 'fused5_full_status=%s pmd=%s semantic=%s panic=%s vgpr_warning=%s dispatches=%s bank=%s capture_perf=%s perf_only=%s perf=%s run=%s\n' \
   "${status}" "${pmd_status}" "${semantic}" "${panic}" \
-  "${vgpr_warning}" "${#stats_files[@]}" "${bank}" "${CAPTURE_PERF}" \
+  "${vgpr_warning}" "${#stats_files[@]}" "${bank}" "${CAPTURE_PERF}" "${PERF_ONLY}" \
   "${#perf_files[@]}" "${case_dir}" \
   | tee result.txt
 

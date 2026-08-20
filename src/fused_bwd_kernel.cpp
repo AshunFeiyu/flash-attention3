@@ -1012,6 +1012,86 @@ __device__ __forceinline__ void run_dq_writer(
     }
 }
 
+enum CtaOrderMode : int {
+    kCtaOrderIdentity = 0,
+    kCtaOrderSerpentine = 1,
+};
+
+__host__ __device__ __forceinline__ int remap_k_tile(
+    int physical_k_tile, int k_tile_count, int order_mode,
+    int order_width) {
+    if (order_mode == kCtaOrderIdentity) {
+        return physical_k_tile;
+    }
+
+    const int round = physical_k_tile / order_width;
+    const int slot = physical_k_tile - round * order_width;
+    const int base = round * order_width;
+    int round_width = k_tile_count - base;
+    if (round_width > order_width) {
+        round_width = order_width;
+    }
+    return base + ((round & 1) == 0 ? slot : round_width - 1 - slot);
+}
+
+struct CtaOrderPlan {
+    int mode;
+    int width;
+};
+
+int modeled_causal_max_work(int k_tile_count, int bh_count, int mode,
+                            int width) {
+    int loads[Tile::kSingleDieCuCount] = {};
+    const int remainder = bh_count % Tile::kSingleDieCuCount;
+    const int q_tile_count =
+        k_tile_count * Tile::kNk / Tile::kMq;
+    for (int physical = 0; physical < k_tile_count; ++physical) {
+        const int logical = remap_k_tile(
+            physical, k_tile_count, mode, width);
+        const int work =
+            q_tile_count - logical * Tile::kNk / Tile::kMq;
+        const int start =
+            (physical * bh_count) % Tile::kSingleDieCuCount;
+        for (int offset = 0; offset < remainder; ++offset) {
+            const int cu = (start + offset) % Tile::kSingleDieCuCount;
+            loads[cu] += work;
+        }
+    }
+
+    int maximum = 0;
+    for (int cu = 0; cu < Tile::kSingleDieCuCount; ++cu) {
+        if (loads[cu] > maximum) {
+            maximum = loads[cu];
+        }
+    }
+    return maximum;
+}
+
+CtaOrderPlan choose_causal_cta_order(int k_tile_count, int bh_count,
+                                     int causal) {
+    CtaOrderPlan best{kCtaOrderIdentity, 1};
+    if (causal == 0 ||
+        bh_count % Tile::kSingleDieCuCount == 0) {
+        return best;
+    }
+
+    int best_max = modeled_causal_max_work(
+        k_tile_count, bh_count, best.mode, best.width);
+    int max_width = k_tile_count;
+    if (max_width > Tile::kSingleDieCuCount) {
+        max_width = Tile::kSingleDieCuCount;
+    }
+    for (int width = 1; width <= max_width; ++width) {
+        const int candidate_max = modeled_causal_max_work(
+            k_tile_count, bh_count, kCtaOrderSerpentine, width);
+        if (candidate_max < best_max) {
+            best = CtaOrderPlan{kCtaOrderSerpentine, width};
+            best_max = candidate_max;
+        }
+    }
+    return best;
+}
+
 }  // namespace
 
 extern "C" __global__ void __launch_bounds__(Tile::kThreadsPerCta, 1)
@@ -1027,6 +1107,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
                      int heads,
                      int seqlen,
                      int causal,
+                     int cta_order_mode,
+                     int cta_order_width,
                      float softmax_scale) {
 #if defined(SHAOBO_EXPLICIT_WDRA_INIT)
     __builtin_hcu_wdra_init(Wdra::kProducerVgprs, Wdra::kConsumer0Vgprs,
@@ -1058,7 +1140,10 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int bh = static_cast<int>(blockIdx.y) * heads +
                        static_cast<int>(blockIdx.x);
-        const int k_base = static_cast<int>(blockIdx.z) * Tile::kNk;
+        const int logical_k_tile = remap_k_tile(
+            static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
+            cta_order_mode, cta_order_width);
+        const int k_base = logical_k_tile * Tile::kNk;
         const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t row_base = static_cast<int64_t>(bh) * seqlen;
@@ -1135,7 +1220,10 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int bh = static_cast<int>(blockIdx.y) * heads +
                        static_cast<int>(blockIdx.x);
-        const int k_base = static_cast<int>(blockIdx.z) * Tile::kNk;
+        const int logical_k_tile = remap_k_tile(
+            static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
+            cta_order_mode, cta_order_width);
+        const int k_base = logical_k_tile * Tile::kNk;
         const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t tensor_base =
@@ -1152,7 +1240,10 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int bh = static_cast<int>(blockIdx.y) * heads +
                        static_cast<int>(blockIdx.x);
-        const int k_base = static_cast<int>(blockIdx.z) * Tile::kNk;
+        const int logical_k_tile = remap_k_tile(
+            static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
+            cta_order_mode, cta_order_width);
+        const int k_base = logical_k_tile * Tile::kNk;
         const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t tensor_base =
@@ -1169,9 +1260,14 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int bh = static_cast<int>(blockIdx.y) * heads +
                        static_cast<int>(blockIdx.x);
-        const int k_base = static_cast<int>(blockIdx.z) * Tile::kNk;
+        const int logical_k_tile = remap_k_tile(
+            static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
+            cta_order_mode, cta_order_width);
+        const int k_base = logical_k_tile * Tile::kNk;
         const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
+        // Physical dispatch slots remain unique reduction owners even when
+        // their logical K tiles are reordered for causal load balance.
         const int64_t partial_base =
             (static_cast<int64_t>(bh) * gridDim.z + blockIdx.z) * seqlen *
             Tile::kHeadDim;
@@ -1209,6 +1305,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
     (void)heads;
     (void)seqlen;
     (void)causal;
+    (void)cta_order_mode;
+    (void)cta_order_width;
     (void)softmax_scale;
 #endif
 }
@@ -1244,8 +1342,11 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
 
-    const dim3 grid(params->num_heads_q, params->batch,
-                    params->seqlen_k / Tile::kNk);
+    const int k_tile_count = params->seqlen_k / Tile::kNk;
+    const int bh_count = params->batch * params->num_heads_q;
+    const CtaOrderPlan cta_order = choose_causal_cta_order(
+        k_tile_count, bh_count, params->causal);
+    const dim3 grid(params->num_heads_q, params->batch, k_tile_count);
     hipLaunchKernelGGL(
         fa3_bwd_5gemm_kernel, grid, dim3(Tile::kThreadsPerCta), 0, 0,
         static_cast<const __half*>(dout), static_cast<const __half*>(q),
@@ -1254,6 +1355,7 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
         static_cast<__half*>(params->workspace), static_cast<float*>(dk),
         static_cast<float*>(dv),
         params->num_heads_q, params->seqlen_q, params->causal,
+        cta_order.mode, cta_order.width,
         params->softmax_scale);
     hipError_t error = hipGetLastError();
     if (error != hipSuccess) {

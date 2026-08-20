@@ -17,6 +17,8 @@ struct FusedBwdContract {
     static constexpr int kConsumer0WaveBegin = 4;
     static constexpr int kConsumer1WaveBegin = 8;
     static constexpr int kDqWriterWaveBegin = 12;
+    static constexpr int kSingleDieSeCount = 4;
+    static constexpr int kSingleDieCuCount = 48;
     static constexpr int kWavesPerCta =
         kWavesPerProducer + kConsumerGroups * kWavesPerConsumerGroup +
         kDqWriterWaves;
@@ -126,6 +128,8 @@ struct FusedBwdContract {
                       kConsumer1WaveBegin == 8 &&
                       kDqWriterWaveBegin == 12,
                   "roles must be P0 0-3, dKV 4-11 and dQ writer 12-15");
+    static_assert(kSingleDieSeCount == 4 && kSingleDieCuCount == 48,
+                  "causal CTA order assumes the admitted sb dispatch round");
     static_assert(kMqPanels == 4 && kNkPerConsumerWave == 16 &&
                       kNkPerConsumerGroup == 64 &&
                       kHeadDimPerDqWriter == 32,
