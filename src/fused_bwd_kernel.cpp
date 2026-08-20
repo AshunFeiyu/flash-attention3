@@ -690,7 +690,6 @@ __device__ __forceinline__ void update_dq_writer_group(
         lds, resident, dq_acc[3]);
 }
 
-template <bool AtomicAccumulate>
 __device__ __forceinline__ void store_dkv_outputs_impl(
     float* dk,
     float* dv,
@@ -713,18 +712,8 @@ __device__ __forceinline__ void store_dkv_outputs_impl(
                             static_cast<int64_t>(row) * Tile::kHeadDim + col;
             float* dv_ptr = dv + tensor_base +
                             static_cast<int64_t>(row) * Tile::kHeadDim + col;
-            if constexpr (AtomicAccumulate) {
-#pragma unroll
-                for (int vec = 0; vec < 4; ++vec) {
-                    (void)__builtin_hcu_global_atomic_fadd_f32(
-                        dk_ptr + vec, dk_acc[out].scalar[vec]);
-                    (void)__builtin_hcu_global_atomic_fadd_f32(
-                        dv_ptr + vec, dv_acc[out].scalar[vec]);
-                }
-            } else {
-                *reinterpret_cast<ins::Vec4F32*>(dk_ptr) = dk_acc[out].f32;
-                *reinterpret_cast<ins::Vec4F32*>(dv_ptr) = dv_acc[out].f32;
-            }
+            *reinterpret_cast<ins::Vec4F32*>(dk_ptr) = dk_acc[out].f32;
+            *reinterpret_cast<ins::Vec4F32*>(dv_ptr) = dv_acc[out].f32;
         }
     }
 }
@@ -736,16 +725,10 @@ __device__ __forceinline__ void store_dkv_outputs(
     int k_base,
     int n_owner,
     int lane,
-    bool atomic_accumulate,
     const Accumulator (&dk_acc)[8],
     const Accumulator (&dv_acc)[8]) {
-    if (!atomic_accumulate) {
-        store_dkv_outputs_impl<false>(dk, dv, tensor_base, k_base, n_owner,
-                                      lane, dk_acc, dv_acc);
-    } else {
-        store_dkv_outputs_impl<true>(dk, dv, tensor_base, k_base, n_owner,
-                                     lane, dk_acc, dv_acc);
-    }
+    store_dkv_outputs_impl(dk, dv, tensor_base, k_base, n_owner, lane,
+                           dk_acc, dv_acc);
 }
 
 template <int Group, int Page, bool ReuseDs>
@@ -902,7 +885,6 @@ __device__ __forceinline__ void run_consumer_group(
     int q_tile_count,
     int causal,
     float softmax_scale,
-    bool atomic_dkv,
     int owner,
     int lane) {
     const int n_owner = Group * Tile::kWavesPerConsumerGroup + owner;
@@ -970,8 +952,8 @@ __device__ __forceinline__ void run_consumer_group(
             dv_acc, dk_acc, raw0_phase, done0_phase);
     }
 
-    store_dkv_outputs(dk, dv, tensor_base, k_base, n_owner, lane, atomic_dkv,
-                      dk_acc, dv_acc);
+    store_dkv_outputs(dk, dv, tensor_base, k_base, n_owner, lane, dk_acc,
+                      dv_acc);
 }
 
 template <int Generation>
@@ -1027,17 +1009,17 @@ __device__ __forceinline__ void run_dq_writer(
     int qi = 0;
 #pragma clang loop unroll(disable)
     for (; qi + 1 < q_tile_count; qi += 2) {
-        run_dq_writer_tile<0>(lds, dq_partial, partial_base, q_tile_begin,
-                              qi, d_owner, lane, resident, filled0_phase,
-                              filled1_phase);
-        run_dq_writer_tile<1>(lds, dq_partial, partial_base, q_tile_begin,
-                              qi + 1, d_owner, lane, resident,
-                              filled0_alt_phase, filled1_phase);
+        run_dq_writer_tile<0>(
+            lds, dq_partial, partial_base, q_tile_begin, qi, d_owner, lane,
+            resident, filled0_phase, filled1_phase);
+        run_dq_writer_tile<1>(
+            lds, dq_partial, partial_base, q_tile_begin, qi + 1, d_owner,
+            lane, resident, filled0_alt_phase, filled1_phase);
     }
     if (qi < q_tile_count) {
-        run_dq_writer_tile<0>(lds, dq_partial, partial_base, q_tile_begin,
-                              qi, d_owner, lane, resident, filled0_phase,
-                              filled1_phase);
+        run_dq_writer_tile<0>(
+            lds, dq_partial, partial_base, q_tile_begin, qi, d_owner, lane,
+            resident, filled0_phase, filled1_phase);
     }
 }
 
@@ -1170,26 +1152,30 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int wave_local = wave & 3;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int q_head = static_cast<int>(blockIdx.x);
-        const int q_bh = static_cast<int>(blockIdx.y) * heads_q + q_head;
-        const int kv_head =
-            q_heads_per_kv == 1 ? q_head : q_head / q_heads_per_kv;
-        const int kv_bh = static_cast<int>(blockIdx.y) * heads_kv + kv_head;
+        const int q_bh =
+            static_cast<int>(blockIdx.y) * heads_q + q_head;
+        const int kv_head = q_heads_per_kv == 1
+                                ? q_head
+                                : q_head / q_heads_per_kv;
+        const int kv_bh =
+            static_cast<int>(blockIdx.y) * heads_kv + kv_head;
         const int logical_k_tile = remap_k_tile(
             static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
             cta_order_mode, cta_order_width);
         const int k_base = logical_k_tile * Tile::kNk;
         const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
-        const int64_t row_base = static_cast<int64_t>(q_bh) * seqlen;
+        const int64_t row_base =
+            static_cast<int64_t>(q_bh) * seqlen;
         const int64_t q_tensor_base = row_base * Tile::kHeadDim;
         const int64_t kv_tensor_base =
             static_cast<int64_t>(kv_bh) * seqlen * Tile::kHeadDim;
 
         ins::abarrier_seq<false>(Bar::kResidentFilled);
-        producer_load_resident_group<0>(k, v, lds, kv_tensor_base, k_base,
-                                        wave_local);
-        producer_load_resident_group<1>(k, v, lds, kv_tensor_base, k_base,
-                                        wave_local);
+        producer_load_resident_group<0>(k, v, lds, kv_tensor_base,
+                                        k_base, wave_local);
+        producer_load_resident_group<1>(k, v, lds, kv_tensor_base,
+                                        k_base, wave_local);
         ins::maybe_wait_bps_vbcnt_before_arrive();
         ins::abarrier_arrive_cnt<false>(Bar::kResidentFilled, 1);
 
@@ -1255,9 +1241,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int owner = wave - Tile::kConsumer0WaveBegin;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int q_head = static_cast<int>(blockIdx.x);
-        const int kv_head =
-            q_heads_per_kv == 1 ? q_head : q_head / q_heads_per_kv;
-        const int kv_bh = static_cast<int>(blockIdx.y) * heads_kv + kv_head;
+        const int q_bh =
+            static_cast<int>(blockIdx.y) * heads_q + q_head;
         const int logical_k_tile = remap_k_tile(
             static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
             cta_order_mode, cta_order_width);
@@ -1265,21 +1250,20 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t tensor_base =
-            static_cast<int64_t>(kv_bh) * seqlen * Tile::kHeadDim;
+            static_cast<int64_t>(q_bh) * seqlen * Tile::kHeadDim;
         int resident_phase = 0;
         ins::abarrier_try_wait<true>(Bar::kResidentFilled,
                                      resident_phase);
         run_consumer_group<0>(lds, lds, dk, dv, tensor_base, k_base,
                               q_tile_begin, q_tile_count, causal,
-                              softmax_scale, q_heads_per_kv != 1, owner, lane);
+                              softmax_scale, owner, lane);
     } else if (wave < Tile::kDqWriterWaveBegin) {
         __builtin_hcu_s_set_vgpr_size(Wdra::kConsumer1Vgprs);
         const int owner = wave - Tile::kConsumer1WaveBegin;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
         const int q_head = static_cast<int>(blockIdx.x);
-        const int kv_head =
-            q_heads_per_kv == 1 ? q_head : q_head / q_heads_per_kv;
-        const int kv_bh = static_cast<int>(blockIdx.y) * heads_kv + kv_head;
+        const int q_bh =
+            static_cast<int>(blockIdx.y) * heads_q + q_head;
         const int logical_k_tile = remap_k_tile(
             static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
             cta_order_mode, cta_order_width);
@@ -1287,19 +1271,20 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
         const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t tensor_base =
-            static_cast<int64_t>(kv_bh) * seqlen * Tile::kHeadDim;
+            static_cast<int64_t>(q_bh) * seqlen * Tile::kHeadDim;
         int resident_phase = 0;
         ins::abarrier_try_wait<true>(Bar::kResidentFilled,
                                      resident_phase);
         run_consumer_group<1>(lds, lds, dk, dv, tensor_base, k_base,
                               q_tile_begin, q_tile_count, causal,
-                              softmax_scale, q_heads_per_kv != 1, owner, lane);
+                              softmax_scale, owner, lane);
     } else {
         __builtin_hcu_s_set_vgpr_size(Wdra::kDqWriterVgprs);
         const int d_owner = wave - Tile::kDqWriterWaveBegin;
         const int lane = static_cast<int>(threadIdx.x % Tile::kWaveSize);
-        const int bh = static_cast<int>(blockIdx.y) * heads_q +
-                       static_cast<int>(blockIdx.x);
+        const int q_head = static_cast<int>(blockIdx.x);
+        const int bh =
+            static_cast<int>(blockIdx.y) * heads_q + q_head;
         const int logical_k_tile = remap_k_tile(
             static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
             cta_order_mode, cta_order_width);
@@ -1390,40 +1375,40 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
         params->num_heads_q / params->num_heads_kv;
     const CtaOrderPlan cta_order = choose_causal_cta_order(
         k_tile_count, bh_count, params->causal);
-    if (params->num_heads_q != params->num_heads_kv) {
-        const size_t dkv_bytes = static_cast<size_t>(params->batch) *
-                                 params->num_heads_kv * params->seqlen_k *
-                                 Tile::kHeadDim * sizeof(float);
-        hipError_t error = hipMemset(dk, 0, dkv_bytes);
-        if (error != hipSuccess) {
-            return SHAOBO_FA3_STATUS_HIP_ERROR;
-        }
-        error = hipMemset(dv, 0, dkv_bytes);
-        if (error != hipSuccess) {
-            return SHAOBO_FA3_STATUS_HIP_ERROR;
-        }
+    const fused::FusedWorkspaceView workspace =
+        fused::workspace_view(params->workspace, params);
+    if (workspace.dq_partial == nullptr ||
+        (q_heads_per_kv != 1 &&
+         (workspace.dk_partial == nullptr || workspace.dv_partial == nullptr))) {
+        return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
+    float* const dk_store =
+        q_heads_per_kv == 1 ? static_cast<float*>(dk) : workspace.dk_partial;
+    float* const dv_store =
+        q_heads_per_kv == 1 ? static_cast<float*>(dv) : workspace.dv_partial;
     const dim3 grid(params->num_heads_q, params->batch, k_tile_count);
     hipLaunchKernelGGL(
         fa3_bwd_5gemm_kernel, grid, dim3(Tile::kThreadsPerCta), 0, 0,
         static_cast<const __half*>(dout), static_cast<const __half*>(q),
         static_cast<const __half*>(k), static_cast<const __half*>(v),
-        static_cast<const float*>(packed_sidecar),
-        static_cast<__half*>(params->workspace), static_cast<float*>(dk),
-        static_cast<float*>(dv),
-        params->num_heads_q, params->num_heads_kv, q_heads_per_kv,
-        params->seqlen_q, params->causal,
-        cta_order.mode, cta_order.width,
-        params->softmax_scale);
+        static_cast<const float*>(packed_sidecar), workspace.dq_partial,
+        dk_store, dv_store, params->num_heads_q, params->num_heads_kv,
+        q_heads_per_kv, params->seqlen_q, params->causal, cta_order.mode,
+        cta_order.width, params->softmax_scale);
     hipError_t error = hipGetLastError();
     if (error != hipSuccess) {
         return SHAOBO_FA3_STATUS_HIP_ERROR;
     }
     const int reduce_status = fused::launch_dq_reduction(
-        static_cast<const __half*>(params->workspace),
-        static_cast<__half*>(dq), params);
+        workspace.dq_partial, static_cast<__half*>(dq), params);
     if (reduce_status != SHAOBO_FA3_STATUS_SUCCESS) {
         return reduce_status;
+    }
+    const int dkv_reduce_status = fused::launch_dkv_reduction(
+        workspace.dk_partial, workspace.dv_partial, static_cast<float*>(dk),
+        static_cast<float*>(dv), params);
+    if (dkv_reduce_status != SHAOBO_FA3_STATUS_SUCCESS) {
+        return dkv_reduce_status;
     }
     if (params->sync_after_launch != 0) {
         error = hipDeviceSynchronize();

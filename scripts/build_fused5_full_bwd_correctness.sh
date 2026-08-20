@@ -42,17 +42,23 @@ python3 scripts/check_symbol_metadata_gate.py \
   --asm "${BUILD_DIR}/fused_bwd_dq_reduce.asm" \
   --symbol-regex fa3_bwd_dq_reduce_kernel \
   --max-private-segment 0 --max-sgpr-spill 0 --max-vgpr-spill 0
+python3 scripts/check_symbol_metadata_gate.py \
+  --asm "${BUILD_DIR}/fused_bwd_dq_reduce.asm" \
+  --symbol-regex fa3_bwd_dkv_reduce_kernel \
+  --max-private-segment 0 --max-sgpr-spill 0 --max-vgpr-spill 0
 
-cvt_count="$(grep -c 'v_cvt_pk_f16_f32' \
-  "${BUILD_DIR}/fused_bwd_dq_reduce.asm" || true)"
-store_count="$(grep -c 'global_store_dwordx2' \
-  "${BUILD_DIR}/fused_bwd_dq_reduce.asm" || true)"
+dq_symbol_asm="$(awk '
+  /fa3_bwd_dq_reduce_kernel.*Begin function/ { capture=1 }
+  capture { print }
+  capture && /\.Lfunc_end0:/ { exit }
+' "${BUILD_DIR}/fused_bwd_dq_reduce.asm")"
+cvt_count="$(grep -c 'v_cvt_pk_f16_f32' <<<"${dq_symbol_asm}" || true)"
+store_count="$(grep -c 'global_store_dwordx2' <<<"${dq_symbol_asm}" || true)"
 if [[ "${cvt_count}" -lt 2 || "${store_count}" -lt 1 ]]; then
   echo "dQ reduction must pack four FP32 sums into one FP16 vector store" >&2
   exit 1
 fi
-if grep -Eq '^[[:space:]]+global_store_dwordx4' \
-    "${BUILD_DIR}/fused_bwd_dq_reduce.asm"; then
+if grep -Eq '^[[:space:]]+global_store_dwordx4' <<<"${dq_symbol_asm}"; then
   echo "dQ reduction unexpectedly retains an FP32 vector output store" >&2
   exit 1
 fi

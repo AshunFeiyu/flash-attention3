@@ -8,10 +8,25 @@
 
 namespace shaobo::fa3::bwd::fused_bwd {
 
+struct FusedWorkspaceView {
+    __half* dq_partial;
+    float* dk_partial;
+    float* dv_partial;
+};
+
 size_t dq_workspace_bytes(const ShaoboFa3Params* params);
+
+FusedWorkspaceView workspace_view(void* workspace,
+                                  const ShaoboFa3Params* params);
 
 int launch_dq_reduction(const __half* partial,
                         __half* dq,
                         const ShaoboFa3Params* params);
+
+int launch_dkv_reduction(const float* dk_partial,
+                         const float* dv_partial,
+                         float* dk,
+                         float* dv,
+                         const ShaoboFa3Params* params);
 
 }  // namespace shaobo::fa3::bwd::fused_bwd

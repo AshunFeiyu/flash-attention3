@@ -68,6 +68,9 @@ struct FusedBwdContract {
     static constexpr bool kDqUsesWorkspaceReduction = true;
     static constexpr bool kDqWorkspaceIsFp16 = true;
     static constexpr bool kDqFinalOutputIsFp16 = true;
+    static constexpr bool kGqaDkvUsesAtomicAdd = false;
+    static constexpr bool kGqaDkvUsesCtaOwnedReduction = false;
+    static constexpr bool kGqaDkvUsesWorkspaceReduction = true;
 
     static constexpr int kResidentKvBytes =
         2 * kNk * kHeadDim * kHalfBytes;
@@ -154,8 +157,10 @@ struct FusedBwdContract {
     static_assert(kDkvHasUniqueOutputOwner && kDqHasUniqueD32Owner &&
                       !kDqUsesFp32AtomicAdd &&
                       kDqUsesWorkspaceReduction && kDqWorkspaceIsFp16 &&
-                      kDqFinalOutputIsFp16,
-                  "dKV stores once; dQ reduces fp16 partials in fp32");
+                      kDqFinalOutputIsFp16 && !kGqaDkvUsesAtomicAdd &&
+                      !kGqaDkvUsesCtaOwnedReduction &&
+                      kGqaDkvUsesWorkspaceReduction,
+                  "GQA dKV and dQ use uniquely owned workspace reductions");
     static_assert(kResidentKvBytes == 64 * 1024 &&
                       kRawQDoBytes == 32 * 1024 &&
                       kRawQDoPhysicalBytes == 64 * 1024 &&

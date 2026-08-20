@@ -18116,3 +18116,33 @@ head division, but the GQA-capable binary still regresses MHA H1/S1024 fused
 ticks `44,524,025 -> 44,944,900` (`+0.945%`). Freeze it as the correctness
 control. The next experiment changes ownership to a KV-owned CTA that loops
 query heads, retains dK/dV accumulators, and direct-stores once.
+
+## 2026-08-20 GQA Ownership Redesign
+
+Decision: `ACCEPT_GQA_WORKSPACE_REDUCTION`; KV-owned fused loop rejected.
+
+The direct KV-owned CTA design failed before PMD because carrying resident
+fragments, dK/dV accumulators, token phases and head-loop control across G
+epochs produced SGPR104 with spills and a nonzero private segment. Packing the
+ABI made VGPR spilling worse, and pointer-increment/countdown cleanup did not
+move the resource class. This closed the in-kernel G loop.
+
+The accepted path returns to one Q head per fused CTA, replaces atomic dK/dV
+with uniquely owned FP32 partial stores, and adds a vectorized KV-owned reduce.
+It keeps exactly five GEMMs and preserves the admitted MLS/BPS,
+ds_read_matrix, MMAC and ABarrier path. Static metadata is fused
+SGPR82/VGPR128 and reducer SGPR24/VGPR24, all spill/private/scratch0.
+
+At Hq4/Hkv2/S128, CPU golden correctness and bank0 pass. Lifecycle ticks fall
+from atomic `26,699,855` to `16,321,305` (`-38.87%`); dKV reduction costs
+`904,540` ticks (`5.54%`). Hq16/Hkv2/S128 G=8 also passes. MHA H1/S1024 is
+correct at `49,252,385` total ticks (`+0.58%` versus the atomic control), kept
+as an observe-level compatibility result.
+
+Hq16/Hkv2/S1024 G=8 passes full CPU golden and bank0 at `120,489,005` total
+ticks versus `256,707,360` for the same-shape atomic control (`-53.06%`). The
+fused/reducer split is `79,428,440 / 11,165,245`; dKV reduction is `9.27%` of
+the lifecycle. dQ `max_abs=8.63e-6` and `RMSE=1.14e-6` match the atomic
+control exactly; only relative L2 is inflated by a near-zero reference norm.
+This promotes workspace reduction for GQA. Scale SQTT, not another ownership
+rewrite, is the next evidence step.

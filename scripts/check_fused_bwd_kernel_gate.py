@@ -147,7 +147,6 @@ def main() -> int:
         ("missing_mmac", r"(?:v_)?mmac|mmac_f16"),
         ("missing_abarrier_init", r"(?:s_)?abarrier_init"),
         ("missing_abarrier_use", r"(?:s_)?abarrier_(?:arrive|seq|wait|try_wait|inv)"),
-        ("gqa_native_f32_atomic", r"__builtin_hcu_global_atomic_fadd_f32"),
     ):
         require(code, pattern, failures, name)
 
@@ -157,6 +156,7 @@ def main() -> int:
         ("forbidden_explicit_ds_read_b32", r"\bds_read_b32\b"),
         ("forbidden_gather", r"\bgather\b"),
         ("forbidden_generic_atomic", r"\batomicAdd\b|\batomic_add\b"),
+        ("forbidden_hcu_global_atomic", r"__builtin_hcu_global_atomic"),
         ("forbidden_fallback", r"\bfallback\b"),
         ("forbidden_phase_version_stack",
          r"production[_ -]?phase|\bphase[_ -]?\d+\b|\bversion[_ -]?\d+\b|"

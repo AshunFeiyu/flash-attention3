@@ -115,6 +115,10 @@ if [[ "${#stats_files[@]}" -eq 3 ]]; then
   python3 "${ROOT}/scripts/parse_full_bwd_dispatches.py" \
     --m5out m5out --labels dot_do_o,fused5,dq_reduce \
     --json-out full_bwd_metrics.json | tee dispatch_summary.txt
+elif [[ "${#stats_files[@]}" -eq 4 ]]; then
+  python3 "${ROOT}/scripts/parse_full_bwd_dispatches.py" \
+    --m5out m5out --labels dot_do_o,fused5,dq_reduce,dkv_reduce \
+    --json-out full_bwd_metrics.json | tee dispatch_summary.txt
 fi
 
 perf_ok=1

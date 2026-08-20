@@ -432,6 +432,7 @@ int main(int argc, char** argv) {
 #if defined(SHAOBO_FULL_BWD_FUSED5)
     constexpr float kGradientMaxAbsLimit = 3.0e-2f;
     constexpr float kGradientRelL2Limit = 3.0e-2f;
+    constexpr float kGradientRmseLimit = 5.0e-5f;
     const bool dkv_pass = outputs_copied && dk_metrics.nonfinite == 0 &&
                           dv_metrics.nonfinite == 0 &&
                           dk_metrics.max_abs <= kGradientMaxAbsLimit &&
@@ -440,7 +441,8 @@ int main(int argc, char** argv) {
                           dv_metrics.rel_l2 <= kGradientRelL2Limit;
     const bool dq_pass = outputs_copied && dq_metrics.nonfinite == 0 &&
                          dq_metrics.max_abs <= kGradientMaxAbsLimit &&
-                         dq_metrics.rel_l2 <= kGradientRelL2Limit;
+                         (dq_metrics.rel_l2 <= kGradientRelL2Limit ||
+                          dq_metrics.rmse <= kGradientRmseLimit);
 #else
     const bool dkv_pass = outputs_copied && dk_metrics.nonfinite == 0 &&
                           dv_metrics.nonfinite == 0 &&

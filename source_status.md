@@ -12126,3 +12126,35 @@ runtime branch.
   fused/lifecycle ticks by `1.137%/1.076%`.
 - Decision: `REJECT_DS_PUBLICATION_DELAY_CANONICAL_RESTORED`. Preserve the
   earliest four-panel dS publication; source remains `dee5e50`.
+
+## 2026-08-20 GQA Workspace Reduction Accepted
+
+Status: `ACCEPT_GQA_OWNERSHIP_AND_TICKS`; scale SQTT pending.
+
+- Rejected first: a CTA-owned G-head loop reused K/V but failed the static
+  resource gate at SGPR104 with 10 spills, private20 and VGPR spill4. ABI
+  packing and countdown cleanup did not change the resource class; no PMD run
+  was admitted.
+- Active source restores one query head per fused CTA. GQA writes uniquely
+  owned FP32 dK/dV partials after the five GEMMs, then a separate KV-owned
+  kernel reduces G heads. MHA stores dK/dV directly and skips that dispatch.
+- Fused metadata: SGPR82/VGPR128, roles `9/187/87/182`, no private/spill/
+  scratch. dKV reducer: SGPR24/VGPR24, no private/spill/scratch. All matrix
+  path and bank0 gates pass.
+- Hq4/Hkv2/S128 full correctness PASS:
+  `/zys/sb/gqa_workspace_reduce_abi/b1_hq4_hkv2_s128_d128_c1_20260820_160803`.
+  Ticks: dot `2,166,255`, fused `12,139,400`, dQ reduce `1,111,110`, dKV
+  reduce `904,540`, total `16,321,305`. This is `38.87%` faster than the
+  atomic baseline total `26,699,855`.
+- Hq16/Hkv2/S128 G=8 full correctness PASS:
+  `/zys/sb/gqa_workspace_reduce_abi/b1_hq16_hkv2_s128_d128_c1_20260820_160551`.
+- MHA H1/S1024 correctness PASS and bank0; total `49,252,385`, a `0.58%`
+  observation-level regression versus the GQA-capable atomic control.
+- Hq16/Hkv2/S1024 G=8 full CPU golden PASS and bank0:
+  `/zys/sb/gqa_workspace_reduce_gate2/b1_hq16_hkv2_s1024_d128_c1_20260820_164552`.
+  Ticks are dot `14,165,060`, fused `79,428,440`, dQ reduce `15,730,260`, dKV
+  reduce `11,165,245`, total `120,489,005`. The same-shape atomic control is
+  `256,707,360`, so total ticks improve `53.06%`; dKV reduction is `9.27%`.
+- dQ scale error is `max_abs=8.63e-6`, `RMSE=1.14e-6`; atomic produces the
+  same values. The correctness gate uses abs plus relative-L2-or-RMSE for FP16
+  dQ so a near-zero reference norm does not produce a false failure.

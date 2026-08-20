@@ -6664,3 +6664,23 @@ A one-panel C0 dV real-work phase seed is also rejected. It reduces C0 VGPR
 but delays dS publication on every q tile and regresses S1024 fused ticks by
 `1.137%`. Preserve the accepted early four-panel dS publication. Future
 staggering must not move any dV work ahead of that ownership event.
+
+## 2026-08-20 GQA dK/dV Workspace Reduction
+
+- The KV-owned in-kernel G loop is closed as `REJECT_RESOURCE`: it compiled at
+  SGPR104 with 10 spills and private/VGPR spill, so PMD was not run.
+- The accepted GQA path keeps one Q-head per fused CTA, writes unique FP32
+  dK/dV partials, and runs a KV-owned linear reduction. There are still exactly
+  five GEMMs per fused CTA and no atomic, duplicate GEMM, gather, or layout
+  workaround.
+- Static gates pass: fused SGPR82/VGPR128 with role use `9/187/87/182`;
+  dKV reducer SGPR24/VGPR24; all private/spill/scratch0.
+- Hq4/Hkv2/S128 full CPU golden passes and improves lifecycle
+  `26,699,855 -> 16,321,305` ticks (`-38.87%`) versus the atomic control.
+  dKV reduction is `904,540` ticks (`5.54%`).
+- Hq16/Hkv2/S128 G=8 correctness passes. Hq16/Hkv2/S1024 also passes full CPU
+  golden and bank0 at `120,489,005` lifecycle ticks versus the atomic control's
+  `256,707,360` (`-53.06%`). Its dKV reducer is `11,165,245` ticks (`9.27%`).
+  The dQ absolute/RMSE error is tiny and identical to the atomic control; the
+  large relative L2 is a low-reference-norm artifact. Scale SQTT remains the
+  next evidence gate before reducer tuning.
