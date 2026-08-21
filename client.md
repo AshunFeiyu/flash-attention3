@@ -6755,3 +6755,11 @@ The role-local barrier decomposition is recorded in
 `docs/fused5_single_die_barrier_decomposition_20260821.md`. Aggregate barrier
 share is no longer an admissible optimization target by itself; future work
 must name the role, token generation and useful work that covers it.
+
+## 2026-08-21 C1 Panel Sidecar Scheduling Rejected
+
+The exact `Q reads + 3 sidecar reads -> dP MMAC -> score MMAC` ISA passes all
+gates but regresses fused ticks `1.03%`, raises wait-LGKM and lowers MMAC
+active. This is the second sidecar/read-placement failure, so that micro-tuning
+tier is closed. Canonical source is restored; the next hypothesis must change
+the repeated structural pipeline, not another instruction insertion point.

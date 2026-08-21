@@ -12232,3 +12232,12 @@ Status: `ACCEPT_GQA_OWNERSHIP_AND_TICKS`; scale SQTT pending.
   that G1 is ready at writer entry. The canonical order already uses useful G0
   work to cover G1 publication.
 - Decision: `REJECT_G0_COVERS_G1_READINESS_CANONICAL_RESTORED`.
+
+## 2026-08-21 C1 Panel Sidecar Scheduling Tier Closed
+
+- The candidate generated the intended Q-read plus three-sidecar-read packet
+  before dP MMAC, with unchanged resources and passing correctness/bank gates.
+- Fused ticks regress `1.03%`, wait-LGKM rises and MMAC active falls.
+- Combined with the full-tile sidecar latch rejection, this is two same-tier
+  failures. Decision: `REJECT_LGKM_SCHEDULING_TIER_CLOSED_CANONICAL_RESTORED`.
+  Do not try another sidecar/read insertion point on this topology.
