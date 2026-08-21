@@ -6750,3 +6750,8 @@ Reversing the writer's full-group order is correct and resource-neutral but
 regresses fused S1024 ticks by `1.25%`. The canonical G0 MMAC window was
 already hiding G1 publication; the later three-cycle G1 wait did not prove G1
 was ready at tile entry. Restore G0-first and preserve this stagger.
+
+The role-local barrier decomposition is recorded in
+`docs/fused5_single_die_barrier_decomposition_20260821.md`. Aggregate barrier
+share is no longer an admissible optimization target by itself; future work
+must name the role, token generation and useful work that covers it.
