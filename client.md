@@ -6695,3 +6695,17 @@ The fused dispatch covers all 48 CUs and 192 SIMDs with active-time CV
 `0.001318`. This proves the LPT schedule balances the large MHA shape, while
 also identifying dQ reduction as the remaining `14.54%` lifecycle tax. Do not
 attribute this frozen MHA run to the new GQA workspace-reduction commit.
+
+## 2026-08-21 Single-Die dQ Reducer ILP Audit
+
+The H1/S1024 canonical reducer remains the accepted control at `1,697,150`
+ticks, SGPR20/VGPR19, correctness PASS, bank0 and no private/spill/scratch.
+Existing SQTT shows `s_waitcnt` at `43.23%`, but deeper synchronous ILP does
+not convert that latency into lower elapsed time. Two-output/thread variants
+regress by `18.15%` and `22.47%`; the latter preserves the original 128-CTA
+causal ownership but halves total waves, increasing `noVALUready` from
+`112,356` to `165,324`. A four-K-partial load island preserves the original
+4-wave CTA and emits staged `vmcnt(3/2/1/0)`, yet regresses `4.42%` at
+SGPR27/VGPR31. All three variants pass correctness and resource gates and are
+removed from source. Stop load-depth tuning and evaluate native FP32 dQ atomic
+on the current fused pipeline for the single-die path.

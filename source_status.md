@@ -12168,3 +12168,16 @@ Status: `ACCEPT_GQA_OWNERSHIP_AND_TICKS`; scale SQTT pending.
   total `4,338,465,495`; shares `2.39%/83.07%/14.54%`.
 - Fused balance: 48 active CUs, 192 active SIMDs, active-time CV `0.001318`.
 - This is a frozen MHA scale baseline, not a GQA workspace-reduction run.
+
+## 2026-08-21 dQ Reducer Load-Depth Tier Closed
+
+- Canonical H1/S1024: reducer `1,697,150` ticks, SGPR20/VGPR19, PASS, bank0.
+- Two Vec4 outputs/thread with 256 threads reduces CTAs to 64 and regresses
+  reducer ticks `18.15%`; active-time CV rises from `8.10%` to `13.94%`.
+- The 128-thread version restores 128 CTAs but halves waves and regresses
+  `22.47%`; `noVALUready` rises `112,356 -> 165,324`.
+- Four K-partial loads with the original 4-wave CTA emit the intended staged
+  waits but regress `4.42%` at SGPR27/VGPR31.
+- All candidates pass full CPU golden, bank0 and no-private/spill/scratch.
+  Source is restored. The next single-die hypothesis is native FP32 dQ atomic,
+  not another synchronous reducer load-depth change.
