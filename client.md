@@ -6743,3 +6743,10 @@ sidecar island and stayed spill-free, but two interleaved S1024 pairs were
 count while increasing wait-LGKM and slightly lowering MMAC active, so the
 longer register lifetime damaged the existing matrix packet pipeline. Source
 is restored; sidecar remains panel-local.
+
+## 2026-08-21 dQ Writer C1-First Rejected
+
+Reversing the writer's full-group order is correct and resource-neutral but
+regresses fused S1024 ticks by `1.25%`. The canonical G0 MMAC window was
+already hiding G1 publication; the later three-cycle G1 wait did not prove G1
+was ready at tile entry. Restore G0-first and preserve this stagger.

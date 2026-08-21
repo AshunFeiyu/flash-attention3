@@ -12221,3 +12221,14 @@ Status: `ACCEPT_GQA_OWNERSHIP_AND_TICKS`; scale SQTT pending.
 - Decision: `REJECT_LGKM_LIVE_RANGE_CANONICAL_RESTORED`. Sidecar remains
   panel-local; the clean ISA island lengthened live ranges and disturbed the
   accepted operand ping-pong.
+
+## 2026-08-21 dQ Writer C1-First Rejected
+
+- The resource-neutral candidate consumes complete C1 dS before C0 while
+  preserving all pages, tokens, MMOP and group-local MMAC islands.
+- Correctness and all static gates pass, but two S1024 pairs regress fused
+  ticks `1.25%`; MMAC active falls and barrier share rises.
+- The short canonical second wait means G1 becomes ready during G0 MMAC, not
+  that G1 is ready at writer entry. The canonical order already uses useful G0
+  work to cover G1 publication.
+- Decision: `REJECT_G0_COVERS_G1_READINESS_CANONICAL_RESTORED`.
