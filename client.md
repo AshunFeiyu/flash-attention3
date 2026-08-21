@@ -6763,3 +6763,11 @@ gates but regresses fused ticks `1.03%`, raises wait-LGKM and lowers MMAC
 active. This is the second sidecar/read-placement failure, so that micro-tuning
 tier is closed. Canonical source is restored; the next hypothesis must change
 the repeated structural pipeline, not another instruction insertion point.
+
+## 2026-08-21 Consumer Resident Zero Cover Rejected
+
+Moving the existing dK/dV accumulator zeros between resident K/V matrix reads
+and their first-use wait produced the intended ASM and passed every correctness
+and resource gate. Two paired S1024 comparisons reverse sign and regress mean
+fused ticks by `0.273%`. The compiler behaved correctly; the mechanism only
+covers CTA startup and does not change steady ownership. Source is restored.

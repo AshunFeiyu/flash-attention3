@@ -18158,3 +18158,13 @@ in `5h18m08s` with correctness PASS and bank0. Lifecycle ticks are
 uses all 48 CUs and 192 SIMDs with active-time CV `0.001318`, so LPT balance
 holds at scale. The next scale optimization target is reduction cost; this run
 must not be represented as evidence for the new GQA workspace binary.
+
+## 2026-08-21 Consumer Resident-Read Zero Cover Rejected
+
+The compiler emitted the requested `8 resident matrix reads -> existing zero
+moves -> lgkmcnt(0)` sequence with unchanged resources and exact work. Full
+H1/S128 and two H1/S1024 correctness runs pass with bank0. Two interleaved
+S1024 pairs have opposite signs; fused means regress `45,044,773 ->
+45,167,850` (`+0.273%`). This is a startup-only cover, not a repeated q-loop
+improvement. Decision: `REJECT_NOISE_REGRESSION_CANONICAL_RESTORED`; no
+candidate fullperf was admitted.

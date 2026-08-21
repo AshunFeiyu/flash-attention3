@@ -12241,3 +12241,12 @@ Status: `ACCEPT_GQA_OWNERSHIP_AND_TICKS`; scale SQTT pending.
 - Combined with the full-tile sidecar latch rejection, this is two same-tier
   failures. Decision: `REJECT_LGKM_SCHEDULING_TIER_CLOSED_CANONICAL_RESTORED`.
   Do not try another sidecar/read insertion point on this topology.
+
+## 2026-08-21 Consumer Resident Zero Cover Rejected
+
+- ASM proves the compiler preserves `8 resident ds_read_matrix -> existing
+  zero block -> lgkmcnt(0)` with unchanged resources and exact work.
+- H1/S128 and both H1/S1024 runs pass correctness, bank0 and PMD VGPR tracking.
+- Two paired comparisons reverse sign; mean fused ticks regress `0.273%`.
+- Decision: `REJECT_NOISE_REGRESSION_CANONICAL_RESTORED`. This is not a
+  compiler defect; it is a startup-only schedule with no steady-state leverage.
