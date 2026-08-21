@@ -6709,3 +6709,37 @@ causal ownership but halves total waves, increasing `noVALUready` from
 SGPR27/VGPR31. All three variants pass correctness and resource gates and are
 removed from source. Stop load-depth tuning and evaluate native FP32 dQ atomic
 on the current fused pipeline for the single-die path.
+
+## 2026-08-21 Single-Die Fused SQTT And dQ Pair Reject
+
+The refreshed H1/S1024 fullperf baseline is fully correct, bank0 and totals
+`49,131,810` ticks: dot `2,456,090`, fused `44,988,125`, dQ reduce
+`1,687,595`. Fused MMAC active is `33.9132%`. XCU attributes the largest
+issue gaps to ABarrier wait `25.94%`, matrix-read first use about `14.35%`,
+and terminal ebarrier `7.01%`.
+
+A two-q-tile dQ accumulator experiment fits the exact 512-VGPR WDRA ledger
+and remains spill-free, but changes consumption to
+`G0(t)->G0(t+1)->G1(t)->G1(t+1)`. It regresses fused ticks by `8.17%` and
+MMAC active to `31.9658%`. Group1 owns one dS page and needs `DqDone1`
+before producing its next tile, so ready `G1(t)` must not be delayed behind
+`G0(t+1)`. Source is restored.
+
+## 2026-08-21 dQ Writer Startup Cover
+
+The first dQ writer panel was changed to issue four transposed matrix reads,
+clear the eight FP32 accumulators while those reads were in flight, then wait
+and issue eight MMACs. ISA, correctness, bank and resource gates all pass.
+Two interleaved H1/S1024 comparisons average only `0.29%` faster and disagree
+in sign per pair, so this is `OBSERVE_STARTUP_ONLY`, not an accepted change.
+Canonical source is restored. Further work must target a repeated steady-state
+ownership or first-use gap proven by SQTT, not writer startup instructions.
+
+## 2026-08-21 Probability Sidecar Latch Rejected
+
+Pre-latching all four panels' `S_MAX/S_SUM` values generated a clean eight-read
+sidecar island and stayed spill-free, but two interleaved S1024 pairs were
+`0.79%` slower in the fused kernel. The candidate reduced LDS instruction
+count while increasing wait-LGKM and slightly lowering MMAC active, so the
+longer register lifetime damaged the existing matrix packet pipeline. Source
+is restored; sidecar remains panel-local.

@@ -12181,3 +12181,43 @@ Status: `ACCEPT_GQA_OWNERSHIP_AND_TICKS`; scale SQTT pending.
 - All candidates pass full CPU golden, bank0 and no-private/spill/scratch.
   Source is restored. The next single-die hypothesis is native FP32 dQ atomic,
   not another synchronous reducer load-depth change.
+
+## 2026-08-21 Single-Die Fused Baseline And Cross-Tile Reject
+
+- Current H1/S1024 fullperf: fused `44,988,125`, total `49,131,810`, MMAC
+  active `33.9132%`, correctness PASS, bank0, no private/spill/scratch.
+- XCU issue gaps: ABarrier wait `25.94%`, matrix first-use waits about
+  `14.35%`, terminal ebarrier `7.01%`.
+- Two-q-tile dQ accumulators compile at role use `9/187/117/182` within
+  WDRA `16/188/120/188`, but regress fused ticks to `48,664,070` and MMAC
+  active to `31.9658%`.
+- Root cause: group1 has a single dS page. Deferring ready `G1(t)` delays
+  `DqDone1` and blocks generation `t+1`; group0's alternate page cannot cross
+  that dependency. Canonical source is restored.
+
+## 2026-08-21 dQ Writer First-Read Zero Cover Observed
+
+- The writer first panel now has a measured `ds_read_matrix_trans -> wait`
+  startup gap. A focused candidate issued four reads first, placed all 16
+  accumulator-zero moves in that latency window, then waited and issued eight
+  MMACs. The generated ISA exactly matched that schedule.
+- Correctness, bank0 and resource gates pass; writer branch use falls
+  `87 -> 85`, with SGPR82/VGPR128 and no private/spill/scratch.
+- Two interleaved H1/S1024 pairs give fused means `45,110,293 -> 44,977,888`
+  ticks (`-0.29%`), but individual pair signs reverse (`-1.15%`, `+0.57%`).
+- Decision: `OBSERVE_STARTUP_ONLY_CANONICAL_RESTORED`. The code is removed:
+  it covers a once-per-tile startup gap, not the repeated ownership critical
+  path. Do not spend another iteration on writer startup scheduling.
+
+## 2026-08-21 Probability Sidecar Tile Latch Rejected
+
+- The candidate formed the requested ISA island: eight `S_MAX/S_SUM` scalar
+  LDS reads, eight matrix reads, `lgkmcnt(4)`, then score MMAC.
+- Correctness, bank and resource gates pass at branch use `9/191/87/183` with
+  no private/spill/scratch.
+- Two interleaved H1/S1024 pairs regress fused mean ticks by `0.79%` and full
+  lifecycle by `0.87%`. Wait-LGKM rises `7.29% -> 8.17%` while MMAC active
+  falls `33.92% -> 33.82%`.
+- Decision: `REJECT_LGKM_LIVE_RANGE_CANONICAL_RESTORED`. Sidecar remains
+  panel-local; the clean ISA island lengthened live ranges and disturbed the
+  accepted operand ping-pong.
