@@ -462,47 +462,61 @@ __device__ __forceinline__ void ds_stage(
     ds.f16x4[1] = zero.f16x4[0];
 }
 
-__device__ __forceinline__ void zero_dkv_accumulators(
-    Accumulator (&dv_acc)[8], Accumulator (&dk_acc)[8]) {
+__device__ __forceinline__ void zero_dv_accumulators(
+    Accumulator (&dv_acc)[8]) {
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
         ins::zero_vgpr2(dv_acc[i].u64[0]);
         ins::zero_vgpr2(dv_acc[i].u64[1]);
-        ins::zero_vgpr2(dk_acc[i].u64[0]);
-        ins::zero_vgpr2(dk_acc[i].u64[1]);
     }
 }
 
 // Logical GEMM 3: consume dO while its four matrix fragments are hot.
+template <bool SeedZero>
 __device__ __forceinline__ void update_dv_stage(
     const Fragment& p_normal,
     const Fragment (&dout_normal)[kMatrixBlocksD],
+    const ins::F16x8& zero,
     Accumulator (&dv_acc)[8]) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
 #pragma unroll
         for (int d_half = 0; d_half < 2; ++d_half) {
             const int out = d_block * 2 + d_half;
-            dv_acc[out].f32 = ins::mmac_f16_lit(
-                p_normal.f16x4[0],
-                dout_normal[d_block].f16x4[d_half], dv_acc[out].f32);
+            if constexpr (SeedZero) {
+                dv_acc[out].f32 = ins::mmac_f16_lit(
+                    p_normal.f16x4[0],
+                    dout_normal[d_block].f16x4[d_half], zero.f32);
+            } else {
+                dv_acc[out].f32 = ins::mmac_f16_lit(
+                    p_normal.f16x4[0],
+                    dout_normal[d_block].f16x4[d_half], dv_acc[out].f32);
+            }
         }
     }
 }
 
 // Logical GEMM 4: consume Q in a separate island so dO is already dead.
+template <bool SeedZero>
 __device__ __forceinline__ void update_dk_stage(
     const Fragment& ds_normal,
     const Fragment (&q_normal)[kMatrixBlocksD],
+    const ins::F16x8& zero,
     Accumulator (&dk_acc)[8]) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
 #pragma unroll
         for (int d_half = 0; d_half < 2; ++d_half) {
             const int out = d_block * 2 + d_half;
-            dk_acc[out].f32 = ins::mmac_f16_lit(
-                ds_normal.f16x4[0], q_normal[d_block].f16x4[d_half],
-                dk_acc[out].f32);
+            if constexpr (SeedZero) {
+                dk_acc[out].f32 = ins::mmac_f16_lit(
+                    ds_normal.f16x4[0], q_normal[d_block].f16x4[d_half],
+                    zero.f32);
+            } else {
+                dk_acc[out].f32 = ins::mmac_f16_lit(
+                    ds_normal.f16x4[0], q_normal[d_block].f16x4[d_half],
+                    dk_acc[out].f32);
+            }
         }
     }
 }
@@ -621,24 +635,28 @@ __device__ __forceinline__ void issue_dv_operand_packet(
         packet.dout_normal);
 }
 
-template <int Count>
+template <int Count, bool SeedZero = false>
 __device__ __forceinline__ void consume_dv_operand_packet(
     DvOperandPacket& packet,
+    const ins::F16x8& zero,
     Accumulator (&dv_acc)[8]) {
     wait_dv_packet<Count>(packet.p_normal, packet.dout_normal);
     ins::raise_priority_2();
-    update_dv_stage(packet.p_normal, packet.dout_normal, dv_acc);
+    update_dv_stage<SeedZero>(packet.p_normal, packet.dout_normal, zero,
+                              dv_acc);
     ins::lower_priority();
 }
 
-template <int Count>
+template <int Count, bool SeedZero = false>
 __device__ __forceinline__ void consume_dv_operand_packet_after_ds(
     DvOperandPacket& packet,
     const Fragment& ds,
+    const ins::F16x8& zero,
     Accumulator (&dv_acc)[8]) {
     wait_dv_packet_after_ds<Count>(ds, packet);
     ins::raise_priority_2();
-    update_dv_stage(packet.p_normal, packet.dout_normal, dv_acc);
+    update_dv_stage<SeedZero>(packet.p_normal, packet.dout_normal, zero,
+                              dv_acc);
     ins::lower_priority();
 }
 
@@ -662,7 +680,7 @@ __device__ __forceinline__ void issue_dv_operand_packet_and_prefetch_next_dout(
         next_dout_trans);
 }
 
-template <int Group>
+template <int Group, bool SeedZero = false>
 __device__ __forceinline__ void update_dv_from_probability(
     const __half* lds,
     __half* mutable_lds,
@@ -670,11 +688,12 @@ __device__ __forceinline__ void update_dv_from_probability(
     int m_block,
     int owner,
     const Fragment& probability,
+    const ins::F16x8& zero,
     Accumulator (&dv_acc)[8]) {
     DvOperandPacket packet;
     issue_dv_operand_packet<Group>(
         lds, mutable_lds, raw_base, m_block, owner, probability, packet);
-    consume_dv_operand_packet<0>(packet, dv_acc);
+    consume_dv_operand_packet<0, SeedZero>(packet, zero, dv_acc);
 }
 
 template <int MBlock, int Group, int Generation = 0>
@@ -719,11 +738,12 @@ __device__ __forceinline__ void read_dk_panel_static(
     read_final_ds_normal<MBlock, Group, Generation>(lds, owner, ds);
 }
 
-template <int Group, int Generation = 0>
+template <int Group, int Generation = 0, bool SeedZero = false>
 __device__ __forceinline__ void update_dk_from_final_panels_read_ahead(
     const __half* lds,
     int raw_base,
     int owner,
+    const ins::F16x8& zero,
     Accumulator (&dk_acc)[8]) {
     // Keep one current and one next Q/dS panel. The next panel's five matrix
     // reads are issued while the current eight-MMAC island is active.
@@ -734,17 +754,17 @@ __device__ __forceinline__ void update_dk_from_final_panels_read_ahead(
     ins::wait_lgkm(0);
     read_dk_panel_static<1, Group, Generation>(
         lds, raw_base, owner, q_buf[1], ds_buf[1]);
-    update_dk_stage(ds_buf[0], q_buf[0], dk_acc);
+    update_dk_stage<SeedZero>(ds_buf[0], q_buf[0], zero, dk_acc);
     ins::wait_lgkm(0);
     read_dk_panel_static<2, Group, Generation>(
         lds, raw_base, owner, q_buf[0], ds_buf[0]);
-    update_dk_stage(ds_buf[1], q_buf[1], dk_acc);
+    update_dk_stage<false>(ds_buf[1], q_buf[1], zero, dk_acc);
     ins::wait_lgkm(0);
     read_dk_panel_static<3, Group, Generation>(
         lds, raw_base, owner, q_buf[1], ds_buf[1]);
-    update_dk_stage(ds_buf[0], q_buf[0], dk_acc);
+    update_dk_stage<false>(ds_buf[0], q_buf[0], zero, dk_acc);
     ins::wait_lgkm(0);
-    update_dk_stage(ds_buf[1], q_buf[1], dk_acc);
+    update_dk_stage<false>(ds_buf[1], q_buf[1], zero, dk_acc);
 }
 
 __device__ __forceinline__ void zero_dq_writer_accumulators(
@@ -816,7 +836,7 @@ __device__ __forceinline__ void store_dkv_outputs(
                            dk_acc, dv_acc);
 }
 
-template <int Group, int Page, bool ReuseDs>
+template <int Group, int Page, bool ReuseDs, bool FirstAccum>
 __device__ __forceinline__ void run_consumer_q_tile(
     const __half* lds,
     __half* mutable_lds,
@@ -915,10 +935,10 @@ __device__ __forceinline__ void run_consumer_q_tile(
                      ds_panels[m_block]);
             if (m_block < Tile::kMqPanels - 1) {
                 consume_dv_operand_packet_after_ds<kMatrixBlocksD>(
-                    dv_packet, ds_panels[m_block], dv_acc);
+                    dv_packet, ds_panels[m_block], mmac_zero, dv_acc);
             } else {
                 consume_dv_operand_packet_after_ds<0>(
-                    dv_packet, ds_panels[m_block], dv_acc);
+                    dv_packet, ds_panels[m_block], mmac_zero, dv_acc);
             }
         }
     }
@@ -945,16 +965,20 @@ __device__ __forceinline__ void run_consumer_q_tile(
     }
 
     if constexpr (Group == 0) {
+        update_dv_from_probability<Group, FirstAccum>(
+            lds, mutable_lds, raw_base, 0, owner, p_for_dv[0], mmac_zero,
+            dv_acc);
 #pragma unroll
-        for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
-            update_dv_from_probability<Group>(
+        for (int m_block = 1; m_block < Tile::kMqPanels; ++m_block) {
+            update_dv_from_probability<Group, false>(
                 lds, mutable_lds, raw_base, m_block, owner,
-                p_for_dv[m_block], dv_acc);
+                p_for_dv[m_block], mmac_zero, dv_acc);
         }
     }
 
-    update_dk_from_final_panels_read_ahead<Group, kDsGeneration>(
-        lds, raw_base, owner, dk_acc);
+    update_dk_from_final_panels_read_ahead<
+        Group, kDsGeneration, FirstAccum>(
+        lds, raw_base, owner, mmac_zero, dk_acc);
     if constexpr (Page == 0) {
         ins::abarrier_arrive_cnt<false>(Bar::kRawUsed0, 1);
     } else {
@@ -992,7 +1016,12 @@ __device__ __forceinline__ void run_consumer_group(
 
     Accumulator dv_acc[8];
     Accumulator dk_acc[8];
-    zero_dkv_accumulators(dv_acc, dk_acc);
+    if constexpr (Group == 1) {
+        // C1 consumes dV inside a runtime panel loop. Keep only this
+        // long-lived accumulator family explicitly initialized; C0 dV and
+        // both dK families are compile-time seeded by their first MMAC.
+        zero_dv_accumulators(dv_acc);
+    }
     ins::F16x8 mmac_zero;
     ins::zero_f16x8(mmac_zero);
     int raw0_phase = 0;
@@ -1002,7 +1031,7 @@ __device__ __forceinline__ void run_consumer_group(
 
     int qi = 0;
     if (q_tile_count > 0) {
-        run_consumer_q_tile<Group, 0, false>(
+        run_consumer_q_tile<Group, 0, false, true>(
             lds, mutable_lds, k_base, q_tile_begin, qi, causal,
             softmax_scale, n_owner, owner, lane, resident, mmac_zero,
             dv_acc, dk_acc, raw0_phase, done0_phase);
@@ -1010,12 +1039,12 @@ __device__ __forceinline__ void run_consumer_group(
     }
     if (q_tile_count > 1) {
         if constexpr (Group == 0) {
-            run_consumer_q_tile<0, 1, false>(
+            run_consumer_q_tile<0, 1, false, false>(
                 lds, mutable_lds, k_base, q_tile_begin, qi, causal,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw1_phase, done1_phase);
         } else {
-            run_consumer_q_tile<1, 1, true>(
+            run_consumer_q_tile<1, 1, true, false>(
                 lds, mutable_lds, k_base, q_tile_begin, qi, causal,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw1_phase, done0_phase);
@@ -1025,24 +1054,24 @@ __device__ __forceinline__ void run_consumer_group(
 
 #pragma clang loop unroll(disable)
     for (; qi + 1 < q_tile_count; qi += 2) {
-        run_consumer_q_tile<Group, 0, true>(
+        run_consumer_q_tile<Group, 0, true, false>(
             lds, mutable_lds, k_base, q_tile_begin, qi, causal,
             softmax_scale, n_owner, owner, lane, resident, mmac_zero,
             dv_acc, dk_acc, raw0_phase, done0_phase);
         if constexpr (Group == 0) {
-            run_consumer_q_tile<0, 1, true>(
+            run_consumer_q_tile<0, 1, true, false>(
                 lds, mutable_lds, k_base, q_tile_begin, qi + 1, causal,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw1_phase, done1_phase);
         } else {
-            run_consumer_q_tile<1, 1, true>(
+            run_consumer_q_tile<1, 1, true, false>(
                 lds, mutable_lds, k_base, q_tile_begin, qi + 1, causal,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw1_phase, done0_phase);
         }
     }
     if (qi < q_tile_count) {
-        run_consumer_q_tile<Group, 0, true>(
+        run_consumer_q_tile<Group, 0, true, false>(
             lds, mutable_lds, k_base, q_tile_begin, qi, causal,
             softmax_scale, n_owner, owner, lane, resident, mmac_zero,
             dv_acc, dk_acc, raw0_phase, done0_phase);

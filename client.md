@@ -6987,3 +6987,18 @@ locked compiler's ISA instead of shrinking it: 112 extra static instructions,
 rejected before PMD and the canonical scalar source was restored. The scalar
 form already auto-packs well; further progress must target measured ownership
 or issue gaps, not C++ vector spelling.
+
+## 2026-08-23 Partial dKV Zero-Seed Rule
+
+The canonical fused5 kernel now compile-time seeds C0 dV and both dK
+accumulator families from the first MMAC of peeled q tile 0. C1 dV keeps its
+explicit clear because forcing panel-level compile-time specialization copies
+softmax/control code. This split removes 48 static `v_mov_b64` instructions
+with exact MMAC/read/wait/barrier counts and improves repeated S1024 fused
+ticks by `0.847%` and S2048 by `0.470%`.
+
+Keep this rule when refactoring: first-use MMAC seeding is allowed only when
+the first update is already a compile-time call site. Never add a runtime
+`qi/m_block` seed branch or duplicate a complete panel body to remove moves.
+MMAC active remains about `34.69%`; the next structural target is useful work
+across ABarrier ownership and matrix first-use gaps.

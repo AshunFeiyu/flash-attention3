@@ -18486,3 +18486,26 @@ tier and forces whole-kernel SQTT/ownership re-analysis.
 
 Evidence: workbook section49 and
 `/zys/sb/experiments/fused5_explicit_vec4_ds_20260823`.
+
+## 2026-08-23 Partial Peeled dKV Zero Seed Accepted
+
+Status: `ACCEPT_MICRO_TICKS_AND_CODEGEN / MMAC50_OPEN`.
+
+The first compile-time attempt duplicated the complete C1 panel body and was
+rejected at the static gate (`wait 340->422`, branch `46->138`). The admitted
+form seeds only C0 dV and both dK accumulator families at their first MMAC;
+C1 dV keeps explicit initialization because its panel loop remains runtime.
+
+Static MMAC/read/wait/branch/ABarrier counts are exact, while `v_mov_b64`
+falls `116->68` and the fused symbol shrinks by 8,298 bytes. Resources remain
+roles `9/171/87/164`, SGPR82/VGPR128, private/spill/scratch0. Full backward
+correctness passes S128 causal/noncausal, S1024 and S2048 with bank0.
+
+Three S1024 pairs all improve fused ticks; mean is
+`44,596,522 -> 44,218,872` (`-0.847%`). S2048 improves
+`82,868,695 -> 82,479,215` (`-0.470%`). Fullperf VALU falls by 1,440 but
+MMAC active is neutral (`34.701% -> 34.686%`), so the 50% structural target
+remains open.
+
+Evidence: `docs/fused5_peeled_dkv_zero_seed_design_20260823.md`, workbook
+section50, `/zys/sb/runs/fused5_peeled_zero_seed_*`, and `/zys/sb/f5zfull`.

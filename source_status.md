@@ -12526,3 +12526,24 @@ section47, and `/zys/sb/fa3b/c1_dv_under_ds_*`.
   source is restored; dS syntax tuning is closed for the locked compiler.
 - Evidence: `docs/fused5_explicit_vec4_ds_pack_design_20260823.md` and
   workbook section49.
+
+## 2026-08-23 Partial Peeled dKV Zero Seed Promoted
+
+Status: `ACCEPT_MICRO_TICKS_AND_CODEGEN / MMAC50_OPEN`.
+
+- C0 dV and both dK accumulator families now use their first MMAC as the
+  definition from the existing zero fragment.
+- C1 dV deliberately retains explicit initialization; specializing its
+  runtime panel loop expanded waits and branches and was rejected before PMD.
+- Static MMAC/read/wait/branch/ABarrier counts are unchanged; `v_mov_b64`
+  falls `116 -> 68`, fused symbol bytes fall `711,576 -> 703,278`.
+- Resources remain roles `9/171/87/164`, SGPR82/VGPR128, with zero
+  private/spill/scratch and bank0.
+- Complete CPU-golden correctness passes S128 causal/noncausal, S1024 and
+  S2048. Three S1024 pairs improve fused mean by `0.847%`; S2048 improves
+  `0.470%`.
+- Fullperf MMAC active is neutral near `34.69%`. This is promoted as a clean
+  repeated micro-win, not as the solution to ABarrier/readiness bubbles.
+
+Evidence: `docs/fused5_peeled_dkv_zero_seed_design_20260823.md` and workbook
+section50.
