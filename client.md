@@ -6862,6 +6862,17 @@ C1. Preserve this prune and target one existing next-panel operand request
 with useful MMAC cover. See workbook sheet `43 Invalid Half VALU` and
 `docs/fused5_invalid_half_valu_prune_design_20260822.md`.
 
+## 2026-08-22 C1 Q Lag-One Boundary
+
+Combining future-Q and future-dO under current dV is correct and fits C1 at
+184/204 VGPR, but is a measured negative schedule. The Q read4 island delays
+the current dV MMAC and three S1024 pairs all regress by a mean 0.543%; active
+also falls and wait-LGKM rises. Canonical `b402ffd` is restored.
+
+Preserve future-dO under dV. Do not issue future-Q between current dV readiness
+and dV first use; any future Q lookahead must be covered without delaying a
+ready MMAC island.
+
 ## 2026-08-22 C0 dO-Under-Score Scheduling Tier Rejected
 
 SQTT identified 2,907 units of repeated C0 matrix first-use debt. Two exact

@@ -18371,3 +18371,21 @@ another matrix transaction.
 
 Evidence: `/zys/sb/fa3b/ihv22*`; design/result:
 `docs/fused5_invalid_half_valu_prune_design_20260822.md`.
+
+## 2026-08-22 C1 Q Lag-One Under dV Rejected
+
+Status: `REJECT_DV_FIRST_USE_DELAY / CANONICAL_RESTORED`.
+
+The candidate combined the historically accepted future-dO and future-Q
+lag-one ideas while keeping peak outstanding matrix reads at eight. Generated
+ISA was exact: retire current P/dO with wait4, issue Qnext read4, execute
+current dV MMAC8, then use wait4/dP and wait0/score next panel. C1 was184/204
+VGPR; every resource and S128 correctness gate passed with bank0.
+
+Three S1024 pairs all regress, averaging `45,434,783 -> 45,681,393`
+(`+0.543%`). Active falls `0.171 pp` and wait-LGKM rises `0.180 pp` at exact
+dynamic work. The Q read island delays current dV first use more than it saves
+on next score readiness. Reject before S2048/fullperf and preserve only the
+accepted future-dO-across-dV schedule.
+
+Evidence: `/zys/sb/fa3b/c1_q_lagone_20260822`.

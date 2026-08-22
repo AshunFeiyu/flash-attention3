@@ -12424,3 +12424,19 @@ Status: `ACCEPT_LONG_LOOP_TICKS_AND_ACTIVE / S1024_NOISE_NEUTRAL`.
 
 Evidence: `docs/fused5_invalid_half_valu_prune_design_20260822.md`, workbook
 sheet `43 Invalid Half VALU`, and `/zys/sb/fa3b/ihv22*`.
+
+## 2026-08-22 C1 Q Lag-One Under dV Rejected
+
+- History de-dup proved the combined future-dO plus future-Q schedule was new.
+- ASM matched `wait4 -> Qnext read4 -> dV MMAC`, then next panel
+  `wait4 -> dP MMAC -> wait0 -> score MMAC`; C1 used184/204 VGPR with no
+  spill/private/scratch. S128 causal/noncausal correctness PASS and bank0.
+- All three S1024 pairs regress. Fused means move
+  `45,434,783 -> 45,681,393` (`+0.543%`), MMAC active falls
+  `34.456% -> 34.285%`, and wait-LGKM rises `8.847% -> 9.027%`.
+- Four Q read issues directly delay the current dV first use; added future age
+  does not repay that critical-MMAC delay. Decision:
+  `REJECT_DV_FIRST_USE_DELAY_CANONICAL_RESTORED`.
+
+Evidence: `docs/fused5_c1_q_lagone_under_dv_design_20260822.md`, workbook
+sheet44, `/zys/sb/fa3b/c1_q_lagone_20260822`.
