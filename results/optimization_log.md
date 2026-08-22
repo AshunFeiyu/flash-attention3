@@ -18194,3 +18194,22 @@ no ordinary DS read or permutation. Evidence is
 
 This proves layout and lifecycle only. Canonical performance remains a
 separate admission step.
+
+## 2026-08-22 C1 dS On Dead dO Canonical Rejection
+
+Status: `REJECT_CTA_WIDE_DOUT_DEAD_GATE_CANONICAL_RESTORED`.
+
+Canonical integration first exposed a nondeterministic S1024 dV failure. The
+original count4 `DoutDead` protected only C0: one C1 wave could overwrite dO
+while a peer C1 wave still consumed the whole dO tile. The focused probe and
+canonical ledger were corrected to count8, with each C1 wave arriving after
+its own dV and then waiting. The corrected binary passes S128 causal/noncausal,
+S256, S512, and three repeated S1024 CPU-golden runs with stable dV
+`rel_l2=0.000336739`, bank0, and private/spill/scratch0.
+
+Two interleaved S1024 pairs regress fused means
+`44,973,338 -> 46,424,333` (`+3.226%`) and full lifecycle means
+`49,124,075 -> 50,567,563` (`+2.938%`). Saving 16KiB LDS does not deepen the
+pipeline, while correctness adds an eight-consumer rendezvous every q tile.
+Candidate source is removed and xcu is skipped under the ticks-first gate.
+Evidence: `/zys/sb/fa3b/dead_dout_ab_20260822/paired`.

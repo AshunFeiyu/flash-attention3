@@ -377,9 +377,11 @@ __device__ __forceinline__ void consumer1_generation(
     store_raw_mmac<Page, Generation>(raw_output, 1, owner, 1, dv);
 
     if constexpr (Page == 0) {
+        arrive_token<Bar::kDoutDead0>();
         wait_token<Bar::kDoutDead0>(dout_dead_phase);
         seq_token<Bar::kC1Filled0>();
     } else {
+        arrive_token<Bar::kDoutDead1>();
         wait_token<Bar::kDoutDead1>(dout_dead_phase);
         seq_token<Bar::kC1Filled1>();
     }
@@ -545,8 +547,8 @@ fused5_c1_ds_on_dead_dout_probe_kernel(
         __builtin_hcu_s_abarrier_init(Bar::kC1Filled1, 4);
         __builtin_hcu_s_abarrier_init(Bar::kC0Filled1, 4);
         __builtin_hcu_s_abarrier_init(Bar::kC0Done1, 8);
-        __builtin_hcu_s_abarrier_init(Bar::kDoutDead0, 4);
-        __builtin_hcu_s_abarrier_init(Bar::kDoutDead1, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kDoutDead0, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kDoutDead1, 8);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
@@ -749,7 +751,8 @@ int main() {
                       normal_mismatches == 0 && trans_mismatches == 0;
     std::printf(
         "fused5_c1_ds_dead_dout config waves=16 pages=2 generations=3 "
-        "lds_bytes=131072 barriers=14 raw_used=12 roles=16/204/204/88\n");
+        "lds_bytes=131072 barriers=14 raw_used=12 dout_dead=8 "
+        "roles=16/204/204/88\n");
     std::printf(
         "fused5_c1_ds_dead_dout q_mismatches=%d dout_mismatches=%d "
         "normal_mismatches=%d trans_mismatches=%d pass=%d\n",

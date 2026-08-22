@@ -1,13 +1,14 @@
 # Client
 
-## 2026-08-22 C1 dS On Dead dO
+## 2026-08-22 C1 dS On Dead dO Rejected
 
-The focused A0-A4 probe passed. C1 may overwrite the dead 16KiB dO half of
-each raw Q/dO page with a complete native dS page, then serve both normal dK
-and trans dQ readers without ordinary DS reads, permutations, stale Q, bank
-conflicts, spills, or PMD register-lifecycle warnings. The proved ledger uses
-14 tokens and delays raw-page reuse until C0, C1, and writer contribute 12
-arrivals. Canonical integration is now allowed; performance is still open.
+The corrected A0-A5 path proves C1 can overwrite the dead 16KiB dO half and
+serve native normal/trans dS readers, but only after all eight consumer waves
+finish dV. Count4 produced a real cross-C1 race at S1024; count8 is correct and
+stable. That CTA-wide rendezvous regresses paired fused ticks by 3.226%, so the
+canonical ownership map is restored. Keep the probe as layout/lifecycle
+evidence; do not reintroduce the candidate without eliminating the all-C1 dO
+dependency.
 
 ## 2026-08-20 GQA Atomic Correctness Baseline
 

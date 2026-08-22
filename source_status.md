@@ -1,16 +1,19 @@
 # Source Status
 
-## 2026-08-22 C1 dS On Dead dO Probe Passed
+## 2026-08-22 C1 dS On Dead dO Rejected
 
-- Status: `FOCUSED_PROBE_PASS_CANONICAL_INTEGRATION_ADMITTED`.
+- Status: `REJECT_CTA_WIDE_DOUT_DEAD_GATE_CANONICAL_RESTORED`.
 - Exact 16-wave roles and WDRA windows `16/204/204/88` passed a two-page,
-  three-generation lifecycle with 14 ABarrier IDs and `RawUsed=12`.
+  three-generation lifecycle with 14 ABarrier IDs, `RawUsed=12`, and all
+  eight consumer waves participating in `DoutDead`.
 - Q/dO preservation and C0/C1 native dS normal/trans consumers are all
   mismatch0; metadata is private/spill0 and PMD reports bank0.
 - Evidence:
-  `/zys/sb/fa3b/layout_probes/fused5_c1_ds_on_dead_dout_20260822_174738`.
-- Next: integrate only this ownership map into the canonical five-GEMM
-  kernel; no tile, GEMM, output-owner, or scheduling-order change is admitted.
+  `/zys/sb/fa3b/layout_probes/fused5_c1_ds_on_dead_dout_20260822_180152`.
+- Canonical S128/S256/S512 and repeated S1024 correctness pass, but paired
+  S1024 fused ticks regress `44,973,338 -> 46,424,333` (`+3.226%`). The
+  eight-wave rendezvous destroys group-local progress. Canonical is restored;
+  no candidate xcu is admitted.
 
 ## 2026-08-20 GQA Atomic Baseline Ready To Freeze
 

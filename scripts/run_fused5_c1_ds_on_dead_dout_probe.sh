@@ -20,6 +20,8 @@ grep -Fq 'kLdsBytes = 128 * 1024' \
   probes/fused5_c1_ds_on_dead_dout_probe.cpp
 grep -Fq 'kRawUsed0, 12' \
   probes/fused5_c1_ds_on_dead_dout_probe.cpp
+grep -Fq 'kDoutDead0, 8' \
+  probes/fused5_c1_ds_on_dead_dout_probe.cpp
 grep -Fq 'c1_ds_base(int page)' \
   probes/fused5_c1_ds_on_dead_dout_probe.cpp
 
@@ -95,7 +97,7 @@ set -e
 cat pmd_stdout.log
 
 semantic_pass="$(grep -c 'fused5_c1_ds_dead_dout q_mismatches=0 dout_mismatches=0 normal_mismatches=0 trans_mismatches=0 pass=1' pmd_stdout.log || true)"
-config_pass="$(grep -c 'fused5_c1_ds_dead_dout config waves=16 pages=2 generations=3 lds_bytes=131072 barriers=14 raw_used=12 roles=16/204/204/88' pmd_stdout.log || true)"
+config_pass="$(grep -c 'fused5_c1_ds_dead_dout config waves=16 pages=2 generations=3 lds_bytes=131072 barriers=14 raw_used=12 dout_dead=8 roles=16/204/204/88' pmd_stdout.log || true)"
 panic_lines="$(grep -ciE 'panic:|fatal:|not init or has been freed' pmd_stdout.log || true)"
 vgpr_warning_lines="$(grep -ciE 'warn:.*read vgpr.*before writing' pmd_stdout.log || true)"
 bank_conflicts=0

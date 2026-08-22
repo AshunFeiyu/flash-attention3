@@ -1,6 +1,6 @@
 # Fused5 C1 dS On Dead dO
 
-Status: `FOCUSED_PROBE_PASS_CANONICAL_INTEGRATION_ADMITTED`.
+Status: `REJECT_CTA_WIDE_DOUT_DEAD_GATE_CANONICAL_RESTORED`.
 
 ## Evidence Boundary
 
@@ -36,7 +36,7 @@ LDS allocation is introduced.
 C0: publish its accepted dS generation early
 writer: consume C0 dS and execute G0 dQ
 C0: finish dV, then arrive DoutDead(page)
-C1: wait DoutDead(page), overwrite dead dO with C1 dS, signal C1Filled(page)
+C1: finish dV, arrive+wait DoutDead(page), overwrite dead dO with C1 dS
 C0/C1: execute dK, each contributes four RawUsed arrivals
 writer: consume C1 dS, execute G1 dQ, contributes four RawUsed arrivals
 producer: may refill the raw page only after RawUsed count 12
@@ -91,7 +91,9 @@ defect.
 ## Focused Probe Result
 
 `probes/fused5_c1_ds_on_dead_dout_probe.cpp` implements the exact two-page,
-three-generation, four-role lifecycle. The generated ISA contains 12 MLS/BPS
+three-generation, four-role lifecycle. All eight consumer waves arrive at
+`DoutDead`; C1 then waits before any wave overwrites dO. The generated ISA
+contains 12 MLS/BPS
 loads, 24 native dS writers, 192 trans matrix reads, 24 normal matrix reads,
 216 MMAC, four role-local VGPR resizes, and exactly 14 ABarrier init/invalidate
 instructions. Ordinary DS reads and lane permutations are both zero.
@@ -105,13 +107,40 @@ private=0 sgpr_spill=0 vgpr_spill=0 ldsBankConflict=0
 ```
 
 Evidence directory:
-`/zys/sb/fa3b/layout_probes/fused5_c1_ds_on_dead_dout_20260822_174738`.
+`/zys/sb/fa3b/layout_probes/fused5_c1_ds_on_dead_dout_20260822_180152`.
 Compiler commit: `e0f10535a0d681bcf3885ea2c398cc494bf6e332`.
-Binary SHA256: `dd1664fcc76d9e421bedcf937077b4c82b9bf0afdffdaea4072f4b9f7eaa38ac`.
-ASM SHA256: `20aee9b3a16dad1364f612b8fcfb62495bbafeb53b1014981699f02d2d95b74a`.
+Binary SHA256: `5a1fdd09b84a69b8f482f97038bbb297ac67c3924aa0a1d313bb291e7c26a39b`.
+ASM SHA256: `b9ea007bb3f72fd145a29e31a4251a9fc7f9050b0ac0086158de0ccbb289d175`.
 
-This admits the ownership map into the canonical kernel. It is not yet a
-performance acceptance.
+The first count-4 probe was insufficient: one C1 wave could overwrite dO
+while another C1 wave still read the complete dO tile. Canonical S1024 exposed
+this as nondeterministic dV error. Count 8 fixes the race and gives three
+bit-stable S1024 correctness passes.
+
+## Canonical Performance Result
+
+The corrected ownership map passes S128 causal/noncausal, S256, S512, and
+three consecutive S1024 full CPU-golden runs. Static resources remain
+SGPR82/VGPR128, role use `9/187/87/182`, private/spill/scratch0, exact five
+GEMMs, and bank0.
+
+Two interleaved S1024 pairs reject the candidate:
+
+| Pair | Control fused ticks | Candidate fused ticks | Delta |
+|---|---:|---:|---:|
+| 1 | 44,996,770 | 46,277,595 | +2.846% |
+| 2 | 44,949,905 | 46,571,070 | +3.607% |
+| mean | 44,973,338 | 46,424,333 | +3.226% |
+
+Full-lifecycle means regress `49,124,075 -> 50,567,563` (`+2.938%`). The
+saved 16KiB does not create an additional packet or MMAC island. Correctness
+requires an eight-consumer `DoutDead` rendezvous on every q tile, replacing
+group-local progress with a CTA-wide ownership gate. The candidate is removed
+from canonical source; xcu capture is intentionally skipped because ticks are
+not competitive.
+
+Evidence:
+`/zys/sb/fa3b/dead_dout_ab_20260822/paired`.
 
 Workbook evidence:
 `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_5gemm_clean_design_20260822.xlsx`,
