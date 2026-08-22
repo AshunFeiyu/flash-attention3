@@ -1,5 +1,19 @@
 # Source Status
 
+## 2026-08-22 Fused Writer MMAC Zero Seed Observed, Not Promoted
+
+- Status: `OBSERVE_ISA_WIN_TICKS_UNSTABLE_CANONICAL_RESTORED`.
+- The candidate removes 46 static `v_mov_b64` instructions while preserving
+  MMAC832, ABarrier31, matrix reads840 and global stores56.
+- A same-total WDRA rebudget to `16/196/196/104` is required to avoid the
+  zero-headroom writer spill; actual roles are `9/187/91/182`.
+- S128 causal/noncausal and three S1024 pairs pass complete correctness and
+  bank0, but only the first pair improves. Fused mean moves
+  `44,986,457 -> 44,876,498` (`-0.244%`) with two of three pairs regressing.
+- Canonical source is restored. Next target is writer C0-ready/store overlap,
+  not another isolated move cleanup.
+- Evidence: `/zys/sb/fa3b/writer_zero_seed_20260822/paired`.
+
 ## 2026-08-22 C1 dS On Dead dO Rejected
 
 - Status: `REJECT_CTA_WIDE_DOUT_DEAD_GATE_CANONICAL_RESTORED`.

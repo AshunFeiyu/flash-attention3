@@ -6800,3 +6800,21 @@ must remain unchanged until the isolated two-page lifecycle passes.
 
 See `docs/fused5_c1_ds_on_dead_dout_design_20260822.md` and workbook sheet
 `36 C1 dS on Dead dO`.
+
+## 2026-08-22 Fused Writer MMAC Zero Seed Observed
+
+The fused dQ writer's repeated accumulator clears were replaced by a single
+FWD-style MMAC zero seed. ASM improves materially (`v_mov_b64 116 -> 70`) with
+all matrix, MMAC, ABarrier and store counts unchanged. A WDRA repartition to
+`16/196/196/104` is required because the old writer window of 88 had zero
+allocator headroom.
+
+Correctness, bank and resource gates pass, but three paired S1024 comparisons
+are not stable: candidate deltas are `-1.237%`, `+0.208%`, and `+0.305%`;
+mean fused ticks improve only `0.244%`. Decision:
+`OBSERVE_ISA_WIN_TICKS_UNSTABLE_CANONICAL_RESTORED`. New kernels should still
+consider zero seeding, but this fused path must not retain it without stable
+ticks. Next work targets the writer's measured C0 wait and store issue tail.
+
+Design/result: `docs/fused5_dq_writer_zero_seed_design_20260822.md` and
+workbook sheet `37 Writer MMAC Zero Seed`.

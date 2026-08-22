@@ -18213,3 +18213,26 @@ Two interleaved S1024 pairs regress fused means
 pipeline, while correctness adds an eight-consumer rendezvous every q tile.
 Candidate source is removed and xcu is skipped under the ticks-first gate.
 Evidence: `/zys/sb/fa3b/dead_dout_ab_20260822/paired`.
+
+## 2026-08-22 Fused dQ Writer MMAC Zero Seed
+
+Status: `OBSERVE_ISA_WIN_TICKS_UNSTABLE_CANONICAL_RESTORED`.
+
+The candidate replaces eight explicit FP32 accumulator clears per q tile with
+one branch-local zero seed consumed by the first C0 MMAC. The first build
+proved that an exactly full WDRA window is insufficient: writer use 88 in an
+88-VGPR allocation spilled 43 VGPRs. Repartitioning the unchanged 512 pool to
+`16/196/196/104` yields actual roles `9/187/91/182`, SGPR82/VGPR128 and zero
+private/spill/scratch.
+
+ASM changes only the intended move family: `v_mov_b64 116 -> 70`; MMAC832,
+ABarrier31, matrix-read840 and global-store56 are unchanged. S128 c0/c1 and
+all three S1024 pairs pass complete CPU-golden correctness with bank0.
+
+Paired fused ticks are `45,237,920 -> 44,678,270`,
+`44,898,490 -> 44,991,765`, and `44,822,960 -> 44,959,460`. Means move
+`44,986,457 -> 44,876,498` (`-0.244%`), but two of three pairs regress.
+Lifecycle mean moves only `-0.146%`. The ISA cleanup is genuine but not a
+repeatable performance promotion. Restore canonical and attack writer
+C0-ready/store overlap next. Evidence:
+`/zys/sb/fa3b/writer_zero_seed_20260822/paired`.
