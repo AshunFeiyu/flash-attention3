@@ -12367,3 +12367,22 @@ Correction: `REJECT_DUPLICATE_HISTORICAL_EVIDENCE_NO_RUN`.
   improving.
 - Temporary source edits were removed before compile; canonical source and
   contract checksums are restored.
+
+## 2026-08-22 P-to-dV Native LIT ABI Rejected
+
+Status: `REJECT_NATIVE_DIRECT_P_ABI / CANONICAL_UNCHANGED`.
+
+- `lts=1` is a same-dump no-op in the locked compiler/PMD and cannot provide
+  the missing P ownership conversion.
+- The full coordinate sweep identifies FP16 `qT/kT lit1/lts0` as the only
+  tested output mode with canonical logical score coordinates; no mode has a
+  direct-reader identity match.
+- Dense asymmetric downstream evidence gives `score1_vs_bridge=7.42603` and
+  dV `candidate_vs_control=15.697`.
+- Probe resources are SGPR28/VGPR21, private/spill0, bank0, with no ordinary
+  matrix DS read or permutation.
+- Canonical production source was not modified. Keep the P writer/read bridge
+  and move to a real-work latency-cover hypothesis.
+
+Evidence: `docs/fused5_p_direct_lit_probe_20260822.md`, workbook sheet 41,
+and `/zys/sb/fa3b/layout_probes/p_direct_lit_final_20260822`.

@@ -18298,3 +18298,22 @@ lifecycle regressed `2.279%`, and MMAC active fell `34.211% -> 33.949%`.
 Barrier share fell while wait-LGKM and wait-VM rose: early writer wake creates
 LDS/MMAC issue-slot contention with C0/C1. Temporary code was removed before
 build and canonical checksums restored.
+
+## 2026-08-22 P-to-dV Native LIT ABI Closed
+
+Status: `REJECT_NATIVE_DIRECT_P_ABI / CANONICAL_UNCHANGED`.
+
+The locked-toolchain LTS probe first proves that `lts=1` is a same-dump no-op,
+not an ownership switch. The exhaustive 16-mode coordinate probe then leaves
+only FP16 `qT/kT + lit1/lts0` with canonical logical score coordinates and
+reports `any_direct_read_pass=0`.
+
+A dense downstream differential compares that sole logical candidate with the
+canonical `lit0 -> trans writer -> normal reader` bridge before the same dV
+MMAC. `score1_vs_bridge=7.42603` and `candidate_vs_control=15.697`, so the
+candidate is semantically incompatible. Static gates are clean at
+SGPR28/VGPR21, private/spill0, scalar DS read0, permute0 and bank0.
+
+This closes direct P chaining for the tested native MMAC modes. It does not
+justify gather, permutation or wrong-layout code. Evidence and boundary:
+`docs/fused5_p_direct_lit_probe_20260822.md` and workbook sheet 41.

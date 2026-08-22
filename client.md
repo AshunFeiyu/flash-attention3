@@ -6872,3 +6872,16 @@ gates but regressed fused mean ticks `2.546%` and lowered MMAC active because
 the early writer wake competed with C0/C1 for LDS/MMAC issue slots. Decision:
 `REJECT_DUPLICATE_HISTORICAL_EVIDENCE_NO_RUN`. The temporary source change was
 removed without building or running it.
+
+## 2026-08-22 Direct P Native ABI Boundary
+
+The missing P-to-dV ownership conversion cannot be removed with the tested
+FP16 MMAC `lit/lts` controls. `lts=1` is a same-dump no-op. The exhaustive
+coordinate sweep leaves only `qT/kT lit1/lts0` as a logically correct direct
+score mode, but a dense downstream probe differs from the canonical bridge by
+`15.697` at dV. Resources and PMD are clean, so this is a fragment ABI failure.
+
+Do not retry `lit1`, LTS, ordinary `ds_read_b32`, gather or permutation in the
+canonical kernel. The next hypothesis is C0 dK operand read-ahead under the
+tail of useful dV MMAC, with no token/layout/formula change. See workbook sheet
+41 and `docs/fused5_p_direct_lit_probe_20260822.md`.
