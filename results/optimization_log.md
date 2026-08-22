@@ -18607,3 +18607,25 @@ next evidence targets.
 
 Evidence: `docs/fused5_writer_g1_first_design_20260823.md`, workbook section54,
 and `/zys/sb/runs/fused5_writer_g1_first_*`.
+
+## 2026-08-23 Raw BPS EXPECT_TX Rejected
+
+Status: `REJECT_NEUTRAL_CONTROL_OVERHEAD_CANONICAL_RESTORED`.
+
+Applied the registered EXPECT_TX contract to the accepted G1-first raw-page
+edge: waves0-2 issue only BPS in a 6/5/5 split with byte credits
+`12288/10240/10240`; wave3 owns all sidecar VMEM/LDS and arrives plainly.
+Formula, five GEMMs, LDS pages, consumer/writer schedules and outputs are
+unchanged.
+
+Static/resource gates pass with MMAC1472, matrix-read840, SGPR82/VGPR128 and
+zero private/spill/scratch. Full S128 c0/c1 and S1024 golden correctness pass,
+warning0 and bank0. Three S1024 fused pair means are
+`43,434,755 -> 43,377,425` (`-0.132%`) with mixed directions. Static waits
+fall by five and VBCNT waits by three, but branches grow by 24; representative
+dynamic SCA grows by 22,224 and VALU by 2,544. The mechanism is legal but
+noise-neutral, matching the prior Gen6 wiring result. Restore canonical source
+and close raw EXPECT_TX on this topology.
+
+Evidence: `/zys/sb/runs/fused5_raw_expect_tx_correctness_20260823`,
+`/zys/sb/runs/fused5_raw_expect_tx_ab_20260823`, and workbook section57.

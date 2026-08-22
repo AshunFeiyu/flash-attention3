@@ -12632,3 +12632,24 @@ ABarrier cycles fall, barrier share drops to `13.263%`, and MMAC active reaches
 The current next debts are wait-VM exposure, terminal ebarrier, and the open
 50% MMAC-active goal. See
 `docs/fused5_writer_g1_first_design_20260823.md` and workbook section54.
+
+## 2026-08-23 Raw BPS EXPECT_TX Rejected
+
+Status: `REJECT_NEUTRAL_CONTROL_OVERHEAD_CANONICAL_RESTORED`.
+
+The candidate used the probe-proven legal shape: waves0-2 publish 6/5/5 pure
+BPS tasks with byte-exact EXPECT_TX, and wave3 publishes all sidecar rows with
+a plain arrival. Static gates and full S128/S1024 correctness pass; roles stay
+`11/176/87/164`, SGPR82/VGPR128, private/spill/scratch0, bank0.
+
+Generated MMAC1472 and matrix-read840 remain exact. Waits fall `340 -> 335`
+and VBCNT waits `4 -> 1`, but branches rise `73 -> 97` and ABarrier
+instructions `102 -> 106`. Three S1024 pair means are
+`43,434,755 -> 43,377,425` (`-0.132%`, mixed directions). Representative SCA
+rises `46,656 -> 68,880`, so the transaction optimization merely moves debt
+into producer scalar control. No S2048/fullperf is admitted. Production code
+is byte-restored to `58e90fc`; only design/result evidence remains.
+
+Evidence: `docs/fused5_raw_expect_tx_design_20260823.md`, workbook section57,
+`/zys/sb/runs/fused5_raw_expect_tx_correctness_20260823`, and
+`/zys/sb/runs/fused5_raw_expect_tx_ab_20260823`.

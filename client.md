@@ -7080,3 +7080,35 @@ rises `34.821% -> 35.037%`. XCU shows C1 `DqDone1` wait collapsing
   the critical path.
 - Proposed Target / target: Shaobo reference material under the `shaobo`
   skill; do not modify public optimization skills outside consolidation.
+
+## 2026-08-23 Raw BPS EXPECT_TX Boundary
+
+The current G1-first canonical was tested with the proven legal ABarrier
+transaction shape: waves0-2 are pure-BPS 6/5/5 publishers with
+`expect_tx(12288/10240/10240)`, while wave3 owns all ordinary sidecar traffic
+and contributes a plain arrival. Full S128 causal/noncausal and S1024 golden
+correctness pass with no resource debt or bank conflict.
+
+The mechanism is performance-neutral. Three S1024 pair means are
+`43,434,755 -> 43,377,425` (`-0.132%`) with mixed pair directions. Dynamic
+SCA grows `46,656 -> 68,880` because the compact 6/5/5 task dispatcher adds
+producer scalar control; higher coissue does not produce stable lower ticks.
+The result reproduces the older Gen6 neutral wiring result. Raw-page
+EXPECT_TX is closed on this canonical topology; source remains `58e90fc`.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: replacing a producer-side BPS VBCNT drain
+  with ABarrier transaction credits.
+- Rule / reusable rule: transaction-tracked waves must issue only BPS traffic;
+  isolate ordinary VMEM on a plain-arrival wave, then account transaction
+  bytes exactly.
+- Evidence / evidence: mode18 probe PASS; current 6/5/5 integration full
+  correctness PASS; S1024 mean only `-0.132%`, with SCA +47.6% in a
+  representative run.
+- Boundary / boundary: legal transaction landing does not imply a speedup;
+  uneven task dispatch can replace wait debt with scalar-control debt.
+- Counterexample / not applicable: mixed BPS/ordinary memory inside one
+  tracked wave, or a topology where the removed drain is not critical.
+- Proposed Target / target: Shaobo ABarrier reference material; do not modify
+  public skills outside consolidation.
