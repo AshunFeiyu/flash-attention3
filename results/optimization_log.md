@@ -1,5 +1,29 @@
 # Optimization Log
 
+## 2026-08-22 C0 dV-Tail dK0 Cover Rejected On S2048
+
+C0 issued the first dK `Qx4+dSx1` packet after the final dV operands, retired
+only the dV packet with `lgkmcnt(5)`, ran the useful eight-MMAC dV island, then
+retired dK0 and resumed the canonical dK lag-one schedule. Formulas, MMOP,
+LDS, barriers and outputs were unchanged.
+
+Static and correctness gates pass: role VGPR `9/187/87/182`, SGPR82/VGPR128,
+no private/spill/scratch, bank0, and H1/S128 causal/noncausal PASS. H1/S1024
+initially looks positive: two-pair fused mean `45,001,093 -> 44,792,475`
+(`-0.464%`), fullperf `45,188,325 -> 44,941,260` (`-0.547%`), and xcu C0
+first-use wait `13,332 -> 11,059` cycles.
+
+The mandatory scaling check reverses the result. Two H1/S2048 pairs regress
+fused mean `83,211,765 -> 87,305,628` (`+4.919%`). MMAC active falls
+`37.877% -> 37.536%`, wait-LGKM rises `7.937% -> 8.382%`, successful coissue
+falls by 1,039, and failed coissue rises by 4,443. The extra outstanding dK
+packet helps the short loop but creates LDS-read queue pressure in the longer
+loop. Decision: `REJECT_S2048_OUTSTANDING_READ_PRESSURE_CANONICAL_RESTORED`.
+
+Reusable rule: cross-GEMM prefetch must be budgeted per SIMD across all
+resident waves, not only per wave. Admit it only when both short-loop xcu and
+longer-loop wait/coissue counters improve.
+
 ## 2026-08-18 C1 dO Lag-One Accepted as New Best
 
 C1 now issues next-panel dO-trans reads after current softmax/dS and before

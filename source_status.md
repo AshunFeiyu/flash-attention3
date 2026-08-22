@@ -1,5 +1,20 @@
 # Source Status
 
+## 2026-08-22 C0 dV-Tail dK0 Cover Rejected On Scaling
+
+- Status: `REJECT_S2048_OUTSTANDING_READ_PRESSURE_CANONICAL_RESTORED`.
+- The candidate issues C0's first `Qx4+dSx1` dK packet under the final useful
+  dV MMAC island. Static resources, exact work, correctness and bank gates all
+  pass.
+- H1/S1024 confirms the local mechanism: paired fused mean improves `0.464%`,
+  fullperf improves `0.547%`, and the representative C0 matrix-read wait falls
+  `13,332 -> 11,059` cycles.
+- H1/S2048 rejects promotion: paired fused mean regresses `4.919%`, MMAC active
+  falls `37.877% -> 37.536%`, and wait-LGKM rises `7.937% -> 8.382%`.
+- Canonical source is restored. The next design must cap total outstanding LDS
+  reads per SIMD; a short-loop xcu win is insufficient evidence for promotion.
+- Evidence: `/zys/sb/fa3b/c0_dv_tail_dk0_20260822`.
+
 ## 2026-08-22 Fused Writer MMAC Zero Seed Observed, Not Promoted
 
 - Status: `OBSERVE_ISA_WIN_TICKS_UNSTABLE_CANONICAL_RESTORED`.

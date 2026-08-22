@@ -1,5 +1,15 @@
 # Client
 
+## 2026-08-22 C0 Cross-GEMM Prefetch Scaling Reject
+
+The first dK packet can be issued under C0's final dV MMAC island without
+changing work or resources. It improves H1/S1024 fused ticks by 0.464% and
+reduces the focused matrix-read wait, but regresses H1/S2048 by 4.919% while
+raising wait-LGKM and lowering MMAC active. The canonical source is restored.
+Do not infer a promotion from one short-loop Wavefronts window; every future
+cross-GEMM prefetch must include an outstanding-read budget across the four
+resident waves on each SIMD and an S2048 scaling gate.
+
 ## 2026-08-22 C1 dS On Dead dO Rejected
 
 The corrected A0-A5 path proves C1 can overwrite the dead 16KiB dO half and
