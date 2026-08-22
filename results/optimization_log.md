@@ -18260,3 +18260,25 @@ Filled event. Waiting after a prefix shortens the coverage and creates extra
 generation-specific control. Candidate code is removed; no xcu capture is
 admitted under the ticks-first gate. Evidence:
 `/zys/sb/fa3b/writer_store_c0_20260822/paired`.
+
+## 2026-08-22 C0 dO Matrix Read Under Score
+
+Status: `REJECT_C0_DOUT_READ_SCHEDULING_TIER_CANONICAL_RESTORED`.
+
+Role-local SQTT measures 1,853 units of C0 transposed matrix read debt and
+1,054 units of normal-read debt. Candidate A issued dO(current) and Q(next)
+before score while Q(current) was still pending. All correctness/resource/bank
+gates pass with exact dynamic MMOP92,160, LDS63,872, VALU140,208 and SCA46,664,
+but twelve live LDS transactions regress fused ticks
+`44,976,750 -> 48,752,795` (`+8.396%`). `noVALUready` rises by 39,245 and
+coissue success falls by 7,276.
+
+Candidate B capped the live set at eight by waiting Q(current) before issuing
+dO(current)+Q(next). It also passes all hard gates and exact-work checks, but
+regresses `45,184,685 -> 47,221,720` (`+4.508%`), raises `noVALUready` by
+13,155 and lowers coissue success by 2,847.
+
+The canonical next-Q prefetch is more valuable than moving the dO wait. Two
+same-layer failures close this scheduling tier. Candidate source is removed;
+no xcu capture is admitted under the ticks-first gate. Evidence:
+`/zys/sb/fa3b/c0_dout_under_score_20260822/{paired,max8_paired}`.

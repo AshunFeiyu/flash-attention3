@@ -6834,3 +6834,18 @@ shortens that cover and expands generation-specific writer control. Decision:
 No candidate SQTT is admitted. See
 `docs/fused5_dq_writer_store_c0_pipeline_design_20260822.md` and workbook
 sheet `38 Writer Store-C0 Pipe`.
+
+## 2026-08-22 C0 dO-Under-Score Scheduling Tier Rejected
+
+SQTT identified 2,907 units of repeated C0 matrix first-use debt. Two exact
+work schedules tried to hide dO reads under score/probability. Keeping
+`Qcurrent+dOcurrent+Qnext` live raises outstanding LDS work to 12 and regresses
+fused ticks `8.396%`; a strict max-8 revision delays Qnext and still regresses
+`4.508%`. Both pass complete correctness, bank0 and no-spill gates with exact
+MMOP92,160.
+
+The canonical Qnext prefetch must remain early. Hiding dO either overloads the
+LDS readiness queue or sacrifices more Q lookahead than it saves. Decision:
+`REJECT_C0_DOUT_READ_SCHEDULING_TIER_CANONICAL_RESTORED`. See
+`docs/fused5_c0_dout_under_score_design_20260822.md` and workbook sheet
+`39 C0 dO Under Score`.

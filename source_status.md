@@ -12325,3 +12325,20 @@ sheet `36 C1 dS on Dead dO`.
   `REJECT_SHORTENS_READY_AGING_AND_EXPANDS_WRITER_CONTROL_CANONICAL_RESTORED`.
   Canonical source and WDRA are restored; no candidate fullperf is admitted.
 - Evidence: `/zys/sb/fa3b/writer_store_c0_20260822/paired`.
+
+## 2026-08-22 C0 dO-Under-Score Tier Closed
+
+- Baseline SQTT attributes 2,907 timestamp units to repeated C0 matrix
+  first-use gaps; producer and instruction fetch are not the first target.
+- Batch-12 candidate roles are `9/189/87/182` under WDRA16/212/196/88;
+  private/spill/scratch0, complete correctness PASS, MMOP92,160 and bank0.
+- Batch-12 fused ticks regress `44,976,750 -> 48,752,795` (`+8.396%`),
+  `noVALUready +39,245`, coissue success `-7,276`.
+- Strict max-8 also passes all hard gates but regresses
+  `45,184,685 -> 47,221,720` (`+4.508%`), `noVALUready +13,155`, coissue
+  success `-2,847`.
+- Exact dynamic work is unchanged in both candidates. The failure is LDS
+  transaction readiness and lost next-Q lookahead, not formula, PMD or
+  correctness.
+- Decision: `REJECT_C0_DOUT_READ_SCHEDULING_TIER_CANONICAL_RESTORED`.
+  Source and WDRA are restored; no candidate fullperf is admitted.
