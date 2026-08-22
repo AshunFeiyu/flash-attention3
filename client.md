@@ -6923,3 +6923,19 @@ Do not retry `lit1`, LTS, ordinary `ds_read_b32`, gather or permutation in the
 canonical kernel. The next hypothesis is C0 dK operand read-ahead under the
 tail of useful dV MMAC, with no token/layout/formula change. See workbook sheet
 41 and `docs/fused5_p_direct_lit_probe_20260822.md`.
+## 2026-08-22 N32 Workspace 12-Wave Rejected
+
+The history-distinct `P4+C4(N32)+W4` topology is mathematically exact and can
+fit at actual role use `9/240/85` with no private/spill/scratch after P/dS are
+persisted to LDS and dK read-ahead is narrowed. Full S128 c0/c1 and S1024 c1
+golden checks pass with MMOP92,160 and bank0.
+
+It is a structural performance rejection. H1/S1024 fused ticks regress
+`45,052,735 -> 50,706,110` (`+12.55%`) and MMAC active falls
+`34.737% -> 32.063%`. Although VALU falls 8.42% and LDS instructions fall
+48.80%, coissue success collapses `20,536 -> 6,361` and barrier share rises
+`13.932% -> 20.419%`. The dependency-lagged writer cannot replace the second
+independent heavy dKV group. Canonical code is restored at `b402ffd` behavior.
+
+See `docs/fused5_n32_workspace12_design_20260822.md` and workbook sheet
+`45 N32 WS 12W`.

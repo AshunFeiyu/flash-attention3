@@ -12440,3 +12440,21 @@ sheet `43 Invalid Half VALU`, and `/zys/sb/fa3b/ihv22*`.
 
 Evidence: `docs/fused5_c1_q_lagone_under_dv_design_20260822.md`, workbook
 sheet44, `/zys/sb/fa3b/c1_q_lagone_20260822`.
+## 2026-08-22 N32 Workspace 12-Wave Result
+
+Status: `REJECT_SINGLE_HEAVY_GROUP_LOSES_PEER_OVERLAP_CANONICAL_RESTORED`.
+
+- `P4+C4(N32)+W4`, exact five GEMMs, two full dS generations.
+- Final resources: WDRA `24/248/112`, role use `9/240/85`, SGPR87/VGPR128,
+  private/spill/scratch0, LDS128KiB, bank0.
+- S128 causal/noncausal and S1024 causal complete golden: PASS.
+- H1/S1024 fused ticks `45,052,735 -> 50,706,110` (`+12.55%`).
+- MMAC active `34.737% -> 32.063%`; barrier share
+  `13.932% -> 20.419%`; coissue success `20,536 -> 6,361`.
+- VALU and LDS instruction reductions do not compensate for removing the
+  second independent heavy consumer group.
+- Canonical source restored. Do not retry one-heavy-group topology without a
+  new independent issuer that is not gated by dS publication.
+
+Evidence: `/zys/sb/fa3b/n32_ws12_20260822`,
+`/zys/sb/fa3b/n32_ws12_baseline_20260822`, workbook sheet45.

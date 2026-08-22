@@ -18389,3 +18389,23 @@ on next score readiness. Reject before S2048/fullperf and preserve only the
 accepted future-dO-across-dV schedule.
 
 Evidence: `/zys/sb/fa3b/c1_q_lagone_20260822`.
+## 2026-08-22 N32 Workspace 12-Wave Rejected
+
+Status: `REJECT_SINGLE_HEAVY_GROUP_LOSES_PEER_OVERLAP_CANONICAL_RESTORED`.
+
+The candidate combines each pair of N16 owners into one N32 owner and changes
+the role map from `P4+C0x4+C1x4+W4` to `P4+Cx4+W4`. It preserves exact
+MMOP92,160 and complete golden correctness. Direct long-lived P/dS initially
+spilled 302 VGPR values into 520 bytes private. Persisting P/dS in LDS and
+narrowing dK read-ahead yields role use `9/240/85` under WDRA24/248/112 with
+private/spill/scratch0 and bank0.
+
+Same-environment H1/S1024 rejects the topology: fused ticks regress
+`45,052,735 -> 50,706,110` (`+12.55%`) and active falls
+`34.737% -> 32.063%`. Dynamic VALU is 8.42% lower and LDS instructions are
+48.80% lower, but coissue success falls `20,536 -> 6,361` and barrier share
+rises `13.932% -> 20.419%`. One dependency-lagged writer group cannot replace
+the second independent dKV group as a same-SIMD overlap source.
+
+Canonical code is restored. Preserve the two-heavy-group topology and target
+C1 dS ownership/reuse without removing an independent issuer.
