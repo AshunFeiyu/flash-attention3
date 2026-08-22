@@ -7017,3 +7017,17 @@ SCA instructions, about `0.455 pp` barrier share and `0.179 pp` wait-LGKM.
 The next ownership optimization must reuse an existing event or remove a
 stronger event; adding a Used-only token is not enough. Canonical source stays
 at accepted commit `0085c6c` behavior.
+
+## 2026-08-23 C0 Read-Scheduling Boundary
+
+Moving C0's unchanged dO matrix packet after score and before probability is
+correct, resource-clean, and lowers static wait instructions, but it regresses
+three-pair S1024 fused ticks by `0.697%`. MMAC active rises about `0.39 pp`
+while runtime wait-LGKM and barrier share both rise.
+
+Do not promote a schedule because matrix reads look earlier, static waits are
+fewer, or MMAC active is higher. On this compiler, inspect the generated
+`lgkmcnt` placement and require paired ticks plus runtime wait/barrier evidence.
+The C0 score/probability/dP read-order tier is now closed on the current
+ownership topology; canonical source remains the partial peeled zero-seed
+baseline.

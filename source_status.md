@@ -12565,3 +12565,26 @@ Status: `REJECT_BARRIER_COST_CANONICAL_RESTORED`.
 
 Evidence: `docs/fused5_dout_prefetch_under_dk_design_20260823.md`, workbook
 section51, `/zys/sb/runs/f5dop*`.
+
+## 2026-08-23 C0 dP Reads Under Probability Rejected
+
+Status: `REJECT_RUNTIME_WAIT_MIGRATION_CANONICAL_RESTORED`.
+
+- Fresh SQTT identified C0 dS publication as the repeated dQ-writer pace
+  setter. The candidate therefore moved only C0's existing four dO matrix
+  reads after score and before probability; no formula, token, LDS, traffic,
+  ownership, C1, producer, or writer change was made.
+- Static ISA improves superficially: waits `340 -> 335`, with exact MMAC1472,
+  symbol-scoped matrix-read840, ABarrier102 and `v_mov_b64`68. C0 uses173/204 VGPR;
+  SGPR82/VGPR128 and private/spill/scratch0 pass.
+- S128 causal/noncausal and S1024 full golden correctness pass with warning0
+  and bank0.
+- Three S1024 pair means regress `44,203,705 -> 44,511,740` (`+0.697%`).
+  MMAC active rises `34.786% -> 35.177%`, but wait-LGKM rises
+  `7.891% -> 8.408%` and barrier rises `13.796% -> 13.931%`.
+- Higher MMAC active without lower ticks is rejected. The compiler moved the
+  remaining `lgkmcnt(1/0)` readiness debt into the probability-to-dP window;
+  canonical source is restored and no S2048/fullperf is admitted.
+
+Evidence: `docs/fused5_c0_dp_probability_cover_design_20260823.md`, workbook
+section52, `/zys/sb/runs/fused5_c0_dp_probability_cover*`.

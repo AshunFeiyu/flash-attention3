@@ -18535,3 +18535,22 @@ No S2048 or candidate fullperf was admitted. Canonical source is restored.
 
 Evidence: `docs/fused5_dout_prefetch_under_dk_design_20260823.md`, workbook
 section51, `/zys/sb/runs/f5dop`, and `/zys/sb/runs/f5dop_ab`.
+
+## 2026-08-23 C0 dP Reads Under Probability Rejected
+
+Status: `REJECT_RUNTIME_WAIT_MIGRATION_CANONICAL_RESTORED`.
+
+The candidate keeps the exact five-GEMM algorithm and all ownership events,
+but issues C0's dO matrix packet after score so probability VALU can age it.
+The generated order is real, static waits fall `340 -> 335`, role use remains
+safe at `9/173/87/164`, and full S128/S1024 correctness passes with bank0.
+
+Three interleaved S1024 pairs regress fused mean
+`44,203,705 -> 44,511,740` (`+0.697%`). MMAC active improves
+`34.786% -> 35.177%`, while wait-LGKM worsens `7.891% -> 8.408%` and barrier
+share worsens `13.796% -> 13.931%`. The compiler-generated `lgkmcnt(1/0)`
+sequence shifts readiness debt rather than removing it. No S2048/fullperf is
+run; production source is restored.
+
+Evidence: `/zys/sb/runs/fused5_c0_dp_probability_cover*`; design:
+`docs/fused5_c0_dp_probability_cover_design_20260823.md`.
