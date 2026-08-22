@@ -7002,3 +7002,18 @@ the first update is already a compile-time call site. Never add a runtime
 `qi/m_block` seed branch or duplicate a complete panel body to remove moves.
 MMAC active remains about `34.69%`; the next structural target is useful work
 across ABarrier ownership and matrix first-use gaps.
+
+## 2026-08-23 dO Early-Release Boundary
+
+The dO lifetime proof is correct: both heavy consumer groups finish dO after
+their final dV read, one dK island before Q becomes dead. The minimal canonical
+trial added only `DoutUsed0/1`, preloaded dO(t+2) under dK(t), and retained one
+complete `RawFilled` per page. It passed every correctness/resource/layout
+gate, but three S1024 pairs regressed mean fused ticks by `0.535%`.
+
+Do not use a new ABarrier token merely because an operand lifetime can be
+split. Here the split improves sampled MMAC active and coissue but adds 1,332
+SCA instructions, about `0.455 pp` barrier share and `0.179 pp` wait-LGKM.
+The next ownership optimization must reuse an existing event or remove a
+stronger event; adding a Used-only token is not enough. Canonical source stays
+at accepted commit `0085c6c` behavior.

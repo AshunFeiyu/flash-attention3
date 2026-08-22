@@ -18509,3 +18509,29 @@ remains open.
 
 Evidence: `docs/fused5_peeled_dkv_zero_seed_design_20260823.md`, workbook
 section50, `/zys/sb/runs/fused5_peeled_zero_seed_*`, and `/zys/sb/f5zfull`.
+
+## 2026-08-23 dO Prefetch Under dK Rejected
+
+Status: `REJECT_BARRIER_COST_CANONICAL_RESTORED`.
+
+Both consumer groups released each raw page's dO half after their final dV
+read while retaining Q ownership through dK. The producer used two new
+`DoutUsed` tokens to issue dO(t+2) BPS under dK(t), then retained the original
+`RawUsed/RawFilled` complete-packet contract. This preserves exact five-GEMM
+work, dynamic matrix traffic, LDS128KiB and all output ownership.
+
+Static/resource and full correctness gates pass: MMAC1472,
+`ds_read_matrix`840, waits340, roles `9/171/87/164`, SGPR82/VGPR128,
+private/spill/scratch0, S128 causal/noncausal plus S1024 causal golden PASS,
+warning0 and bank0. Static BPS sites grow `20 -> 22`; ABarrier IDs grow
+`12 -> 14`.
+
+Three interleaved S1024 pairs regress fused mean
+`44,384,188 -> 44,621,850` (`+0.535%`). A representative pair raises MMAC
+active `34.693% -> 35.112%`, but SCA grows `46,776 -> 48,108`, barrier share
+grows `13.748% -> 14.203%`, and wait-LGKM grows
+`7.754% -> 7.932%`. Coissue/active growth without lower ticks is rejected.
+No S2048 or candidate fullperf was admitted. Canonical source is restored.
+
+Evidence: `docs/fused5_dout_prefetch_under_dk_design_20260823.md`, workbook
+section51, `/zys/sb/runs/f5dop`, and `/zys/sb/runs/f5dop_ab`.

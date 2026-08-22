@@ -12547,3 +12547,21 @@ Status: `ACCEPT_MICRO_TICKS_AND_CODEGEN / MMAC50_OPEN`.
 
 Evidence: `docs/fused5_peeled_dkv_zero_seed_design_20260823.md` and workbook
 section50.
+
+## 2026-08-23 dO Prefetch Under dK Result
+
+Status: `REJECT_BARRIER_COST_CANONICAL_RESTORED`.
+
+- Candidate added per-page `DoutUsed` only; `RawFilled/RawUsed`, tile,
+  formula, LDS layout, matrix transactions and output ownership stayed exact.
+- Static gates: MMAC1472, matrix-read840, waits340, roles9/171/87/164,
+  SGPR82/VGPR128, private/spill/scratch0. BPS sites20->22 and token IDs12->14.
+- S128 c0/c1 and S1024 c1 full lifecycle golden PASS, warning0, bank0.
+- Three S1024 pair means: control44,384,188; candidate44,621,850
+  (`+0.535%`). A sampled active increase to35.112% is not promotable because
+  ticks regress and SCA/barrier/wait-LGKM all rise.
+- Production source and contract are byte-restored to commit `0085c6c`.
+  Only the design/result document remains on this experiment branch.
+
+Evidence: `docs/fused5_dout_prefetch_under_dk_design_20260823.md`, workbook
+section51, `/zys/sb/runs/f5dop*`.
