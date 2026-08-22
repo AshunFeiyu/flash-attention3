@@ -12514,3 +12514,15 @@ section47, and `/zys/sb/fa3b/c1_dv_under_ds_*`.
   sidecar placement without a different ownership topology.
 - Evidence: `/zys/sb/fa3b/c1_delta_prefetch_ab` and
   `docs/fused5_c1_delta_prefetch_design_20260823.md`.
+
+## 2026-08-23 Explicit Vec4 dS Packing Rejected
+
+- Status: `REJECT_STATIC_CODEGEN_EXPANSION_CANONICAL_RESTORED`.
+- Explicit vector source grows total static instructions by 112,
+  `v_mov_b32` by 38, `v_mov_b64` by 106, and SGPR by four.
+- Exact MMAC/read/wait counts and zero-spill resources prove this is a codegen
+  quality rejection, not an algorithm or resource-capacity failure.
+- PMD was not run because the predeclared ISA objective failed. Canonical
+  source is restored; dS syntax tuning is closed for the locked compiler.
+- Evidence: `docs/fused5_explicit_vec4_ds_pack_design_20260823.md` and
+  workbook section49.

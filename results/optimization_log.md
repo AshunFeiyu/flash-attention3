@@ -18467,3 +18467,22 @@ the next hypothesis.
 
 Evidence: `/zys/sb/fa3b/c1_delta_prefetch_ab`; design:
 `docs/fused5_c1_delta_prefetch_design_20260823.md`.
+
+## 2026-08-23 Explicit Vec4 dS Packing Rejected At Static Gate
+
+Status: `REJECT_STATIC_CODEGEN_EXPANSION_CANONICAL_RESTORED`.
+
+The candidate changed only the four useful probability/dS words from scalar
+source expressions to explicit `Vec4F32` arithmetic and packed conversions.
+The compiler already auto-packs the canonical scalar expression better:
+semantic instructions grow `6,532 -> 6,644`, `v_mov_b32` grows
+`174 -> 212`, `v_mov_b64` grows `42 -> 148`, and SGPR grows `82 -> 86`.
+MMAC, matrix reads and waits stay exact, with no spill/private/scratch.
+
+The ISA objective failed, so PMD correctness and performance were deliberately
+not run. Source is restored. Combined with the immediately preceding delta
+placement rejection, this closes the current dS/sidecar instruction-tuning
+tier and forces whole-kernel SQTT/ownership re-analysis.
+
+Evidence: workbook section49 and
+`/zys/sb/experiments/fused5_explicit_vec4_ds_20260823`.

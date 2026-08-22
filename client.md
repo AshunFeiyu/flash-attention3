@@ -6978,3 +6978,12 @@ but it is not a performance lever. Static waits fall while runtime wait-LGKM
 rises; three S1024 A/B pairs regress fused ticks by `0.112%` and reduce MMAC
 active. The source is restored to the accepted dV-under-dS schedule. Treat
 coissue growth without lower ticks or higher MMAC active as a rejection.
+
+## 2026-08-23 dS Source-Syntax Tier Closed
+
+An explicit Vec4 implementation of the four useful P/dS words expands the
+locked compiler's ISA instead of shrinking it: 112 extra static instructions,
+38 extra `v_mov_b32`, 106 extra `v_mov_b64`, and four more SGPRs. It was
+rejected before PMD and the canonical scalar source was restored. The scalar
+form already auto-packs well; further progress must target measured ownership
+or issue gaps, not C++ vector spelling.
