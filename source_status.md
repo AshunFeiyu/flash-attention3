@@ -12615,3 +12615,20 @@ Status: `ACCEPT_MICRO_TICKS_AND_READINESS_BARRIER_DEBT_OPEN`.
 Evidence: `docs/fused5_c0_ds_scale_under_dout_design_20260823.md`, workbook
 section53, `/zys/sb/runs/fused5_c0_ds_scale_under_dout_*`, and shared perf
 archive `20260823_051443_fused5_c0_ds_scale_under_dout_h1s1024_sqc7`.
+
+## 2026-08-23 Writer Single-Page-First Order Promoted
+
+The canonical dQ writer now consumes C1's single dS page before C0's
+double-generation page. This is an order-only change: the five-GEMM DAG,
+M64/N128/D128 tile, 16-wave roles, LDS128KiB, 12 barrier IDs, matrix traffic,
+MMAC1472 and stores are unchanged.
+
+All correctness/resource gates pass. Paired fused ticks improve `1.876%` at
+S1024 and `3.289%` at S2048. XCU proves that C1 `DqDone1` backpressure moves
+off the release edge, allowing earlier dK/RawUsed progress; producer and writer
+ABarrier cycles fall, barrier share drops to `13.263%`, and MMAC active reaches
+`35.037%`.
+
+The current next debts are wait-VM exposure, terminal ebarrier, and the open
+50% MMAC-active goal. See
+`docs/fused5_writer_g1_first_design_20260823.md` and workbook section54.

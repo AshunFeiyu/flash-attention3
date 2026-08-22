@@ -1136,6 +1136,10 @@ __device__ __forceinline__ void run_dq_writer_tile(
     Accumulator dq_acc[Tile::kMqPanels][2];
     zero_dq_writer_accumulators(dq_acc);
 
+    ins::abarrier_try_wait<true>(Bar::kBatchDsFilled1, filled1_phase);
+    update_dq_writer_group<1>(lds, resident, dq_acc);
+    ins::abarrier_arrive_cnt<false>(Bar::kDqDone1, 1);
+
     if constexpr (Generation == 0) {
         ins::abarrier_try_wait<true>(Bar::kBatchDsFilled0, filled0_phase);
         update_dq_writer_group<0, 0>(lds, resident, dq_acc);
@@ -1145,9 +1149,6 @@ __device__ __forceinline__ void run_dq_writer_tile(
         update_dq_writer_group<0, 1>(lds, resident, dq_acc);
         ins::abarrier_arrive_cnt<false>(Bar::kDqDone0Alt, 1);
     }
-    ins::abarrier_try_wait<true>(Bar::kBatchDsFilled1, filled1_phase);
-    update_dq_writer_group<1>(lds, resident, dq_acc);
-    ins::abarrier_arrive_cnt<false>(Bar::kDqDone1, 1);
 
     const int q_base = (q_tile_begin + qi) * Tile::kMq;
 #pragma unroll

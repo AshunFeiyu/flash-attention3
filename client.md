@@ -7050,3 +7050,33 @@ next target.
 
 See `docs/fused5_c0_ds_scale_under_dout_design_20260823.md` and workbook
 section53.
+
+## 2026-08-23 Writer G1-First Canonical Promotion
+
+The canonical writer order is now G1 then G0. C1 owns only one dS page while
+C0 owns two generations, so releasing C1 first is the resource-aware order.
+The code change swaps two existing wait/MMAC/arrive blocks and adds no work,
+token, page, traffic or store.
+
+Evidence gates pass: full golden S128 c0/c1, S1024 and S2048; roles
+`9/176/87/164`; SGPR82/VGPR128; no private/spill/scratch; bank0. S1024 paired
+fused ticks improve `1.876%`, S2048 improves `3.289%`, and fullperf MMAC active
+rises `34.821% -> 35.037%`. XCU shows C1 `DqDone1` wait collapsing
+`7,561 -> 45` cycles, with net producer/writer barrier reduction.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: one writer consumes several published LDS
+  pages whose producer groups have different buffering depths.
+- Rule / reusable rule: consume and release the shallowest ownership queue
+  first, then use deeper alternate generations to absorb delayed release.
+- Evidence / evidence: `exp/fused5-writer-g1-first`; H1/S1024 `-1.876%`,
+  H1/S2048 `-3.289%`; `/zys/sb/runs/fused5_writer_g1_first_*`; workbook
+  section54.
+- Boundary / boundary: accumulation order must remain numerically admissible,
+  and the delayed group must have proven alternate capacity.
+- Counterexample / not applicable: symmetric single-page groups,
+  non-associative ownership semantics, or a delayed deep group that becomes
+  the critical path.
+- Proposed Target / target: Shaobo reference material under the `shaobo`
+  skill; do not modify public optimization skills outside consolidation.

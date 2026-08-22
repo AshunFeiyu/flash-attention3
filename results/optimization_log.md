@@ -18583,3 +18583,27 @@ ticks/readiness win, but keep ABarrier ownership as explicit debt.
 Evidence: `/zys/sb/runs/fused5_c0_ds_scale_under_dout_ab`,
 `/zys/sb/runs/fused5_c0_ds_scale_under_dout_s2048_*`, and
 `/zys/sb/runs/fused5_c0_ds_scale_fullperf_20260823`.
+
+## 2026-08-23 dQ Writer G1-First Release Accepted
+
+Status: `ACCEPT_STRUCTURAL_BARRIER_RELEASE_MMAC50_OPEN`.
+
+Fresh four-role XCU data showed an asymmetric ownership depth: C0 has two dS
+generations, while C1 has one. The writer previously consumed G0 then G1,
+leaving C1 blocked on `DqDone1` while G1 was already ready. The accepted
+change swaps only writer group order to G1 then G0.
+
+All static counts, formula work, LDS, token IDs, transactions and output
+ownership remain exact. Full golden correctness passes S128 causal/noncausal,
+S1024 and S2048 with no resource debt and bank0. Three S1024 pairs improve
+fused mean by `1.876%`; two S2048 pairs improve by `3.289%`.
+
+Fullperf confirms the mechanism. C1 `DqDone1` wait falls
+`7,561 -> 45` cycles and shifts to the next `RawFilled`; producer ABarrier
+cycles fall by `15,560`, writer ABarrier cycles fall by `3,072`, barrier share
+falls `0.877 pp`, and MMAC active rises `0.217 pp` to `35.037%`. Exposed
+wait-VM rises `0.479 pp`, so that edge and the terminal ebarrier become the
+next evidence targets.
+
+Evidence: `docs/fused5_writer_g1_first_design_20260823.md`, workbook section54,
+and `/zys/sb/runs/fused5_writer_g1_first_*`.
