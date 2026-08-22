@@ -12259,3 +12259,22 @@ Status: `ACCEPT_GQA_OWNERSHIP_AND_TICKS`; scale SQTT pending.
   lifecycle is noise-flat in the opposite direction.
 - Decision: `REJECT_NOISE_AND_LATE_PUBLICATION_CANONICAL_RESTORED`. Two local
   scheduling hypotheses are now closed; re-analyze tile and ownership.
+## 2026-08-22 C1 dS On Dead dO Structural Gate
+
+Status: `ADMIT_FOCUSED_PROBE_ONLY`.
+
+After resident-read zero cover and C1 dV-before-dS both closed as same-shape
+noise/regressions, local scheduling is stopped. Historical audit also proves
+that an M128 coarse raw epoch would repeat the rejected lexical-halves tier.
+
+The next structural gate keeps canonical M64/N128/D128 and exactly five GEMMs.
+It aliases C1's 16KiB dS generation onto the dead 16KiB dO half of each raw
+page after both consumer groups finish dV. Writer completion joins RawUsed,
+raising its arrival count from 8 to 12; page-specific C1 Filled and DoutDead
+events produce a 14-ID ABarrier ledger. Startup LDS remains 128KiB and
+released-K/V steady use falls 57.5KiB to 41.5KiB. No production source is
+changed until the focused alias/layout and lifecycle probes pass.
+
+Design: `docs/fused5_c1_ds_on_dead_dout_design_20260822.md`.
+Workbook: `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_5gemm_clean_design_20260822.xlsx`,
+sheet `36 C1 dS on Dead dO`.

@@ -6779,3 +6779,14 @@ resources, but two paired S1024 comparisons reverse sign and fused mean is
 `0.101%` slower. The local coissue opportunity does not compensate for later
 C1 dS publication. Canonical source is restored; the next round must change a
 top-level tile/ownership constraint rather than another instruction order.
+## 2026-08-22 Structural Direction: C1 dS Reuses Dead dO
+
+Do not retry M128 lexical halves or additional local wait/VALU reordering.
+The admitted probe-only direction keeps M64/N128/D128 and places each C1 dS
+generation in the dead dO half of its raw page. Both dV consumer groups must
+finish before overwrite, and producer refill must wait for C0, C1, and writer
+(`RawUsed=12`). The ledger is 14 ABarrier IDs and 128KiB LDS; canonical code
+must remain unchanged until the isolated two-page lifecycle passes.
+
+See `docs/fused5_c1_ds_on_dead_dout_design_20260822.md` and workbook sheet
+`36 C1 dS on Dead dO`.
