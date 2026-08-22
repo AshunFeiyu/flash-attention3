@@ -12479,3 +12479,26 @@ Status: `REJECT_NO_CRITICAL_PATH_GAIN_CANONICAL_RESTORED`.
 - No S2048/fullperf was admitted. Canonical source is restored.
 
 Evidence: `/zys/sb/fa3b/crossgroup_alt_20260822`; workbook sheet46.
+
+## 2026-08-23 C1 dV Reads Under dS Promoted
+
+Status: `ACCEPT_WAIT_REDUCTION_AND_TICKS / PACKED_DS_DEBT_OPEN`.
+
+- C1 issues the unchanged dV operand packet before dS and uses existing dS
+  VALU as readiness age. The source and ISA preserve exact five-GEMM work,
+  LDS128KiB, 12 ABarrier IDs and all output ownership.
+- Final role use is `9/171/87/164`; SGPR82/VGPR128 and
+  private/spill/scratch0 pass. S128 causal/noncausal, S1024 and S2048 complete
+  CPU-golden correctness pass with PMD warning0 and bank0.
+- Three S1024 pairs improve fused mean `1.393%`; two S2048 pairs improve
+  `0.897%`. waitLgkm falls about `0.90 pp` and `1.04 pp`; S2048 coissue
+  success rises `2.67%`.
+- XCU confirms the mechanism: dispatch duration `99,820 -> 97,376`,
+  trans-read-to-wait `10.93% -> 8.50%`, and normal-read-to-wait
+  `4.26% -> 3.58%`.
+- Dynamic VALU/SCA rise slightly and MMAC active remains nearly flat. The next
+  canonical target is packed dS codegen under the accepted schedule, not more
+  outstanding LDS work.
+
+Evidence: `docs/fused5_c1_dv_reads_under_ds_design_20260823.md`, workbook
+section47, and `/zys/sb/fa3b/c1_dv_under_ds_*`.

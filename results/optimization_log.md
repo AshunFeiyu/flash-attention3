@@ -18423,3 +18423,28 @@ measured C1 single-page wait is overlap debt, not a standalone critical-path
 lever. Candidate source is removed before the next hypothesis.
 
 Evidence: `/zys/sb/fa3b/crossgroup_alt_20260822`, workbook sheet46.
+
+## 2026-08-23 C1 dV Reads Under dS Accepted
+
+Status: `ACCEPT_WAIT_REDUCTION_AND_TICKS / PACKED_DS_DEBT_OPEN`.
+
+C1 now issues the existing P-normal/current-dO-normal/next-dO-trans packet
+before current dS and uses useful dS VALU to age operand readiness. No work,
+matrix read, LDS byte, token, MMAC, owner or API is added. Final ISA is
+`sidecar ready -> matrix packet -> dS -> lgkmcnt(4) -> dV MMAC`; role use is
+`9/171/87/164`, private/spill/scratch0, and bank0.
+
+S128 causal/noncausal plus S1024/S2048 full CPU golden pass with no PMD VGPR
+warning. Three S1024 pairs improve fused mean
+`45,014,667 -> 44,387,525` (`-1.393%`); two S2048 pairs improve
+`83,965,245 -> 83,212,448` (`-0.897%`). waitLgkm falls about `0.896 pp` and
+`1.041 pp`, respectively. SQTT dispatch duration falls
+`99,820 -> 97,376`; trans-read-to-wait falls `10.93% -> 8.50%` and normal
+read-to-wait falls `4.26% -> 3.58%`.
+
+MMAC active stays nearly flat because compiler codegen expands S1024 VALU
+`118,880 -> 119,744` and SCA `46,744 -> 46,776`. Preserve the accepted
+readiness schedule; next recover packed dS without new work or synchronization.
+
+Evidence: `/zys/sb/fa3b/c1_dv_under_ds_*`; design:
+`docs/fused5_c1_dv_reads_under_ds_design_20260823.md`.

@@ -6953,3 +6953,20 @@ Canonical code is restored. Do not retry physical-page ownership rotation:
 the measured C1 `DqDone` wait is not the fused MMAC critical path by itself.
 See `docs/fused5_crossgroup_alt_ds_design_20260822.md` and workbook sheet
 `46 CrossGroup Alt dS`.
+
+## 2026-08-23 C1 dV Operand Readiness Promoted
+
+Whole-kernel XCU attribution showed the large RawUsed producer waits were
+mostly hidden, while C1 repeatedly exposed matrix-read first-use latency. The
+accepted change moves no ownership boundary: it issues the existing dV packet
+before current dS, pre-readies row delta, and places useful dS VALU before the
+unchanged `lgkmcnt(4)` and dV MMAC island.
+
+All correctness/resource gates pass. Fused ticks improve `1.393%` at S1024
+and `0.897%` at S2048; SQTT directly shows both normal/trans read-to-wait
+bubbles shrinking. MMAC active remains roughly flat because compiler codegen
+emits more scalar dS VALU. The next hypothesis is therefore narrow and
+evidence-led: retain this schedule while recovering packed dS instructions.
+
+See `docs/fused5_c1_dv_reads_under_ds_design_20260823.md` and workbook
+section47.

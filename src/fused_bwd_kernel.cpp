@@ -335,6 +335,18 @@ __device__ __forceinline__ void wait_dv_packet(
 #endif
 }
 
+__device__ __forceinline__ void wait_sidecar_value(float& value) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    asm volatile(
+        "; sidecar_ready_before_dv_packet\n"
+        : "+v"(value)
+        :
+        : "memory");
+#else
+    (void)value;
+#endif
+}
+
 __device__ __forceinline__ void mmac_product_island(
     const Fragment (&lhs)[kMatrixBlocksD],
     const Fragment (&rhs)[kMatrixBlocksD],
@@ -546,6 +558,110 @@ __device__ __forceinline__ void store_dq_partial_d32(
     }
 }
 
+struct DvOperandPacket {
+    Fragment p_normal{};
+    Fragment dout_normal[kMatrixBlocksD];
+};
+
+__device__ __forceinline__ void order_dv_packet_before_ds(
+    DvOperandPacket& packet,
+    float& row_delta) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    asm volatile(
+        "; c1_dv_packet_before_ds\n"
+        : "+v"(row_delta)
+        : "v"(packet.p_normal.f16x8),
+          "v"(packet.dout_normal[0].f16x8),
+          "v"(packet.dout_normal[1].f16x8),
+          "v"(packet.dout_normal[2].f16x8),
+          "v"(packet.dout_normal[3].f16x8)
+        : "memory");
+#else
+    (void)packet;
+    (void)row_delta;
+#endif
+}
+
+template <int Count>
+__device__ __forceinline__ void wait_dv_packet_after_ds(
+    const Fragment& ds,
+    DvOperandPacket& packet) {
+#if defined(__gfx946__) || defined(__gfx92a__)
+    asm volatile(
+        "s_waitcnt lgkmcnt(%6)\n"
+        : "+v"(packet.p_normal.f16x8),
+          "+v"(packet.dout_normal[0].f16x8),
+          "+v"(packet.dout_normal[1].f16x8),
+          "+v"(packet.dout_normal[2].f16x8),
+          "+v"(packet.dout_normal[3].f16x8)
+        : "v"(ds.f16x8), "n"(Count)
+        : "memory");
+#else
+    (void)ds;
+    (void)packet;
+#endif
+}
+
+template <int Group>
+__device__ __forceinline__ void issue_dv_operand_packet(
+    const __half* lds,
+    __half* mutable_lds,
+    int raw_base,
+    int m_block,
+    int owner,
+    const Fragment& probability,
+    DvOperandPacket& packet) {
+    static_assert(Group == 0 || Group == 1);
+
+    const int page = scratch_page_offset<Group>(owner);
+    ins::ds_write_matrix_32x16_trans_f16(probability.f16x8, mutable_lds, page);
+    ins::ds_read_matrix_32x16_normal(lds, page, packet.p_normal.f16x8);
+    read_raw_panel_normal(
+        lds, raw_base + LdsLayout::kDoutOffset, m_block,
+        packet.dout_normal);
+}
+
+template <int Count>
+__device__ __forceinline__ void consume_dv_operand_packet(
+    DvOperandPacket& packet,
+    Accumulator (&dv_acc)[8]) {
+    wait_dv_packet<Count>(packet.p_normal, packet.dout_normal);
+    ins::raise_priority_2();
+    update_dv_stage(packet.p_normal, packet.dout_normal, dv_acc);
+    ins::lower_priority();
+}
+
+template <int Count>
+__device__ __forceinline__ void consume_dv_operand_packet_after_ds(
+    DvOperandPacket& packet,
+    const Fragment& ds,
+    Accumulator (&dv_acc)[8]) {
+    wait_dv_packet_after_ds<Count>(ds, packet);
+    ins::raise_priority_2();
+    update_dv_stage(packet.p_normal, packet.dout_normal, dv_acc);
+    ins::lower_priority();
+}
+
+template <int Group>
+__device__ __forceinline__ void issue_dv_operand_packet_and_prefetch_next_dout(
+    const __half* lds,
+    __half* mutable_lds,
+    int raw_base,
+    int m_block,
+    int next_m_block,
+    int owner,
+    const Fragment& probability,
+    DvOperandPacket& packet,
+    Fragment (&next_dout_trans)[kMatrixBlocksD]) {
+    static_assert(Group == 0 || Group == 1);
+
+    issue_dv_operand_packet<Group>(
+        lds, mutable_lds, raw_base, m_block, owner, probability, packet);
+    read_raw_panel_trans(
+        lds, raw_base + LdsLayout::kDoutOffset, next_m_block,
+        next_dout_trans);
+}
+
 template <int Group>
 __device__ __forceinline__ void update_dv_from_probability(
     const __half* lds,
@@ -555,48 +671,10 @@ __device__ __forceinline__ void update_dv_from_probability(
     int owner,
     const Fragment& probability,
     Accumulator (&dv_acc)[8]) {
-    static_assert(Group == 0 || Group == 1);
-
-    const int page = scratch_page_offset<Group>(owner);
-    Fragment dout_normal[kMatrixBlocksD];
-    Fragment p_normal{};
-    ins::ds_write_matrix_32x16_trans_f16(probability.f16x8, mutable_lds, page);
-    ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
-    read_raw_panel_normal(
-        lds, raw_base + LdsLayout::kDoutOffset, m_block, dout_normal);
-    ins::wait_lgkm(0);
-    ins::raise_priority_2();
-    update_dv_stage(p_normal, dout_normal, dv_acc);
-    ins::lower_priority();
-}
-
-template <int Group>
-__device__ __forceinline__ void update_dv_and_prefetch_next_dout(
-    const __half* lds,
-    __half* mutable_lds,
-    int raw_base,
-    int m_block,
-    int next_m_block,
-    int owner,
-    const Fragment& probability,
-    Accumulator (&dv_acc)[8],
-    Fragment (&next_dout_trans)[kMatrixBlocksD]) {
-    static_assert(Group == 0 || Group == 1);
-
-    const int page = scratch_page_offset<Group>(owner);
-    Fragment dout_normal[kMatrixBlocksD];
-    Fragment p_normal{};
-    ins::ds_write_matrix_32x16_trans_f16(probability.f16x8, mutable_lds, page);
-    ins::ds_read_matrix_32x16_normal(lds, page, p_normal.f16x8);
-    read_raw_panel_normal(
-        lds, raw_base + LdsLayout::kDoutOffset, m_block, dout_normal);
-    read_raw_panel_trans(
-        lds, raw_base + LdsLayout::kDoutOffset, next_m_block,
-        next_dout_trans);
-    wait_dv_packet<kMatrixBlocksD>(p_normal, dout_normal);
-    ins::raise_priority_2();
-    update_dv_stage(p_normal, dout_normal, dv_acc);
-    ins::lower_priority();
+    DvOperandPacket packet;
+    issue_dv_operand_packet<Group>(
+        lds, mutable_lds, raw_base, m_block, owner, probability, packet);
+    consume_dv_operand_packet<0>(packet, dv_acc);
 }
 
 template <int MBlock, int Group, int Generation = 0>
@@ -818,18 +896,29 @@ __device__ __forceinline__ void run_consumer_q_tile(
                 sidecar_field(mutable_lds, Page, 0)[sidecar_row],
                 sidecar_field(mutable_lds, Page, 1)[sidecar_row],
                 softmax_scale, mmac_zero, p);
-            ds_stage(p, dp,
-                     sidecar_field(mutable_lds, Page, 2)[sidecar_row],
-                     softmax_scale, mmac_zero, ds_panels[m_block]);
+            float row_delta =
+                sidecar_field(mutable_lds, Page, 2)[sidecar_row];
+            wait_sidecar_value(row_delta);
+            DvOperandPacket dv_packet;
             if (m_block < Tile::kMqPanels - 1) {
-                update_dv_and_prefetch_next_dout<Group>(
+                issue_dv_operand_packet_and_prefetch_next_dout<Group>(
                     lds, mutable_lds, raw_base, m_block, m_block + 1,
-                    owner, p.f16, dv_acc,
+                    owner, p.f16, dv_packet,
                     dout_buf[(m_block + 1) & 1]);
             } else {
-                update_dv_from_probability<Group>(
+                issue_dv_operand_packet<Group>(
                     lds, mutable_lds, raw_base, m_block, owner, p.f16,
-                    dv_acc);
+                    dv_packet);
+            }
+            order_dv_packet_before_ds(dv_packet, row_delta);
+            ds_stage(p, dp, row_delta, softmax_scale, mmac_zero,
+                     ds_panels[m_block]);
+            if (m_block < Tile::kMqPanels - 1) {
+                consume_dv_operand_packet_after_ds<kMatrixBlocksD>(
+                    dv_packet, ds_panels[m_block], dv_acc);
+            } else {
+                consume_dv_operand_packet_after_ds<0>(
+                    dv_packet, ds_panels[m_block], dv_acc);
             }
         }
     }
