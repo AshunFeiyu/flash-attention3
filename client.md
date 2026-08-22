@@ -6849,3 +6849,17 @@ LDS readiness queue or sacrifices more Q lookahead than it saves. Decision:
 `REJECT_C0_DOUT_READ_SCHEDULING_TIER_CANONICAL_RESTORED`. See
 `docs/fused5_c0_dout_under_score_design_20260822.md` and workbook sheet
 `39 C0 dO Under Score`.
+
+## 2026-08-22 C0 Pair-Level dS Publication Admitted
+
+After the C0 Q/dO read-order tier closed, the next hypothesis changes a real
+publication boundary. C0 will publish dS panels 0-1, let the dQ writer execute
+their 16-MMAC island while C0 computes panels 2-3, then publish the high pair.
+Only two low-Filled tokens are added; LDS, five-GEMM work, output ownership and
+full-generation DqDone reuse stay canonical.
+
+The design rejects pair-level DqDone because four extra ownership tokens do not
+create an earlier first use. Admission requires exact MMOP92,160, bank0, full
+correctness and lower same-build S1024 ticks. See
+`docs/fused5_c0_pair_ds_publish_design_20260822.md` and workbook sheet
+`40 C0 Pair dS Publish`.

@@ -12342,3 +12342,18 @@ sheet `36 C1 dS on Dead dO`.
   correctness.
 - Decision: `REJECT_C0_DOUT_READ_SCHEDULING_TIER_CANONICAL_RESTORED`.
   Source and WDRA are restored; no candidate fullperf is admitted.
+
+## 2026-08-22 C0 Pair-Level dS Publication Design
+
+Status: `ADMIT_ONE_STRUCTURAL_HYPOTHESIS`.
+
+- C0 panels 0-1 will publish through one new low-Filled token per generation;
+  panels 2-3 retain the existing Filled token.
+- Writer low-pair work is 16 dQ MMAC per wave and is expected to overlap C0's
+  high-pair 32 score/dP MMAC per wave plus probability/dS VALU.
+- Existing full-generation DqDone remains count8 and guards both LDS halves;
+  pair-level Done tokens are explicitly rejected.
+- Barrier IDs rise `12 -> 14`; LDS remains 131,072 bytes, WDRA remains
+  `16/204/204/88`, and exact five-GEMM MMOP must remain 92,160.
+- Implementation is forbidden until this design is present in workbook sheet
+  `40 C0 Pair dS Publish`.
