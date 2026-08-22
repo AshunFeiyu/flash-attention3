@@ -6970,3 +6970,11 @@ evidence-led: retain this schedule while recovering packed dS instructions.
 
 See `docs/fused5_c1_dv_reads_under_ds_design_20260823.md` and workbook
 section47.
+
+## 2026-08-23 C1 Delta Prefetch Closed
+
+Preloading only C1 row delta ahead of score is correct and resource-clean,
+but it is not a performance lever. Static waits fall while runtime wait-LGKM
+rises; three S1024 A/B pairs regress fused ticks by `0.112%` and reduce MMAC
+active. The source is restored to the accepted dV-under-dS schedule. Treat
+coissue growth without lower ticks or higher MMAC active as a rejection.

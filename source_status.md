@@ -12502,3 +12502,15 @@ Status: `ACCEPT_WAIT_REDUCTION_AND_TICKS / PACKED_DS_DEBT_OPEN`.
 
 Evidence: `docs/fused5_c1_dv_reads_under_ds_design_20260823.md`, workbook
 section47, and `/zys/sb/fa3b/c1_dv_under_ds_*`.
+
+## 2026-08-23 C1 Delta Prefetch Rejected
+
+- Status: `REJECT_OUTSTANDING_LDS_PRESSURE_CANONICAL_RESTORED`.
+- Moving only `row_delta` before the score packet reduces static waits but
+  raises runtime wait-LGKM and lowers MMAC active.
+- Three S1024 pairs regress fused mean by `0.112%`; correctness, resources and
+  bank0 all pass.
+- The accepted C1 dV-under-dS source is restored. Do not revisit early C1
+  sidecar placement without a different ownership topology.
+- Evidence: `/zys/sb/fa3b/c1_delta_prefetch_ab` and
+  `docs/fused5_c1_delta_prefetch_design_20260823.md`.

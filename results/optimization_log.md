@@ -18448,3 +18448,22 @@ readiness schedule; next recover packed dS without new work or synchronization.
 
 Evidence: `/zys/sb/fa3b/c1_dv_under_ds_*`; design:
 `docs/fused5_c1_dv_reads_under_ds_design_20260823.md`.
+
+## 2026-08-23 C1 Delta Prefetch Rejected
+
+Status: `REJECT_OUTSTANDING_LDS_PRESSURE_CANONICAL_RESTORED`.
+
+The candidate moved only C1 `row_delta` before the score matrix-read packet.
+Static waits fell `336 -> 316`, while MMOP, matrix reads, LDS bytes, barriers,
+ownership and resources stayed exact. S128 causal/noncausal complete golden
+correctness passed with warning0 and bank0.
+
+Three interleaved S1024 pairs reject promotion. Fused mean regresses
+`44,335,048 -> 44,384,795` (`+0.112%`), MMAC active falls
+`34.8523% -> 34.7050%`, and wait-LGKM rises `7.8593% -> 8.1336%` despite
+coissue success increasing. The early sidecar read raises outstanding LDS
+pressure rather than hiding a critical-path wait. Source is restored before
+the next hypothesis.
+
+Evidence: `/zys/sb/fa3b/c1_delta_prefetch_ab`; design:
+`docs/fused5_c1_delta_prefetch_design_20260823.md`.
