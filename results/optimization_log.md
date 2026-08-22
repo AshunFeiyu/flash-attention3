@@ -18554,3 +18554,32 @@ run; production source is restored.
 
 Evidence: `/zys/sb/runs/fused5_c0_dp_probability_cover*`; design:
 `docs/fused5_c0_dp_probability_cover_design_20260823.md`.
+
+## 2026-08-23 C0 dS Scale Under dO Readiness Accepted
+
+Status: `ACCEPT_MICRO_TICKS_AND_READINESS_BARRIER_DEBT_OPEN`.
+
+This candidate changes neither formula work nor ownership. It reassociates
+`P*(dP-D)*scale` as `(P*scale)*(dP-D)` and uses a zero-instruction VGPR
+scheduling anchor so the existing scale VALU executes after the canonical dO
+matrix reads and before their first-use wait.
+
+Static MMAC1472, matrix-read840, wait340, ABarrier102 and `v_mov_b64`68 are
+exact. C0 role use rises `171 -> 176` within its 204-VGPR WDRA budget; all
+metadata and S128/S1024/S2048 full golden gates pass with bank0.
+
+Three S1024 pairs improve fused mean `44,561,942 -> 44,060,532`
+(`-1.125%`). Two S2048 pairs improve `82,442,360 -> 82,095,878`
+(`-0.420%`). Mean S1024 wait-LGKM falls `8.092% -> 7.617%`, MMAC active rises
+`34.799% -> 34.891%`, and dynamic VALU/SCA fall by `1,148/120` instructions.
+
+XCU explains the win: representative C0 transpose-read readiness plus the new
+scale-to-wait tail falls `10,787 -> 9,119` cycles. Global transpose-read wait
+falls `8.47% -> 6.73%`, with `1.34%` now spent after useful scale VALU, and
+dispatch issues fall by 980. Barrier share rises about `0.177 pp`, while the
+representative writer ABarrier wait remains flat-to-worse. Promote the clean
+ticks/readiness win, but keep ABarrier ownership as explicit debt.
+
+Evidence: `/zys/sb/runs/fused5_c0_ds_scale_under_dout_ab`,
+`/zys/sb/runs/fused5_c0_ds_scale_under_dout_s2048_*`, and
+`/zys/sb/runs/fused5_c0_ds_scale_fullperf_20260823`.

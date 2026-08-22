@@ -7031,3 +7031,22 @@ fewer, or MMAC active is higher. On this compiler, inspect the generated
 The C0 score/probability/dP read-order tier is now closed on the current
 ownership topology; canonical source remains the partial peeled zero-seed
 baseline.
+
+## 2026-08-23 C0 dS Scale Scheduling Promoted
+
+The canonical C0 path now issues its unchanged four dO matrix reads and uses
+the already-required `P *= softmax_scale` arithmetic to age them before the
+unchanged first-use wait. A zero-instruction VGPR scheduling anchor is needed;
+without it, compiler `e0f10535` sinks the scale below dP and produces no
+overlap.
+
+All formula, matrix traffic, LDS, ownership, ABarrier and MMAC counts remain
+unchanged. Full golden correctness and resource gates pass. Three S1024 pairs
+improve fused ticks by `1.125%`; two S2048 pairs improve `0.420%`. XCU shows
+the representative C0 transpose-read path falling `15.5%` and dynamic VALU
+falling by 1,148 instructions. Barrier share rises slightly and the writer's
+representative G0 wait is not shorter, so ownership serialization remains the
+next target.
+
+See `docs/fused5_c0_ds_scale_under_dout_design_20260823.md` and workbook
+section53.

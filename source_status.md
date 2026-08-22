@@ -12588,3 +12588,30 @@ Status: `REJECT_RUNTIME_WAIT_MIGRATION_CANONICAL_RESTORED`.
 
 Evidence: `docs/fused5_c0_dp_probability_cover_design_20260823.md`, workbook
 section52, `/zys/sb/runs/fused5_c0_dp_probability_cover*`.
+
+## 2026-08-23 C0 dS Scale Under dO Readiness Promoted
+
+Status: `ACCEPT_MICRO_TICKS_AND_READINESS_BARRIER_DEBT_OPEN`.
+
+- C0 preserves the canonical read point but moves the existing probability
+  scale multiply before dP first use. Generated ISA is
+  `4x dO ds_read_matrix -> 4x useful v_mul -> lgkmcnt(0) -> dP MMAC`.
+- Static counts remain MMAC1472, symbol-read840, wait340, ABarrier102 and
+  `v_mov_b64`68. Roles are `9/176/87/164`; SGPR82/VGPR128 and
+  private/spill/scratch0 pass.
+- S128 causal/noncausal, S1024 and S2048 complete CPU-golden correctness pass,
+  with PMD warning0 and bank0.
+- Three S1024 pairs improve fused mean `44,561,942 -> 44,060,532`
+  (`-1.125%`). Two S2048 pairs improve `82,442,360 -> 82,095,878`
+  (`-0.420%`).
+- S1024 mean MMAC active rises `34.799% -> 34.891%`, wait-LGKM falls
+  `8.092% -> 7.617%`, and dynamic VALU/SCA fall
+  `118,304/46,776 -> 117,156/46,656`. Barrier rises
+  `13.830% -> 14.007%`.
+- XCU confirms C0 read-path readiness falls `10,787 -> 9,119` cycles. The
+  representative writer ABarrier wait remains flat-to-worse, so the ownership
+  bottleneck is explicitly still open.
+
+Evidence: `docs/fused5_c0_ds_scale_under_dout_design_20260823.md`, workbook
+section53, `/zys/sb/runs/fused5_c0_ds_scale_under_dout_*`, and shared perf
+archive `20260823_051443_fused5_c0_ds_scale_under_dout_h1s1024_sqc7`.

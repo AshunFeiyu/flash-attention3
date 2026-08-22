@@ -385,18 +385,6 @@ __device__ __forceinline__ void score_stage(
         lds, raw_base, m_block, resident.k_trans, zero, score);
 }
 
-__device__ __forceinline__ void dp_stage(
-    const __half* lds,
-    int raw_base,
-    int m_block,
-    const ResidentFragments& resident,
-    const ins::F16x8& zero,
-    Fragment& dp) {
-    matrix_product_stage(
-        lds, raw_base + LdsLayout::kDoutOffset, m_block,
-        resident.v_trans, zero, dp);
-}
-
 __device__ __forceinline__ void read_raw_panel_normal(
     const __half* lds,
     int region_base,
@@ -460,6 +448,55 @@ __device__ __forceinline__ void ds_stage(
             softmax_scale);
     }
     ds.f16x4[1] = zero.f16x4[0];
+}
+
+__device__ __forceinline__ void scale_probability_for_ds(
+    ProbabilityPanel& p,
+    float softmax_scale) {
+#pragma unroll
+    for (int word = 0; word < kUsefulScoreWordsPerLane; ++word) {
+        p.f32[word] *= softmax_scale;
+    }
+#if defined(__gfx946__) || defined(__gfx92a__)
+    asm volatile(
+        "; scaled_probability_ready_before_dp\n"
+        : "+v"(p.f32[0]), "+v"(p.f32[1]), "+v"(p.f32[2]),
+          "+v"(p.f32[3])
+        :
+        : "memory");
+#endif
+}
+
+__device__ __forceinline__ void ds_stage_from_scaled_probability(
+    const ProbabilityPanel& scaled_p,
+    const Fragment& dp,
+    float row_delta,
+    const ins::F16x8& zero,
+    Fragment& ds) {
+#pragma unroll
+    for (int word = 0; word < kUsefulScoreWordsPerLane; ++word) {
+        ds.scalar[word] = static_cast<_Float16>(
+            scaled_p.f32[word] *
+            (static_cast<float>(dp.scalar[word]) - row_delta));
+    }
+    ds.f16x4[1] = zero.f16x4[0];
+}
+
+__device__ __forceinline__ void c0_dp_stage(
+    const __half* lds,
+    int raw_base,
+    int m_block,
+    const ResidentFragments& resident,
+    float softmax_scale,
+    const ins::F16x8& zero,
+    ProbabilityPanel& p,
+    Fragment& dp) {
+    Fragment dp_lhs[kMatrixBlocksD];
+    read_raw_panel_trans(
+        lds, raw_base + LdsLayout::kDoutOffset, m_block, dp_lhs);
+    scale_probability_for_ds(p, softmax_scale);
+    wait_matrix_packet<0>(dp_lhs);
+    mmac_product_island(dp_lhs, resident.v_trans, zero, dp);
 }
 
 __device__ __forceinline__ void zero_dv_accumulators(
@@ -898,10 +935,13 @@ __device__ __forceinline__ void run_consumer_q_tile(
                 sidecar_field(mutable_lds, Page, 1)[sidecar_row],
                 softmax_scale, mmac_zero, p);
             p_for_dv[m_block] = p.f16;
-            dp_stage(lds, raw_base, m_block, resident, mmac_zero, dp);
-            ds_stage(p, dp,
-                     sidecar_field(mutable_lds, Page, 2)[sidecar_row],
-                     softmax_scale, mmac_zero, ds_panels[m_block]);
+            c0_dp_stage(
+                lds, raw_base, m_block, resident, softmax_scale, mmac_zero,
+                p, dp);
+            ds_stage_from_scaled_probability(
+                p, dp,
+                sidecar_field(mutable_lds, Page, 2)[sidecar_row],
+                mmac_zero, ds_panels[m_block]);
         } else {
             Fragment score_packet[kMatrixBlocksD];
             read_raw_panel_trans(lds, raw_base, m_block, score_packet);
