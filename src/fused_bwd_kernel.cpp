@@ -22,6 +22,10 @@ constexpr int kMatrixBlockBytes = 32 * 32 * sizeof(__half);
 constexpr int kMatrixBlocksD = Tile::kHeadDim / 32;
 constexpr int kQRowBlocks = Tile::kMq / 32;
 constexpr int kKRowBlocks = Tile::kNk / 32;
+constexpr int kUsefulScoreWordsPerLane = 4;
+
+static_assert(Tile::kNkPerConsumerWave == 16,
+              "the score fragment valid-half proof assumes an N16 owner");
 
 struct LdsLayout {
     static constexpr int kRaw0Base = 0;
@@ -406,10 +410,11 @@ __device__ __forceinline__ void probability_stage(
     float row_max_log2,
     float row_inv_sum,
     float softmax_scale,
+    const ins::F16x8& zero,
     ProbabilityPanel& p) {
     const float scale_log2 = softmax_scale * kLog2E;
 #pragma unroll
-    for (int word = 0; word < 8; ++word) {
+    for (int word = 0; word < kUsefulScoreWordsPerLane; ++word) {
         int local_q = 0;
         int local_k = 0;
         source_slot_qk(lane, word, local_q, local_k);
@@ -417,8 +422,7 @@ __device__ __forceinline__ void probability_stage(
         const int krow =
             k_base + n_owner * Tile::kNkPerConsumerWave + local_k;
         const float probability =
-            (local_k < Tile::kNkPerConsumerWave &&
-             (!causal || krow <= qrow))
+            (!causal || krow <= qrow)
                 ? exp2f(static_cast<float>(score.scalar[word]) * scale_log2 -
                         row_max_log2) *
                       row_inv_sum
@@ -426,6 +430,7 @@ __device__ __forceinline__ void probability_stage(
         p.f32[word] = probability;
         p.f16.scalar[word] = static_cast<_Float16>(probability);
     }
+    p.f16.f16x4[1] = zero.f16x4[0];
 }
 
 __device__ __forceinline__ void ds_stage(
@@ -433,14 +438,16 @@ __device__ __forceinline__ void ds_stage(
     const Fragment& dp,
     float row_delta,
     float softmax_scale,
+    const ins::F16x8& zero,
     Fragment& ds) {
 #pragma unroll
-    for (int word = 0; word < 8; ++word) {
+    for (int word = 0; word < kUsefulScoreWordsPerLane; ++word) {
         ds.scalar[word] = static_cast<_Float16>(
             p.f32[word] *
             (static_cast<float>(dp.scalar[word]) - row_delta) *
             softmax_scale);
     }
+    ds.f16x4[1] = zero.f16x4[0];
 }
 
 __device__ __forceinline__ void zero_dkv_accumulators(
@@ -773,7 +780,7 @@ __device__ __forceinline__ void run_consumer_q_tile(
     for (int m_block = 0; m_block < Tile::kMqPanels; ++m_block) {
         Fragment score{};
         Fragment dp{};
-        ProbabilityPanel p{};
+        ProbabilityPanel p;
         const int sidecar_row =
             m_block * Tile::kMqPerPanel + (lane & 15);
         constexpr int kPrefetchAlive = 4;
@@ -791,12 +798,12 @@ __device__ __forceinline__ void run_consumer_q_tile(
                 score, lane, q_base, m_block, k_base, n_owner, causal,
                 sidecar_field(mutable_lds, Page, 0)[sidecar_row],
                 sidecar_field(mutable_lds, Page, 1)[sidecar_row],
-                softmax_scale, p);
+                softmax_scale, mmac_zero, p);
             p_for_dv[m_block] = p.f16;
             dp_stage(lds, raw_base, m_block, resident, mmac_zero, dp);
             ds_stage(p, dp,
                      sidecar_field(mutable_lds, Page, 2)[sidecar_row],
-                     softmax_scale, ds_panels[m_block]);
+                     softmax_scale, mmac_zero, ds_panels[m_block]);
         } else {
             Fragment score_packet[kMatrixBlocksD];
             read_raw_panel_trans(lds, raw_base, m_block, score_packet);
@@ -810,10 +817,10 @@ __device__ __forceinline__ void run_consumer_q_tile(
                 score, lane, q_base, m_block, k_base, n_owner, causal,
                 sidecar_field(mutable_lds, Page, 0)[sidecar_row],
                 sidecar_field(mutable_lds, Page, 1)[sidecar_row],
-                softmax_scale, p);
+                softmax_scale, mmac_zero, p);
             ds_stage(p, dp,
                      sidecar_field(mutable_lds, Page, 2)[sidecar_row],
-                     softmax_scale, ds_panels[m_block]);
+                     softmax_scale, mmac_zero, ds_panels[m_block]);
             if (m_block < Tile::kMqPanels - 1) {
                 update_dv_and_prefetch_next_dout<Group>(
                     lds, mutable_lds, raw_base, m_block, m_block + 1,

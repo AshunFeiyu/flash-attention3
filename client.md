@@ -6845,6 +6845,23 @@ No candidate SQTT is admitted. See
 `docs/fused5_dq_writer_store_c0_pipeline_design_20260822.md` and workbook
 sheet `38 Writer Store-C0 Pipe`.
 
+## 2026-08-22 Canonical Invalid-Half Prune
+
+The canonical N16 consumer now skips probability/dS work for score fragment
+words4-7, which provably map outside its K ownership. The upper FP16 source
+half remains zero, so dV/dK/dQ layout and correctness are unchanged.
+
+This is promoted as a steady-loop win: H1/S2048 fused mean improves `2.579%`
+and MMAC active gains `1.237 pp`; H1/S1024 is noise-neutral at `-0.245%` over
+six pairs. Dynamic VALU falls `15.21%`, resources contract, complete golden
+checks pass and bank/spill/scratch remain zero.
+
+The next bottleneck is not more softmax arithmetic. SQTT shows shorter VALU
+exposes extra `s_waitcnt` and RawFilled/RawUsed ownership gaps, especially in
+C1. Preserve this prune and target one existing next-panel operand request
+with useful MMAC cover. See workbook sheet `43 Invalid Half VALU` and
+`docs/fused5_invalid_half_valu_prune_design_20260822.md`.
+
 ## 2026-08-22 C0 dO-Under-Score Scheduling Tier Rejected
 
 SQTT identified 2,907 units of repeated C0 matrix first-use debt. Two exact

@@ -12401,3 +12401,26 @@ Status: `REJECT_NATIVE_DIRECT_P_ABI / CANONICAL_UNCHANGED`.
 
 Evidence: `docs/fused5_p_direct_lit_probe_20260822.md`, workbook sheet 41,
 and `/zys/sb/fa3b/layout_probes/p_direct_lit_final_20260822`.
+
+## 2026-08-22 Invalid-Half VALU Prune Promoted
+
+Status: `ACCEPT_LONG_LOOP_TICKS_AND_ACTIVE / S1024_NOISE_NEUTRAL`.
+
+- For the canonical N16 dKV owner, score fragment words0-3 map to local K
+  0-15 while words4-7 always map to 16-31. Probability and dS now evaluate
+  only the four useful words and preserve a zero upper-half source ABI.
+- Exactly five GEMMs, MMOP92,160, LDS63,872, VMEM1,408, FLAT3,616, every
+  ownership token and every matrix transaction are unchanged. Dynamic VALU
+  falls `140,208 -> 118,880`; role use falls to about `9/171/87/168` with
+  private/spill/scratch0 and bank0.
+- H1/S128 causal/noncausal and H1/S1024 causal complete CPU-golden checks PASS.
+- Six S1024 pairs are noise-neutral (`-0.245%` mean, three wins), while two
+  S2048 pairs both win: `86,063,478 -> 83,843,988` fused mean (`-2.579%`) and
+  MMAC active `37.422% -> 38.659%` (`+1.237 pp`).
+- SQTT shows the residual debt moved to readiness: dynamic wait hits and
+  matrix-read-to-wait gaps rise, C1 peer-VALU coverage falls, and C0/C1
+  no-MMAC bins rise `72 -> 84`. This is the next target; dead math must not be
+  restored as a timing spacer.
+
+Evidence: `docs/fused5_invalid_half_valu_prune_design_20260822.md`, workbook
+sheet `43 Invalid Half VALU`, and `/zys/sb/fa3b/ihv22*`.

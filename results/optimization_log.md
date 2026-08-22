@@ -18341,3 +18341,33 @@ SGPR28/VGPR21, private/spill0, scalar DS read0, permute0 and bank0.
 This closes direct P chaining for the tested native MMAC modes. It does not
 justify gather, permutation or wrong-layout code. Evidence and boundary:
 `docs/fused5_p_direct_lit_probe_20260822.md` and workbook sheet 41.
+
+## 2026-08-22 Invalid-Half VALU Prune Accepted
+
+Status: `ACCEPT_LONG_LOOP_TICKS_AND_ACTIVE / WAIT_DEBT_OPEN`.
+
+The N16 ownership proof shows score words4-7 are impossible coordinates for
+every consumer lane. Canonical probability/dS now evaluate only words0-3 and
+zero the upper source half once. The change does not alter formula ownership,
+MMAC, LDS, barriers, matrix reads, stores or the five-GEMM count.
+
+Static and correctness gates pass: role use contracts from roughly
+`9/187/87/182` to `9/171/87/168`, private/spill/scratch remain zero, all
+S128 causal/noncausal and S1024 causal CPU-golden outputs pass, and bank
+conflict remains zero. Dynamic VALU falls `140,208 -> 118,880` with exact
+MMOP92,160.
+
+Six S1024 pairs are noise-neutral at `45,199,169 -> 45,088,377` fused mean
+(`-0.245%`, three wins), but two S2048 pairs both improve and average
+`86,063,478 -> 83,843,988` (`-2.579%`). S2048 MMAC active rises
+`37.422% -> 38.659%`.
+
+SQTT shows why the S1024 tick gain is smaller than the VALU reduction:
+`s_waitcnt` issue count rises `18,272 -> 19,712`, ABarrier-to-XOR and both
+matrix-read-to-wait bubbles increase, and C1 MMAC-with-vector-peer coverage
+falls about `664/2048 -> 436/2048`. The next experiment must age one existing
+next-panel operand under useful MMAC; do not add delay, dead VALU, a token, or
+another matrix transaction.
+
+Evidence: `/zys/sb/fa3b/ihv22*`; design/result:
+`docs/fused5_invalid_half_valu_prune_design_20260822.md`.
