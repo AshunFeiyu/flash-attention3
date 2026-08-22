@@ -1,5 +1,14 @@
 # Client
 
+## 2026-08-22 C1 dS On Dead dO
+
+The focused A0-A4 probe passed. C1 may overwrite the dead 16KiB dO half of
+each raw Q/dO page with a complete native dS page, then serve both normal dK
+and trans dQ readers without ordinary DS reads, permutations, stale Q, bank
+conflicts, spills, or PMD register-lifecycle warnings. The proved ledger uses
+14 tokens and delays raw-page reuse until C0, C1, and writer contribute 12
+arrivals. Canonical integration is now allowed; performance is still open.
+
 ## 2026-08-20 GQA Atomic Correctness Baseline
 
 Branch `exp/fused5-gqa-atomic-dkv` extends the canonical five-GEMM symbol to

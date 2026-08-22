@@ -1,5 +1,17 @@
 # Source Status
 
+## 2026-08-22 C1 dS On Dead dO Probe Passed
+
+- Status: `FOCUSED_PROBE_PASS_CANONICAL_INTEGRATION_ADMITTED`.
+- Exact 16-wave roles and WDRA windows `16/204/204/88` passed a two-page,
+  three-generation lifecycle with 14 ABarrier IDs and `RawUsed=12`.
+- Q/dO preservation and C0/C1 native dS normal/trans consumers are all
+  mismatch0; metadata is private/spill0 and PMD reports bank0.
+- Evidence:
+  `/zys/sb/fa3b/layout_probes/fused5_c1_ds_on_dead_dout_20260822_174738`.
+- Next: integrate only this ownership map into the canonical five-GEMM
+  kernel; no tile, GEMM, output-owner, or scheduling-order change is admitted.
+
 ## 2026-08-20 GQA Atomic Baseline Ready To Freeze
 
 - Branch: `exp/fused5-gqa-atomic-dkv`, parent `6f67b87`.

@@ -18178,3 +18178,19 @@ paired S1024 comparisons reverse sign; fused means regress `45,279,325 ->
 direction. Delaying C1 dS publication is not a stable coissue win. Decision:
 `REJECT_NOISE_AND_LATE_PUBLICATION_CANONICAL_RESTORED`; stop local order
 permutations and re-open tile/ownership analysis.
+
+## 2026-08-22 C1 dS On Dead dO Focused Probe
+
+Status: `FOCUSED_PROBE_PASS_CANONICAL_INTEGRATION_ADMITTED`.
+
+The admitted structural candidate reuses each raw page's dead 16KiB dO half
+as C1's complete dS page. A two-page, three-generation, four-role probe
+exercised the exact 14-token ledger and `RawUsed=12` completion count. Dense
+Q/dO and native dS normal/trans oracles are mismatch0; generated metadata is
+private/spill0 and PMD reports bank0 with no panic or VGPR warning. ASM has 12
+MLS/BPS, 24 native dS writers, 192 trans reads, 24 normal reads, 216 MMAC, and
+no ordinary DS read or permutation. Evidence is
+`/zys/sb/fa3b/layout_probes/fused5_c1_ds_on_dead_dout_20260822_174738`.
+
+This proves layout and lifecycle only. Canonical performance remains a
+separate admission step.

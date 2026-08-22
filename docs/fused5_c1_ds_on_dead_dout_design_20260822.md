@@ -1,6 +1,6 @@
 # Fused5 C1 dS On Dead dO
 
-Status: `ADMIT_FOCUSED_PROBE_ONLY`.
+Status: `FOCUSED_PROBE_PASS_CANONICAL_INTEGRATION_ADMITTED`.
 
 ## Evidence Boundary
 
@@ -87,6 +87,31 @@ cover the C1 publication edge.
 Any failure is classified at the layer where it occurs. ABarrier phase/count
 mistakes are design errors unless a minimal reproducer proves a PMD/compiler
 defect.
+
+## Focused Probe Result
+
+`probes/fused5_c1_ds_on_dead_dout_probe.cpp` implements the exact two-page,
+three-generation, four-role lifecycle. The generated ISA contains 12 MLS/BPS
+loads, 24 native dS writers, 192 trans matrix reads, 24 normal matrix reads,
+216 MMAC, four role-local VGPR resizes, and exactly 14 ABarrier init/invalidate
+instructions. Ordinary DS reads and lane permutations are both zero.
+
+PMD result:
+
+```text
+q_mismatches=0 dout_mismatches=0 normal_mismatches=0
+trans_mismatches=0 pass=1
+private=0 sgpr_spill=0 vgpr_spill=0 ldsBankConflict=0
+```
+
+Evidence directory:
+`/zys/sb/fa3b/layout_probes/fused5_c1_ds_on_dead_dout_20260822_174738`.
+Compiler commit: `e0f10535a0d681bcf3885ea2c398cc494bf6e332`.
+Binary SHA256: `dd1664fcc76d9e421bedcf937077b4c82b9bf0afdffdaea4072f4b9f7eaa38ac`.
+ASM SHA256: `20aee9b3a16dad1364f612b8fcfb62495bbafeb53b1014981699f02d2d95b74a`.
+
+This admits the ownership map into the canonical kernel. It is not yet a
+performance acceptance.
 
 Workbook evidence:
 `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_5gemm_clean_design_20260822.xlsx`,
