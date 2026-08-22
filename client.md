@@ -7080,3 +7080,29 @@ rises `34.821% -> 35.037%`. XCU shows C1 `DqDone1` wait collapsing
   the critical path.
 - Proposed Target / target: Shaobo reference material under the `shaobo`
   skill; do not modify public optimization skills outside consolidation.
+
+## 2026-08-23 Sidecar-Before-BPS Boundary
+
+Moving the producer's existing sidecar global load before Q/dO BPS is correct
+and creates the intended early issue order, but it regresses three-pair S1024
+fused ticks by `1.115%`. On compiler `e0f10535`, carrying three F32 values
+across BPS adds static wait/branch/register-move cost and raises producer role
+VGPR from 9 to 12. Canonical source remains G1-first.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: hiding a small global metadata packet under
+  a matrix-load/BPS island by retaining its result in producer VGPRs.
+- Rule / reusable rule: inspect generated wait, branch and move growth before
+  assuming an earlier global issue is free; require paired ticks even when the
+  requested schedule appears in ISA.
+- Evidence / evidence: `exp/fused5-sidecar-load-before-bps`; S128/S1024
+  correctness PASS; MMAC/read/barrier exact; wait `+2`, branch `+3`,
+  `v_mov_b64 +4`; S1024 fused `+1.115%`; workbook section55.
+- Boundary / boundary: compiler `e0f10535`, a three-F32 packet, producer WDRA
+  role, and Q/dO BPS main path.
+- Counterexample / not applicable: a builtin or compiler schedule that moves
+  the issue without extending live range/control, or a packet already resident
+  in SGPR/LDS.
+- Proposed Target / target: Shaobo compiler/codegen reference; do not modify a
+  public skill until a consolidation pass.

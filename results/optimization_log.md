@@ -18607,3 +18607,22 @@ next evidence targets.
 
 Evidence: `docs/fused5_writer_g1_first_design_20260823.md`, workbook section54,
 and `/zys/sb/runs/fused5_writer_g1_first_*`.
+
+## 2026-08-23 Producer Sidecar Load Before BPS Rejected
+
+Status: `REJECT_STATIC_CONTROL_COST_AND_TICKS_CANONICAL_RESTORED`.
+
+The candidate issues the producer's existing three-float sidecar packet before
+the unchanged Q/dO BPS work. ASM proves the requested order, with exact MMAC,
+matrix-read and ABarrier work and clean resources. The longer producer live
+range nevertheless adds two static waits, three branches, four `v_mov_b64`
+instructions and three role VGPRs.
+
+S128 causal/noncausal and S1024 full CPU-golden correctness pass with bank0.
+Three interleaved S1024 pairs regress fused mean
+`43,129,905 -> 43,610,992` (`+1.115%`). The intended VMEM aging is not free:
+compiler control/register cost outweighs it. No S2048/fullperf is admitted and
+canonical source is restored.
+
+Evidence: `docs/fused5_sidecar_load_before_bps_design_20260823.md`, workbook
+section55, and `/zys/sb/runs/fused5_sidecar_before_bps_ab_20260823`.

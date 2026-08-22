@@ -12632,3 +12632,21 @@ ABarrier cycles fall, barrier share drops to `13.263%`, and MMAC active reaches
 The current next debts are wait-VM exposure, terminal ebarrier, and the open
 50% MMAC-active goal. See
 `docs/fused5_writer_g1_first_design_20260823.md` and workbook section54.
+
+## 2026-08-23 Producer Sidecar Before BPS Rejected
+
+Status: `REJECT_STATIC_CONTROL_COST_AND_TICKS_CANONICAL_RESTORED`.
+
+- The intended `global_load_dwordx3 -> Q/dO BPS -> wait -> LDS publish`
+  schedule appears in generated ISA.
+- Static MMAC1472, file-wide matrix-read854 and ABarrier102 are exact, but
+  waits grow `340 -> 342`, branches `46 -> 49`, `v_mov_b64` `68 -> 72`, and
+  producer role VGPR `9 -> 12`.
+- S128 causal/noncausal and S1024 full golden correctness pass with no
+  spill/private/scratch, warning0 and bank0.
+- Three S1024 pairs regress fused mean by `1.115%`.
+- Source is restored to tag `best/fused5-writer-g1-first-20260823` behavior;
+  no candidate S2048/fullperf is retained.
+
+Evidence: `docs/fused5_sidecar_load_before_bps_design_20260823.md`, workbook
+section55, `/zys/sb/runs/fused5_sidecar_before_bps_ab_20260823`.
