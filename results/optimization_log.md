@@ -18626,3 +18626,26 @@ canonical source is restored.
 
 Evidence: `docs/fused5_sidecar_load_before_bps_design_20260823.md`, workbook
 section55, and `/zys/sb/runs/fused5_sidecar_before_bps_ab_20260823`.
+
+## 2026-08-23 C1 Early dS Publication Rejected
+
+Status: `REJECT_LOCAL_DV_OVERLAP_LOSS_CANONICAL_RESTORED`.
+
+The candidate batches C1 score/dP/P/dS, publishes its unchanged dS page, and
+then executes unchanged dV and dK. It was intended to start writer dQ(G1)
+under C1 dV/dK without adding a token, page, transaction or GEMM.
+
+Static work is exact: MMAC1472, matrix-read854 file-wide, ABarrier102,
+branches46 and `v_mov_b64`68. Waits grow `340 -> 342`; roles remain within
+budget and metadata stays SGPR82/VGPR128 with no private/spill/scratch.
+S128 causal/noncausal and S1024 full CPU-golden correctness pass with bank0.
+
+Three interleaved S1024 pairs regress fused mean
+`43,371,207 -> 43,561,093` (`+0.438%`). Moving dV out of C1's panel loop
+breaks the accepted dS/next-dO-read/dV local overlap and exposes a later dV
+readiness island. Earlier dS ownership is not free when it damages the
+consumer's existing operand pipeline. No S2048/fullperf is admitted and
+canonical source is restored.
+
+Evidence: `docs/fused5_c1_early_ds_publish_design_20260823.md`, workbook
+section56, and `/zys/sb/runs/fused5_c1_early_ds_publish_*_20260823`.

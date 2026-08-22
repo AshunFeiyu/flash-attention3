@@ -12650,3 +12650,19 @@ Status: `REJECT_STATIC_CONTROL_COST_AND_TICKS_CANONICAL_RESTORED`.
 
 Evidence: `docs/fused5_sidecar_load_before_bps_design_20260823.md`, workbook
 section55, `/zys/sb/runs/fused5_sidecar_before_bps_ab_20260823`.
+
+## 2026-08-23 C1 Early dS Publish Rejected
+
+Status: `REJECT_LOCAL_DV_OVERLAP_LOSS_CANONICAL_RESTORED`.
+
+- Candidate order: C1 score/dP/P/dS x4 -> publish -> dV x4 -> dK.
+- Static: MMAC1472, matrix-read854 file-wide, ABarrier102, branch46 and
+  `v_mov_b64`68 exact; waits `340 -> 342`; SGPR82/VGPR128; no debt.
+- Full CPU-golden PASS at S128 c0/c1 and S1024 c1; warning0; bank0.
+- Three S1024 pairs regress fused mean `43,371,207 -> 43,561,093`
+  (`+0.438%`). The schedule loses C1's accepted local dV operand/read cover.
+- Source is byte-restored to `best/fused5-writer-g1-first-20260823`; no
+  S2048 or candidate fullperf is retained.
+
+Evidence: `docs/fused5_c1_early_ds_publish_design_20260823.md`, workbook
+section56, `/zys/sb/runs/fused5_c1_early_ds_publish_*_20260823`.

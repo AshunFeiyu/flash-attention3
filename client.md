@@ -7106,3 +7106,33 @@ VGPR from 9 to 12. Canonical source remains G1-first.
   in SGPR/LDS.
 - Proposed Target / target: Shaobo compiler/codegen reference; do not modify a
   public skill until a consolidation pass.
+
+## 2026-08-23 C1 Publish-Before-dV Boundary
+
+Publishing C1's native dS batch before its dV/dK is correct and resource
+clean, but three paired S1024 runs regress fused ticks by `0.438%`. The
+accepted C1 panel loop already hides dV operand issue under dS and prefetches
+the next dO-trans packet. Moving all dV after publication loses that local
+cover and creates a later readiness/MMAC island, offsetting any earlier writer
+start.
+
+Do not optimize a cross-role ownership edge by blindly breaking a proven
+consumer-local pipeline. The next ownership hypothesis must preserve C1's
+`next-dO read -> dS VALU -> dV MMAC` cover, or remove an actual wait/event
+without moving its work later.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a producer-consumer ownership edge appears
+  late because the producer performs independent GEMM work before publish.
+- Rule / reusable rule: before moving that work after publish, account for its
+  current operand-read and VALU overlap; preserve the local cover while
+  advancing ownership, then require paired ticks.
+- Evidence / evidence: `exp/fused5-c1-early-ds-publish`; S128/S1024 golden
+  PASS; exact MMAC/read/barrier work; S1024 fused `+0.438%`; workbook section56.
+- Boundary / boundary: C1 dV uses P and dO fragments whose issue/readiness is
+  currently overlapped with dS and next-panel work.
+- Counterexample / not applicable: independent work with no hidden operand
+  latency, or hardware with separate MMAC issue capacity for the peer role.
+- Proposed Target / target: Shaobo WASP scheduling reference during a later
+  skill consolidation; do not edit public skills in this experiment.
