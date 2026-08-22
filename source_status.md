@@ -12357,3 +12357,13 @@ Status: `ADMIT_ONE_STRUCTURAL_HYPOTHESIS`.
   `16/204/204/88`, and exact five-GEMM MMOP must remain 92,160.
 - Implementation is forbidden until this design is present in workbook sheet
   `40 C0 Pair dS Publish`.
+
+Correction: `REJECT_DUPLICATE_HISTORICAL_EVIDENCE_NO_RUN`.
+
+- Structural fingerprint is identical to `fused5_c0_ds_half_publish` from
+  2026-08-19, including the split Filled/full Done lifecycle and 14 token IDs.
+- Historical paired fused ticks regress `44,718,765 -> 45,857,327`
+  (`+2.546%`) and MMAC active falls `34.211% -> 33.949%` despite barrier share
+  improving.
+- Temporary source edits were removed before compile; canonical source and
+  contract checksums are restored.

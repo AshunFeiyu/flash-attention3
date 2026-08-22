@@ -66,3 +66,23 @@ No artificial delay is admitted.
   low writer MMAC island overlapping C0 high-panel work.
 
 Workbook design: sheet `40 C0 Pair dS Publish`.
+
+## Pre-implementation de-dup result
+
+Status: `REJECT_DUPLICATE_HISTORICAL_EVIDENCE_NO_RUN`.
+
+Before compilation, the structural fingerprint matched the 2026-08-19
+`fused5_c0_ds_half_publish` experiment exactly: M64/N128/D128, 16 waves,
+pair-level Filled events, one full-generation Done event, 14 ABarrier IDs,
+unchanged LDS and five-GEMM work. Reversing which token is named low/high does
+not change that lifecycle.
+
+That experiment already passed full correctness, bank0 and resource gates at
+C0 169/204 VGPR, SGPR76/VGPR128 and no spill/scratch. Three paired S1024 runs
+regressed fused mean ticks `44,718,765 -> 45,857,327` (`+2.546%`) and MMAC
+active `34.211% -> 33.949%`. Barrier share improved, but wait-LGKM and wait-VM
+rose because the early writer island competed with C0/C1 for LDS and MMAC issue
+slots.
+
+The uncompiled candidate source was removed and canonical checksums restored.
+Do not split C0 dS below the four-panel batch on this 16-wave topology.

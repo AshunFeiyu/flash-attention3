@@ -6863,3 +6863,12 @@ create an earlier first use. Admission requires exact MMOP92,160, bank0, full
 correctness and lower same-build S1024 ticks. See
 `docs/fused5_c0_pair_ds_publish_design_20260822.md` and workbook sheet
 `40 C0 Pair dS Publish`.
+
+### De-dup correction
+
+Pre-compilation history search found this is identical to the rejected
+2026-08-19 half-batch experiment. That candidate had already passed all hard
+gates but regressed fused mean ticks `2.546%` and lowered MMAC active because
+the early writer wake competed with C0/C1 for LDS/MMAC issue slots. Decision:
+`REJECT_DUPLICATE_HISTORICAL_EVIDENCE_NO_RUN`. The temporary source change was
+removed without building or running it.

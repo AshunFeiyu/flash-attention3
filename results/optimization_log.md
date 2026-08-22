@@ -18282,3 +18282,19 @@ The canonical next-Q prefetch is more valuable than moving the dO wait. Two
 same-layer failures close this scheduling tier. Candidate source is removed;
 no xcu capture is admitted under the ticks-first gate. Evidence:
 `/zys/sb/fa3b/c0_dout_under_score_20260822/{paired,max8_paired}`.
+
+## 2026-08-22 C0 Pair-Level dS Publication De-Dup
+
+Status: `REJECT_DUPLICATE_HISTORICAL_EVIDENCE_NO_RUN`.
+
+The proposed split of C0 panels0-1 and panels2-3 was stopped before compile.
+Its structural fingerprint exactly matches the 2026-08-19
+`fused5_c0_ds_half_publish` experiment: M64/N128/D128, 16 waves, split Filled
+events, one full-generation Done event, 14 barrier IDs and unchanged LDS/MMOP.
+
+Historical evidence is decisive. Correctness, bank and resources passed, but
+three paired S1024 means regressed `44,718,765 -> 45,857,327` (`+2.546%`),
+lifecycle regressed `2.279%`, and MMAC active fell `34.211% -> 33.949%`.
+Barrier share fell while wait-LGKM and wait-VM rose: early writer wake creates
+LDS/MMAC issue-slot contention with C0/C1. Temporary code was removed before
+build and canonical checksums restored.
