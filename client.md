@@ -6818,3 +6818,19 @@ ticks. Next work targets the writer's measured C0 wait and store issue tail.
 
 Design/result: `docs/fused5_dq_writer_zero_seed_design_20260822.md` and
 workbook sheet `37 Writer MMAC Zero Seed`.
+
+## 2026-08-22 dQ Writer Store-to-C0 Pipeline Rejected
+
+Splitting each dQ partial store island and reusing panels for next-tile C0
+MMAC is correct, spill-free and bank0, but two same-WDRA S1024 pairs regress
+fused mean ticks `44,703,068 -> 45,256,348` (`+1.238%`). Dynamic MMOP remains
+92,160; the candidate adds 700 SCA and 1,336 VALU instructions and increases
+`noVALUready` by 6,073 cycles in the first pair.
+
+The corrected interpretation is that canonical already uses the entire eight
+store island to age the next C0 Filled event. Waiting after a store prefix
+shortens that cover and expands generation-specific writer control. Decision:
+`REJECT_SHORTENS_READY_AGING_AND_EXPANDS_WRITER_CONTROL_CANONICAL_RESTORED`.
+No candidate SQTT is admitted. See
+`docs/fused5_dq_writer_store_c0_pipeline_design_20260822.md` and workbook
+sheet `38 Writer Store-C0 Pipe`.

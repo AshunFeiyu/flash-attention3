@@ -12307,3 +12307,21 @@ changed until the focused alias/layout and lifecycle probes pass.
 Design: `docs/fused5_c1_ds_on_dead_dout_design_20260822.md`.
 Workbook: `/Volumes/172.20.68.76/共享/shaobo/fa3_bwd_5gemm_clean_design_20260822.xlsx`,
 sheet `36 C1 dS on Dead dO`.
+
+## 2026-08-22 dQ Writer Store-to-C0 Pipeline Rejected
+
+- Candidate and same-WDRA control use `16/196/196/104`; candidate actual role
+  use is `9/187/93/182`, with SGPR82/VGPR128 and private/spill/scratch zero.
+- S128 causal/non-causal and two S1024 pairs pass full CPU golden; MMOP is
+  exactly 92,160 and LDS bank conflict is zero.
+- Paired fused ticks are `44,787,925 -> 45,292,520` and
+  `44,618,210 -> 45,220,175`; mean regression is `+1.238%`.
+- First-pair candidate dynamic counts add SCA `46,664 -> 47,364`, VALU
+  `140,208 -> 141,544`, and `noVALUready 304,178 -> 310,251`; MMOP/LDS/VMEM
+  are unchanged.
+- Canonical's full store island already ages the next C0 event. Prefix-store
+  then wait exposes readiness earlier and expands static writer control.
+- Decision:
+  `REJECT_SHORTENS_READY_AGING_AND_EXPANDS_WRITER_CONTROL_CANONICAL_RESTORED`.
+  Canonical source and WDRA are restored; no candidate fullperf is admitted.
+- Evidence: `/zys/sb/fa3b/writer_store_c0_20260822/paired`.

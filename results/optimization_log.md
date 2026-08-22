@@ -18236,3 +18236,27 @@ Lifecycle mean moves only `-0.146%`. The ISA cleanup is genuine but not a
 repeatable performance promotion. Restore canonical and attack writer
 C0-ready/store overlap next. Evidence:
 `/zys/sb/fa3b/writer_zero_seed_20260822/paired`.
+
+## 2026-08-22 Fused dQ Writer Store-to-Next-C0 Pipeline
+
+Status: `REJECT_SHORTENS_READY_AGING_AND_EXPANDS_WRITER_CONTROL_CANONICAL_RESTORED`.
+
+The candidate stored two current-tile dQ panels, waited for next C0, and then
+reused each remaining accumulator panel after its store issued. It preserved
+exactly five GEMMs, all outputs, the LDS/token ledger, dynamic MMOP92,160 and
+bank0. S128 causal/non-causal and both S1024 pairs pass full correctness;
+actual role use is `9/187/93/182` under same-WDRA `16/196/196/104`, with no
+private/spill/scratch.
+
+Both S1024 pairs regress: `44,787,925 -> 45,292,520` (`+1.127%`) and
+`44,618,210 -> 45,220,175` (`+1.349%`). Mean fused ticks regress
+`44,703,068 -> 45,256,348` (`+1.238%`); lifecycle regresses `+1.198%`.
+First-pair dynamic counts add 700 SCA, 1,336 VALU and 6,073 no-VALU-ready
+cycles while MMOP/LDS/VMEM/FLAT remain unchanged.
+
+The hypothesis was directionally wrong: canonical already places the whole
+eight-store island before next C0 wait, so all store issue time ages the next
+Filled event. Waiting after a prefix shortens the coverage and creates extra
+generation-specific control. Candidate code is removed; no xcu capture is
+admitted under the ticks-first gate. Evidence:
+`/zys/sb/fa3b/writer_store_c0_20260822/paired`.
