@@ -12250,3 +12250,12 @@ Status: `ACCEPT_GQA_OWNERSHIP_AND_TICKS`; scale SQTT pending.
 - Two paired comparisons reverse sign; mean fused ticks regress `0.273%`.
 - Decision: `REJECT_NOISE_REGRESSION_CANONICAL_RESTORED`. This is not a
   compiler defect; it is a startup-only schedule with no steady-state leverage.
+
+## 2026-08-21 C1 dV-Before-dS Rejected
+
+- The intended C1 `dP -> score -> P -> dV -> dS` ISA is generated with exact
+  MMOP, unchanged resources, correctness PASS and bank0.
+- Two paired S1024 results reverse sign; fused mean regresses `0.101%` and
+  lifecycle is noise-flat in the opposite direction.
+- Decision: `REJECT_NOISE_AND_LATE_PUBLICATION_CANONICAL_RESTORED`. Two local
+  scheduling hypotheses are now closed; re-analyze tile and ownership.

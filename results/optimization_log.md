@@ -18168,3 +18168,13 @@ S1024 pairs have opposite signs; fused means regress `45,044,773 ->
 45,167,850` (`+0.273%`). This is a startup-only cover, not a repeated q-loop
 improvement. Decision: `REJECT_NOISE_REGRESSION_CANONICAL_RESTORED`; no
 candidate fullperf was admitted.
+
+## 2026-08-21 C1 dV-Before-dS Rejected
+
+The candidate moved only C1's existing dV MMAC before dS VALU. ASM changed as
+intended and all correctness/resource/bank gates passed with exact work. Two
+paired S1024 comparisons reverse sign; fused means regress `45,279,325 ->
+45,325,280` (`+0.101%`) while lifecycle is noise-flat in the opposite
+direction. Delaying C1 dS publication is not a stable coissue win. Decision:
+`REJECT_NOISE_AND_LATE_PUBLICATION_CANONICAL_RESTORED`; stop local order
+permutations and re-open tile/ownership analysis.

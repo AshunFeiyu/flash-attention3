@@ -6771,3 +6771,11 @@ and their first-use wait produced the intended ASM and passed every correctness
 and resource gate. Two paired S1024 comparisons reverse sign and regress mean
 fused ticks by `0.273%`. The compiler behaved correctly; the mechanism only
 covers CTA startup and does not change steady ownership. Source is restored.
+
+## 2026-08-21 C1 dV-Before-dS Rejected
+
+C1 legally executed dV MMAC before dS VALU with exact work and unchanged
+resources, but two paired S1024 comparisons reverse sign and fused mean is
+`0.101%` slower. The local coissue opportunity does not compensate for later
+C1 dS publication. Canonical source is restored; the next round must change a
+top-level tile/ownership constraint rather than another instruction order.
