@@ -18409,3 +18409,17 @@ the second independent dKV group as a same-SIMD overlap source.
 
 Canonical code is restored. Preserve the two-heavy-group topology and target
 C1 dS ownership/reuse without removing an independent issuer.
+
+## 2026-08-22 Cross-Group Alternate dS Rejected
+
+Status: `REJECT_NO_CRITICAL_PATH_GAIN_CANONICAL_RESTORED`.
+
+The candidate kept exact five-GEMM work and both heavy consumer groups, but
+rotated the existing alternate dS page between C0 and C1 using independent
+logical token pairs. All static/resource/correctness/bank gates pass. Three
+S1024 pairs regress in mean by `0.195%`; active falls `0.034 pp`, SCA rises by
+236 and coissue success falls despite a lower barrier share. This proves the
+measured C1 single-page wait is overlap debt, not a standalone critical-path
+lever. Candidate source is removed before the next hypothesis.
+
+Evidence: `/zys/sb/fa3b/crossgroup_alt_20260822`, workbook sheet46.

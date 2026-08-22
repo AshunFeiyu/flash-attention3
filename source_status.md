@@ -12458,3 +12458,24 @@ Status: `REJECT_SINGLE_HEAVY_GROUP_LOSES_PEER_OVERLAP_CANONICAL_RESTORED`.
 
 Evidence: `/zys/sb/fa3b/n32_ws12_20260822`,
 `/zys/sb/fa3b/n32_ws12_baseline_20260822`, workbook sheet45.
+
+## 2026-08-22 Cross-Group Alternate dS Page Rejected
+
+Status: `REJECT_NO_CRITICAL_PATH_GAIN_CANONICAL_RESTORED`.
+
+- The existing 16KiB alternate dS page rotated between C0 and C1 with
+  separate C0Alt/C1Alt Filled+Done token pairs. Barrier IDs rose `12 -> 14`;
+  formula, tile, writer order, matrix traffic and output ownership stayed
+  canonical.
+- Static/resource gates PASS at roles `9/171/87/168`, SGPR93/VGPR128,
+  private/spill/scratch0. S128 c0/c1 and three S1024 c1 full golden runs PASS;
+  bank0 and MMOP92160 hold.
+- Three paired S1024 runs are one win/two losses. Fused means regress
+  `45,123,563 -> 45,211,682` (`+0.195%`) and MMAC active falls
+  `34.723% -> 34.688%`.
+- Barrier share falls about `0.266 pp`, but wait-LGKM rises `0.205 pp`, SCA
+  adds 236 instructions, and mean coissue success falls about 412 per run.
+  The dS ownership debt moved without shortening the MMAC critical path.
+- No S2048/fullperf was admitted. Canonical source is restored.
+
+Evidence: `/zys/sb/fa3b/crossgroup_alt_20260822`; workbook sheet46.

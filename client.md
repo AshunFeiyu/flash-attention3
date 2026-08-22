@@ -6939,3 +6939,17 @@ independent heavy dKV group. Canonical code is restored at `b402ffd` behavior.
 
 See `docs/fused5_n32_workspace12_design_20260822.md` and workbook sheet
 `45 N32 WS 12W`.
+
+## 2026-08-22 Cross-Group Alternate dS Rejected
+
+The history-distinct 14-token schedule rotates the existing 16KiB alternate
+dS page between C0 and C1 while preserving both heavy consumer groups. It is
+fully correct and resource-clean, but three H1/S1024 pairs are mixed and the
+fused mean regresses `45,123,563 -> 45,211,682` (`+0.195%`). MMAC active falls
+`34.723% -> 34.688%`; lower barrier share is exchanged for higher wait-LGKM,
+236 extra SCA instructions and lower coissue success.
+
+Canonical code is restored. Do not retry physical-page ownership rotation:
+the measured C1 `DqDone` wait is not the fused MMAC critical path by itself.
+See `docs/fused5_crossgroup_alt_ds_design_20260822.md` and workbook sheet
+`46 CrossGroup Alt dS`.
