@@ -7312,3 +7312,31 @@ must change useful ownership overlap, because ABarrier issue gaps remain
   duplication should remain one runtime body.
 - Proposed Target / target: Shaobo reference material in a later consolidated
   skill update; do not edit public skills in this task.
+
+## 2026-08-23 Cross-Group Prefetch Before Done Boundary
+
+Status: `REJECT_SCALE_REGRESSION_CANONICAL_RESTORED`.
+
+C96 proved that one peer dS packet can be issued early and aged under eight
+useful writer MMACs without changing work, memory traffic or resource gates.
+It also proved the more important boundary: the required peer Filled wait
+before the current group's final MMAC delays the current `Done` event. A tiny
+S1024 gain reversed at S2048, so canonical C83 source is restored.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: hiding an LDS first-use gap by issuing a peer
+  ownership group's packet before the current group's final compute island.
+- Rule / reusable rule: price the wall-clock movement of every ownership
+  `Done` event, not only the local read-to-use gap. Admit the prefetch only if
+  peer readiness is already known and the current release event cannot move.
+- Evidence / evidence: exact work and bank0; S1024 fused `-0.228%`, but S2048
+  fused `+0.746%` and lifecycle `+0.539%`; writer role `87 -> 101` with no
+  spill, so the regression is ownership timing rather than resource debt.
+- Boundary / boundary: this result applies to the single-buffered C83
+  G1-first writer DAG and compiler `e0f10535`; an independent page or a
+  readiness event available before G1 tail could change the conclusion.
+- Counterexample / not applicable: prefetch within the same ownership epoch
+  after all release-critical work, where no producer/consumer `Done` moves.
+- Proposed Target / target: Shaobo ABarrier/ownership reference in a later
+  consolidation; do not edit public skills in this task.

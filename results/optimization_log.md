@@ -18828,3 +18828,25 @@ the ownership-DAG level rather than another causal micro-specialization.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84,
 `/zys/sb/runs/fused5_c83_fullperf/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_150530`.
+
+## 2026-08-23 Writer G0 Read Prefetch Under G1 MMAC Rejected
+
+Status: `REJECT_SCALE_REGRESSION_CANONICAL_RESTORED`.
+
+C96 retained one G0 dS packet and issued its four matrix reads before G1's
+final eight dQ MMACs. Generated ISA preserved exactly the intended schedule
+and the C83 work count: causal MMAC/read/wait/ABarrier/BPS/store remained
+`1344/768/272/102/20/56`. Writer role use rose only `87 -> 101`; SGPR/VGPR
+remained `70/128`, with no private/spill/scratch. Full golden correctness
+passed S128 causal/noncausal and causal S1024, with warning0 and bank0.
+
+Three S1024 pairs improved fused/lifecycle means by only `0.228%/0.308%`.
+Two S2048 pairs reversed by `0.746%/0.539%`. The packet itself can age under
+G1 MMAC, but obtaining it requires the G0 Filled wait and read issue before
+the final G1 island. This delays wall-clock `DqDone1`, retains C1's page and
+becomes more expensive as the sequence grows. Fullperf is intentionally not
+run after the scaling reject. C83 source and WDRA are restored.
+
+Evidence: `docs/fused5_writer_g0_prefetch_under_g1_design_20260823.md`,
+workbook sections96-97, `/zys/sb/runs/fused5_c96_ab_20260823`, and
+`/zys/sb/runs/fused5_c96_s2048_ab_20260823`.

@@ -12801,3 +12801,19 @@ bottleneck is unchanged ownership: XCU ABarrier issue gaps are still `22.13%`.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84, local archive
 `outputs/019ea61f-c117-76b2-abad-e776092d47a0/c83_fullperf`.
+
+## 2026-08-23 Writer G0 Read Prefetch Scale Reject
+
+Status: `REJECT_SCALE_REGRESSION_CANONICAL_RESTORED`.
+
+The C96 source experiment is fully removed. Production remains byte-identical
+to accepted C83 behavior with WDRA `16/204/204/88`; no prefetch helper,
+scheduling anchor, extra packet, branch, token or page remains.
+
+The removed candidate passed all correctness/resource gates and kept exact
+work, but its noise-scale S1024 improvement reversed at S2048. Moving G0
+readiness before G1's final MMAC delays `DqDone1` and C1 page release, so this
+cross-group overlap is not canonical on the current ownership DAG.
+
+Evidence: `docs/fused5_writer_g0_prefetch_under_g1_design_20260823.md`,
+workbook sections96-97, and `/zys/sb/runs/fused5_c96_*_20260823`.
