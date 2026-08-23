@@ -7312,3 +7312,27 @@ must change useful ownership overlap, because ABarrier issue gaps remain
   duplication should remain one runtime body.
 - Proposed Target / target: Shaobo reference material in a later consolidated
   skill update; do not edit public skills in this task.
+
+## 2026-08-23 Writer G1-First Zero-Seed Boundary
+
+Status: `REJECT_PAIRED_TICKS_WRITER_ZERO_SEED_TIER_CLOSED`.
+
+The accepted G1-first order made a final writer-zero-seed retry technically
+clean: static moves fall, exact work is preserved, resources pass after one
+512-total WDRA rebudget, and S128 c0/c1 correctness is stable. Three S1024
+pairs still regress in mean, so the failed source and rebudget are removed.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: replacing repeated accumulator clears with a
+  first-MMAC seed needs a persistent zero fragment and WDRA repartition.
+- Rule / reusable rule: count the removed moves, but also price live seed state
+  and role-pool changes; require repeated ticks even when ISA is cleaner.
+- Evidence / evidence: fused5 writer `v_mov_b64 10 -> 6`, but S1024 fused mean
+  `+0.681%` after a required `16/204/196/96` rebudget.
+- Boundary / boundary: current gfx946 compiler/ISA and G1-first writer; a
+  native zero-result MMAC with no live seed state may change the result.
+- Counterexample / not applicable: first-use seeding that needs no new live
+  operand and no role-window change, such as the accepted consumer seed sites.
+- Proposed Target / target: Shaobo reference material during consolidated
+  skill evolution; no public skill edit here.

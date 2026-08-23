@@ -12801,3 +12801,15 @@ bottleneck is unchanged ownership: XCU ABarrier issue gaps are still `22.13%`.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84, local archive
 `outputs/019ea61f-c117-76b2-abad-e776092d47a0/c83_fullperf`.
+
+## 2026-08-23 Writer Zero-Seed Tier Closed
+
+Status: `REJECT_PAIRED_TICKS_WRITER_ZERO_SEED_TIER_CLOSED`.
+
+The G1-first retry reduces static `v_mov_b64 10 -> 6` with exact work and
+passes full S128 causal/noncausal correctness. It requires a total-preserving
+WDRA rebudget to avoid the compiler's 88-in-88 spill, then regresses three-pair
+S1024 fused/lifecycle means by `0.681%/0.656%`. No performance source remains.
+Canonical production is byte-identical to commit `73e8119` for the kernel and
+contract. Do not retry writer MMAC zero-seeding without a new native no-live-
+seed instruction contract.
