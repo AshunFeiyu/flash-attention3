@@ -18828,3 +18828,23 @@ the ownership-DAG level rather than another causal micro-specialization.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84,
 `/zys/sb/runs/fused5_c83_fullperf/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_150530`.
+
+## 2026-08-23 dQ Writer G1-First Zero Seed Rejected
+
+Status: `REJECT_PAIRED_TICKS_WRITER_ZERO_SEED_TIER_CLOSED`.
+
+The final bounded retry used the accepted G1-first writer order and seeded
+each dQ accumulator from its first useful G1 MMAC. Generated ISA achieved the
+objective: `v_mov_b64` sites fall `10 -> 6` with exact MMAC/read/wait/barrier/
+store counts. An 88-in-88 writer window spilled, while the single allowed
+`16/204/196/96` rebudget passed with no private/spill/scratch.
+
+Full S128 causal/noncausal correctness passes with bank0. Three interleaved
+S1024 pairs have two regressions; fused means regress `0.681%` and lifecycle
+means regress `0.656%`. No fullperf is admitted. Source and WDRA return to C83.
+Together with the prior C0-first attempt, this closes writer zero-seeding on
+the current ISA/compiler: fewer moves are not profitable when a live zero
+fragment and pool repartition perturb the writer schedule.
+
+Evidence: `docs/fused5_writer_g1_zero_seed_design_20260823.md`, workbook
+sections85-86, `/zys/sb/runs/fused5_c85_ab_*`.
