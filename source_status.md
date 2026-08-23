@@ -12801,3 +12801,17 @@ bottleneck is unchanged ownership: XCU ABarrier issue gaps are still `22.13%`.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84, local archive
 `outputs/019ea61f-c117-76b2-abad-e776092d47a0/c83_fullperf`.
+
+## 2026-08-23 C1 Early Batch-dS Reject
+
+Status: `REJECT_MMAC_CONTENTION_WAIT_REGRESSION_CANONICAL_RESTORED`.
+
+The isolated branch moved C1's four dV islands after the existing
+`BatchDsFilled1` publication. It preserved the exact five-GEMM work, all LDS
+pages and barrier IDs, passed full correctness and resource gates, and used
+165/204 C1 VGPR with bank0. Static waits rose `268 -> 276`; three interleaved
+S1024 pairs regressed fused/lifecycle ticks by `1.969%/2.024%`. Canonical
+source is restored to C83, and only the design/result evidence remains.
+
+Evidence: `docs/fused5_c1_early_batch_ds_design_20260823.md`, remote
+`/zys/sb/runs/fused5_c94_ab_20260823`, local `c94_rejected` archive.

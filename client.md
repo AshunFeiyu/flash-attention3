@@ -7312,3 +7312,30 @@ must change useful ownership overlap, because ABarrier issue gaps remain
   duplication should remain one runtime body.
 - Proposed Target / target: Shaobo reference material in a later consolidated
   skill update; do not edit public skills in this task.
+
+## 2026-08-23 C1 Early Batch-dS Boundary
+
+Status: `REJECT_MMAC_CONTENTION_WAIT_REGRESSION_CANONICAL_RESTORED`.
+
+Moving all C1 dV islands behind the existing full-batch dS publication is
+resource-legal and correct, but it regresses same-shape fused/lifecycle ticks
+by `1.969%/2.024%`. The writer wakes earlier only to compete with C1 dV on the
+single MMAC issue resource; static waits also rise by eight. Keep C83's
+panel-local C1 dV cadence.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a producer-consumer pipeline proposes
+  publishing an intermediate earlier by deferring independent matrix work.
+- Rule / reusable rule: check execution-pipe compatibility before treating
+  earlier readiness as overlap; moving MMAC behind publication can replace a
+  barrier wait with MMAC/MMAC contention and make the critical path longer.
+- Evidence / evidence: exact-work C94, C1 VGPR `162 -> 165`, wait sites
+  `268 -> 276`, three S1024 pairs fused `+1.969%`, lifecycle `+2.024%`.
+- Boundary / boundary: this result applies to the current one-MMAC-pipe C83
+  topology and full-batch publication. A peer VALU/LDS tail could still cover
+  writer MMAC if it does not defer another MMAC island.
+- Counterexample / not applicable: earlier publication that overlaps writer
+  MMAC with peer VALU or VMEM work and does not add waits.
+- Proposed Target / target: `dcu-kernel-optimization` in a later consolidated
+  skill update; do not edit the public skill in this task.

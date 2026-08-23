@@ -18828,3 +18828,23 @@ the ownership-DAG level rather than another causal micro-specialization.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84,
 `/zys/sb/runs/fused5_c83_fullperf/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_150530`.
+
+## 2026-08-23 C1 Early Full-Batch dS Publication Rejected
+
+Status: `REJECT_MMAC_CONTENTION_WAIT_REGRESSION_CANONICAL_RESTORED`.
+
+C1 was changed from panel-local `(dP-score-P-dS-dV)x4` to
+`(dP-score-P-dS)x4 -> Filled1 -> dVx4`, without changing formula, tile,
+ownership, LDS pages or the twelve ABarrier IDs. Static work remained exact,
+and C1 used only 165/204 VGPR, but wait sites increased `268 -> 276`.
+
+Full golden correctness passed causal/noncausal S128 and causal S1024 with no
+resource debt or bank conflict. Three interleaved S1024 pairs nevertheless
+regressed fused ticks `41.048M -> 41.856M` (`+1.969%`) and lifecycle ticks
+`45.180M -> 46.094M` (`+2.024%`). Earlier writer readiness exposes writer dQ
+MMAC while deferred C1 dV still owns the same MMAC pipe, so the removed writer
+idle is replaced by MMAC contention and extra readiness waits. The source is
+restored to C83; no fullperf was captured for a clear loser.
+
+Evidence: `docs/fused5_c1_early_batch_ds_design_20260823.md`, workbook
+sections94-95, `/zys/sb/runs/fused5_c94_ab_20260823`.
