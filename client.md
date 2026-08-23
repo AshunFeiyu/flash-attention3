@@ -7174,3 +7174,35 @@ Canonical source remains the row-major four-output/thread reducer. A future
 packed format must preserve 128-CTA reduction coverage; do not reintroduce the
 same 64-CTA topology. See
 `docs/fused5_dq_fragment_workspace_design_20260823.md`.
+
+## 2026-08-23 Causal Zero-Work Pruning Promotion
+
+The canonical causal path now skips C1's first score/P/dP/dS/dV/dK body. The
+tile-domain proof is exact: Q rows `[k,k+63]` cannot attend C1 K rows
+`[k+64,k+127]`. C1 publishes native zero dS and preserves the existing
+ownership protocol; C0, later tiles, writer work and noncausal behavior remain
+unchanged.
+
+All correctness/resource gates pass. S1024 and S2048 paired fused ticks improve
+`1.878%` and `1.709%`; fullperf improves `2.063%`. Raw MMAC active falls by
+`0.526 pp` only because 4,096 invalid MMOP issues are gone. Never optimize this
+ratio by restoring mathematically zero work; compare effective problem FLOPs
+and same-shape ticks.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a causal or sparse tile domain contains an
+  ownership subregion proven empty by integer tile bounds.
+- Rule / reusable rule: prove the empty region algebraically, remove every
+  dependent matrix/VALU operation, and preserve publication/release semantics
+  with the smallest native zero payload required by downstream owners.
+- Evidence / evidence: S1024 fused `-1.878%`, S2048 fused `-1.709%`, XCU
+  issues `-4.388%`; `docs/fused5_causal_c1_zero_front_design_20260823.md`.
+- Boundary / boundary: accumulator first-use seeding, noncausal behavior and
+  downstream ownership must be re-proved; raw MMAC active is not comparable
+  when invalid MMOP is removed.
+- Counterexample / not applicable: partially valid diagonal tiles, dropout or
+  masks that can re-enable elements, or a consumer whose zero publication is
+  not layout-compatible with its downstream reader.
+- Proposed Target / target: Shaobo reference material under the `shaobo`
+  skill during the next consolidation round.

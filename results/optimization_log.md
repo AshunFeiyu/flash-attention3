@@ -18714,3 +18714,29 @@ Canonical source is restored; no S2048/fullperf is admitted.
 
 Evidence: `docs/fused5_writer_read8_batch_design_20260823.md`, workbook
 sections69-70, `/zys/sb/runs/f5writer_read8_*_20260823`.
+
+## 2026-08-23 Causal C1 Zero-Front Prune Accepted
+
+Status: `ACCEPT_CAUSAL_ZERO_WORK_PRUNE_MMAC50_OPEN`.
+
+For every causal CTA, C1 owns K rows `[k+64,k+127]` while the first Q tile
+owns rows `[k,k+63]`; therefore its first score/P/dP/dS/dV/dK region is
+exactly zero. The canonical kernel now publishes native zero dS for that
+region and releases the existing tokens without issuing its four zero GEMMs.
+No output owner, page, barrier ID, producer transaction or writer path changes.
+
+Full golden correctness passes S128 causal/noncausal and causal S1024/S2048,
+with private/spill/scratch0 and bank0. Three S1024 pairs improve fused/lifecycle
+means by `1.878%/1.542%`; two S2048 pairs improve by `1.709%/1.673%`.
+Fullperf fused ticks improve `2.063%`, while MMOP/VALU/LDS fall
+`92,160/98,032/63,872 -> 88,064/92,496/61,056`.
+
+XCU issues fall `4.388%` and duration falls `2.066%`; the representative C1
+wave loses 432 instructions and 64 invalid MMAC issues. Raw MMAC active falls
+`36.659% -> 36.133%` because zero MMOP was removed, so use same-problem ticks
+and effective FLOPs for this decision. ABarrier, transpose-read wait and
+terminal ebarrier gaps fall, but global-load/store readiness becomes the next
+evidence target.
+
+Evidence: `docs/fused5_causal_c1_zero_front_design_20260823.md`, workbook
+sections71-72, `/zys/sb/runs/f5c1zero_*_20260823`.

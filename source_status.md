@@ -12708,3 +12708,23 @@ Status: `REJECT_SCALE_REGRESSION_CANONICAL_RESTORED`.
 
 Evidence: `/zys/sb/runs/f5dqfrag_ab_20260823`,
 `/zys/sb/runs/f5dqfrag_s2048_ab_20260823`, and workbook sections65-66.
+
+## 2026-08-23 Causal C1 Zero-Front Canonical Promotion
+
+Status: `ACCEPT_CAUSAL_ZERO_WORK_PRUNE_MMAC50_OPEN`.
+
+- The causal first Q tile is strictly before C1's K64 ownership range, so C1
+  now publishes zero native dS and skips its provably zero score/dP/dV/dK
+  body. C0, all later tiles, the writer, output ownership and the noncausal
+  formula path stay canonical.
+- Static resource gates pass at roles `9/173/87/162`, SGPR71/VGPR128,
+  LDS128KiB and private/spill/scratch0. Complete golden correctness passes
+  S128 causal/noncausal, S1024 and S2048; warning0 and bank0.
+- S1024 fused/lifecycle improve `1.878%/1.542%`; S2048 improve
+  `1.709%/1.673%`. Fullperf fused ticks improve `2.063%`.
+- Dynamic MMOP falls `92,160 -> 88,064`; the lower raw MMAC-active percentage
+  is expected and must not be fixed by restoring invalid work. XCU confirms
+  fewer C1 instructions and shorter ABarrier/readiness/terminal gaps.
+
+Evidence: `docs/fused5_causal_c1_zero_front_design_20260823.md`, workbook
+sections71-72, `/zys/sb/runs/f5c1zero_*_20260823`.

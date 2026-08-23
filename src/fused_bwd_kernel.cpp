@@ -499,12 +499,12 @@ __device__ __forceinline__ void c0_dp_stage(
     mmac_product_island(dp_lhs, resident.v_trans, zero, dp);
 }
 
-__device__ __forceinline__ void zero_dv_accumulators(
-    Accumulator (&dv_acc)[8]) {
+__device__ __forceinline__ void zero_accumulators(
+    Accumulator (&acc)[8]) {
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
-        ins::zero_vgpr2(dv_acc[i].u64[0]);
-        ins::zero_vgpr2(dv_acc[i].u64[1]);
+        ins::zero_vgpr2(acc[i].u64[0]);
+        ins::zero_vgpr2(acc[i].u64[1]);
     }
 }
 
@@ -752,6 +752,23 @@ __device__ __forceinline__ void publish_ds_batch(
     publish_final_ds<1, Group, Generation>(ds_panels[1], lds, owner);
     publish_final_ds<2, Group, Generation>(ds_panels[2], lds, owner);
     publish_final_ds<3, Group, Generation>(ds_panels[3], lds, owner);
+}
+
+__device__ __forceinline__ void run_c1_causal_zero_front(
+    __half* lds,
+    int owner,
+    const ins::F16x8& zero,
+    int& raw_phase) {
+    ins::abarrier_try_wait<true>(Bar::kRawFilled0, raw_phase);
+    Fragment zero_ds;
+    zero_ds.f16x8 = zero.f16x8;
+    publish_final_ds<0, 1>(zero_ds, lds, owner);
+    publish_final_ds<1, 1>(zero_ds, lds, owner);
+    publish_final_ds<2, 1>(zero_ds, lds, owner);
+    publish_final_ds<3, 1>(zero_ds, lds, owner);
+    ins::abarrier_arrive_cnt<false>(Bar::kBatchDsFilled1, 1);
+    ins::abarrier_arrive_cnt<false>(Bar::kRawUsed0, 1);
+    ins::abarrier_arrive_cnt<false>(Bar::kDqDone1, 1);
 }
 
 template <int MBlock, int Group, int Generation = 0>
@@ -1057,10 +1074,11 @@ __device__ __forceinline__ void run_consumer_group(
     Accumulator dv_acc[8];
     Accumulator dk_acc[8];
     if constexpr (Group == 1) {
-        // C1 consumes dV inside a runtime panel loop. Keep only this
-        // long-lived accumulator family explicitly initialized; C0 dV and
-        // both dK families are compile-time seeded by their first MMAC.
-        zero_dv_accumulators(dv_acc);
+        // C1's first causal Q tile is provably outside its K64 domain. Both
+        // accumulator families therefore start from explicit zero; C0 keeps
+        // compile-time first-MMAC seeding.
+        zero_accumulators(dv_acc);
+        zero_accumulators(dk_acc);
     }
     ins::F16x8 mmac_zero;
     ins::zero_f16x8(mmac_zero);
@@ -1071,10 +1089,20 @@ __device__ __forceinline__ void run_consumer_group(
 
     int qi = 0;
     if (q_tile_count > 0) {
-        run_consumer_q_tile<Group, 0, false, true>(
-            lds, mutable_lds, k_base, q_tile_begin, qi, causal,
-            softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-            dv_acc, dk_acc, raw0_phase, done0_phase);
+        if constexpr (Group == 0) {
+            run_consumer_q_tile<0, 0, false, true>(
+                lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+                softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+                dv_acc, dk_acc, raw0_phase, done0_phase);
+        } else if (causal) {
+            run_c1_causal_zero_front(
+                mutable_lds, owner, mmac_zero, raw0_phase);
+        } else {
+            run_consumer_q_tile<1, 0, false, false>(
+                lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+                softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+                dv_acc, dk_acc, raw0_phase, done0_phase);
+        }
         ++qi;
     }
     if (q_tile_count > 1) {
