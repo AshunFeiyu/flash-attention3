@@ -7338,3 +7338,32 @@ and native-layout gates all pass. ISA keeps Q2 MLS ahead of `EpochDone`.
   sidecar/full-dS region; ordinary symmetric double buffering is infeasible.
 - Proposed Target / target: Shaobo ownership/lifecycle reference during a
   consolidated skill update; do not edit public skills in this task.
+
+## 2026-08-23 M128 Q-Double/dO-Single Production Boundary
+
+Status: `REJECT_CTA_WIDE_OWNERSHIP_SERIALIZATION_CANONICAL_RESTORED`.
+
+The probe was semantically correct, and the production draft also passed
+exact-work, packed-ISA, resource, bank and full-golden gates. It still regressed
+S1024 fullperf ticks by `46.08%`: MMAC active fell to `26.599538%` while XCU
+showed a `52.42%` ABarrier issue gap and `96.85%` sampled-SIMD bubble. The
+count8 `DoutDead` and count12 `EpochDone` edges erase group-local progress.
+Canonical source is restored to C83.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: an LDS-capacity proof widens a tile by
+  aliasing one operand page with a later producer-consumer tensor.
+- Rule / reusable rule: resource closure and correct generated ordering are
+  necessary but insufficient; reject any steady loop whose alias lifetime
+  requires CTA-wide reader-completion tokens across otherwise independent
+  consumer groups.
+- Evidence / evidence: exact MMOP `88,064`, traffic counters slightly lower,
+  yet ticks `+46.08%`, MMAC active `36.58% -> 26.60%`, ABarrier share
+  `13.52% -> 33.82%`, XCU top ABarrier issue gap `52.42%`.
+- Boundary / boundary: CTA-wide startup or terminal synchronization remains
+  valid when it is outside the steady ownership loop.
+- Counterexample / not applicable: C83 group-local dS tokens let one consumer
+  group and the writer advance without waiting for all 12 reader waves.
+- Proposed Target / target: Shaobo ownership-DAG reference during consolidated
+  skill evolution; do not edit public skills in this task.

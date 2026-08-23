@@ -18846,3 +18846,23 @@ Status: `ACCEPT_PROBE_ADMIT_CANONICAL_STATIC_DRAFT`.
 
 Evidence: `docs/fused5_m128_qdouble_dout_single_design_20260823.md` and
 `/zys/sb/runs/fused5_c92_probe/layout_probes/fused5_m128_qdouble_dout_single_20260823_174228`.
+
+## 2026-08-23 M128 Q-Double/dO-Single Production Rejected
+
+Status: `REJECT_CTA_WIDE_OWNERSHIP_SERIALIZATION_CANONICAL_RESTORED`.
+
+- Production static gates pass: exact five GEMMs, packed lowering, VGPR128,
+  private/spill/scratch0 and legal WDRA roles.
+- Full golden passes S128 causal/noncausal and causal S1024 with bank0.
+- Dynamic MMOP is unchanged at `88,064`; VALU/SCA/LDS/VMEM/FLAT are all no
+  larger than C83, excluding duplicate work and traffic as the regression.
+- Fullperf fused ticks regress `41,167,035 -> 60,134,165` (`+46.08%`), MMAC
+  active falls `36.579709% -> 26.599538%`, and barrier share grows
+  `13.521975% -> 33.816%`.
+- XCU ranks `s_abarrier_try_wait -> s_xor_b32` first at `52.42%` of issue-gap
+  duration; sampled SIMD bubble is `96.85%` and all slots share this top edge.
+- Decision: remove the production draft and keep only the focused probe.
+  Close any M128 route that requires q-loop count8/count12 completion tokens.
+
+Evidence: remote `fused5_c92_{correctness,s1024,fullperf}`, local
+`outputs/019ea61f-c117-76b2-abad-e776092d47a0/c92_fullperf_rejected`.

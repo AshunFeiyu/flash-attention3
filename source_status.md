@@ -12819,3 +12819,20 @@ promotion evidence.
 
 Evidence: `docs/fused5_m128_qdouble_dout_single_design_20260823.md` and
 `/zys/sb/runs/fused5_c92_probe/layout_probes/fused5_m128_qdouble_dout_single_20260823_174228`.
+
+## 2026-08-23 M128 Q-Double/dO-Single Production Reject
+
+Status: `REJECT_CTA_WIDE_OWNERSHIP_SERIALIZATION_CANONICAL_RESTORED`.
+
+The production draft preserves exact dynamic MMOP `88,064`, packed arithmetic,
+no private/spill/scratch, bank0 and full golden correctness. Nevertheless,
+S1024 fullperf fused ticks regress `41,167,035 -> 60,134,165`, MMAC active
+falls `36.579709% -> 26.599538%`, and barrier share rises
+`13.521975% -> 33.816%`. XCU attributes `52.42%` of ranked issue-gap duration
+to `s_abarrier_try_wait -> s_xor_b32`; the sampled SIMD is `96.85%` bubble and
+all wave slots share that ownership wait. The count8 dead-dO plus count12
+epoch-done edges serialize the CTA. Canonical source is restored to C83;
+only the focused lifecycle probe and reject evidence remain.
+
+Evidence: `docs/fused5_m128_qdouble_dout_single_design_20260823.md`, local
+archive `outputs/019ea61f-c117-76b2-abad-e776092d47a0/c92_fullperf_rejected`.

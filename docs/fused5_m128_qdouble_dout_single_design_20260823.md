@@ -128,3 +128,40 @@ reuse is independent of the 12-reader dS release edge in generated code.
 
 Evidence:
 `/zys/sb/runs/fused5_c92_probe/layout_probes/fused5_m128_qdouble_dout_single_20260823_174228`.
+
+## Production Result
+
+Status: `REJECT_CTA_WIDE_OWNERSHIP_SERIALIZATION_CANONICAL_RESTORED`.
+
+The canonical draft retained exact five-GEMM work and passed every hard gate:
+
+- causal/noncausal metadata VGPR128 with private/spill/scratch `0`;
+- branch use causal `8/172/86/175`, noncausal `8/172/175/88`, within WDRA;
+- causal static MMAC/read/wait/ABarrier sites `2048/1168/399/108`;
+- packed softmax/dS lowering preserved;
+- S128 causal/noncausal and causal S1024 full-lifecycle golden PASS;
+- `ldsBankConflict=0` and dynamic MMOP remains exactly `88,064`.
+
+Despite the larger MMAC islands, causal S1024 fused ticks regress from the C83
+fullperf control `41,167,035` to `60,134,165` (`+46.08%`). The ordinary S1024
+run reports fused/lifecycle ticks `60,410,350/64,912,575`. MMAC active falls
+from `36.579709%` to `26.599538%`; coissue changes from `18,727/23,119` to
+`12,595/9,776`, and barrier wait share rises from `13.521975%` to
+`33.816%`. VALU, SCA, LDS, VMEM and FLAT all fall slightly, so extra arithmetic
+or traffic is not the cause.
+
+XCU identifies the production failure directly. The leading issue gap is
+`s_abarrier_try_wait -> s_xor_b32`: `1,568` occurrences and `5,133,244`
+cycles, accounting for `52.42%` of ranked issue-gap duration. The sampled SIMD
+is `96.85%` bubble, and all four wave slots name the same ABarrier edge as the
+top bubble. The post-wait `s_xor_b32` is an attribution marker, not useful
+compute. Count8 `DoutDead` plus count12 `EpochDone` turns the wider epoch into
+a CTA-wide rendezvous and eliminates the intended group-local conveyor.
+
+The production source is restored to C83. The focused probe remains valid
+instruction/lifecycle evidence, but this ownership topology is closed. A
+future M128 attempt must retain group-local dS release and must not introduce
+count8/count12 completion edges in the q-loop.
+
+Runtime evidence:
+`/zys/sb/runs/fused5_c92_fullperf/fused5_full/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_180805`.
