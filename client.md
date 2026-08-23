@@ -7106,3 +7106,15 @@ Do not reintroduce this single-page lifecycle. A future M128 design must prove
 that raw publication is not gated by the combined dKV+dQ epoch, or provide a
 separate legal sidecar/dS lifetime without adding serialized ownership.
 Canonical source remains the tagged `58e90fc` M64 writer-G1-first path.
+
+## 2026-08-23 dQ Workspace Packing Boundary
+
+Fragment-native Vec8 packing is correct and removes one fused partial-store
+transaction per writer lane, but the tested eight-output/thread reducer cuts
+CTA coverage from 128 to 64. It wins S1024 total ticks by `1.068%` and raises
+fused MMAC active by `0.923 pp`, then loses S2048 total ticks by `0.689%`.
+
+Canonical source remains the row-major four-output/thread reducer. A future
+packed format must preserve 128-CTA reduction coverage; do not reintroduce the
+same 64-CTA topology. See
+`docs/fused5_dq_fragment_workspace_design_20260823.md`.

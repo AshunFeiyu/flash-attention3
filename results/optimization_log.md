@@ -18648,3 +18648,24 @@ S2048/fullperf and restore `58e90fc`.
 
 Evidence: `docs/fused5_m128_single_raw_design_20260823.md`, workbook
 section61/62, `/zys/sb/runs/fused5_m128_single_raw_*`.
+
+## 2026-08-23 dQ Fragment-Native Workspace Rejected
+
+Status: `REJECT_SCALE_REGRESSION_CANONICAL_RESTORED`.
+
+The fused writer combined its two separated D16 fragments into one native
+Vec8 FP16 workspace record. This halves partial-store sites and lowers dynamic
+FLAT `3,616 -> 2,464` without changing MMOP, LDS, barriers, formulas or bytes.
+All correctness/resource gates pass and S1024 fused ticks improve `1.861%`;
+MMAC active rises `35.265% -> 36.188%`.
+
+The matching reducer handles eight outputs per thread, however, which halves
+CTA coverage `128 -> 64`. Reducer ticks rise `17.347%` at S1024 and `7.926%`
+at S2048. S1024 total still improves `1.068%`, but S2048 fused and lifecycle
+regress `0.344%` and `0.689%`. This fails the scaling gate, so both source
+files are restored. Packed dQ storage remains a valid direction only with a
+reducer topology that preserves at least 128 CTAs.
+
+Evidence: `docs/fused5_dq_fragment_workspace_design_20260823.md`, workbook
+sections65-66, `/zys/sb/runs/f5dqfrag_ab_20260823`, and
+`/zys/sb/runs/f5dqfrag_s2048_ab_20260823`.

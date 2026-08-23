@@ -12657,3 +12657,19 @@ Status: `REJECT_OWNERSHIP_SERIALIZATION_CANONICAL_RESTORED`.
 - No S2048/fullperf is admitted. `src/fused_bwd_kernel.cpp` and
   `include/fused_bwd_contract.h` are restored to commit `58e90fc` behavior.
 - Retained evidence is documentation/workbook/ledger only.
+
+## 2026-08-23 dQ Fragment-Native Workspace Closed
+
+Status: `REJECT_SCALE_REGRESSION_CANONICAL_RESTORED`.
+
+- Candidate writer emitted one Vec8 FP16 partial-store instead of two Vec4
+  stores; dynamic fused FLAT fell `3,616 -> 2,464` with exact MMOP/LDS and
+  bank0.
+- Full golden correctness passed S128, S1024 and S2048; no resource debt.
+- S1024 full lifecycle improved `1.068%`, but S2048 regressed `0.689%` because
+  the reducer dropped from 128 to 64 CTAs and slowed `7.926%`.
+- `src/fused_bwd_kernel.cpp` and `src/fused_bwd_dq_reduce.cpp` are restored to
+  accepted `58e90fc` behavior. Only design/result evidence is retained.
+
+Evidence: `/zys/sb/runs/f5dqfrag_ab_20260823`,
+`/zys/sb/runs/f5dqfrag_s2048_ab_20260823`, and workbook sections65-66.
