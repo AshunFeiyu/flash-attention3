@@ -7363,3 +7363,26 @@ restored to C83; the failed source is not retained.
   itself, such as accepted C1 zero-front and causal symbol specialization.
 - Proposed Target / target: Shaobo reference material during the next
   consolidated skill update; do not edit public skills in this task.
+
+## 2026-08-23 Packed Load-to-Use Boundary
+
+Status: `REJECT_NEUTRAL_TICKS_CANONICAL_RESTORED`.
+
+The dot preprocessing kernel can legally combine each lane's adjacent FP16
+pair into dword loads. This reduces dynamic FLAT by 25%, but compiler-generated
+pair conversion raises VALU and leaves repeated S1024/S2048 dot ticks neutral.
+Canonical source remains the scalar two-stride version.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: vectorizing adjacent narrow loads reduces
+  memory instruction count but adds unpack or conversion work before use.
+- Rule / reusable rule: compare the full load-to-first-use chain and absolute
+  kernel ticks; instruction-count reduction alone is insufficient.
+- Evidence / evidence: FLAT `8192 -> 6144`, VALU `71680 -> 74752`; dot ticks
+  S1024 `-0.211%`, S2048 `-0.023%`, full correctness/resource gates PASS.
+- Boundary / boundary: gfx946 compiler e0f10535 and FP16-pair to FP32 dot.
+- Counterexample / not applicable: a native packed dot or conversion-free
+  consumer may make the same load packing profitable.
+- Proposed Target / target: general DCU optimization reference during a later
+  consolidated skill update; do not edit public skills in this task.

@@ -12828,3 +12828,13 @@ No candidate source remains. `src/fused_bwd_kernel.cpp` and
 `include/fused_bwd_contract.h` are byte-identical to C83 commit `73e8119`.
 Do not retry a loop-local `qi==0` writer branch. A future topology must prove a
 nonduplicating first-epoch peel before source admission.
+
+## 2026-08-23 dot_do_o Packed-Half2 Closed
+
+Status: `REJECT_NEUTRAL_TICKS_CANONICAL_RESTORED`.
+
+The packed-half2 candidate passes static, resource, S128 dual-mode and
+S1024/S2048 lifecycle correctness gates. It reduces input load instructions
+but increases conversion VALU, yielding neutral repeated dot ticks. No
+candidate source remains; `src/dot_do_o_kernel.cpp` is restored to the C83
+canonical implementation.

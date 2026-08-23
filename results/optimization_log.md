@@ -18869,3 +18869,20 @@ second G0/store body and without recurring phi moves.
 
 Evidence: `docs/fused5_causal_writer_zero_front_prune_design_20260823.md`,
 workbook sections87-88, `/zys/sb/runs/fused5_c87_*`.
+
+## 2026-08-23 dot_do_o Packed-Half2 Rejected
+
+Status: `REJECT_NEUTRAL_TICKS_CANONICAL_RESTORED`.
+
+The experiment remaps each lane from two strided FP16 scalar loads to one
+contiguous FP16 pair per input. Static codegen is clean and full lifecycle
+correctness passes. Dynamic FLAT instructions fall by 25%, but conversion and
+packed arithmetic raise VALU by 4.29%. Three S1024 pairs improve dot ticks by
+only `0.211%`; three S2048 pairs are neutral at `0.023%`.
+
+The source is restored. The useful general lesson is to evaluate the complete
+load-to-use chain: fewer memory instructions are not a latency win when the
+consumer conversion chain grows by the same amount.
+
+Evidence: `docs/dot_do_o_packed_half2_design_20260823.md`, workbook
+sections89-90, `/zys/sb/runs/fused5_c89_dot_*`.
