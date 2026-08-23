@@ -12632,3 +12632,23 @@ ABarrier cycles fall, barrier share drops to `13.263%`, and MMAC active reaches
 The current next debts are wait-VM exposure, terminal ebarrier, and the open
 50% MMAC-active goal. See
 `docs/fused5_writer_g1_first_design_20260823.md` and workbook section54.
+
+## 2026-08-23 RawUsed Before Final dK Retest Rejected
+
+Status: `REJECT_CLOSED_LOOP_BARRIER_MIGRATION_CANONICAL_RESTORED`.
+
+- Only the existing page-specific RawUsed arrival moved after final Q/dS
+  readiness and before the final dK MMAC island.
+- Static counts remain MMAC1472, matrix-read840 and ABarrier102; metadata is
+  SGPR82/VGPR128 with roles `9/176/87/164` and no resource debt.
+- Full golden S128 causal/noncausal and S1024 causal pass with bank0.
+- S1024/S2048 paired means improve `0.740%/0.375%`, but both are mixed 2/3
+  wins and fullperf improves only `0.280%`.
+- XCU shows the local C1 RawFilled debt falling by `2,420` cycles while
+  producer/writer ABarrier debt grows by `1,668/1,704` cycles. wait-LGKM and
+  wait-VM rise; successful coissue falls.
+- Production source is restored to accepted commit `58e90fc`. This exact
+  single-edge release direction is closed on the current topology.
+
+Evidence: `docs/fused5_raw_release_g1_retest_design_20260823.md`, workbook
+section58, `/zys/sb/runs/fused5_raw_release_g1_retest_*`.

@@ -18607,3 +18607,28 @@ next evidence targets.
 
 Evidence: `docs/fused5_writer_g1_first_design_20260823.md`, workbook section54,
 and `/zys/sb/runs/fused5_writer_g1_first_*`.
+
+## 2026-08-23 RawUsed Before Final dK Retest Rejected
+
+Status: `REJECT_CLOSED_LOOP_BARRIER_MIGRATION_CANONICAL_RESTORED`.
+
+The candidate moves no computation or traffic: after the final Q3/dS3
+`lgkmcnt(0)`, each consumer arrives at the existing page-specific RawUsed token
+before issuing the final eight dK MMACs from VGPR. Static ISA and resource
+gates remain exact; full backward correctness passes with bank0.
+
+Three S1024 pairs move fused mean `43,289,610 -> 42,969,290` (`-0.740%`),
+and three S2048 pairs move `79,928,940 -> 79,628,943` (`-0.375%`), but each
+set is mixed 2/3 wins. Fullperf moves `43,318,730 -> 43,197,245` (`-0.280%`)
+and MMAC active only `35.0371% -> 35.0619%`.
+
+The four-role SQTT comparison disproves the intended closed-loop win. C1
+RawFilled wait improves by `2,420` cycles, while producer and writer ABarrier
+grow by `1,668` and `1,704` cycles. wait-LGKM rises `0.304 pp`, wait-VM rises
+`0.241 pp`, and coissue success falls by 301. The timing signal is classified
+as observation only; source is restored to `58e90fc`.
+
+Evidence: `/zys/sb/runs/fused5_raw_release_g1_retest_ab_20260823_s1024`,
+`/zys/sb/runs/fused5_raw_release_g1_retest_ab_20260823_s2048`,
+`/zys/sb/runs/fused5_raw_release_g1_retest_fullperf_20260823`, and workbook
+section58.

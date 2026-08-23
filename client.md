@@ -7080,3 +7080,20 @@ rises `34.821% -> 35.037%`. XCU shows C1 `DqDone1` wait collapsing
   the critical path.
 - Proposed Target / target: Shaobo reference material under the `shaobo`
   skill; do not modify public optimization skills outside consolidation.
+
+## 2026-08-23 RawUsed Early Release Retest Rejected
+
+The G1-first critical edge justified one bounded retest of moving each raw
+page's existing `RawUsed` arrival before the final dK MMAC island. Generated
+work, resources and full correctness remain exact, and paired mean ticks move
+slightly in the expected direction at S1024/S2048.
+
+SQTT rejects the mechanism. C1 RawFilled wait falls `7,901 -> 5,481` cycles,
+but producer ABarrier rises by `1,668` cycles and writer rises by `1,704`.
+Runtime wait-LGKM/VM both grow, coissue success falls, and fullperf MMAC active
+is effectively flat (`35.0371% -> 35.0619%`). The source is restored to
+`58e90fc`; future ownership work must shorten the complete
+producer-consumer-writer-producer loop, not one local edge.
+
+See `docs/fused5_raw_release_g1_retest_design_20260823.md` and workbook
+section58.
