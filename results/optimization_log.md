@@ -18786,3 +18786,22 @@ Status: `REJECT_COMPILER_PACKING_REGRESSION_CANONICAL_RESTORED`.
 
 Evidence: `docs/fused5_causal_diagonal_local_mask_design_20260823.md`,
 `outputs/.../static_c79/{control,candidate}.asm`, workbook sections79-80.
+
+## 2026-08-23 Causal C1 First-Valid dKV Zero Seed Rejected
+
+Status: `REJECT_C1_BODY_DUPLICATION_SPILL_CANONICAL_RESTORED`.
+
+- New premise was valid: accepted zero-front makes causal C1 qi1 the first
+  valid dV/dK accumulation tile.
+- Correct noncausal behavior requires qi0 zero-seed and qi1 accumulation,
+  while causal requires qi1 zero-seed. This creates two q1 instantiations.
+- Static ISA proves compiler duplication: MMAC `1472 -> 1600`, waitcnt
+  `305 -> 324`, branches `76 -> 77`, and `v_mov_b64 84 -> 116`.
+- C1 role use expands `162 -> 203`; metadata fails with private20 and
+  VGPR spill4. Reallocating WDRA is rejected because it cannot remove the
+  duplicated body or fetch/live-range debt.
+- No PMD or correctness result is claimed. Source is restored to accepted
+  `6f445c0` behavior.
+
+Evidence: `docs/fused5_causal_c1_first_valid_zero_seed_design_20260823.md`,
+workbook sections81-82, remote c81 experiment.

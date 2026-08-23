@@ -7257,3 +7257,25 @@ the accepted `6f445c0` path.
   packed mask ABI may retain the intended instruction shape.
 - Proposed Target / target: `dcu-kernel-optimization` during a later public
   skill consolidation; do not edit the public skill in this task.
+
+## 2026-08-23 C1 First-Valid Zero-Seed Boundary
+
+Zero-front creates a valid causal first-tile seed point, but the canonical
+kernel keeps `causal` runtime-selectable. Preserving noncausal accumulation
+forces two q1 bodies under e0f10535; static MMAC grows by 128, C1 reaches
+203/204 VGPR and spills. The candidate is removed before PMD.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: zero-work pruning exposes a new first valid
+  accumulator update only for one runtime mode.
+- Rule / reusable rule: account for every runtime mode before zero-seeding;
+  reject a local specialization if it duplicates the complete MMAC body.
+- Evidence / evidence: fused5 C1 candidate MMAC `1472 -> 1600`, role
+  `162 -> 203`, private20/VGPR spill4, no runtime test admitted.
+- Boundary / boundary: a separately compiled causal specialization could
+  change this conclusion, but it must price code size/API dispatch separately.
+- Counterexample / not applicable: all runtime modes share the same
+  compile-time first accumulation point, as in fixed score/dP islands.
+- Proposed Target / target: Shaobo zero-seed reference during consolidated
+  skill evolution; no public skill edit in this task.

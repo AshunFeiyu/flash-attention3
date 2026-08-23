@@ -12765,3 +12765,19 @@ restored to `6f445c0` behavior.
 
 Evidence: `docs/fused5_causal_diagonal_local_mask_design_20260823.md`,
 workbook sections79-80, local `static_c79/{control,candidate}.asm`.
+
+## 2026-08-23 Causal C1 First-Valid Zero-Seed Static Reject
+
+Status: `REJECT_C1_BODY_DUPLICATION_SPILL_CANONICAL_RESTORED`.
+
+Accepted zero-front makes causal C1 qi1 its first valid dV/dK tile, but the
+same runtime-causal kernel must keep noncausal qi1 as an accumulation tile.
+The correct two-call-site implementation duplicates the q1 body under
+compiler e0f10535: MMAC `1472 -> 1600`, waits `305 -> 324`, C1 role use
+`162 -> 203`, private segment20 and VGPR spill4. It even increases
+`v_mov_b64 84 -> 116`. Static gates reject it before correctness/PMD;
+production source is restored.
+
+Evidence: `docs/fused5_causal_c1_first_valid_zero_seed_design_20260823.md`,
+workbook sections81-82, remote experiment
+`/zys/sb/experiments/fused5_causal_c1_first_valid_zero_seed_20260823_c81`.
