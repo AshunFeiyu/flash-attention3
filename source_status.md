@@ -1,5 +1,17 @@
 # Source Status
 
+## 2026-08-23 Sidecar Pair Read Rejected
+
+- Status: `REJECT_LGKM_BARRIER_MIGRATION_CANONICAL_RESTORED`.
+- Candidate instruction contract passes: 40 `ds_read2_b32 offset1:64`, no
+  `gds`, exact MMAC/matrix/ABarrier work, clean resources, full S128 golden and
+  bank0.
+- Three S1024 pairs regress fused mean `2.398%`; MMAC active falls `0.264 pp`,
+  wait-LGKM rises `1.504 pp`, and barrier rises `0.908 pp`.
+- `include/shaobo_instr.h` and `src/fused_bwd_kernel.cpp` are byte-equivalent
+  to accepted `58e90fc` behavior. Failed source is not retained.
+- Evidence: `/zys/sb/runs/f5sr2_ab_20260823`; workbook sections63-64.
+
 ## 2026-08-22 C0 dV-Tail dK0 Cover Rejected On Scaling
 
 - Status: `REJECT_S2048_OUTSTANDING_READ_PRESSURE_CANONICAL_RESTORED`.

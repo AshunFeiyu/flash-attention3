@@ -1,5 +1,26 @@
 # Optimization Log
 
+## 2026-08-23 Sidecar Pair Read Rejected
+
+Status: `REJECT_LGKM_BARRIER_MIGRATION_CANONICAL_RESTORED`.
+
+The fused consumer read row max and inverse-sum through
+`__builtin_hcu_ds_read2_f32(base, 0, 64, false)`. The instruction contract is
+valid: generated ISA has 40 `ds_read2_b32 offset1:64`, no `gds`, and exact
+MMAC1472, matrix-read840 and ABarrier102. Dynamic LDS instructions fall
+`63,872 -> 61,568`; S128 causal/noncausal full golden passes with bank0 and no
+resource debt.
+
+Three paired S1024 runs all regress. Fused mean moves
+`43,286,880 -> 44,325,038` (`+2.398%`) and lifecycle mean moves
+`47,461,050 -> 48,506,337` (`+2.203%`). MMAC active falls
+`35.155497% -> 34.891421%`; wait-LGKM rises `7.448527% -> 8.952652%` and
+barrier rises `13.340440% -> 14.248019%`. Pairing metadata values reduces
+issued work but couples readiness and delays ownership release. The source is
+restored to `58e90fc`; no S2048/fullperf is admitted.
+
+Evidence: `/zys/sb/runs/f5sr2_ab_20260823`; workbook sections63-64.
+
 ## 2026-08-22 C0 dV-Tail dK0 Cover Rejected On S2048
 
 C0 issued the first dK `Qx4+dSx1` packet after the final dV operands, retired

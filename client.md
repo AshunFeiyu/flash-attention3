@@ -1,5 +1,18 @@
 # Client
 
+## 2026-08-23 Sidecar Pair-Read Boundary
+
+`ds_read2_b32 offset1:64` is a valid Shaobo sidecar instruction form, but it is
+not a performance replacement for two panel-local scalar reads in the current
+fused5 schedule. It reduces dynamic LDS/VALU counts yet regresses S1024 fused
+ticks by `2.398%`, because wait-LGKM rises `1.504 pp` and barrier rises
+`0.908 pp`. Keep scalar max/invsum/delta reads in canonical code. Reconsider a
+pair only when both values have the same first-use point and the pair can age
+under an existing useful island.
+
+Evidence: `docs/fused5_sidecar_read2_design_20260823.md`, workbook
+sections63-64, `/zys/sb/runs/f5sr2_ab_20260823`.
+
 ## 2026-08-22 C0 Cross-GEMM Prefetch Scaling Reject
 
 The first dK packet can be issued under C0's final dV MMAC island without
