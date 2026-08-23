@@ -18740,3 +18740,30 @@ evidence target.
 
 Evidence: `docs/fused5_causal_c1_zero_front_design_20260823.md`, workbook
 sections71-72, `/zys/sb/runs/f5c1zero_*_20260823`.
+
+## 2026-08-23 C0 Second-Tile Fully-Valid Specialization Accepted
+
+Status: `ACCEPT_CAUSAL_C0_SECOND_VALID_MMAC50_OPEN`.
+
+C0's second retained causal Q tile `[k+64,k+127]` is strictly after C0's K
+range `[k,k+63]`, so its mask is a compile-time constant true. The canonical
+source passes `causal=0` only for this call. C1 remains diagonal and masked;
+MMOP88064, matrix traffic, ABarrier IDs, stores and ownership are unchanged.
+
+Full golden correctness passes S128 causal/noncausal and causal S1024/S2048,
+with roles `9/173/87/162`, SGPR71/VGPR128, no private/spill/scratch, warning0
+and bank0. Three S1024 pairs improve fused mean
+`41,823,297 -> 41,039,483` (`-1.874%`) and lifecycle mean
+`45,953,180 -> 45,281,752` (`-1.461%`). Two S2048 pairs improve fused mean
+`77,043,103 -> 76,122,865` (`-1.194%`) and lifecycle mean
+`84,519,435 -> 83,613,985` (`-1.071%`).
+
+Fullperf dynamic VALU/SCA fall by `1,248/672`; MMAC active rises
+`36.132798% -> 36.407955%`, and barrier share falls `0.145 pp`. XCU issues
+fall `327,712 -> 325,952`; representative SIMD bubble cycles fall
+`229,356 -> 227,011`. The top ABarrier gap still accounts for `22.81%`, and
+wait-VM/LGKM rise slightly, so the next hypothesis remains ownership/readiness
+rather than another causal micro-branch.
+
+Evidence: `docs/fused5_causal_c0_second_tile_valid_design_20260823.md`,
+workbook sections77-78, `/zys/sb/runs/f5c0second_*_20260823`.

@@ -1108,7 +1108,7 @@ __device__ __forceinline__ void run_consumer_group(
     if (q_tile_count > 1) {
         if constexpr (Group == 0) {
             run_consumer_q_tile<0, 1, false, false>(
-                lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+                lds, mutable_lds, k_base, q_tile_begin, qi, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw1_phase, done1_phase);
         } else {

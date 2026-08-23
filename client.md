@@ -7206,3 +7206,31 @@ and same-shape ticks.
   not layout-compatible with its downstream reader.
 - Proposed Target / target: Shaobo reference material under the `shaobo`
   skill during the next consolidation round.
+
+## 2026-08-23 C0 Second-Tile Fully-Valid Promotion
+
+The canonical causal path now compiles C0's second retained Q tile unmasked.
+The proof is exact: C0 K rows end at `k+63`, while that Q tile begins at
+`k+64`. C1 remains diagonal and masked. This is one call-site constant; no
+new branch, helper, token, page, traffic or ownership rule was added.
+
+All correctness/resource gates pass. S1024 fused/lifecycle means improve
+`1.874%/1.461%`, and S2048 improves `1.194%/1.071%`. MMOP stays 88,064,
+MMAC active rises `36.133% -> 36.408%`, and dynamic VALU/SCA fall by
+`1,248/672`. ABarrier share and representative SIMD bubbles improve, while
+wait-VM/LGKM slightly rise; ownership/readiness therefore remain open.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: one causal ownership group is fully valid at
+  a compile-time tile boundary while its peer remains diagonal.
+- Rule / reusable rule: prove the integer row ranges, then specialize the
+  group at the call boundary instead of branching per owner inside the body.
+- Evidence / evidence: S1024 fused `-1.874%`, S2048 fused `-1.194%`, exact
+  MMOP88064 and MMAC active `+0.275 pp`.
+- Boundary / boundary: fixed causal ranges only; sparse/dropout/ragged cases
+  need an independent proof.
+- Counterexample / not applicable: runtime partial-owner zero-panel pruning
+  produced PMD VGPR-init warnings and is not equivalent.
+- Proposed Target / target: Shaobo reference material in a later consolidated
+  skill update.

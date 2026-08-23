@@ -12728,3 +12728,24 @@ Status: `ACCEPT_CAUSAL_ZERO_WORK_PRUNE_MMAC50_OPEN`.
 
 Evidence: `docs/fused5_causal_c1_zero_front_design_20260823.md`, workbook
 sections71-72, `/zys/sb/runs/f5c1zero_*_20260823`.
+
+## 2026-08-23 Causal C0 Second-Tile Fully Valid
+
+Status: `ACCEPT_CAUSAL_C0_SECOND_VALID_MMAC50_OPEN`.
+
+- Canonical source changes only the `Group0/Page1` call from runtime causal
+  mode to compile-time unmasked mode. The tile proof is
+  `max(C0 K)=k+63 < k+64=min(Q qi1)`; C1 remains masked.
+- Exact five-GEMM work and MMOP88064 are preserved. Dynamic VALU/SCA fall
+  `92,496/38,216 -> 91,248/37,544`; LDS/VMEM/FLAT remain exact.
+- Resource gates remain roles `9/173/87/162`, SGPR71/VGPR128,
+  private/spill/scratch0. Golden passes S128 c0/c1 and causal S1024/S2048,
+  warning0 and bank0.
+- Paired S1024 fused/lifecycle means improve `1.874%/1.461%`; paired S2048
+  improves `1.194%/1.071%`.
+- Fullperf MMAC active rises `36.133% -> 36.408%`; ABarrier share falls
+  `0.145 pp`. Wait-VM/LGKM rise slightly, so the ownership/readiness ceiling
+  remains explicit.
+
+Evidence: `docs/fused5_causal_c0_second_tile_valid_design_20260823.md`,
+workbook sections77-78, `/zys/sb/runs/f5c0second_*_20260823`.
