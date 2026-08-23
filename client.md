@@ -7312,3 +7312,30 @@ must change useful ownership overlap, because ABarrier issue gaps remain
   duplication should remain one runtime body.
 - Proposed Target / target: Shaobo reference material in a later consolidated
   skill update; do not edit public skills in this task.
+
+## 2026-08-23 M128 Double-Raw Complete-Lifetime Gate
+
+Status: `REJECT_DESIGN_SIDE_CAR_AND_DS_LIFETIME`.
+
+The arithmetic-only tile ledger passed, but the complete ownership graph did
+not. Two M128 raw Q/dO pages use all 128KiB after K/V release. The matrix
+writer's physical dS page and accepted LDS sidecar cannot coexist without
+splitting the page into sub-epochs; that split recreates the very ABarrier
+cadence the larger tile was intended to remove. No source patch was made.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a larger GPU tile appears to fit because the
+  main tensors exactly consume the hardware LDS limit.
+- Rule / reusable rule: budget physical instruction-layout storage, side data,
+  and every temporal handoff, not only logical tensor bytes. Reject the design
+  when making the omitted data fit recreates the control epoch being optimized.
+- Evidence / evidence: M128 raw0+raw1 is exactly 128KiB; native dS physical
+  page is64KiB versus32KiB dead-dO capacity; sidecar is1536B/page with zero
+  slack; overlay requires an extra Filled/Used sub-phase.
+- Boundary / boundary: a documented compact dS writer ABI or sidecar transport
+  without an ownership handshake would reopen the ledger.
+- Counterexample / not applicable: a tile with real LDS slack, or side data
+  already resident in role-local VGPR without extending the critical lifetime.
+- Proposed Target / target: `dcu-kernel-optimization` top-level resource gate
+  in a later consolidation round; do not edit the public skill in this task.

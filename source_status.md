@@ -12801,3 +12801,20 @@ bottleneck is unchanged ownership: XCU ABarrier issue gaps are still `22.13%`.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84, local archive
 `outputs/019ea61f-c117-76b2-abad-e776092d47a0/c83_fullperf`.
+
+## 2026-08-23 M128 Double-Raw Design Gate Closed
+
+Status: `REJECT_DESIGN_SIDE_CAR_AND_DS_LIFETIME`; production source remains
+byte-identical to accepted C83.
+
+- Five-GEMM work is exact and would contain 512 MMAC/GEMM.
+- Startup K/V64KiB + raw Q/dO64KiB and steady raw0+raw1 both consume 128KiB.
+- Full M128 dS publication needs a 64KiB physical writer page; dead dO exposes
+  only 32KiB. M64-half reuse does not reduce the dS handshake cadence.
+- Two M128 sidecars need 3072B with no LDS slack. A temporal overlay needs an
+  extra publish/latch phase and erases the ownership-epoch benefit.
+- No code, static result, correctness result, PMD ticks or perf claim exists
+  for C91; the workbook gate intentionally stopped it before implementation.
+
+Evidence: `docs/fused5_m128_double_raw_dout_dead_design_20260823.md`, workbook
+section91.

@@ -18828,3 +18828,25 @@ the ownership-DAG level rather than another causal micro-specialization.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84,
 `/zys/sb/runs/fused5_c83_fullperf/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_150530`.
+
+## 2026-08-23 M128 Double-Raw Design Rejected Before Code
+
+Status: `REJECT_DESIGN_SIDE_CAR_AND_DS_LIFETIME`.
+
+The exact five-GEMM arithmetic is attractive: `M128/N128/D128` gives 512
+MMAC instructions per GEMM and 2560 per ownership epoch. The complete LDS and
+lifetime ledger does not pass, however. Resident K/V plus one raw Q/dO page
+fills 128 KiB at startup; after K/V latch, two raw pages still fill all 128
+KiB. The native dS writer needs 64 KiB physical storage for logical M128 dS,
+while a dead dO half releases only 32 KiB. Streaming M64 dS halves fits but
+restores the old ownership cadence.
+
+Sidecar is the decisive missing edge: it needs 1536 bytes per M128 page with
+zero LDS slack. Direct consumer global reads restore the rejected duplicated
+VMEM/wait path. Overlaying sidecar into a freed raw page requires a
+publish/latch sub-phase and doubles `RawFilled/RawUsed` cadence, cancelling the
+intended M128 barrier amortization. No source, build or PMD experiment was
+admitted.
+
+Evidence: `docs/fused5_m128_double_raw_dout_dead_design_20260823.md`, workbook
+section91.
