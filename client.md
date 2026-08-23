@@ -7206,3 +7206,16 @@ and same-shape ticks.
   not layout-compatible with its downstream reader.
 - Proposed Target / target: Shaobo reference material under the `shaobo`
   skill during the next consolidation round.
+
+## 2026-08-23 Conditional Writer-Prune Boundary
+
+Although C1's first dQ contribution is mathematically zero, source-level
+writer specialization is not profitable on compiler `e0f10535`. A peeled
+form and an original-loop runtime guard both remove the intended MMOP/LDS
+work, but add enough VALU/SCA/control to erase it. The peeled form regresses
+three S1024 pairs by `0.205%`; the guarded form is also slower in its probe.
+
+Do not retry conditional writer pruning on this compiler. Reopen only with a
+compile-time causal kernel specialization that preserves the original writer
+loop codegen, or compiler evidence that the extra VALU/SCA has disappeared.
+Canonical source remains tag `best/fused5-causal-c1-zero-front-20260823`.

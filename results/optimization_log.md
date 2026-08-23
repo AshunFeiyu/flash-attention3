@@ -18740,3 +18740,23 @@ evidence target.
 
 Evidence: `docs/fused5_causal_c1_zero_front_design_20260823.md`, workbook
 sections71-72, `/zys/sb/runs/f5c1zero_*_20260823`.
+
+## 2026-08-23 Causal Writer Zero-Front Prune Rejected
+
+Status: `REJECT_CODEGEN_CONTROL_EXPANSION_CANONICAL_RESTORED`.
+
+The first causal C1 dS is zero, so its writer contribution `dS_C1 @ K_C1` is
+also zero. Two source forms removed 1,024 dynamic MMOP and 512 LDS reads at
+S1024 while preserving all correctness/resource gates.
+
+Neither form pays. Peeling the first two writer tiles adds 1,172 VALU and 800
+SCA instructions; three paired runs regress fused/lifecycle means by
+`0.205%/0.225%`. Keeping the original loop and adding a runtime skip is worse
+at codegen level: `+1,568 VALU/+720 SCA`, `41.387M` probe ticks and `35.464%`
+MMAC active. The removed zero writer work is not the current critical path,
+and source-level conditionalization exposes more control/barrier work.
+
+After two same-layer failures, source is byte-restored to `2f73cab`. No
+S2048/fullperf is admitted. Evidence:
+`docs/fused5_causal_writer_zero_front_design_20260823.md`, workbook
+sections73-74, `/zys/sb/runs/f5writerzero_*_20260823`.

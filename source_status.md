@@ -12728,3 +12728,18 @@ Status: `ACCEPT_CAUSAL_ZERO_WORK_PRUNE_MMAC50_OPEN`.
 
 Evidence: `docs/fused5_causal_c1_zero_front_design_20260823.md`, workbook
 sections71-72, `/zys/sb/runs/f5c1zero_*_20260823`.
+
+## 2026-08-23 Causal Writer Zero-Front Experiment Closed
+
+Status: `REJECT_CODEGEN_CONTROL_EXPANSION_CANONICAL_RESTORED`.
+
+- The dQ zero-work proof is correct and both implementations pass S128/S1024
+  golden plus no-debt/bank0 gates.
+- Peeling writer tiles regresses three paired S1024 fused means by `0.205%`;
+  an in-loop runtime guard also fails its first performance probe.
+- Both remove MMOP/LDS work but add substantial compiler-generated VALU/SCA.
+  Source is exactly restored to accepted commit `2f73cab`; failed code is not
+  retained.
+
+Evidence: `docs/fused5_causal_writer_zero_front_design_20260823.md`, workbook
+sections73-74, `/zys/sb/runs/f5writerzero_*_20260823`.
