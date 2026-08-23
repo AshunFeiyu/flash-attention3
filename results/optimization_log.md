@@ -18607,3 +18607,25 @@ next evidence targets.
 
 Evidence: `docs/fused5_writer_g1_first_design_20260823.md`, workbook section54,
 and `/zys/sb/runs/fused5_writer_g1_first_*`.
+
+## 2026-08-23 dQ Writer dS Panel Lag-One Read
+
+Decision: `REJECT_LOCAL_READINESS_WIN_BARRIER_MIGRATION_CANONICAL_RESTORED`.
+
+- Hypothesis: age panel `t+1`'s four dS matrix reads under panel `t`'s eight
+  writer MMACs, reducing the repeated read-wait-MMAC critical chain.
+- Resource plan: redistribute the fixed pool `16/204/204/88` to
+  `16/204/184/108`; measured candidate roles are `9/176/164/101` with
+  SGPR82/VGPR128 and private/spill/scratch0.
+- Static/ISA: exact MMAC1472/read840/ABarrier102; assembly proves next-panel
+  reads are emitted before current-panel MMACs.
+- Correctness: S128 causal/noncausal and S1024 full golden PASS; bank0.
+- Three S1024 pairs: `43,091,078 -> 44,139,853` (`+2.434%`), 0/3 wins.
+- Local success: wait-LGKM `7.746% -> 7.226%` (`-0.520 pp`).
+- Global failure: ABarrier `13.325% -> 14.385%` (`+1.060 pp`), MMAC active
+  `35.229% -> 35.073%`, coissue success `-3.791%`.
+- Interpretation: writer readiness was not the closed-loop pacing edge. The
+  faster writer reaches ownership waits sooner and increases inactive time.
+  S2048/fullperf/xcu are not admitted; source restored to `58e90fc`.
+- Evidence: `/zys/sb/runs/fused5_writer_ds_lag_one_correctness_20260823`,
+  `/zys/sb/runs/fused5_writer_ds_lag_one_ab_20260823_s1024`, workbook section60.

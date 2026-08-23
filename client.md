@@ -7080,3 +7080,21 @@ rises `34.821% -> 35.037%`. XCU shows C1 `DqDone1` wait collapsing
   the critical path.
 - Proposed Target / target: Shaobo reference material under the `shaobo`
   skill; do not modify public optimization skills outside consolidation.
+
+## 2026-08-23 Writer dS Panel Lag-One Rejected
+
+Status: `REJECT_LOCAL_READINESS_WIN_BARRIER_MIGRATION_CANONICAL_RESTORED`.
+
+The writer legally held a second dS panel and issued its four matrix reads
+under the current panel's eight MMACs. Fixed WDRA capacity was redistributed
+to `16/204/184/108`; actual roles `9/176/164/101` pass with no resource debt.
+ASM, full golden and bank0 gates all pass.
+
+The mechanism works locally but loses globally. Three S1024 pairs regress
+fused ticks by `2.434%` with 0/3 wins. wait-LGKM falls `0.520 pp`, while
+ABarrier rises `1.060 pp`, coissue success falls `3.791%`, and MMAC active
+falls `0.157 pp`. The writer simply arrives at the next closed-loop ownership
+wait earlier. Source remains the accepted `58e90fc` path.
+
+Evidence: `docs/fused5_writer_ds_lag_one_design_20260823.md`, workbook
+section60, `/zys/sb/runs/fused5_writer_ds_lag_one_ab_20260823_s1024`.

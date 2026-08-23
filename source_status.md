@@ -12632,3 +12632,20 @@ ABarrier cycles fall, barrier share drops to `13.263%`, and MMAC active reaches
 The current next debts are wait-VM exposure, terminal ebarrier, and the open
 50% MMAC-active goal. See
 `docs/fused5_writer_g1_first_design_20260823.md` and workbook section54.
+
+## 2026-08-23 Writer dS Lag-One Experiment Closed
+
+- Decision: `REJECT_LOCAL_READINESS_WIN_BARRIER_MIGRATION_CANONICAL_RESTORED`.
+- Canonical: `src/fused_bwd_kernel.cpp` and `include/fused_bwd_contract.h`
+  restored exactly to accepted commit `58e90fc`.
+- Candidate resource proof: roles `9/176/164/101` inside
+  `16/204/184/108`; SGPR82/VGPR128; private/spill/scratch0.
+- Static: MMAC1472/read840/ABarrier102 exact; lag-one read order present.
+- Correctness: S128 causal/noncausal and S1024 causal PASS; bank0.
+- Performance: three S1024 pairs `+2.434%`, 0/3 wins. wait-LGKM improves
+  `0.520 pp`, but ABarrier worsens `1.060 pp`, MMAC active falls `0.157 pp`,
+  and coissue success falls `3.791%`.
+- Next rule: do not optimize readiness immediately before a closed ownership
+  wait unless the same change removes, overlaps or delays that wait usefully.
+- Evidence: `/zys/sb/runs/fused5_writer_ds_lag_one_correctness_20260823`,
+  `/zys/sb/runs/fused5_writer_ds_lag_one_ab_20260823_s1024`, workbook section60.
