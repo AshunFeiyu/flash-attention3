@@ -7080,3 +7080,22 @@ rises `34.821% -> 35.037%`. XCU shows C1 `DqDone1` wait collapsing
   the critical path.
 - Proposed Target / target: Shaobo reference material under the `shaobo`
   skill; do not modify public optimization skills outside consolidation.
+
+## 2026-08-23 Writer First-MMAC Zero Seed Rejected
+
+Status: `REJECT_PIPELINE_SKEW_AND_BARRIER_EXPOSURE_CANONICAL_RESTORED`.
+
+The experiment removed the writer's per-tile dQ accumulator clears by using
+the first G1 MMAC as the seed. Draft0 exposed the real WDRA limit
+(`writer=87/88`) and spilled; Draft1 redistributed the fixed pool to
+`16/204/200/92` and passed all resource and correctness gates.
+
+The compiler result was cleaner: dynamic VALU fell by 4,544 and static MMAC
+islands became less fragmented. Three S1024 pairs still regressed by `0.765%`;
+MMAC active fell `0.128 pp`, coissue success fell `5.44%`, wait-LGKM rose
+`0.306 pp`, and ABarrier rose `0.551 pp`. The old clear work was off the
+critical path and contributed useful consumer skew. Canonical source remains
+`58e90fc`; no S2048/fullperf was admitted.
+
+Evidence: `docs/fused5_writer_zero_seed_design_20260823.md`, workbook
+section59, and `/zys/sb/runs/fused5_writer_zero_seed_ab_20260823_s1024`.

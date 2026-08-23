@@ -12632,3 +12632,18 @@ ABarrier cycles fall, barrier share drops to `13.263%`, and MMAC active reaches
 The current next debts are wait-VM exposure, terminal ebarrier, and the open
 50% MMAC-active goal. See
 `docs/fused5_writer_g1_first_design_20260823.md` and workbook section54.
+
+## 2026-08-23 Writer Zero-Seed Experiment Closed
+
+- Decision: `REJECT_PIPELINE_SKEW_AND_BARRIER_EXPOSURE_CANONICAL_RESTORED`.
+- Source: restored byte-for-byte to accepted commit `58e90fc` for
+  `src/fused_bwd_kernel.cpp` and `include/fused_bwd_contract.h`.
+- Static candidate: MMAC1472/read840/ABarrier102 exact; role use
+  `9/176/91/164`; SGPR82/VGPR128; private/spill/scratch0 after WDRA revision.
+- Correctness: S128 causal/noncausal and S1024 causal PASS; bank0.
+- Performance: three S1024 pairs regress `+0.765%`, with MMAC active
+  `35.304% -> 35.177%` and coissue success `24,309 -> 22,986`.
+- Mechanism: fewer writer moves expose closed-loop LDS readiness and ABarrier
+  waits; instruction-count reduction alone is not a critical-path win.
+- Evidence: `/zys/sb/runs/fused5_writer_zero_seed_correctness_20260823`,
+  `/zys/sb/runs/fused5_writer_zero_seed_ab_20260823_s1024`, workbook section59.

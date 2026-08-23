@@ -18607,3 +18607,27 @@ next evidence targets.
 
 Evidence: `docs/fused5_writer_g1_first_design_20260823.md`, workbook section54,
 and `/zys/sb/runs/fused5_writer_g1_first_*`.
+
+## 2026-08-23 Writer First-MMAC Zero Seed
+
+Decision: `REJECT_PIPELINE_SKEW_AND_BARRIER_EXPOSURE_CANONICAL_RESTORED`.
+
+- Hypothesis: eliminate eight dQ accumulator clears per q tile by seeding each
+  accumulator with its first G1 MMAC, reducing writer VALU and fragmentation.
+- Draft0: accepted WDRA `16/204/204/88` spills because writer use grows beyond
+  its measured `87/88` limit.
+- Draft1: fixed-pool redistribution `16/204/200/92` passes at writer91/92 and
+  C1 164/200; private/spill/scratch0.
+- Static result: exact MMAC1472/read840/ABarrier102; MMAC islands `203 -> 194`,
+  singleton islands `19 -> 10`, static zero/move class `-46`.
+- Correctness: CPU golden S128 causal/noncausal and S1024 causal PASS; bank0.
+- Three S1024 pairs: fused mean `43,065,447 -> 43,394,867` (`+0.765%`), one
+  candidate win. Dynamic VALU `117,156 -> 112,612`, but MMAC active
+  `35.304% -> 35.177%`, coissue success `24,309 -> 22,986`, wait-LGKM
+  `+0.306 pp`, ABarrier `+0.551 pp`.
+- Conclusion: the removed clear was already hidden and supplied useful skew.
+  The writer reaches ownership/readiness waits sooner, so lower instruction
+  count is not lower critical-path time. S2048/fullperf were not admitted.
+- Source: canonical restored to `58e90fc`.
+- Evidence: `/zys/sb/runs/fused5_writer_zero_seed_correctness_20260823`,
+  `/zys/sb/runs/fused5_writer_zero_seed_ab_20260823_s1024`, workbook section59.
