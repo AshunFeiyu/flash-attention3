@@ -18848,3 +18848,24 @@ fragment and pool repartition perturb the writer schedule.
 
 Evidence: `docs/fused5_writer_g1_zero_seed_design_20260823.md`, workbook
 sections85-86, `/zys/sb/runs/fused5_c85_ab_*`.
+
+## 2026-08-23 Causal Writer Zero-Front Consume Prune Rejected
+
+Status: `REJECT_S2048_SCALING_RUNTIME_BRANCH_OVERHEAD`.
+
+The exact causal domain proof was extended from the C1 consumer to the dQ
+writer: the first C1 dS payload is zero, so the candidate preserved Filled1,
+Done1 and RawUsed0 phases but skipped its payload writes and writer read/MMAC.
+Dynamic H1/S1024 work matches the ledger exactly: MMOP falls by 1,024 and LDS
+by 640 with bank0 and full correctness. Three paired S1024 runs improve fused
+and lifecycle means by `1.212%/1.041%`.
+
+The compiler turns the loop-local conditional accumulator merge into 28 extra
+static `v_mov_b64` sites and five branches. At S2048 the fixed zero-domain
+saving is diluted while that loop cost recurs: two-pair fused/lifecycle means
+regress `0.238%/0.431%`. No fullperf is admitted. Canonical source returns to
+C83. Future zero-front pruning must peel the first ownership epoch without a
+second G0/store body and without recurring phi moves.
+
+Evidence: `docs/fused5_causal_writer_zero_front_prune_design_20260823.md`,
+workbook sections87-88, `/zys/sb/runs/fused5_c87_*`.

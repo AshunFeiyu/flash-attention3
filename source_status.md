@@ -12813,3 +12813,18 @@ S1024 fused/lifecycle means by `0.681%/0.656%`. No performance source remains.
 Canonical production is byte-identical to commit `73e8119` for the kernel and
 contract. Do not retry writer MMAC zero-seeding without a new native no-live-
 seed instruction contract.
+
+## 2026-08-23 Causal Writer Zero-Front Runtime Branch Closed
+
+Status: `REJECT_S2048_SCALING_RUNTIME_BRANCH_OVERHEAD`.
+
+The candidate correctly removes the causal first-epoch C1 zero dS payload and
+writer G1 read/MMAC while retaining every ownership token event. It passes all
+resource and CPU-golden gates and wins three H1/S1024 pairs. It regresses the
+two-pair H1/S2048 fused/lifecycle means because compiler-generated branch/phi
+moves recur through the q loop while the zero-domain saving occurs once.
+
+No candidate source remains. `src/fused_bwd_kernel.cpp` and
+`include/fused_bwd_contract.h` are byte-identical to C83 commit `73e8119`.
+Do not retry a loop-local `qi==0` writer branch. A future topology must prove a
+nonduplicating first-epoch peel before source admission.

@@ -7336,3 +7336,30 @@ pairs still regress in mean, so the failed source and rebudget are removed.
   operand and no role-window change, such as the accepted consumer seed sites.
 - Proposed Target / target: Shaobo reference material during consolidated
   skill evolution; no public skill edit here.
+
+## 2026-08-23 Causal Writer Zero-Front Scaling Boundary
+
+Status: `REJECT_S2048_SCALING_RUNTIME_BRANCH_OVERHEAD`.
+
+The first causal C1 dS payload is provably zero. Removing its native writes and
+the writer's zero-page read/MMAC is correct, resource-clean and a repeatable
+H1/S1024 win. It does not scale to S2048 because the compiler materializes the
+loop-local accumulator merge as recurring moves and branches. Production is
+restored to C83; the failed source is not retained.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a mathematically empty first ownership epoch
+  can be skipped with a runtime condition inside a longer steady loop.
+- Rule / reusable rule: account separately for one-time useful-work removal
+  and per-iteration compiler control/phi cost; require at least one longer
+  scaling shape before promotion even when the short diagnostic wins.
+- Evidence / evidence: exact MMOP `88,064 -> 87,040`; S1024 fused mean
+  `-1.212%`, but S2048 fused mean `+0.238%`; static `v_mov_b64 +28` and branch
+  `+5`, full correctness/resource gates PASS.
+- Boundary / boundary: gfx946 compiler e0f10535 and this loop-local writer
+  shape. A genuinely one-time peeled epoch with no duplicated body may differ.
+- Counterexample / not applicable: compile-time pruning that removes the body
+  itself, such as accepted C1 zero-front and causal symbol specialization.
+- Proposed Target / target: Shaobo reference material during the next
+  consolidated skill update; do not edit public skills in this task.
