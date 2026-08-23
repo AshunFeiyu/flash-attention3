@@ -18693,3 +18693,24 @@ readiness edge is the next hypothesis.
 
 Evidence: `docs/fused5_causal_boundary_mask_design_20260823.md`, workbook
 sections67-68, and `/zys/sb/runs/f5causal_boundary_*_20260823`.
+
+## 2026-08-23 dQ Writer Read8 Batch Rejected
+
+Status: `REJECT_OUTSTANDING_LDS_PRESSURE_CANONICAL_RESTORED`.
+
+The dQ writer batched two adjacent M16 panels as
+`8 ds_read_matrix -> one wait -> 16 MMAC`, replacing two
+`4 reads -> wait -> 8 MMAC` packets. It legally rebudgeted WDRA from
+`16/204/204/88` to `16/204/188/104`; branch use is `9/173/162/99`, with
+exact MMAC1472/read840/ABarrier102 and no resource debt. S128 causal/noncausal
+and S1024 full golden correctness pass, warning0 and bank0.
+
+Three S1024 pairs reject it: fused ticks regress `1.791%`, lifecycle ticks
+regress `1.536%`, MMAC active falls `0.341 pp`, and wait-LGKM/barrier/wait-VM
+all rise. Dynamic VALU/SCA/LDS/FLAT are exact. A more regular static island is
+not automatically a shorter pipeline: the larger live packet increases
+outstanding LDS/readiness pressure on the writer and delays ownership release.
+Canonical source is restored; no S2048/fullperf is admitted.
+
+Evidence: `docs/fused5_writer_read8_batch_design_20260823.md`, workbook
+sections69-70, `/zys/sb/runs/f5writer_read8_*_20260823`.

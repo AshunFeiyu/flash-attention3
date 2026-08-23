@@ -1,5 +1,31 @@
 # Client
 
+## 2026-08-23 Writer Packet-Size Boundary
+
+The dQ writer can legally issue eight dS matrix reads before one wait by
+moving a 16-VGPR WDRA quantum from C1 to writer. That shape is correct,
+spill-free and statically regular, but it regresses S1024 fused ticks by
+`1.791%` and lowers MMAC active. Larger read islands are therefore not a
+default optimization on Shaobo: packet size must be constrained by total
+outstanding LDS readiness and ownership-release latency, not visual SQTT
+regularity alone. Canonical remains four reads, one wait, eight MMAC.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: batching LDS matrix reads to make a larger
+  MMAC island in a role with tight VGPR and ownership cadence.
+- Rule / reusable rule: budget both live VGPR and outstanding LDS requests;
+  admit larger packets only when paired ticks and absolute readiness debt fall.
+- Evidence / evidence: branch `exp/fused5-writer-read8-batch`; exact work and
+  correctness pass, but S1024 fused `+1.791%`, active `-0.341 pp`, with higher
+  LGKM/barrier/VM waits; workbook sections69-70.
+- Boundary / boundary: a different architecture, deeper hardware LDS queue,
+  or useful independent work between issue and wait may change the result.
+- Counterexample / not applicable: packets whose extra fragments are already
+  live for another purpose or whose reads target independent readiness queues.
+- Proposed Target / target: future `dcu-kernel-optimization` consolidation;
+  do not directly edit the public skill in this task.
+
 ## 2026-08-23 Causal Steady-Region Promotion
 
 The canonical fused5 path now distinguishes causal boundary tiles from the

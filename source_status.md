@@ -1,5 +1,21 @@
 # Source Status
 
+## 2026-08-23 dQ Writer Read8 Batch Rejected
+
+- Status: `REJECT_OUTSTANDING_LDS_PRESSURE_CANONICAL_RESTORED`.
+- Candidate `8 reads -> wait -> 16 MMAC` is statically legal at WDRA
+  `16/204/188/104`, role use `9/173/162/99`, SGPR71/VGPR128 and no debt.
+- Exact work passes: MMAC1472, symbol matrix reads840, ABarrier102 and all
+  dynamic instruction/traffic classes unchanged. Full S128 c0/c1 and S1024
+  golden correctness pass, warning0 and bank0.
+- Three S1024 pairs regress fused/lifecycle ticks `1.791%/1.536%`; active
+  falls `0.341 pp`, while LGKM/barrier/VM waits rise.
+- Source and WDRA are byte-equivalent to accepted commit `36af512`; failed
+  batching code is not retained. Do not retry read8 without an independent
+  outstanding-LDS budget or a way to overlap the extra live packet.
+
+Evidence: `/zys/sb/runs/f5writer_read8_*_20260823`; workbook sections69-70.
+
 ## 2026-08-23 Causal Boundary-Mask Elision Promoted
 
 - Status: `ACCEPT_CAUSAL_STEADY_MASK_ELISION_MMAC50_OPEN`.
