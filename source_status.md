@@ -12749,3 +12749,19 @@ Status: `ACCEPT_CAUSAL_C0_SECOND_VALID_MMAC50_OPEN`.
 
 Evidence: `docs/fused5_causal_c0_second_tile_valid_design_20260823.md`,
 workbook sections77-78, `/zys/sb/runs/f5c0second_*_20260823`.
+
+## 2026-08-23 Causal Diagonal Local-Mask Static Reject
+
+Status: `REJECT_COMPILER_PACKING_REGRESSION_CANONICAL_RESTORED`.
+
+The exact global-to-local diagonal predicate proof was implemented as one
+compile-time helper mode without changing tile, GEMM, LDS, ownership or
+ABarrier. Static gates remained spill/private/scratch free, but SGPR rose
+`71 -> 82`, heavy roles rose `173/162 -> 176/164`, and generated ISA added
+116 scalar mask combines, 116 vector cndmasks, 142 scalar FP32 multiplies and
+33 waits while losing packed multiply/FMA forms. It therefore failed the
+static admission gate; no PMD result is claimed and production source is
+restored to `6f445c0` behavior.
+
+Evidence: `docs/fused5_causal_diagonal_local_mask_design_20260823.md`,
+workbook sections79-80, local `static_c79/{control,candidate}.asm`.

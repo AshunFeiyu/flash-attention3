@@ -7234,3 +7234,26 @@ wait-VM/LGKM slightly rise; ownership/readiness therefore remain open.
   produced PMD VGPR-init warnings and is not equivalent.
 - Proposed Target / target: Shaobo reference material in a later consolidated
   skill update.
+
+## 2026-08-23 Diagonal Local-Mask Static Boundary
+
+The causal diagonal identity is mathematically exact, but expressing it as a
+C++ template/boolean mode destroyed the compiler's packed predicate/math
+shape. SGPR and heavy-role VGPR use rose, 116 mask combines and 33 waits were
+added, and the candidate was rejected before PMD. Canonical source remains
+the accepted `6f445c0` path.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: an algebraic index simplification is proposed
+  inside a compiler-vectorized GPU predicate or mixed-precision loop.
+- Rule / reusable rule: require generated-ISA equivalence or reduction before
+  runtime testing; simpler scalar source is not evidence of cheaper SIMD code.
+- Evidence / evidence: fused5 diagonal-local candidate SGPR `71 -> 82`,
+  `s_and_b64/v_cndmask +116/+116`, `s_waitcnt +33`, packed operations reduced.
+- Boundary / boundary: the mathematical identity remains valid; the rejection
+  applies to this C++ template/boolean lowering under compiler `e0f10535`.
+- Counterexample / not applicable: a dedicated vector builtin or proven
+  packed mask ABI may retain the intended instruction shape.
+- Proposed Target / target: `dcu-kernel-optimization` during a later public
+  skill consolidation; do not edit the public skill in this task.

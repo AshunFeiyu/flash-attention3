@@ -18767,3 +18767,22 @@ rather than another causal micro-branch.
 
 Evidence: `docs/fused5_causal_c0_second_tile_valid_design_20260823.md`,
 workbook sections77-78, `/zys/sb/runs/f5c0second_*_20260823`.
+
+## 2026-08-23 Causal Diagonal Local-Mask Rejected At Static Gate
+
+Status: `REJECT_COMPILER_PACKING_REGRESSION_CANONICAL_RESTORED`.
+
+- Hypothesis: cancel the common global K base on the two diagonal causal
+  regions and compare only group-local owner/lane coordinates.
+- Formula, five GEMMs, M64/N128/D128, 16-wave roles, LDS128KiB, 12 ABarrier
+  IDs, matrix/global traffic and output ownership were unchanged.
+- Build passed no-private/spill/scratch, but metadata regressed SGPR
+  `71 -> 82`; role use changed `9/173/87/162 -> 9/176/87/164`.
+- The compiler expanded masked scalar code instead of preserving packed math:
+  `s_and_b64 +116`, `v_cndmask +116`, `v_mul_f32 +142`, `s_waitcnt +33`,
+  while `v_pk_mul -71` and `v_pk_fma -45`.
+- Decision: stop before PMD under the workbook static gate. Restore canonical
+  source and retain only design/ASM evidence.
+
+Evidence: `docs/fused5_causal_diagonal_local_mask_design_20260823.md`,
+`outputs/.../static_c79/{control,candidate}.asm`, workbook sections79-80.
