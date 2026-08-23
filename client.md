@@ -1,5 +1,31 @@
 # Client
 
+## 2026-08-23 Causal Owner-Panel Prune Boundary
+
+The C0 causal diagonal has six provably empty owner/M16 rectangles. A focused
+implementation removes the predicted 768 S1024 MMOP instructions and shows a
+promising 40.624M fused tick, but compiler e0f10535 emits a PHI copy from v93
+before the branch-local zero definition. PMD reports warning2 at S128 and
+warning16 at S1024 under three zero-definition forms. Numerical golden,
+resources and bank0 all pass; production still rejects the route because
+warning0 is mandatory. Canonical source is restored exactly to `2f73cab`.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: pruning owner-dependent all-zero rectangles
+  inside a WDRA role branch.
+- Rule / reusable rule: prove the tensor domain first, then separately gate
+  compiler register initialization; semantic correctness does not waive a
+  `read VGPR before writing` warning even when the read is a dead PHI copy.
+- Evidence / evidence: S1024 MMOP `88,064 -> 87,296`, fused `40,624,220`,
+  warning16; workbook sections75-76; remote C75 experiment.
+- Boundary / boundary: a branch-free compile-time owner specialization or a
+  fixed compiler/PMD tracker may make the algebraic prune promotable.
+- Counterexample / not applicable: uniform whole-role pruning such as the
+  accepted C1 zero-front, which does not merge partial owner state.
+- Proposed Target / target: Shaobo compiler/PMD reference candidate; do not
+  edit a public skill during this task.
+
 ## 2026-08-23 Writer Packet-Size Boundary
 
 The dQ writer can legally issue eight dS matrix reads before one wait by

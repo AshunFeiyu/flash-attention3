@@ -1,5 +1,23 @@
 # Source Status
 
+## 2026-08-23 Causal C0 Zero-Panel Prune Rejected By PMD Gate
+
+- Status: `REJECT_PMD_REGISTER_INIT / OBSERVE_PERF_CANONICAL_RESTORED`.
+- The causal diagonal proof is valid: C0 N16 owners 0/1/2/3 have
+  0/1/2/3 fully invalid M16 panels, so six owner-panels can omit score, dP,
+  softmax and dS arithmetic.
+- H1/S128 causal/noncausal and H1/S1024 causal match the full CPU golden;
+  SGPR71/VGPR128, private/spill/scratch0 and bank0 remain clean. S1024 dynamic
+  work changes exactly as expected: MMOP88064->87296, VALU92496->91144 and
+  LDS61056->60720; the observed fused tick is 40,624,220.
+- The PMD hard gate fails with `v_mov_b32 ... v93, read vgpr ... before
+  writing`: warning2 at S128 and warning16 at S1024. Three zero-definition
+  forms retain the same PHI/register-init warning family.
+- Production source is byte-exact commit `2f73cab`. The failed source exists
+  only in `/zys/sb/experiments/fused5_causal_c0_zero_panels_20260823_c75`.
+
+Evidence: `/zys/sb/runs/f5c0zero_correctness*_20260823`; workbook sections75-76.
+
 ## 2026-08-23 dQ Writer Read8 Batch Rejected
 
 - Status: `REJECT_OUTSTANDING_LDS_PRESSURE_CANONICAL_RESTORED`.

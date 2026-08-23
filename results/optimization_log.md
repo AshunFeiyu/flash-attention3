@@ -1,5 +1,24 @@
 # Optimization Log
 
+## 2026-08-23 Causal C0 Zero-Panel Prune PMD Reject
+
+Status: `REJECT_PMD_REGISTER_INIT / OBSERVE_PERF_CANONICAL_RESTORED`.
+
+The first causal Q tile contains six C0 owner/M16 rectangles that are fully
+masked. Removing their score, dP and elementwise work is numerically exact and
+reduces S1024 MMOP by the predicted 768 instructions. The probe records fused
+40,624,220 ticks, MMAC active36.232%, VALU91,144, SCA38,704, LDS60,720 and
+bank0, versus the accepted MMOP88,064/VALU92,496/LDS61,056 state.
+
+The candidate is not promotable: PMD reports the same compiler-generated PHI
+copy from uninitialized v93 under three zero-definition source forms. Full
+golden output remains correct, but warning0 is a hard gate. Source is restored
+exactly to `2f73cab`; preserve the remote experiment as compiler/PMD evidence
+and do not extend this branch to dV/dK or writer pruning.
+
+Evidence: `docs/fused5_causal_c0_zero_panels_design_20260823.md`, workbook
+sections75-76 and `/zys/sb/runs/f5c0zero_correctness*_20260823`.
+
 ## 2026-08-23 Sidecar Pair Read Rejected
 
 Status: `REJECT_LGKM_BARRIER_MIGRATION_CANONICAL_RESTORED`.
