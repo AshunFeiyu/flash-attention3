@@ -7279,3 +7279,36 @@ forces two q1 bodies under e0f10535; static MMAC grows by 128, C1 reaches
   compile-time first accumulation point, as in fixed score/dP islands.
 - Proposed Target / target: Shaobo zero-seed reference during consolidated
   skill evolution; no public skill edit in this task.
+
+## 2026-08-23 Compile-Time Causal Specialization
+
+Status: `ACCEPT_COMPILE_TIME_MODE_SPECIALIZATION_MMAC50_OPEN`.
+
+The canonical fused5 implementation is now a single template body with two
+entry symbols. This preserves clean-repo governance while allowing causal C1
+to seed dV/dK at its first valid qi1 tile and noncausal C1 to seed at qi0.
+The host API is unchanged. Both symbols pass resource gates and the complete
+CPU-golden lifecycle; paired S1024/S2048 measurements improve ticks, and
+fullperf MMAC active reaches `36.579709%` with lower VALU/SCA/wait shares.
+
+The result closes the causal mask/zero-seed micro tier. The next hypothesis
+must change useful ownership overlap, because ABarrier issue gaps remain
+`22.13%` and dwarf the remaining frontend savings.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: runtime modes choose different first valid
+  accumulator updates and a single generated body duplicates a large MMAC
+  region or spills.
+- Rule / reusable rule: retain one template implementation but emit one
+  compile-time entry symbol per mode; host-select the symbol and gate each
+  symbol independently for resources and work count.
+- Evidence / evidence: causal static MMAC `1472 -> 1344`, `v_mov_b64 42 -> 10`,
+  S1024 fused `-1.270%`, S2048 fused `-1.207%`, active
+  `36.407955% -> 36.579709%`, correctness/resource gates PASS.
+- Boundary / boundary: binary size grows and both modes require independent
+  ABI/metadata/correctness validation; this does not repair shared ownership.
+- Counterexample / not applicable: tiny mode-local arithmetic without body
+  duplication should remain one runtime body.
+- Proposed Target / target: Shaobo reference material in a later consolidated
+  skill update; do not edit public skills in this task.

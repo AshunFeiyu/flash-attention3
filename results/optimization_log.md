@@ -18805,3 +18805,26 @@ Status: `REJECT_C1_BODY_DUPLICATION_SPILL_CANONICAL_RESTORED`.
 
 Evidence: `docs/fused5_causal_c1_first_valid_zero_seed_design_20260823.md`,
 workbook sections81-82, remote c81 experiment.
+
+## 2026-08-23 Compile-Time Causal Kernel Specialization Accepted
+
+Status: `ACCEPT_COMPILE_TIME_MODE_SPECIALIZATION_MMAC50_OPEN`.
+
+The runtime-mode zero-seed conflict is resolved at symbol granularity: one
+templated canonical body emits causal and noncausal entries, and the unchanged
+host API selects the entry. Causal ISA removes its unreachable C1 q0 GEMM body
+and seeds dV/dK at qi1; noncausal seeds at qi0. Both symbols remain
+private/spill/scratch free and retain the accepted tile, LDS, role and
+ownership topology.
+
+Full golden correctness passes S128 causal/noncausal and causal S1024/S2048.
+Interleaved S1024 fused/lifecycle means improve `1.270%/0.928%`; the S2048
+pair improves `1.207%/1.360%`. Fullperf MMAC active rises
+`36.407955% -> 36.579709%`, while VALU/SCA fall by `1,216/1,952` and all
+three wait shares improve slightly. XCU still attributes `22.13%` of issue-gap
+duration to ABarrier ownership, so the next experiment must be structural at
+the ownership-DAG level rather than another causal micro-specialization.
+
+Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
+workbook sections83-84,
+`/zys/sb/runs/fused5_c83_fullperf/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_150530`.

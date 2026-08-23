@@ -12781,3 +12781,23 @@ production source is restored.
 Evidence: `docs/fused5_causal_c1_first_valid_zero_seed_design_20260823.md`,
 workbook sections81-82, remote experiment
 `/zys/sb/experiments/fused5_causal_c1_first_valid_zero_seed_20260823_c81`.
+
+## 2026-08-23 Compile-Time Causal Specialization Canonical Promotion
+
+Status: `ACCEPT_COMPILE_TIME_MODE_SPECIALIZATION_MMAC50_OPEN`.
+
+Production now contains one templated fused5 body and two generated entry
+symbols. Runtime `causal` remains part of the external API but no longer forces
+the causal symbol to carry the noncausal first-accumulation body. The causal
+symbol has 1,344 static MMAC sites and 10 `v_mov_b64` sites; noncausal has
+1,472 and 10. Both pass the two-symbol gate with no private/spill/scratch.
+
+Full lifecycle correctness passes S128 causal/noncausal plus causal
+S1024/S2048. Interleaved S1024 and paired S2048 both reduce fused and lifecycle
+ticks. Fullperf keeps exact dynamic MMOP/LDS/VMEM/FLAT, raises MMAC active to
+`36.579709%`, and reduces VALU/SCA and wait shares. The dominant remaining
+bottleneck is unchanged ownership: XCU ABarrier issue gaps are still `22.13%`.
+
+Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
+workbook sections83-84, local archive
+`outputs/019ea61f-c117-76b2-abad-e776092d47a0/c83_fullperf`.

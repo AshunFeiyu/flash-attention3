@@ -8,7 +8,10 @@ import re
 from pathlib import Path
 
 
-CANONICAL = "fa3_bwd_5gemm_kernel"
+CANONICAL_SYMBOLS = (
+    "fa3_bwd_5gemm_kernel",
+    "fa3_bwd_5gemm_noncausal_kernel",
+)
 STAGES = ("score", "dp", "dv", "dk", "dq")
 
 
@@ -55,29 +58,32 @@ def metadata_block(asm: str, symbol: str) -> str:
     return ""
 
 
-def check_asm(asm_path: Path, symbol: str, failures: list[str]) -> str:
+def check_asm(asm_path: Path, symbols: list[str], failures: list[str]) -> str:
     if not asm_path.is_file():
         failures.append("asm_file_missing")
         return ""
 
     asm = asm_path.read_text(encoding="utf-8", errors="replace")
-    require(asm, rf"\b{re.escape(symbol)}\b", failures,
-            "asm_missing_canonical_symbol")
-
     names = re.findall(r"^\s*\.name:\s*(\S+)\s*$", asm,
                        flags=re.MULTILINE)
-    if names:
-        if names.count(symbol) != 1:
-            failures.append(f"asm_canonical_symbol_count={names.count(symbol)}")
+    for symbol in symbols:
+        require(asm, rf"\b{re.escape(symbol)}\b", failures,
+                f"asm_missing_symbol:{symbol}")
+        if names:
+            if names.count(symbol) != 1:
+                failures.append(
+                    f"asm_symbol_count:{symbol}={names.count(symbol)}")
+                continue
         block = metadata_block(asm, symbol)
         if not block:
-            failures.append("asm_missing_canonical_metadata")
-            return asm
+            failures.append(f"asm_missing_metadata:{symbol}")
+            continue
         for line in block.splitlines():
             if re.search(r"private|scratch|spill", line, re.IGNORECASE):
                 values = [int(value) for value in re.findall(r"(?:[:=])\s*(\d+)", line)]
                 if values and any(value != 0 for value in values):
-                    failures.append("asm_nonzero_private_scratch_or_spill")
+                    failures.append(
+                        f"asm_nonzero_private_scratch_or_spill:{symbol}")
                     break
     return asm
 
@@ -90,8 +96,9 @@ def main() -> int:
                         default=Path("include/fused_bwd_contract.h"))
     parser.add_argument("--asm", type=Path,
                         help="optional LLVM AMDGPU assembly/metadata text")
-    parser.add_argument("--symbol", default=CANONICAL)
+    parser.add_argument("--symbol", action="append")
     args = parser.parse_args()
+    symbols = args.symbol or list(CANONICAL_SYMBOLS)
     failures: list[str] = []
 
     if not args.source.is_file():
@@ -103,31 +110,32 @@ def main() -> int:
 
     source = args.source.read_text(encoding="utf-8", errors="replace")
     contract = args.contract.read_text(encoding="utf-8", errors="replace")
-    asm = check_asm(args.asm, args.symbol, failures) if args.asm else ""
+    asm = check_asm(args.asm, symbols, failures) if args.asm else ""
     code = source + "\n" + asm
 
-    definitions = re.findall(
-        rf"^\s*(?:extern\s+\"C\"\s+)?__global__[^;{{}}]*\b"
-        rf"({re.escape(args.symbol)})\s*\([^;{{}}]*\)\s*\{{",
-        source, flags=re.MULTILINE | re.DOTALL,
-    )
-    if len(definitions) != 1:
-        failures.append(f"canonical_definition_count={len(definitions)}")
+    for symbol in symbols:
+        definitions = re.findall(
+            rf"^\s*(?:extern\s+\"C\"\s+)?__global__[^;{{}}]*\b"
+            rf"({re.escape(symbol)})\s*\([^;{{}}]*\)\s*\{{",
+            source, flags=re.MULTILINE | re.DOTALL,
+        )
+        if len(definitions) != 1:
+            failures.append(
+                f"specialization_definition_count:{symbol}={len(definitions)}")
 
     production_symbols = re.findall(
         r"^\s*(?:extern\s+\"C\"\s+)?__global__[^;{}]*\b"
         r"([A-Za-z_]\w*(?:kernel|Kernel))\s*\([^;{}]*\)\s*\{",
         source, flags=re.MULTILINE | re.DOTALL,
     )
-    extra_fused = [
-        name for name in production_symbols
-        if name != args.symbol and re.search(r"(?:fused|5gemm)", name,
-                                             re.IGNORECASE)
-    ]
+    extra_fused = [name for name in production_symbols
+                   if name not in symbols and
+                   re.search(r"(?:fused|5gemm)", name, re.IGNORECASE)]
     if extra_fused:
         failures.append("extra_production_fused_symbols=" + ",".join(extra_fused))
-    require(source, rf"\b{re.escape(args.symbol)}\b", failures,
-            "missing_canonical_symbol")
+    require(source, r"template\s*<\s*bool\s+Causal\s*>.*?"
+                    r"run_fused5_kernel_body", failures,
+            "missing_single_templated_canonical_body")
 
     stages = stage_definitions(source)
     for stage in STAGES:
@@ -186,7 +194,8 @@ def main() -> int:
         return 1
 
     print("fused BWD kernel gate: PASS")
-    print(f"  canonical: {args.symbol}, GEMMs=score/dp/dv/dk/dq")
+    print("  specializations: " + ",".join(symbols))
+    print("  one templated canonical body; GEMMs=score/dp/dv/dk/dq")
     print("  MLS/BPS + ds_read_matrix + MMAC + ABarrier; no fallback/shortcut path")
     return 0
 

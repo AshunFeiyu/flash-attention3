@@ -18,7 +18,7 @@ python3 scripts/check_fused_bwd_kernel_gate.py \
   --asm "${BUILD_DIR}/fused_bwd_kernel.asm"
 python3 scripts/check_symbol_metadata_gate.py \
   --asm "${BUILD_DIR}/fused_bwd_kernel.asm" \
-  --symbol-regex fa3_bwd_5gemm_kernel \
+  --symbol-regex 'fa3_bwd_5gemm(?:_noncausal)?_kernel' \
   --max-private-segment 0 --max-sgpr-spill 0 --max-vgpr-spill 0
 
 TARGET_GFX="${TARGET_GFX}" BUILD_DIR="${BUILD_DIR}" \

@@ -499,15 +499,6 @@ __device__ __forceinline__ void c0_dp_stage(
     mmac_product_island(dp_lhs, resident.v_trans, zero, dp);
 }
 
-__device__ __forceinline__ void zero_accumulators(
-    Accumulator (&acc)[8]) {
-#pragma unroll
-    for (int i = 0; i < 8; ++i) {
-        ins::zero_vgpr2(acc[i].u64[0]);
-        ins::zero_vgpr2(acc[i].u64[1]);
-    }
-}
-
 // Logical GEMM 3: consume dO while its four matrix fragments are hot.
 template <bool SeedZero>
 __device__ __forceinline__ void update_dv_stage(
@@ -990,7 +981,18 @@ __device__ __forceinline__ void run_consumer_q_tile(
             order_dv_packet_before_ds(dv_packet, row_delta);
             ds_stage(p, dp, row_delta, softmax_scale, mmac_zero,
                      ds_panels[m_block]);
-            if (m_block < Tile::kMqPanels - 1) {
+            if constexpr (FirstAccum) {
+                if (m_block == 0) {
+                    consume_dv_operand_packet_after_ds<kMatrixBlocksD, true>(
+                        dv_packet, ds_panels[m_block], mmac_zero, dv_acc);
+                } else if (m_block < Tile::kMqPanels - 1) {
+                    consume_dv_operand_packet_after_ds<kMatrixBlocksD>(
+                        dv_packet, ds_panels[m_block], mmac_zero, dv_acc);
+                } else {
+                    consume_dv_operand_packet_after_ds<0>(
+                        dv_packet, ds_panels[m_block], mmac_zero, dv_acc);
+                }
+            } else if (m_block < Tile::kMqPanels - 1) {
                 consume_dv_operand_packet_after_ds<kMatrixBlocksD>(
                     dv_packet, ds_panels[m_block], mmac_zero, dv_acc);
             } else {
@@ -1050,7 +1052,7 @@ __device__ __forceinline__ void run_consumer_q_tile(
     }
 }
 
-template <int Group>
+template <int Group, bool Causal>
 __device__ __forceinline__ void run_consumer_group(
     const __half* lds,
     __half* mutable_lds,
@@ -1060,7 +1062,6 @@ __device__ __forceinline__ void run_consumer_group(
     int k_base,
     int q_tile_begin,
     int q_tile_count,
-    int causal,
     float softmax_scale,
     int owner,
     int lane) {
@@ -1073,13 +1074,6 @@ __device__ __forceinline__ void run_consumer_group(
 
     Accumulator dv_acc[8];
     Accumulator dk_acc[8];
-    if constexpr (Group == 1) {
-        // C1's first causal Q tile is provably outside its K64 domain. Both
-        // accumulator families therefore start from explicit zero; C0 keeps
-        // compile-time first-MMAC seeding.
-        zero_accumulators(dv_acc);
-        zero_accumulators(dk_acc);
-    }
     ins::F16x8 mmac_zero;
     ins::zero_f16x8(mmac_zero);
     int raw0_phase = 0;
@@ -1091,15 +1085,15 @@ __device__ __forceinline__ void run_consumer_group(
     if (q_tile_count > 0) {
         if constexpr (Group == 0) {
             run_consumer_q_tile<0, 0, false, true>(
-                lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+                lds, mutable_lds, k_base, q_tile_begin, qi, Causal ? 1 : 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw0_phase, done0_phase);
-        } else if (causal) {
+        } else if constexpr (Causal) {
             run_c1_causal_zero_front(
                 mutable_lds, owner, mmac_zero, raw0_phase);
         } else {
-            run_consumer_q_tile<1, 0, false, false>(
-                lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+            run_consumer_q_tile<1, 0, false, true>(
+                lds, mutable_lds, k_base, q_tile_begin, qi, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw0_phase, done0_phase);
         }
@@ -1111,9 +1105,14 @@ __device__ __forceinline__ void run_consumer_group(
                 lds, mutable_lds, k_base, q_tile_begin, qi, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw1_phase, done1_phase);
+        } else if constexpr (Causal) {
+            run_consumer_q_tile<1, 1, true, true>(
+                lds, mutable_lds, k_base, q_tile_begin, qi, 1,
+                softmax_scale, n_owner, owner, lane, resident, mmac_zero,
+                dv_acc, dk_acc, raw1_phase, done0_phase);
         } else {
             run_consumer_q_tile<1, 1, true, false>(
-                lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+                lds, mutable_lds, k_base, q_tile_begin, qi, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw1_phase, done0_phase);
         }
@@ -1299,31 +1298,25 @@ CtaOrderPlan choose_causal_cta_order(int k_tile_count, int bh_count,
 
 }  // namespace
 
-extern "C" __global__ void __launch_bounds__(Tile::kThreadsPerCta, 1)
-    __attribute__((hcu_wdra_waves_per_tg(Tile::kWavesPerCta)))
-fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
-                     const __half* __restrict__ q,
-                     const __half* __restrict__ k,
-                     const __half* __restrict__ v,
-                     const float* __restrict__ packed_sidecar,
-                     __half* __restrict__ dq_partial,
-                     float* __restrict__ dk,
-                     float* __restrict__ dv,
-                     int heads_q,
-                     int heads_kv,
-                     int q_heads_per_kv,
-                     int seqlen,
-                     int causal,
-                     int cta_order_mode,
-                     int cta_order_width,
-                     float softmax_scale) {
-#if defined(SHAOBO_EXPLICIT_WDRA_INIT)
-    __builtin_hcu_wdra_init(Wdra::kProducerVgprs, Wdra::kConsumer0Vgprs,
-                            Wdra::kConsumer1Vgprs,
-                            Wdra::kDqWriterVgprs);
-#endif
+template <bool Causal>
+__device__ __forceinline__ void run_fused5_kernel_body(
+    const __half* __restrict__ dout,
+    const __half* __restrict__ q,
+    const __half* __restrict__ k,
+    const __half* __restrict__ v,
+    const float* __restrict__ packed_sidecar,
+    __half* __restrict__ dq_partial,
+    float* __restrict__ dk,
+    float* __restrict__ dv,
+    int heads_q,
+    int heads_kv,
+    int q_heads_per_kv,
+    int seqlen,
+    int cta_order_mode,
+    int cta_order_width,
+    float softmax_scale,
+    __half* lds) {
 #if defined(__gfx946__)
-    __shared__ __align__(2048) __half lds[LdsLayout::kBytes / sizeof(__half)];
     const int wave = static_cast<int>(__builtin_hcu_get_wave_id());
     if (wave == 0) {
         __builtin_hcu_s_abarrier_init(Bar::kResidentFilled, 4);
@@ -1357,7 +1350,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
             static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
             cta_order_mode, cta_order_width);
         const int k_base = logical_k_tile * Tile::kNk;
-        const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
+        const int q_tile_begin = Causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t row_base =
             static_cast<int64_t>(q_bh) * seqlen;
@@ -1441,15 +1434,15 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
             static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
             cta_order_mode, cta_order_width);
         const int k_base = logical_k_tile * Tile::kNk;
-        const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
+        const int q_tile_begin = Causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t tensor_base =
             static_cast<int64_t>(q_bh) * seqlen * Tile::kHeadDim;
         int resident_phase = 0;
         ins::abarrier_try_wait<true>(Bar::kResidentFilled,
                                      resident_phase);
-        run_consumer_group<0>(lds, lds, dk, dv, tensor_base, k_base,
-                              q_tile_begin, q_tile_count, causal,
+        run_consumer_group<0, Causal>(lds, lds, dk, dv, tensor_base, k_base,
+                              q_tile_begin, q_tile_count,
                               softmax_scale, owner, lane);
     } else if (wave < Tile::kDqWriterWaveBegin) {
         __builtin_hcu_s_set_vgpr_size(Wdra::kConsumer1Vgprs);
@@ -1462,15 +1455,15 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
             static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
             cta_order_mode, cta_order_width);
         const int k_base = logical_k_tile * Tile::kNk;
-        const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
+        const int q_tile_begin = Causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         const int64_t tensor_base =
             static_cast<int64_t>(q_bh) * seqlen * Tile::kHeadDim;
         int resident_phase = 0;
         ins::abarrier_try_wait<true>(Bar::kResidentFilled,
                                      resident_phase);
-        run_consumer_group<1>(lds, lds, dk, dv, tensor_base, k_base,
-                              q_tile_begin, q_tile_count, causal,
+        run_consumer_group<1, Causal>(lds, lds, dk, dv, tensor_base, k_base,
+                              q_tile_begin, q_tile_count,
                               softmax_scale, owner, lane);
     } else {
         __builtin_hcu_s_set_vgpr_size(Wdra::kDqWriterVgprs);
@@ -1483,7 +1476,7 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
             static_cast<int>(blockIdx.z), static_cast<int>(gridDim.z),
             cta_order_mode, cta_order_width);
         const int k_base = logical_k_tile * Tile::kNk;
-        const int q_tile_begin = causal ? k_base / Tile::kMq : 0;
+        const int q_tile_begin = Causal ? k_base / Tile::kMq : 0;
         const int q_tile_count = seqlen / Tile::kMq - q_tile_begin;
         // Physical dispatch slots remain unique reduction owners even when
         // their logical K tiles are reordered for causal load balance.
@@ -1525,10 +1518,79 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
     (void)heads_kv;
     (void)q_heads_per_kv;
     (void)seqlen;
-    (void)causal;
     (void)cta_order_mode;
     (void)cta_order_width;
     (void)softmax_scale;
+#endif
+}
+
+extern "C" __global__ void __launch_bounds__(Tile::kThreadsPerCta, 1)
+    __attribute__((hcu_wdra_waves_per_tg(Tile::kWavesPerCta)))
+fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
+                     const __half* __restrict__ q,
+                     const __half* __restrict__ k,
+                     const __half* __restrict__ v,
+                     const float* __restrict__ packed_sidecar,
+                     __half* __restrict__ dq_partial,
+                     float* __restrict__ dk,
+                     float* __restrict__ dv,
+                     int heads_q,
+                     int heads_kv,
+                     int q_heads_per_kv,
+                     int seqlen,
+                     int causal,
+                     int cta_order_mode,
+                     int cta_order_width,
+                     float softmax_scale) {
+#if defined(__gfx946__)
+#if defined(SHAOBO_EXPLICIT_WDRA_INIT)
+    __builtin_hcu_wdra_init(Wdra::kProducerVgprs, Wdra::kConsumer0Vgprs,
+                            Wdra::kConsumer1Vgprs,
+                            Wdra::kDqWriterVgprs);
+#endif
+    __shared__ __align__(2048) __half lds[LdsLayout::kBytes / sizeof(__half)];
+    (void)causal;
+    run_fused5_kernel_body<true>(
+        dout, q, k, v, packed_sidecar, dq_partial, dk, dv, heads_q, heads_kv,
+        q_heads_per_kv, seqlen, cta_order_mode, cta_order_width,
+        softmax_scale, lds);
+#else
+    (void)causal;
+#endif
+}
+
+extern "C" __global__ void __launch_bounds__(Tile::kThreadsPerCta, 1)
+    __attribute__((hcu_wdra_waves_per_tg(Tile::kWavesPerCta)))
+fa3_bwd_5gemm_noncausal_kernel(const __half* __restrict__ dout,
+                               const __half* __restrict__ q,
+                               const __half* __restrict__ k,
+                               const __half* __restrict__ v,
+                               const float* __restrict__ packed_sidecar,
+                               __half* __restrict__ dq_partial,
+                               float* __restrict__ dk,
+                               float* __restrict__ dv,
+                               int heads_q,
+                               int heads_kv,
+                               int q_heads_per_kv,
+                               int seqlen,
+                               int causal,
+                               int cta_order_mode,
+                               int cta_order_width,
+                               float softmax_scale) {
+#if defined(__gfx946__)
+#if defined(SHAOBO_EXPLICIT_WDRA_INIT)
+    __builtin_hcu_wdra_init(Wdra::kProducerVgprs, Wdra::kConsumer0Vgprs,
+                            Wdra::kConsumer1Vgprs,
+                            Wdra::kDqWriterVgprs);
+#endif
+    __shared__ __align__(2048) __half lds[LdsLayout::kBytes / sizeof(__half)];
+    (void)causal;
+    run_fused5_kernel_body<false>(
+        dout, q, k, v, packed_sidecar, dq_partial, dk, dv, heads_q, heads_kv,
+        q_heads_per_kv, seqlen, cta_order_mode, cta_order_width,
+        softmax_scale, lds);
+#else
+    (void)causal;
 #endif
 }
 
@@ -1581,14 +1643,26 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
     float* const dv_store =
         q_heads_per_kv == 1 ? static_cast<float*>(dv) : workspace.dv_partial;
     const dim3 grid(params->num_heads_q, params->batch, k_tile_count);
-    hipLaunchKernelGGL(
-        fa3_bwd_5gemm_kernel, grid, dim3(Tile::kThreadsPerCta), 0, 0,
-        static_cast<const __half*>(dout), static_cast<const __half*>(q),
-        static_cast<const __half*>(k), static_cast<const __half*>(v),
-        static_cast<const float*>(packed_sidecar), workspace.dq_partial,
-        dk_store, dv_store, params->num_heads_q, params->num_heads_kv,
-        q_heads_per_kv, params->seqlen_q, params->causal, cta_order.mode,
-        cta_order.width, params->softmax_scale);
+    if (params->causal != 0) {
+        hipLaunchKernelGGL(
+            fa3_bwd_5gemm_kernel, grid, dim3(Tile::kThreadsPerCta), 0, 0,
+            static_cast<const __half*>(dout), static_cast<const __half*>(q),
+            static_cast<const __half*>(k), static_cast<const __half*>(v),
+            static_cast<const float*>(packed_sidecar), workspace.dq_partial,
+            dk_store, dv_store, params->num_heads_q, params->num_heads_kv,
+            q_heads_per_kv, params->seqlen_q, params->causal, cta_order.mode,
+            cta_order.width, params->softmax_scale);
+    } else {
+        hipLaunchKernelGGL(
+            fa3_bwd_5gemm_noncausal_kernel, grid,
+            dim3(Tile::kThreadsPerCta), 0, 0,
+            static_cast<const __half*>(dout), static_cast<const __half*>(q),
+            static_cast<const __half*>(k), static_cast<const __half*>(v),
+            static_cast<const float*>(packed_sidecar), workspace.dq_partial,
+            dk_store, dv_store, params->num_heads_q, params->num_heads_kv,
+            q_heads_per_kv, params->seqlen_q, params->causal, cta_order.mode,
+            cta_order.width, params->softmax_scale);
+    }
     hipError_t error = hipGetLastError();
     if (error != hipSuccess) {
         return SHAOBO_FA3_STATUS_HIP_ERROR;
