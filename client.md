@@ -7312,3 +7312,29 @@ must change useful ownership overlap, because ABarrier issue gaps remain
   duplication should remain one runtime body.
 - Proposed Target / target: Shaobo reference material in a later consolidated
   skill update; do not edit public skills in this task.
+
+## 2026-08-23 M128 Q-Double/dO-Single Probe
+
+Status: `ACCEPT_PROBE_ADMIT_CANONICAL_STATIC_DRAFT`.
+
+The isolated three-generation unit proves the complete 11-token lifecycle:
+resident K/V is released, Q0/Q1 ping-pong independently, dO dies behind eight
+heavy readers, its 64KiB region becomes native dS, and the producer waits for
+all 12 dS readers before publishing the next dO. Correctness, bank, metadata
+and native-layout gates all pass. ISA keeps Q2 MLS ahead of `EpochDone`.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a full raw double buffer exceeds LDS, but one
+  operand has an earlier independent reuse edge than the other.
+- Rule / reusable rule: split ownership by operand lifetime; double-buffer
+  only the long-reused operand and use a wider reader-done token for the
+  single aliased page. Prove the cross-generation order in generated ISA.
+- Evidence / evidence: three-generation Q/dO/dS probe, 128KiB, bank0,
+  private/spill/scratch0, and ISA `QUsed -> Q MLS -> EpochDone -> dO MLS`.
+- Boundary / boundary: a passing lifecycle probe does not price CTA-wide
+  count8/count12 rendezvous or guarantee production packed arithmetic.
+- Counterexample / not applicable: C91 two full raw pages leave no legal
+  sidecar/full-dS region; ordinary symmetric double buffering is infeasible.
+- Proposed Target / target: Shaobo ownership/lifecycle reference during a
+  consolidated skill update; do not edit public skills in this task.

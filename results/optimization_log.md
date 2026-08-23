@@ -18828,3 +18828,21 @@ the ownership-DAG level rather than another causal micro-specialization.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84,
 `/zys/sb/runs/fused5_c83_fullperf/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_150530`.
+
+## 2026-08-23 M128 Q-Double/dO-Single Probe Accepted
+
+Status: `ACCEPT_PROBE_ADMIT_CANONICAL_STATIC_DRAFT`.
+
+- The C91 160KiB storage hole is removed by retaining Q0/Q1 but only one dO
+  page; dead dO plus former resident storage becomes one 64KiB native dS page.
+- A three-generation focused probe passes Q-before/dO/Q-after and dS
+  normal/trans checks, WDRA `16/204/204/88`, no private/spill/scratch and
+  `ldsBankConflict=0`.
+- Static ISA has MLS32, native dS writes48, matrix-read/MMAC consumers, 11
+  ABarrier IDs and no scalar matrix reads or permutes.
+- Producer ISA preserves useful early Q reuse before the count12 `EpochDone`
+  wait. This is admission to a production static draft, not an accepted
+  performance result.
+
+Evidence: `docs/fused5_m128_qdouble_dout_single_design_20260823.md` and
+`/zys/sb/runs/fused5_c92_probe/layout_probes/fused5_m128_qdouble_dout_single_20260823_174228`.

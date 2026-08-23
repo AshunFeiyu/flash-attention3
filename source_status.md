@@ -12801,3 +12801,21 @@ bottleneck is unchanged ownership: XCU ABarrier issue gaps are still `22.13%`.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84, local archive
 `outputs/019ea61f-c117-76b2-abad-e776092d47a0/c83_fullperf`.
+
+## 2026-08-23 M128 Q-Double/dO-Single Focused Probe
+
+Status: `ACCEPT_PROBE_ADMIT_CANONICAL_STATIC_DRAFT`.
+
+The three-generation probe combines two independent Q pages with one dO page
+that becomes a full native M128 dS page after a count8 dead-dO edge. It passes
+all semantic checks, WDRA `16/204/204/88`, no private/spill/scratch, 128KiB
+LDS and bank0. Main data paths contain only MLS/BPS, native matrix read/write
+and MMAC; scalar matrix reads and permutes are absent.
+
+Generated producer ISA preserves `wait QUsed0 -> MLS Q2 -> wait EpochDone`,
+so next-Q publication is genuinely independent of the current dS/dQ reader
+completion. This admits a canonical static draft but is not performance
+promotion evidence.
+
+Evidence: `docs/fused5_m128_qdouble_dout_single_design_20260823.md` and
+`/zys/sb/runs/fused5_c92_probe/layout_probes/fused5_m128_qdouble_dout_single_20260823_174228`.
