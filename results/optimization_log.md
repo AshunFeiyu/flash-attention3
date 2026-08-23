@@ -18669,3 +18669,27 @@ reducer topology that preserves at least 128 CTAs.
 Evidence: `docs/fused5_dq_fragment_workspace_design_20260823.md`, workbook
 sections65-66, `/zys/sb/runs/f5dqfrag_ab_20260823`, and
 `/zys/sb/runs/f5dqfrag_s2048_ab_20260823`.
+
+## 2026-08-23 Causal Boundary-Mask Elision Accepted
+
+Status: `ACCEPT_CAUSAL_STEADY_MASK_ELISION_MMAC50_OPEN`.
+
+For an N128 CTA and M64 q tiles, only the first two retained q tiles intersect
+the causal diagonal. The canonical kernel now keeps runtime masking on those
+two peeled tiles and compiles every later tile as fully valid. No GEMM,
+matrix read, LDS/VMEM/FLAT transaction, token, page or output owner changes.
+
+Static MMAC1472, symbol matrix reads840 and ABarrier102 remain exact. Roles
+improve to `9/173/87/162`, SGPR71/VGPR128, with no private/spill/scratch.
+Full golden correctness passes S128 causal/noncausal, S1024 and S2048;
+warning0 and bank0. Three S1024 pairs improve fused ticks `2.540%` and full
+lifecycle `2.455%`; two S2048 pairs improve `2.144%` and `1.896%`.
+
+Fullperf MMAC active rises `35.037% -> 36.659%`, VALU falls `16.323%`, SCA
+falls `16.443%`, XCU instruction issues fall `7.335%`, and dispatch duration
+falls `2.181%`. Remaining wait-LGKM/barrier shares rise because the removed
+mask work exposes the existing transpose-read and ownership waits. That
+readiness edge is the next hypothesis.
+
+Evidence: `docs/fused5_causal_boundary_mask_design_20260823.md`, workbook
+sections67-68, and `/zys/sb/runs/f5causal_boundary_*_20260823`.

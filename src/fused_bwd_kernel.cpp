@@ -1095,24 +1095,24 @@ __device__ __forceinline__ void run_consumer_group(
 #pragma clang loop unroll(disable)
     for (; qi + 1 < q_tile_count; qi += 2) {
         run_consumer_q_tile<Group, 0, true, false>(
-            lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+            lds, mutable_lds, k_base, q_tile_begin, qi, 0,
             softmax_scale, n_owner, owner, lane, resident, mmac_zero,
             dv_acc, dk_acc, raw0_phase, done0_phase);
         if constexpr (Group == 0) {
             run_consumer_q_tile<0, 1, true, false>(
-                lds, mutable_lds, k_base, q_tile_begin, qi + 1, causal,
+                lds, mutable_lds, k_base, q_tile_begin, qi + 1, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw1_phase, done1_phase);
         } else {
             run_consumer_q_tile<1, 1, true, false>(
-                lds, mutable_lds, k_base, q_tile_begin, qi + 1, causal,
+                lds, mutable_lds, k_base, q_tile_begin, qi + 1, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
                 dv_acc, dk_acc, raw1_phase, done0_phase);
         }
     }
     if (qi < q_tile_count) {
         run_consumer_q_tile<Group, 0, true, false>(
-            lds, mutable_lds, k_base, q_tile_begin, qi, causal,
+            lds, mutable_lds, k_base, q_tile_begin, qi, 0,
             softmax_scale, n_owner, owner, lane, resident, mmac_zero,
             dv_acc, dk_acc, raw0_phase, done0_phase);
     }

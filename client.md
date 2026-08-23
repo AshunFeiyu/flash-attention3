@@ -1,5 +1,35 @@
 # Client
 
+## 2026-08-23 Causal Steady-Region Promotion
+
+The canonical fused5 path now distinguishes causal boundary tiles from the
+fully valid steady region. For N128/M64, only the first two retained q tiles
+need the row predicate; later tiles must not pay repeated compare/select work.
+This algebraic specialization preserves the exact five-GEMM DAG and traffic,
+passes full golden correctness, improves fused ticks `2.540%` at S1024 and
+`2.144%` at S2048, and raises fullperf MMAC active to `36.659%`.
+
+The optimization removes work rather than rearranging it: dynamic VALU/SCA
+fall about 16%, while XCU issues fall 7.3%. The now-larger LGKM/barrier share
+is exposed readiness debt and is the next target.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a triangular or causal tiled kernel has a
+  small diagonal boundary and a provably fully valid steady region.
+- Rule / reusable rule: peel only boundary tiles with predicates and compile
+  the steady region without mask comparisons or selects.
+- Evidence / evidence: branch `exp/fused5-causal-boundary-mask`; S1024 fused
+  `-2.540%`, S2048 fused `-2.144%`; fullperf MMAC active `36.659%`; workbook
+  sections67-68; `/zys/sb/runs/f5causal_boundary_*_20260823`.
+- Boundary / boundary: the tile-domain proof must cover every row/column and
+  tail; noncausal and sequence-tail behavior require independent correctness.
+- Counterexample / not applicable: arbitrary masks, window attention, ragged
+  tiles whose valid region cannot be proven at compile-time, or runtime masks
+  with data-dependent sparsity.
+- Proposed Target / target: `dcu-kernel-optimization` candidate for a future
+  consolidation round; do not directly edit the public skill here.
+
 ## 2026-08-23 Sidecar Pair-Read Boundary
 
 `ds_read2_b32 offset1:64` is a valid Shaobo sidecar instruction form, but it is

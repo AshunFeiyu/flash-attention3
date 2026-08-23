@@ -1,5 +1,24 @@
 # Source Status
 
+## 2026-08-23 Causal Boundary-Mask Elision Promoted
+
+- Status: `ACCEPT_CAUSAL_STEADY_MASK_ELISION_MMAC50_OPEN`.
+- The first two peeled M64 tiles retain runtime causal masking; all later
+  tiles are compiled fully valid by proof that `Qmin >= k_base+128 > Kmax`.
+- Exact work and traffic remain unchanged: five GEMMs, MMAC1472, symbol matrix
+  reads840, ABarrier102, LDS/VMEM/FLAT exact. Roles are `9/173/87/162`,
+  SGPR71/VGPR128, no private/spill/scratch.
+- Full golden correctness passes S128 causal/noncausal, S1024 and S2048 with
+  warning0 and bank0.
+- Fused ticks improve `2.540%` at S1024 and `2.144%` at S2048; full lifecycle
+  improves `2.455%` and `1.896%`. Fullperf MMAC active reaches `36.659%`.
+- XCU proves this is an instruction-elision win: MMOP is exact, VALU/SCA fall
+  `16.323%/16.443%`, issues fall `7.335%`, duration falls `2.181%`.
+- The next open debt is exposed transpose-read readiness and ABarrier wait;
+  do not add mask work back to hide those bubbles.
+
+Evidence: `/zys/sb/runs/f5causal_boundary_*_20260823`; workbook sections67-68.
+
 ## 2026-08-23 Sidecar Pair Read Rejected
 
 - Status: `REJECT_LGKM_BARRIER_MIGRATION_CANONICAL_RESTORED`.
