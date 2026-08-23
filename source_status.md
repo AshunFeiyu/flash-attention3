@@ -12632,3 +12632,16 @@ ABarrier cycles fall, barrier share drops to `13.263%`, and MMAC active reaches
 The current next debts are wait-VM exposure, terminal ebarrier, and the open
 50% MMAC-active goal. See
 `docs/fused5_writer_g1_first_design_20260823.md` and workbook section54.
+
+## 2026-08-23 M128 Single-Raw Experiment Closed
+
+Status: `REJECT_OWNERSHIP_SERIALIZATION_CANONICAL_RESTORED`.
+
+- Candidate source proved M128/N128 exact-five-GEMM correctness and resource
+  feasibility at LDS128KiB, roles `11/180/180/116`, SGPR76/VGPR128, no debt.
+- S128 full lifecycle golden passes, warning0, bank0.
+- Three S1024 pairs regress fused ticks `26.037%`; barrier share rises
+  `10.780 pp`, MMAC active falls `5.386 pp`, coissue success falls `30.121%`.
+- No S2048/fullperf is admitted. `src/fused_bwd_kernel.cpp` and
+  `include/fused_bwd_contract.h` are restored to commit `58e90fc` behavior.
+- Retained evidence is documentation/workbook/ledger only.

@@ -18607,3 +18607,23 @@ next evidence targets.
 
 Evidence: `docs/fused5_writer_g1_first_design_20260823.md`, workbook section54,
 and `/zys/sb/runs/fused5_writer_g1_first_*`.
+
+## 2026-08-23 M128 Single-Raw Ownership Epoch Rejected
+
+Status: `REJECT_OWNERSHIP_SERIALIZATION_CANONICAL_RESTORED`.
+
+The candidate doubles M64 to M128 without duplicate GEMMs, keeps dynamic
+MMOP92,160 exact, removes one raw page and five barrier IDs, and uses one
+producer-gated EpochDone closure. Static gates pass at roles
+`11/180/180/116`, SGPR76/VGPR128, LDS128KiB, with no private/spill/scratch.
+S128 full golden passes with warning0 and bank0.
+
+Three H1/S1024 pairs regress fused ticks `43,304,018 -> 54,579,070`
+(`+26.037%`), MMAC active `35.265% -> 29.879%`, and coissue success by
+`30.121%`. Wait-LGKM falls `1.422 pp` and SCA falls 22.17%, but barrier share
+rises `10.780 pp` to `24.127%`. The single raw page turns the slowest
+dKV+dQ completion into producer publication backpressure. Reject before
+S2048/fullperf and restore `58e90fc`.
+
+Evidence: `docs/fused5_m128_single_raw_design_20260823.md`, workbook
+section61/62, `/zys/sb/runs/fused5_m128_single_raw_*`.

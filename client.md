@@ -7080,3 +7080,16 @@ rises `34.821% -> 35.037%`. XCU shows C1 `DqDone1` wait collapsing
   the critical path.
 - Proposed Target / target: Shaobo reference material under the `shaobo`
   skill; do not modify public optimization skills outside consolidation.
+
+## 2026-08-23 M128 Single-Raw Boundary
+
+M128/N128 is resource- and correctness-feasible, but the tested single-raw
+ownership loop is not performance-feasible. It passes exact-five-GEMM,
+LDS128KiB, role `11/180/180/116`, no-debt, full-golden and bank0 gates, yet
+three S1024 pairs regress ticks by `26.037%`. Barrier share rises from
+`13.347%` to `24.127%` and MMAC active falls from `35.265%` to `29.879%`.
+
+Do not reintroduce this single-page lifecycle. A future M128 design must prove
+that raw publication is not gated by the combined dKV+dQ epoch, or provide a
+separate legal sidecar/dS lifetime without adding serialized ownership.
+Canonical source remains the tagged `58e90fc` M64 writer-G1-first path.
