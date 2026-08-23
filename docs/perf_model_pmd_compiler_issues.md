@@ -352,6 +352,35 @@ Owner question:
   `ds_matrix_write_lds_dump_20260722_214911` and
   `results/ds_matrix_write_lds_dump_20260722.md`.
 
+2026-08-23 component-attribution update:
+
+- Four LLVM revisions (`7b796991`, `47a7d59a`, `e0f10535`, `a2724117`) were
+  crossed with PMD HEAD1668 and HEAD1694. All eight runs reproduce the same
+  direct 240/512 mismatch at row17/col0 and the same 503/512 writer-chain
+  mismatch. Relevant generated ISA is equivalent.
+- Completion/cache-policy controls (`vmcnt`, documented ABarrier lifecycle,
+  `glc`, `slc`, `glc+slc`, and `buffer_wbinvl1_vol`) all retain the exact
+  row17 boundary. IT trace shows full EXEC and compiler-inserted
+  `s_waitcnt vmcnt(0)` immediately after the LDS-source matrix store.
+- Matching direct shape controls on HEAD1694 produce 240/512 mismatches for
+  32x16 and no committed elements for 64x16 or 32x32. All runs exit normally
+  without panic, spill, private segment, or scratch.
+- The `_rtn` builtin lowers to a VGPR-source matrix-store form and is not an
+  LDS-source completion-return control. All four compilers separately reject
+  `s_waitcnt_vwcnt 0` for gfx946; record this as a compiler surface gap, not as
+  the cause of the observed row truncation.
+- Reclassification: `PROBABLE PMD COMMON IMPLEMENTATION DEFECT / REMOTE
+  UNDOCUMENTED MODEL ABI REQUIREMENT`. A single compiler regression and FA
+  source error are strongly disfavored. Hardware remains unverified because
+  no silicon or independent RTL/reference model is available.
+- Full report:
+  `results/matrix_store_component_attribution_20260823.md`.
+- New focused sources/runners:
+  `probes/matrix_store_completion_probe.cpp`,
+  `scripts/run_matrix_store_completion_probe.sh`,
+  `probes/matrix_store_shape_family_probe.cpp`, and
+  `scripts/run_matrix_store_shape_family_probe.sh`.
+
 ### PMD-006: HEAD1698 Core Package Has An Internal Config ABI Mismatch
 
 Status: `CONFIRMED PMD PACKAGE COMPATIBILITY / NOT PROMOTED`.

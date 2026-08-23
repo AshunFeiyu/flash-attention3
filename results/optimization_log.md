@@ -18828,3 +18828,26 @@ the ownership-DAG level rather than another causal micro-specialization.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84,
 `/zys/sb/runs/fused5_c83_fullperf/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_150530`.
+
+## 2026-08-23 Matrix-Store Focused Attribution
+
+Decision: `PMD_BLOCKED_PROBABLE_COMMON_IMPLEMENTATION_DEFECT`.
+
+- Direct one-wave 32x16 transport fails at row17 with 240 poison values.
+- Four compiler revisions x PMD HEAD1668/HEAD1694 are identical.
+- ABarrier, explicit drains, GLC/SLC and L1 invalidation are inert controls.
+- Matching 64x16 and 32x32 stores leave all output poison on HEAD1694.
+- Writer-only LDS dump passes, locating loss after LDS source publication.
+
+No canonical integration or performance claim is admitted. See
+`results/matrix_store_component_attribution_20260823.md`.
+
+## 2026-08-23 Single Global Writer Via LDS Staging
+
+Decision: `REJECT_TICKS_AND_LDS_BANK_CONFLICT_CANONICAL_RESTORED`.
+
+The candidate used two new epilogue ABarrier tokens and ordinary
+`ds_write_b128/ds_read_b128` staging so consumer0 alone issued dK/dV global
+stores. H1/S128 correctness passed, but fused ticks changed
+`40,728,415 -> 41,966,015` (`+3.039%`) and LDS conflicts changed `0 -> 43,008`.
+The source experiment is removed rather than stacked onto the clean kernel.

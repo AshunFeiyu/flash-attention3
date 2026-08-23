@@ -12801,3 +12801,32 @@ bottleneck is unchanged ownership: XCU ABarrier issue gaps are still `22.13%`.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84, local archive
 `outputs/019ea61f-c117-76b2-abad-e776092d47a0/c83_fullperf`.
+
+## 2026-08-23 Matrix-Store Component Attribution
+
+Status: `PMD_BLOCKED_PROBABLE_COMMON_IMPLEMENTATION_DEFECT`.
+
+- A one-wave matching `matrix_load -> LDS -> matrix_store` probe reproduces
+  the 32x16 row17 truncation without FA math, WDRA, MMAC, role branches, or
+  output ownership.
+- Four compiler revisions crossed with PMD HEAD1668/HEAD1694 all return the
+  same 240/512 direct mismatch. ABarrier, VM/LGKM drains, GLC/SLC and L1
+  invalidation do not move the failure boundary.
+- HEAD1694 shape controls leave all 64x16 and 32x32 output elements untouched.
+  Writer-only LDS dump remains lossless, so the failing boundary is
+  matrix-store/descriptor/model, not `ds_write_matrix_format_f16`.
+- Canonical dKV/dQ epilogues must not use matrix-store until PMD owners provide
+  a corrected model or an exact undocumented descriptor/source ABI.
+
+Evidence: `results/matrix_store_component_attribution_20260823.md` and remote
+`/zys/sb/runs/matrix_store_*_20260823` directories.
+
+## 2026-08-23 Two-Global-Writer Experiment
+
+Status: `REJECT_TICKS_AND_LDS_BANK_CONFLICT_CANONICAL_RESTORED`.
+
+Consumer1 staged dK/dV through reused raw LDS pages so consumer0 could become
+the sole global writer. H1/S128 correctness passed, but fused ticks regressed
+`40,728,415 -> 41,966,015` (`+3.039%`) and the staged ordinary LDS path added
+43,008 bank conflicts. This does not solve the matrix-store issue and violates
+the bank0 gate. The experiment is removed from canonical source.

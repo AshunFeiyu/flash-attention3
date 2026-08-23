@@ -7312,3 +7312,25 @@ must change useful ownership overlap, because ABarrier issue gaps remain
   duplication should remain one runtime body.
 - Proposed Target / target: Shaobo reference material in a later consolidated
   skill update; do not edit public skills in this task.
+
+## 2026-08-23 Matrix-Store Attribution Handoff
+
+- The failure is reproducible in a one-wave direct
+  `matrix_load_32x16_b16 -> LDS -> matrix_store_32x16_b16` probe, so it is not
+  caused by FA formulas, fused5 ownership, WDRA, MMAC, or role divergence.
+- Four compiler revisions times two PMDs reproduce the same row17 truncation.
+  Completion waits, ABarrier, cache policy and L1 invalidation do not change
+  it. HEAD1694 also performs no visible write for matching 64x16 and 32x32
+  controls.
+- Current attribution is high-confidence PMD common implementation defect,
+  with an undocumented model ABI as the remaining source-side possibility.
+  Hardware behavior is not proven without silicon or an independent model.
+- Keep matrix-store out of canonical epilogues. Re-run the probes unchanged
+  after a PMD/compiler update before changing their contract.
+
+Report: `results/matrix_store_component_attribution_20260823.md`.
+
+The separate two-global-writer experiment is rejected: correctness passed,
+but fused ticks regressed 3.039% and ordinary LDS staging introduced 43,008
+bank conflicts. Canonical source is restored to tag
+`best/fused5-causal-kernel-specialization-20260823` behavior.
