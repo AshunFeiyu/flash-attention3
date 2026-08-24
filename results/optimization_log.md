@@ -17870,3 +17870,17 @@ not change MMAC result ownership.
   GLC+SLC, and cache-invalidate modes (`6/6`). `matrix_store_32x16_b16_rtn`
   remains incorrect (`0/1`) with PMD return-VGPR initialization warnings and
   is reclassified as a separate `OBSERVE_RTN_ABI` result.
+
+## 2026-08-24 FWD-Native Two-GEMM Writer Chain
+
+- Reproduced FWD's exact Q/K/V MLS and reader modes, QK^T FP32
+  `lit1/lts0`, score-to-P `cvt_pk`, PV FP32 `lit1/lts0`, and final output
+  pack in one focused dense probe.
+- Direct global control is bitwise exact `8/8`; SGPR22/VGPR33,
+  private/spill0, bank0, no scalar matrix read or permutation.
+- Normal/trans writer crossed with all four matrix-store T/R views is complete
+  but `0/8` exact. Normal writer has 408/512 mismatches; trans writer has
+  384/512, independent of store T/R.
+- Decision: `ACCEPT_FWD_LAYOUT_CONTROL / REJECT_NATURAL_FP32_PACK_TO_WRITER`.
+  This closes stride/completion/store-view attribution. The remaining open
+  contract is a compiler/ISA-defined FP32-C-to-F16-writer source conversion.

@@ -6532,3 +6532,16 @@ The corrected completion-policy sweep passes six ordinary modes. The `_rtn`
 variant still fails with PMD return-VGPR initialization warnings and must be
 treated as a separate builtin/PMD ABI probe, not evidence against ordinary
 matrix store.
+
+## 2026-08-24 FWD-Native Writer Attribution
+
+The real FWD packing sequence was copied into a focused dense probe, including
+QK^T, FP16 P reconstruction, PV, and the final cross-D-half `cvt_pk`. Its
+direct global output is exact in all eight repetitions, so the FWD fragment
+interpretation is no longer inferred from coordinate tags.
+
+The same packed Vec8 passed through the two supported F16 writers and all four
+32x16 matrix-store T/R modes is never exact (`0/8`), despite complete output
+and bank0. Keep direct global B16 stores in canonical dK/dV. Revisit native
+matrix store only with a compiler-documented FP32-C conversion/source ABI;
+do not add scalar gather or lane permutation to the hot path.

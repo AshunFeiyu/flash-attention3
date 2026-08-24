@@ -39,9 +39,9 @@ clean repo as the canonical replay source.
 - FP32 MMAC-C to packed-FP16 writer source-slot failures. Correct stride
   removes the transport blocker but does not convert fragment ownership.
 
-## Reopened Probe
+## Completed FWD-Native Follow-up
 
-The next high-value native probe is:
+The high-value native probe is now complete:
 
 ```text
 FWD-exact MLS + ds_read_matrix
@@ -52,7 +52,9 @@ FWD-exact MLS + ds_read_matrix
   -> dense CPU GEMM oracle
 ```
 
-It must first prove a direct FWD-style global-store control for the same MMAC
-C-fragment. Only then may a writer/store mismatch be attributed to the writer
-source ABI. No scalar gather, lane permutation, or wrong-layout workaround is
-admitted.
+The direct FWD-style global control is exact for all eight repeated paths. The
+normal/trans writer crossed with all four matrix-store T/R modes is complete
+but `0/8` exact. Therefore the remaining mismatch is the FP32 C-fragment's
+natural FWD pack versus the supported F16 writer source-slot ABI, not stride,
+matrix-store completion, or store-view selection. Evidence:
+`results/fwd_native_mmac_writer_chain_20260824.md`.

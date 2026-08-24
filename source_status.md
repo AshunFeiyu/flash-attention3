@@ -11936,3 +11936,15 @@ no ordinary matrix DS read or permute. The attempted F16 writer shape
 `row=1,col=2` is rejected by both clang builtin lowering and gfx946
 `llvm-mc`; only `row=2,col=1` is admitted. Classification:
 `ACCEPT_A4_FP16_OWNERSHIP / FP32_SOURCE_ABI_OPEN`.
+
+## 2026-08-24 FWD-Native FP32 Pack To Writer Probe
+
+The exact FWD two-GEMM layout chain now has a dense CPU oracle. MLS plus
+normal/trans matrix readers, QK^T FP32 MMAC, score-to-P `cvt_pk`, PV FP32
+MMAC, and FWD output packing pass the direct global path `8/8` exactly.
+
+Crossing normal/trans F16 writers with all four `matrix_store_32x16_b16` T/R
+views gives `0/8` exact results while every tile is complete and bank conflict
+is zero. Store T/R does not change the mismatch signature. Classification:
+`ACCEPT_FWD_LAYOUT_CONTROL / REJECT_NATURAL_FP32_PACK_TO_WRITER`. Canonical
+FA kernels remain unchanged.
