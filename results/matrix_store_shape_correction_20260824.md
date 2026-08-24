@@ -5,6 +5,11 @@
 The instruction suffix does not describe the row-major global tensor as
 `rows x columns` in the way the old probes assumed.
 
+The `row_stride` written to `srsrc[2]` is measured in **elements**, not bytes
+and not b32 words.  For FP16, stride32 means 32 half elements (64 bytes), and
+stride64 means 64 half elements (128 bytes).  The helper writes this value
+directly; callers must not divide it by two to convert it to b32 units.
+
 | Instruction | Correct row-major probe | Elements | Working mode |
 |---|---:|---:|---|
 | `matrix_load/store_32x16_b16` | 16 rows x 32 columns, stride 32 | 512 | `T=1,R=0` |
