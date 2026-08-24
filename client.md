@@ -7312,3 +7312,19 @@ must change useful ownership overlap, because ABarrier issue gaps remain
   duplication should remain one runtime body.
 - Proposed Target / target: Shaobo reference material in a later consolidated
   skill update; do not edit public skills in this task.
+
+## 2026-08-24 Native dK/dV Matrix Store
+
+Status: `ACCEPT_NATIVE_DKV_MATRIX_STORE_NEW_GLOBAL_BEST`.
+
+The C83 mainloop is unchanged. Its old per-lane FP32 dK/dV global-store drain
+is replaced by native FP16-output MMAC accumulation plus
+`ds_write_matrix -> matrix_store_32x32_b16` from a released V LDS region.
+Correctness passes causal/noncausal, S128/S1024 and GQA; resources remain clean
+and bank conflict stays zero.
+
+Same-shape stats-only fused ticks improve `1.546%`, fullperf fused ticks
+improve `3.548%`, and MMAC active rises `36.579709% -> 38.403324%`. XCU shows
+the remaining cost is the terminal writer-page ebarrier sequence. Future work
+must start from commit `3388f47` and pass `scripts/check_best_baseline_gate.py`;
+do not compare against or extend an older branch directly.

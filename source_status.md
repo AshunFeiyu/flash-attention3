@@ -12801,3 +12801,22 @@ bottleneck is unchanged ownership: XCU ABarrier issue gaps are still `22.13%`.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84, local archive
 `outputs/019ea61f-c117-76b2-abad-e776092d47a0/c83_fullperf`.
+
+## 2026-08-24 Native dK/dV Matrix Store Canonical Promotion
+
+Status: `ACCEPT_NATIVE_DKV_MATRIX_STORE_NEW_GLOBAL_BEST`.
+
+Canonical fused5 now keeps C83's single templated causal/noncausal body and
+uses one native dK/dV epilogue: FP16-output MMAC accumulation,
+`ds_write_matrix_32x16_trans_f16`, then `matrix_store_32x32_b16`. The released
+V LDS region supplies four 4 KiB dK/dV owner-pair pages; no new production
+kernel, phase, fallback or mainloop path was added.
+
+Resource and full golden gates pass, including GQA Hq4/Hkv2 and noncausal.
+H1/S1024 stats-only fused ticks are `40,252,940`; fullperf MMAC active is
+`38.403324%`. This replaces C83 in `results/best_baseline.json`; C83's tag is
+retained as historical fallback. The next change may target only the exposed
+terminal ebarrier sequence and must pass the global best gate.
+
+Evidence: commit `3388f47`,
+`results/fused5_native_dkv_matrix_store_20260824.md`.

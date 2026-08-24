@@ -18828,3 +18828,24 @@ the ownership-DAG level rather than another causal micro-specialization.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84,
 `/zys/sb/runs/fused5_c83_fullperf/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_150530`.
+
+## 2026-08-24 Native dK/dV Matrix Store Accepted
+
+Status: `ACCEPT_NATIVE_DKV_MATRIX_STORE_NEW_GLOBAL_BEST`.
+
+The native FP16 dK/dV accumulation and matrix-store epilogue was ported onto
+C83 without changing its mainloop. Consumer owner pairs write 32x16 fragments
+to a released V-region writer page, then one wave issues a 32x32 B16 matrix
+store. Full correctness passes causal/noncausal, S128/S1024 and GQA; both
+specializations remain no-spill/no-scratch and bank0.
+
+Against C83, stats-only fused/lifecycle ticks improve `1.546%/1.549%`.
+Fullperf fused ticks improve `3.548%`, MMAC active rises
+`36.579709% -> 38.403324%`, and FLAT falls `3,616 -> 2,592`. SCA and LDS rise
+because the writer page uses explicit LDS publication and terminal ebarriers.
+XCU confirms this terminal synchronization is the next exposed debt, but the
+global baseline gate passes on correctness, resources, ticks and active share.
+
+Evidence: `results/fused5_native_dkv_matrix_store_20260824.md`, commit
+`3388f47`, shared perf directory
+`/Volumes/172.20.68.76/共享/shaobo/perf/20260824_213327_C84_C83_native_dkv_matrix_store_H1S1024_causal_SQ7`.
