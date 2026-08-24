@@ -67,10 +67,10 @@ __global__ void fa3_bwd_dq_reduce_kernel(const __half* __restrict__ partial,
 }
 
 __global__ void fa3_bwd_dkv_reduce_kernel(
-    const float* __restrict__ dk_partial,
-    const float* __restrict__ dv_partial,
-    float* __restrict__ dk,
-    float* __restrict__ dv,
+    const __half* __restrict__ dk_partial,
+    const __half* __restrict__ dv_partial,
+    __half* __restrict__ dk,
+    __half* __restrict__ dv,
     int seqlen,
     int heads_q,
     int heads_kv) {
@@ -88,22 +88,24 @@ __global__ void fa3_bwd_dkv_reduce_kernel(
         static_cast<int64_t>(row) * kVectorsPerRow + d_vec;
     ins::Vec4F32 dk_sum = {0.0f, 0.0f, 0.0f, 0.0f};
     ins::Vec4F32 dv_sum = {0.0f, 0.0f, 0.0f, 0.0f};
-    const auto* dk4 = reinterpret_cast<const ins::Vec4F32*>(dk_partial);
-    const auto* dv4 = reinterpret_cast<const ins::Vec4F32*>(dv_partial);
+    const auto* dk4 = reinterpret_cast<const ins::Vec4F16*>(dk_partial);
+    const auto* dv4 = reinterpret_cast<const ins::Vec4F16*>(dv_partial);
 
 #pragma clang loop unroll(disable)
     for (int q_offset = 0; q_offset < q_heads_per_kv; ++q_offset) {
         const int q_bh = batch * heads_q + q_head_begin + q_offset;
         const int64_t partial_vec =
             static_cast<int64_t>(q_bh) * vectors_per_tensor + local_vec;
-        dk_sum += dk4[partial_vec];
-        dv_sum += dv4[partial_vec];
+        dk_sum += __builtin_convertvector(dk4[partial_vec], ins::Vec4F32);
+        dv_sum += __builtin_convertvector(dv4[partial_vec], ins::Vec4F32);
     }
 
     const int64_t output_vec =
         static_cast<int64_t>(kv_bh) * vectors_per_tensor + local_vec;
-    reinterpret_cast<ins::Vec4F32*>(dk)[output_vec] = dk_sum;
-    reinterpret_cast<ins::Vec4F32*>(dv)[output_vec] = dv_sum;
+    reinterpret_cast<ins::Vec4F16*>(dk)[output_vec] =
+        __builtin_convertvector(dk_sum, ins::Vec4F16);
+    reinterpret_cast<ins::Vec4F16*>(dv)[output_vec] =
+        __builtin_convertvector(dv_sum, ins::Vec4F16);
 }
 
 bool valid_params(const ShaoboFa3Params* params) {
@@ -179,7 +181,7 @@ WorkspaceSizes workspace_sizes(const ShaoboFa3Params* params) {
                 return sizes;
             }
         }
-        if (!checked_mul(dkv_elements, sizeof(float), sizes.dkv_bytes)) {
+        if (!checked_mul(dkv_elements, sizeof(__half), sizes.dkv_bytes)) {
             return sizes;
         }
     }
@@ -209,11 +211,11 @@ FusedWorkspaceView workspace_view(void* workspace,
         return FusedWorkspaceView{nullptr, nullptr, nullptr};
     }
     auto* bytes = static_cast<std::byte*>(workspace);
-    float* dk_partial = nullptr;
-    float* dv_partial = nullptr;
+    __half* dk_partial = nullptr;
+    __half* dv_partial = nullptr;
     if (sizes.dkv_bytes != 0) {
-        dk_partial = reinterpret_cast<float*>(bytes + sizes.dq_bytes);
-        dv_partial = reinterpret_cast<float*>(
+        dk_partial = reinterpret_cast<__half*>(bytes + sizes.dq_bytes);
+        dv_partial = reinterpret_cast<__half*>(
             bytes + sizes.dq_bytes + sizes.dkv_bytes);
     }
     return FusedWorkspaceView{
@@ -244,10 +246,10 @@ int launch_dq_reduction(const __half* partial,
                                            : SHAOBO_FA3_STATUS_HIP_ERROR;
 }
 
-int launch_dkv_reduction(const float* dk_partial,
-                         const float* dv_partial,
-                         float* dk,
-                         float* dv,
+int launch_dkv_reduction(const __half* dk_partial,
+                         const __half* dv_partial,
+                         __half* dk,
+                         __half* dv,
                          const ShaoboFa3Params* params) {
     if (!valid_params(params) || dk == nullptr || dv == nullptr) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;

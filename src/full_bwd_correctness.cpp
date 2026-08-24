@@ -229,11 +229,11 @@ int main(int argc, char** argv) {
     float *scores_max_dev = nullptr, *scores_sum_dev = nullptr;
     float *delta_dev = nullptr, *packed_sidecar_dev = nullptr;
 #if defined(SHAOBO_FULL_BWD_FUSED5)
-    __half* dq_dev = nullptr;
+    __half *dq_dev = nullptr, *dk_dev = nullptr, *dv_dev = nullptr;
 #else
     float* dq_dev = nullptr;
-#endif
     float *dk_dev = nullptr, *dv_dev = nullptr;
+#endif
     void* fused5_workspace_dev = nullptr;
     std::vector<void*> allocations;
     auto allocate = [&](auto** ptr, size_t bytes) {
@@ -249,8 +249,10 @@ int main(int argc, char** argv) {
     const size_t output_bytes = kv_elems * sizeof(float);
 #if defined(SHAOBO_FULL_BWD_FUSED5)
     const size_t dq_output_bytes = half_bytes;
+    const size_t dkv_output_bytes = kv_half_bytes;
 #else
     const size_t dq_output_bytes = output_bytes;
+    const size_t dkv_output_bytes = output_bytes;
 #endif
     const size_t row_bytes = rows * sizeof(float);
     const size_t packed_bytes = rows * 3 * sizeof(float);
@@ -262,8 +264,8 @@ int main(int argc, char** argv) {
         !allocate(&delta_dev, row_bytes) ||
         !allocate(&packed_sidecar_dev, packed_bytes) ||
         !allocate(&dq_dev, dq_output_bytes) ||
-        !allocate(&dk_dev, output_bytes) ||
-        !allocate(&dv_dev, output_bytes)) {
+        !allocate(&dk_dev, dkv_output_bytes) ||
+        !allocate(&dv_dev, dkv_output_bytes)) {
         free_device(allocations);
         return 2;
     }
@@ -298,8 +300,8 @@ int main(int argc, char** argv) {
              hip_ok(hipMemset(packed_sidecar_dev, 0, packed_bytes),
                     "clear packed sidecar") &&
              hip_ok(hipMemset(dq_dev, 0, dq_output_bytes), "clear dq") &&
-             hip_ok(hipMemset(dk_dev, 0, output_bytes), "clear dk") &&
-             hip_ok(hipMemset(dv_dev, 0, output_bytes), "clear dv");
+             hip_ok(hipMemset(dk_dev, 0, dkv_output_bytes), "clear dk") &&
+             hip_ok(hipMemset(dv_dev, 0, dkv_output_bytes), "clear dv");
     if (!copied) {
         free_device(allocations);
         return 2;
@@ -390,19 +392,39 @@ int main(int argc, char** argv) {
     std::vector<float> delta_actual(rows), dq_actual(elems),
         dk_actual(kv_elems), dv_actual(kv_elems);
 #if defined(SHAOBO_FULL_BWD_FUSED5)
-    std::vector<__half> dq_storage(elems);
+    std::vector<__half> dq_storage(elems), dk_storage(kv_elems),
+        dv_storage(kv_elems);
 #endif
     bool outputs_copied =
         hip_ok(sync_error, "full backward synchronize") &&
         hip_ok(hipMemcpy(delta_actual.data(), delta_dev, row_bytes,
                          hipMemcpyDeviceToHost),
-               "copy delta result") &&
-        hip_ok(hipMemcpy(dk_actual.data(), dk_dev, output_bytes,
+               "copy delta result");
+#if defined(SHAOBO_FULL_BWD_FUSED5)
+    outputs_copied =
+        outputs_copied &&
+        hip_ok(hipMemcpy(dk_storage.data(), dk_dev, dkv_output_bytes,
                          hipMemcpyDeviceToHost),
                "copy dk result") &&
-        hip_ok(hipMemcpy(dv_actual.data(), dv_dev, output_bytes,
+        hip_ok(hipMemcpy(dv_storage.data(), dv_dev, dkv_output_bytes,
                          hipMemcpyDeviceToHost),
                "copy dv result");
+    if (outputs_copied) {
+        for (size_t i = 0; i < kv_elems; ++i) {
+            dk_actual[i] = __half2float(dk_storage[i]);
+            dv_actual[i] = __half2float(dv_storage[i]);
+        }
+    }
+#else
+    outputs_copied =
+        outputs_copied &&
+        hip_ok(hipMemcpy(dk_actual.data(), dk_dev, dkv_output_bytes,
+                         hipMemcpyDeviceToHost),
+               "copy dk result") &&
+        hip_ok(hipMemcpy(dv_actual.data(), dv_dev, dkv_output_bytes,
+                         hipMemcpyDeviceToHost),
+               "copy dv result");
+#endif
 #if defined(SHAOBO_FULL_BWD_FUSED5)
     outputs_copied =
         outputs_copied &&

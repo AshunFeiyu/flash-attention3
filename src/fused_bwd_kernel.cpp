@@ -505,20 +505,20 @@ __device__ __forceinline__ void update_dv_stage(
     const Fragment& p_normal,
     const Fragment (&dout_normal)[kMatrixBlocksD],
     const ins::F16x8& zero,
-    Accumulator (&dv_acc)[8]) {
+    ins::Vec4F16 (&dv_acc)[8]) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
 #pragma unroll
         for (int d_half = 0; d_half < 2; ++d_half) {
             const int out = d_block * 2 + d_half;
             if constexpr (SeedZero) {
-                dv_acc[out].f32 = ins::mmac_f16_lit(
+                dv_acc[out] = ins::mmac_f16_output_native(
                     p_normal.f16x4[0],
-                    dout_normal[d_block].f16x4[d_half], zero.f32);
+                    dout_normal[d_block].f16x4[d_half], zero.f16x4[0]);
             } else {
-                dv_acc[out].f32 = ins::mmac_f16_lit(
+                dv_acc[out] = ins::mmac_f16_output_native(
                     p_normal.f16x4[0],
-                    dout_normal[d_block].f16x4[d_half], dv_acc[out].f32);
+                    dout_normal[d_block].f16x4[d_half], dv_acc[out]);
             }
         }
     }
@@ -530,20 +530,20 @@ __device__ __forceinline__ void update_dk_stage(
     const Fragment& ds_normal,
     const Fragment (&q_normal)[kMatrixBlocksD],
     const ins::F16x8& zero,
-    Accumulator (&dk_acc)[8]) {
+    ins::Vec4F16 (&dk_acc)[8]) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
 #pragma unroll
         for (int d_half = 0; d_half < 2; ++d_half) {
             const int out = d_block * 2 + d_half;
             if constexpr (SeedZero) {
-                dk_acc[out].f32 = ins::mmac_f16_lit(
+                dk_acc[out] = ins::mmac_f16_output_native(
                     ds_normal.f16x4[0], q_normal[d_block].f16x4[d_half],
-                    zero.f32);
+                    zero.f16x4[0]);
             } else {
-                dk_acc[out].f32 = ins::mmac_f16_lit(
+                dk_acc[out] = ins::mmac_f16_output_native(
                     ds_normal.f16x4[0], q_normal[d_block].f16x4[d_half],
-                    dk_acc[out].f32);
+                    dk_acc[out]);
             }
         }
     }
@@ -667,7 +667,7 @@ template <int Count, bool SeedZero = false>
 __device__ __forceinline__ void consume_dv_operand_packet(
     DvOperandPacket& packet,
     const ins::F16x8& zero,
-    Accumulator (&dv_acc)[8]) {
+    ins::Vec4F16 (&dv_acc)[8]) {
     wait_dv_packet<Count>(packet.p_normal, packet.dout_normal);
     ins::raise_priority_2();
     update_dv_stage<SeedZero>(packet.p_normal, packet.dout_normal, zero,
@@ -680,7 +680,7 @@ __device__ __forceinline__ void consume_dv_operand_packet_after_ds(
     DvOperandPacket& packet,
     const Fragment& ds,
     const ins::F16x8& zero,
-    Accumulator (&dv_acc)[8]) {
+    ins::Vec4F16 (&dv_acc)[8]) {
     wait_dv_packet_after_ds<Count>(ds, packet);
     ins::raise_priority_2();
     update_dv_stage<SeedZero>(packet.p_normal, packet.dout_normal, zero,
@@ -717,7 +717,7 @@ __device__ __forceinline__ void update_dv_from_probability(
     int owner,
     const Fragment& probability,
     const ins::F16x8& zero,
-    Accumulator (&dv_acc)[8]) {
+    ins::Vec4F16 (&dv_acc)[8]) {
     DvOperandPacket packet;
     issue_dv_operand_packet<Group>(
         lds, mutable_lds, raw_base, m_block, owner, probability, packet);
@@ -789,7 +789,7 @@ __device__ __forceinline__ void update_dk_from_final_panels_read_ahead(
     int raw_base,
     int owner,
     const ins::F16x8& zero,
-    Accumulator (&dk_acc)[8]) {
+    ins::Vec4F16 (&dk_acc)[8]) {
     // Keep one current and one next Q/dS panel. The next panel's five matrix
     // reads are issued while the current eight-MMAC island is active.
     Fragment q_buf[2][kMatrixBlocksD];
@@ -840,45 +840,62 @@ __device__ __forceinline__ void update_dq_writer_group(
         lds, resident, dq_acc[3]);
 }
 
-__device__ __forceinline__ void store_dkv_outputs_impl(
-    float* dk,
-    float* dv,
+__device__ __forceinline__ void store_dkv_outputs(
+    __half* dk,
+    __half* dv,
+    __half* lds,
     int64_t tensor_base,
     int k_base,
     int n_owner,
-    int lane,
-    const Accumulator (&dk_acc)[8],
-    const Accumulator (&dv_acc)[8]) {
-    const int row = k_base + n_owner * Tile::kNkPerConsumerWave +
-                    (lane & 15);
+    const ins::Vec4F16 (&dk_acc)[8],
+    const ins::Vec4F16 (&dv_acc)[8]) {
+    const int pair = n_owner >> 1;
+    const int pair_half = n_owner & 1;
+    const int pair_row = k_base + pair * 32;
+    const int dk_page = LdsLayout::kVBase +
+                        2 * pair * Tile::kWriterPageBytes;
+    const int dv_page = dk_page + Tile::kWriterPageBytes;
+    const int writer_offset = pair_half * Tile::kWriterStrideBytes;
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
-#pragma unroll
-        for (int d_half = 0; d_half < 2; ++d_half) {
-            const int out = d_block * 2 + d_half;
-            const int col =
-                d_block * 32 + d_half * 16 + (lane >> 4) * 4;
-            float* dk_ptr = dk + tensor_base +
-                            static_cast<int64_t>(row) * Tile::kHeadDim + col;
-            float* dv_ptr = dv + tensor_base +
-                            static_cast<int64_t>(row) * Tile::kHeadDim + col;
-            *reinterpret_cast<ins::Vec4F32*>(dk_ptr) = dk_acc[out].f32;
-            *reinterpret_cast<ins::Vec4F32*>(dv_ptr) = dv_acc[out].f32;
+        const int out = 2 * d_block;
+        Fragment dk_packed{};
+        Fragment dv_packed{};
+        dk_packed.f16x4[0] = dk_acc[out];
+        dk_packed.f16x4[1] = dk_acc[out + 1];
+        dv_packed.f16x4[0] = dv_acc[out];
+        dv_packed.f16x4[1] = dv_acc[out + 1];
+        ins::ds_write_matrix_32x16_trans_f16(
+            dk_packed.f16x8, lds, dk_page + writer_offset);
+        ins::ds_write_matrix_32x16_trans_f16(
+            dv_packed.f16x8, lds, dv_page + writer_offset);
+        __builtin_hcu_s_ebarrier_sync(0);
+        if (pair_half == 0) {
+            const int64_t output = tensor_base +
+                static_cast<int64_t>(pair_row) * Tile::kHeadDim +
+                d_block * 32;
+            auto* dk_source = reinterpret_cast<short*>(
+                reinterpret_cast<char*>(lds) + dk_page);
+            auto* dv_source = reinterpret_cast<short*>(
+                reinterpret_cast<char*>(lds) + dv_page);
+            __builtin_hcu_matrix_store_32x32_b16(
+                ins::prepare_matrix_src(dk + output, Tile::kHeadDim),
+                dk_source, 0, false, false, false, false);
+            __builtin_hcu_matrix_store_32x32_b16(
+                ins::prepare_matrix_src(dv + output, Tile::kHeadDim),
+                dv_source, 0, false, false, false, false);
+            ins::wait_vmem_lgkm();
         }
+        __builtin_hcu_s_ebarrier_sync(0);
     }
 }
 
-__device__ __forceinline__ void store_dkv_outputs(
-    float* dk,
-    float* dv,
-    int64_t tensor_base,
-    int k_base,
-    int n_owner,
-    int lane,
-    const Accumulator (&dk_acc)[8],
-    const Accumulator (&dv_acc)[8]) {
-    store_dkv_outputs_impl(dk, dv, tensor_base, k_base, n_owner, lane,
-                           dk_acc, dv_acc);
+__device__ __forceinline__ void wait_dkv_store_epilogue() {
+#pragma unroll
+    for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
+        __builtin_hcu_s_ebarrier_sync(0);
+        __builtin_hcu_s_ebarrier_sync(0);
+    }
 }
 
 template <int Group, int Page, bool ReuseDs, bool FirstAccum>
@@ -895,8 +912,8 @@ __device__ __forceinline__ void run_consumer_q_tile(
     int lane,
     const ResidentFragments& resident,
     const ins::F16x8& mmac_zero,
-    Accumulator (&dv_acc)[8],
-    Accumulator (&dk_acc)[8],
+    ins::Vec4F16 (&dv_acc)[8],
+    ins::Vec4F16 (&dk_acc)[8],
     int& raw_phase,
     int& dq_done_phase) {
     static_assert(Page == 0 || Page == 1);
@@ -1056,8 +1073,8 @@ template <int Group, bool Causal>
 __device__ __forceinline__ void run_consumer_group(
     const __half* lds,
     __half* mutable_lds,
-    float* dk,
-    float* dv,
+    __half* dk,
+    __half* dv,
     int64_t tensor_base,
     int k_base,
     int q_tile_begin,
@@ -1072,8 +1089,8 @@ __device__ __forceinline__ void run_consumer_group(
         ins::abarrier_arrive_cnt<false>(Bar::kVSidecarReady, 1);
     }
 
-    Accumulator dv_acc[8];
-    Accumulator dk_acc[8];
+    ins::Vec4F16 dv_acc[8];
+    ins::Vec4F16 dk_acc[8];
     ins::F16x8 mmac_zero;
     ins::zero_f16x8(mmac_zero);
     int raw0_phase = 0;
@@ -1144,8 +1161,9 @@ __device__ __forceinline__ void run_consumer_group(
             dv_acc, dk_acc, raw0_phase, done0_phase);
     }
 
-    store_dkv_outputs(dk, dv, tensor_base, k_base, n_owner, lane, dk_acc,
-                      dv_acc);
+    __builtin_hcu_s_ebarrier_sync(0);
+    store_dkv_outputs(dk, dv, mutable_lds, tensor_base, k_base, n_owner,
+                      dk_acc, dv_acc);
 }
 
 template <int Generation>
@@ -1214,6 +1232,8 @@ __device__ __forceinline__ void run_dq_writer(
             lds, dq_partial, partial_base, q_tile_begin, qi, d_owner, lane,
             resident, filled0_phase, filled1_phase);
     }
+    __builtin_hcu_s_ebarrier_sync(0);
+    wait_dkv_store_epilogue();
 }
 
 enum CtaOrderMode : int {
@@ -1306,8 +1326,8 @@ __device__ __forceinline__ void run_fused5_kernel_body(
     const __half* __restrict__ v,
     const float* __restrict__ packed_sidecar,
     __half* __restrict__ dq_partial,
-    float* __restrict__ dk,
-    float* __restrict__ dv,
+    __half* __restrict__ dk,
+    __half* __restrict__ dv,
     int heads_q,
     int heads_kv,
     int q_heads_per_kv,
@@ -1423,6 +1443,8 @@ __device__ __forceinline__ void run_fused5_kernel_body(
             ins::abarrier_try_wait<true>(Bar::kRawUsed1,
                                          raw1_used_phase);
         }
+        __builtin_hcu_s_ebarrier_sync(0);
+        wait_dkv_store_epilogue();
     } else if (wave < Tile::kConsumer1WaveBegin) {
         __builtin_hcu_s_set_vgpr_size(Wdra::kConsumer0Vgprs);
         const int owner = wave - Tile::kConsumer0WaveBegin;
@@ -1532,8 +1554,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
                      const __half* __restrict__ v,
                      const float* __restrict__ packed_sidecar,
                      __half* __restrict__ dq_partial,
-                     float* __restrict__ dk,
-                     float* __restrict__ dv,
+                     __half* __restrict__ dk,
+                     __half* __restrict__ dv,
                      int heads_q,
                      int heads_kv,
                      int q_heads_per_kv,
@@ -1567,8 +1589,8 @@ fa3_bwd_5gemm_noncausal_kernel(const __half* __restrict__ dout,
                                const __half* __restrict__ v,
                                const float* __restrict__ packed_sidecar,
                                __half* __restrict__ dq_partial,
-                               float* __restrict__ dk,
-                               float* __restrict__ dv,
+                               __half* __restrict__ dk,
+                               __half* __restrict__ dv,
                                int heads_q,
                                int heads_kv,
                                int q_heads_per_kv,
@@ -1638,10 +1660,10 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
          (workspace.dk_partial == nullptr || workspace.dv_partial == nullptr))) {
         return SHAOBO_FA3_STATUS_INVALID_VALUE;
     }
-    float* const dk_store =
-        q_heads_per_kv == 1 ? static_cast<float*>(dk) : workspace.dk_partial;
-    float* const dv_store =
-        q_heads_per_kv == 1 ? static_cast<float*>(dv) : workspace.dv_partial;
+    __half* const dk_store =
+        q_heads_per_kv == 1 ? static_cast<__half*>(dk) : workspace.dk_partial;
+    __half* const dv_store =
+        q_heads_per_kv == 1 ? static_cast<__half*>(dv) : workspace.dv_partial;
     const dim3 grid(params->num_heads_q, params->batch, k_tile_count);
     if (params->causal != 0) {
         hipLaunchKernelGGL(
@@ -1673,8 +1695,8 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
         return reduce_status;
     }
     const int dkv_reduce_status = fused::launch_dkv_reduction(
-        workspace.dk_partial, workspace.dv_partial, static_cast<float*>(dk),
-        static_cast<float*>(dv), params);
+        workspace.dk_partial, workspace.dv_partial, static_cast<__half*>(dk),
+        static_cast<__half*>(dv), params);
     if (dkv_reduce_status != SHAOBO_FA3_STATUS_SUCCESS) {
         return dkv_reduce_status;
     }

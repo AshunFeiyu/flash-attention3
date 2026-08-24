@@ -63,6 +63,8 @@ struct FusedBwdContract {
     static constexpr int kMmacPerTile =
         kLogicalGemmCount * kMmacPerLogicalGemm;
     static constexpr bool kDkvHasUniqueOutputOwner = true;
+    static constexpr bool kDkvUsesFp16MmacAccumulation = true;
+    static constexpr bool kDkvUsesNativeMatrixStore = true;
     static constexpr bool kDqHasUniqueD32Owner = true;
     static constexpr bool kDqUsesFp32AtomicAdd = false;
     static constexpr bool kDqUsesWorkspaceReduction = true;
@@ -154,13 +156,15 @@ struct FusedBwdContract {
     static_assert(kMmacPerConsumerWaveDkv == 128 &&
                       kMmacPerDqWriterWave == 64,
                   "per-role MMAC ledger must match the 16-wave design");
-    static_assert(kDkvHasUniqueOutputOwner && kDqHasUniqueD32Owner &&
+    static_assert(kDkvHasUniqueOutputOwner &&
+                      kDkvUsesFp16MmacAccumulation &&
+                      kDkvUsesNativeMatrixStore && kDqHasUniqueD32Owner &&
                       !kDqUsesFp32AtomicAdd &&
                       kDqUsesWorkspaceReduction && kDqWorkspaceIsFp16 &&
                       kDqFinalOutputIsFp16 && !kGqaDkvUsesAtomicAdd &&
                       !kGqaDkvUsesCtaOwnedReduction &&
                       kGqaDkvUsesWorkspaceReduction,
-                  "GQA dKV and dQ use uniquely owned workspace reductions");
+                  "dKV uses native FP16 matrix store; reductions remain owned");
     static_assert(kResidentKvBytes == 64 * 1024 &&
                       kRawQDoBytes == 32 * 1024 &&
                       kRawQDoPhysicalBytes == 64 * 1024 &&
