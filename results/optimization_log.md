@@ -17916,3 +17916,21 @@ SGPR62/VGPR128, private/spill0. H1/S1024 fullperf improves 47,024,250 to
 46,384,975 ticks and MMAC active improves 33.578961% to 34.593226%. The
 decision is `ACCEPT_NATIVE_FP16_DKV_MATRIX_STORE`. The remaining dominant
 bottleneck is the existing RawUsed ABarrier issue-gap, not output storage.
+
+## 2026-08-24 Native FP16 dQ Matrix Store Rejected
+
+dQ used the same native FP16-output MMAC, trans matrix writer, and
+`matrix_store_32x32_b16` chain as dK/dV. Four D32 writer waves each received
+two private 2KB LDS pages in the released V region; the pages did not overlap
+dS, scratch, sidecar, or another writer. H1/S128 and H1/S1024 correctness,
+bank0, and no-spill resource gates passed. The fused kernel contained no
+direct global stores.
+
+The steady S1024 result regressed: fused ticks rose from 46,384,975 to
+48,292,335 (+4.11%), and full-chain ticks rose from 51,459,590 to 53,225,900
+(+3.43%). MMAC active fell from 34.593226% to 33.809171%. The FP16 workspace
+made dQ reduction 5.98% faster, but the fused path added DS-writer, SCA, VMEM,
+and wait pressure. Moving the completion wait to the next LDS-overwrite edge
+did not recover the loss. Decision: `REJECT_PERF_CANONICAL_RESTORED`. Native
+dQ layout transport is valid, but direct vector global stores remain the
+better epilogue for per-q-tile partial output.

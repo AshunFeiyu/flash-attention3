@@ -1,5 +1,15 @@
 # Source Status
 
+## 2026-08-24 dQ Matrix Store Rejected; dK/dV Canonical Restored
+
+An isolated dQ epilogue experiment proved native FP16 MMAC -> trans writer ->
+32x32 matrix-store correctness with four private writer regions and bank0.
+S1024 fused ticks regressed 46,384,975 -> 48,292,335 and MMAC active fell
+34.593226% -> 33.809171%. The experiment is recorded in the ledger and its
+patch is archived under `/zys/sb/fa3b_h7_dq_native_store_latewait`; active
+source remains commit `71520f7` with native dK/dV matrix store and direct dQ
+partial stores.
+
 ## 2026-08-24 Matrix Store Shape Contract Corrected
 
 The focused 32x16 and 64x16 direct probes pass exactly on PMD HEAD1734 when

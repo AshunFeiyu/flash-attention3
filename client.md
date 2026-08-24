@@ -6568,3 +6568,12 @@ stores, lowers S1024 fullperf fused ticks by 1.36%, and raises MMAC active by
 1.01 percentage points. The main remaining bottleneck is RawUsed ABarrier.
 Evidence is under
 `/zys/sb/fa3b_h6_fp16_native_store_fullperf/b1_h1_s1024_d128_c1_fullperf_20260824_192607`.
+
+## 2026-08-24 dQ Matrix Store Boundary
+
+The dQ native matrix-store experiment passed layout and full correctness but
+lost 4.11% fused ticks at S1024. Unlike dK/dV's once-per-CTA final epilogue,
+dQ writes one partial tile per q-loop iteration; its original aligned Vec4
+stores need no LDS publication or completion wait. Keep dQ direct stores and
+use matrix store only when a measured cooperative epilogue amortizes its LDS
+and wait cost.
