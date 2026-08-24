@@ -568,6 +568,18 @@ __device__ __forceinline__ Vec4F32 mmac_f16_lit(Vec4F16 lhs,
 #endif
 }
 
+__device__ __forceinline__ Vec4F16 mmac_f16_output_native(
+    Vec4F16 lhs, Vec4F16 rhs, Vec4F16 acc) {
+#if defined(__gfx946__) || defined(__gfx938__)
+    return __builtin_hcu_mmac_16x16x16_f16_lit_lts(
+        lhs, rhs, acc, 0, 0);
+#else
+    (void)lhs;
+    (void)rhs;
+    return acc;
+#endif
+}
+
 __device__ __forceinline__ void mmac_f16_lit_inplace(Vec4F32& acc,
                                                       Vec4F16 lhs,
                                                       Vec4F16 rhs) {

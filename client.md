@@ -6559,3 +6559,12 @@ to own a complete N32xD32 C/store tile.
 Canonical restoration is verified, not inferred: H1/S128 full backward passed
 delta/dK/dV/dQ with bank0 after rebuilding the direct FP32-store source. The
 run is `/zys/sb/fa3b_h5_restore_canonical/b1_h1_s128_d128_c1_20260824_191352`.
+
+## 2026-08-24 Native FP16 dK/dV Store
+
+The promoted path uses FP16-output dK/dV MMAC and the native cooperative
+N16+N16 writer chain. It passes S128 and S1024, removes direct dK/dV FLAT
+stores, lowers S1024 fullperf fused ticks by 1.36%, and raises MMAC active by
+1.01 percentage points. The main remaining bottleneck is RawUsed ABarrier.
+Evidence is under
+`/zys/sb/fa3b_h6_fp16_native_store_fullperf/b1_h1_s1024_d128_c1_fullperf_20260824_192607`.

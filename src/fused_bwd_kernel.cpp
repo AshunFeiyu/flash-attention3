@@ -384,13 +384,13 @@ __device__ __forceinline__ void ds_stage(
 }
 
 __device__ __forceinline__ void zero_dkv_accumulators(
-    Accumulator (&dv_acc)[8], Accumulator (&dk_acc)[8]) {
+    ins::Vec4F16 (&dv_acc)[8], ins::Vec4F16 (&dk_acc)[8]) {
+    ins::F16x8 zero;
+    ins::zero_f16x8(zero);
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
-        ins::zero_vgpr2(dv_acc[i].u64[0]);
-        ins::zero_vgpr2(dv_acc[i].u64[1]);
-        ins::zero_vgpr2(dk_acc[i].u64[0]);
-        ins::zero_vgpr2(dk_acc[i].u64[1]);
+        dv_acc[i] = zero.f16x4[0];
+        dk_acc[i] = zero.f16x4[0];
     }
 }
 
@@ -398,15 +398,15 @@ __device__ __forceinline__ void zero_dkv_accumulators(
 __device__ __forceinline__ void update_dv_stage(
     const Fragment& p_normal,
     const Fragment (&dout_normal)[kMatrixBlocksD],
-    Accumulator (&dv_acc)[8]) {
+    ins::Vec4F16 (&dv_acc)[8]) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
 #pragma unroll
         for (int d_half = 0; d_half < 2; ++d_half) {
             const int out = d_block * 2 + d_half;
-            dv_acc[out].f32 = ins::mmac_f16_lit(
+            dv_acc[out] = ins::mmac_f16_output_native(
                 p_normal.f16x4[0],
-                dout_normal[d_block].f16x4[d_half], dv_acc[out].f32);
+                dout_normal[d_block].f16x4[d_half], dv_acc[out]);
         }
     }
 }
@@ -415,15 +415,15 @@ __device__ __forceinline__ void update_dv_stage(
 __device__ __forceinline__ void update_dk_stage(
     const Fragment& ds_normal,
     const Fragment (&q_normal)[kMatrixBlocksD],
-    Accumulator (&dk_acc)[8]) {
+    ins::Vec4F16 (&dk_acc)[8]) {
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
 #pragma unroll
         for (int d_half = 0; d_half < 2; ++d_half) {
             const int out = d_block * 2 + d_half;
-            dk_acc[out].f32 = ins::mmac_f16_lit(
+            dk_acc[out] = ins::mmac_f16_output_native(
                 ds_normal.f16x4[0], q_normal[d_block].f16x4[d_half],
-                dk_acc[out].f32);
+                dk_acc[out]);
         }
     }
 }
@@ -486,7 +486,7 @@ __device__ __forceinline__ void update_dv_from_probability(
     int m_block,
     int owner,
     const ProbabilityPanel& p,
-    Accumulator (&dv_acc)[8]) {
+    ins::Vec4F16 (&dv_acc)[8]) {
     static_assert(Group == 0 || Group == 1);
 
     const int page = scratch_page_offset<Group>(owner);
@@ -538,7 +538,7 @@ __device__ __forceinline__ void update_dk_from_final_panels_read_ahead(
     const __half* lds,
     int raw_base,
     int owner,
-    Accumulator (&dk_acc)[8]) {
+    ins::Vec4F16 (&dk_acc)[8]) {
     // Keep one current and one next Q/dS panel. The next panel's five matrix
     // reads are issued while the current eight-MMAC island is active.
     Fragment q_buf[2][kMatrixBlocksD];
@@ -571,32 +571,60 @@ __device__ __forceinline__ void zero_dq_writer_accumulators(
 }
 
 __device__ __forceinline__ void store_dkv_outputs(
-    float* dk,
-    float* dv,
+    __half* dk,
+    __half* dv,
+    __half* lds,
     int64_t tensor_base,
     int k_base,
     int n_owner,
-    int lane,
-    const Accumulator (&dk_acc)[8],
-    const Accumulator (&dv_acc)[8]) {
-    const int row = k_base + n_owner * Tile::kNkPerConsumerWave +
-                    (lane & 15);
+    const ins::Vec4F16 (&dk_acc)[8],
+    const ins::Vec4F16 (&dv_acc)[8]) {
+    const int pair = n_owner >> 1;
+    const int pair_half = n_owner & 1;
+    const int pair_row = k_base + pair * 32;
+    const int dk_page = LdsLayout::kVBase +
+                        2 * pair * Tile::kWriterPageBytes;
+    const int dv_page = dk_page + Tile::kWriterPageBytes;
+    const int writer_offset = pair_half * Tile::kWriterStrideBytes;
 #pragma unroll
     for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
-#pragma unroll
-        for (int d_half = 0; d_half < 2; ++d_half) {
-            const int out = d_block * 2 + d_half;
-            const int col =
-                d_block * 32 + d_half * 16 + (lane >> 4) * 4;
-            auto* dk_ptr = reinterpret_cast<ins::Vec4F32*>(
-                dk + tensor_base +
-                static_cast<int64_t>(row) * Tile::kHeadDim + col);
-            auto* dv_ptr = reinterpret_cast<ins::Vec4F32*>(
-                dv + tensor_base +
-                static_cast<int64_t>(row) * Tile::kHeadDim + col);
-            *dk_ptr = dk_acc[out].f32;
-            *dv_ptr = dv_acc[out].f32;
+        const int out = 2 * d_block;
+        Fragment dk_packed{};
+        Fragment dv_packed{};
+        dk_packed.f16x4[0] = dk_acc[out];
+        dk_packed.f16x4[1] = dk_acc[out + 1];
+        dv_packed.f16x4[0] = dv_acc[out];
+        dv_packed.f16x4[1] = dv_acc[out + 1];
+        ins::ds_write_matrix_32x16_trans_f16(
+            dk_packed.f16x8, lds, dk_page + writer_offset);
+        ins::ds_write_matrix_32x16_trans_f16(
+            dv_packed.f16x8, lds, dv_page + writer_offset);
+        __builtin_hcu_s_ebarrier_sync(0);
+        if (pair_half == 0) {
+            const int64_t output = tensor_base +
+                static_cast<int64_t>(pair_row) * Tile::kHeadDim +
+                d_block * 32;
+            auto* dk_source = reinterpret_cast<short*>(
+                reinterpret_cast<char*>(lds) + dk_page);
+            auto* dv_source = reinterpret_cast<short*>(
+                reinterpret_cast<char*>(lds) + dv_page);
+            __builtin_hcu_matrix_store_32x32_b16(
+                ins::prepare_matrix_src(dk + output, Tile::kHeadDim),
+                dk_source, 0, false, false, false, false);
+            __builtin_hcu_matrix_store_32x32_b16(
+                ins::prepare_matrix_src(dv + output, Tile::kHeadDim),
+                dv_source, 0, false, false, false, false);
+            ins::wait_vmem_lgkm();
         }
+        __builtin_hcu_s_ebarrier_sync(0);
+    }
+}
+
+__device__ __forceinline__ void wait_dkv_store_epilogue() {
+#pragma unroll
+    for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
+        __builtin_hcu_s_ebarrier_sync(0);
+        __builtin_hcu_s_ebarrier_sync(0);
     }
 }
 
@@ -604,8 +632,8 @@ template <int Group>
 __device__ __forceinline__ void run_consumer_group(
     const __half* lds,
     __half* mutable_lds,
-    float* dk,
-    float* dv,
+    __half* dk,
+    __half* dv,
     int64_t tensor_base,
     int k_base,
     int q_tile_begin,
@@ -626,8 +654,8 @@ __device__ __forceinline__ void run_consumer_group(
         ins::abarrier_arrive_cnt<false>(Bar::kVSidecarReady, 1);
     }
 
-    Accumulator dv_acc[8];
-    Accumulator dk_acc[8];
+    ins::Vec4F16 dv_acc[8];
+    ins::Vec4F16 dk_acc[8];
     zero_dkv_accumulators(dv_acc, dk_acc);
     ins::F16x8 mmac_zero;
     ins::zero_f16x8(mmac_zero);
@@ -714,8 +742,9 @@ __device__ __forceinline__ void run_consumer_group(
         ins::abarrier_arrive_cnt<false>(kLocalDqDone, 1);
     }
 
-    store_dkv_outputs(dk, dv, tensor_base, k_base, n_owner, lane, dk_acc,
-                      dv_acc);
+    __builtin_hcu_s_ebarrier_sync(0);
+    store_dkv_outputs(dk, dv, mutable_lds, tensor_base, k_base, n_owner,
+                      dk_acc, dv_acc);
 }
 
 __device__ __forceinline__ void run_dq_writer(
@@ -764,6 +793,8 @@ __device__ __forceinline__ void run_dq_writer(
         store_dq_partial_d32(dq_partial, partial_base, q_base, 3, d_owner,
                              lane, dq_acc[3]);
     }
+    __builtin_hcu_s_ebarrier_sync(0);
+    wait_dkv_store_epilogue();
 }
 
 }  // namespace
@@ -776,8 +807,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
                      const __half* __restrict__ v,
                      const float* __restrict__ packed_sidecar,
                      float* __restrict__ dq_partial,
-                     float* __restrict__ dk,
-                     float* __restrict__ dv,
+                     __half* __restrict__ dk,
+                     __half* __restrict__ dv,
                      int heads,
                      int seqlen,
                      int causal,
@@ -881,6 +912,8 @@ fa3_bwd_5gemm_kernel(const __half* __restrict__ dout,
             ins::abarrier_try_wait<true>(Bar::kRawUsed1,
                                          raw1_used_phase);
         }
+        __builtin_hcu_s_ebarrier_sync(0);
+        wait_dkv_store_epilogue();
     } else if (wave < Tile::kConsumer1WaveBegin) {
         __builtin_hcu_s_set_vgpr_size(Wdra::kConsumer0Vgprs);
         const int owner = wave - Tile::kConsumer0WaveBegin;
@@ -1001,8 +1034,8 @@ extern "C" int shaobo_fa3_bwd_fused5(const void* dout,
         static_cast<const __half*>(dout), static_cast<const __half*>(q),
         static_cast<const __half*>(k), static_cast<const __half*>(v),
         static_cast<const float*>(packed_sidecar),
-        static_cast<float*>(params->workspace), static_cast<float*>(dk),
-        static_cast<float*>(dv),
+        static_cast<float*>(params->workspace), static_cast<__half*>(dk),
+        static_cast<__half*>(dv),
         params->num_heads_q, params->seqlen_q, params->causal,
         params->softmax_scale);
     hipError_t error = hipGetLastError();

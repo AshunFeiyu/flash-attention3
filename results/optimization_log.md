@@ -17902,3 +17902,17 @@ native N32xD32 C/store tile. The canonical FP32 global-store path is restored.
 The restored source was rebuilt and re-run at H1/S128: all three correctness
 stages passed, bank conflict was zero, fused5 took 11,380,005 ticks, and the
 three-dispatch total was 14,838,005 ticks.
+
+## 2026-08-24 Native FP16 dK/dV MMAC And Matrix Store
+
+The real kernel was changed from FP32 dK/dV accumulation plus direct global
+stores to FP16-output MMAC `lit0/lts0` plus the exact two-wave native writer
+chain. Adjacent N16 consumers publish the two halves of one N32 page; the even
+wave issues `matrix_store_32x32_b16`. No gather, permute, ordinary matrix DS
+read, duplicate GEMM, or extra production kernel was introduced.
+
+H1/S128 and H1/S1024 full correctness pass with bank0. Resources are
+SGPR62/VGPR128, private/spill0. H1/S1024 fullperf improves 47,024,250 to
+46,384,975 ticks and MMAC active improves 33.578961% to 34.593226%. The
+decision is `ACCEPT_NATIVE_FP16_DKV_MATRIX_STORE`. The remaining dominant
+bottleneck is the existing RawUsed ABarrier issue-gap, not output storage.

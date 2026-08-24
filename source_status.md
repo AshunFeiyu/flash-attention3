@@ -11961,3 +11961,12 @@ source ABI as one N32xD32 owner. Canonical direct stores remain active.
 Restoration was verified by a clean rebuild and H1/S128 full correctness run:
 delta/dK/dV/dQ all passed, bank conflict was zero, and fused5 took 11,380,005
 ticks.
+
+## 2026-08-24 Native dK/dV Store Promoted
+
+Canonical fused5 now accumulates dK/dV with native FP16-output MMAC
+`lit0/lts0`, writes adjacent N16 halves through the trans matrix writer, and
+stores each N32xD32 tile with `matrix_store_32x32_b16`. H1/S128 and H1/S1024
+pass, bank0, SGPR62/VGPR128, private/spill0. S1024 fullperf is 46,384,975
+ticks with 34.593226% MMAC active. The prior N16 ownership rejection is
+superseded: only the FP32-C lane-local downcast source ABI remains rejected.

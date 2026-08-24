@@ -247,3 +247,30 @@ Result: `REJECT_CURRENT_N16_OUTPUT_OWNERSHIP`.
   source rebuilt at SGPR60/VGPR128 with no spill/private segment. H1/S128 full
   backward passed delta/dK/dV/dQ with bank0; fused5 ticks were 11,380,005 and
   total three-dispatch ticks were 14,838,005 on the same locked environment.
+
+## H6: FP16-Output dK/dV Native Matrix Store
+
+The H5 ownership attribution was too broad. Two N16 waves can cooperatively
+publish one N32 page; the exact two-wave probe had already proved that. The
+failed production tuple was specifically FP32 C followed by lane-local FP16
+packing. H6 keeps the existing N16 ownership and uses the native exact tuple:
+
+```text
+FP16-output MMAC lit0/lts0
+  -> adjacent D16 concat
+  -> trans ds_write_matrix, one N16 half per wave
+  -> matrix_store_32x32_b16 by the even wave
+```
+
+Result: `ACCEPT_NATIVE_FP16_DKV_MATRIX_STORE`.
+
+- H1/S128 and H1/S1024 full backward pass delta/dK/dV/dQ with bank0.
+- S1024 dK/dV relative L2 errors are 0.00904349 and 0.00169241.
+- Metadata is SGPR62/VGPR128 with no private segment or spill. Dynamic MMOP
+  remains 92,160; dK/dV direct FLAT stores are gone.
+- S128 fused ticks improve 11,380,005 -> 10,338,055 (-9.16%).
+- S1024 stats ticks improve 47,577,985 -> 46,465,055 (-2.34%).
+- S1024 fullperf ticks improve 47,024,250 -> 46,384,975 (-1.36%), while
+  MMAC active improves 33.578961% -> 34.593226%.
+- XCU still identifies RawUsed ABarrier as the dominant issue-gap (28.35%).
+  The matrix-store tail is not the new critical path.

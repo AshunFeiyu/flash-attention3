@@ -150,6 +150,14 @@ def main() -> int:
     ):
         require(code, pattern, failures, name)
 
+    if asm:
+        for name, pattern in (
+            ("missing_fp16_output_mmac", r"v_mmac_16x16x16_f16"),
+            ("missing_native_dkv_writer", r"ds_write_matrix_format"),
+            ("missing_native_dkv_store", r"matrix_store_32x32_b16"),
+        ):
+            require(asm, pattern, failures, name)
+
     for name, pattern in (
         ("forbidden_natural_wrong", r"\bnatural_wrong\b"),
         ("forbidden_bpermute", r"\bbpermute\b|__builtin_hcu_bpermute"),
@@ -170,6 +178,10 @@ def main() -> int:
         ("contract_dv_formula", r"kDv\s*=\s*\"dV=P\^T@dO\""),
         ("contract_dk_formula", r"kDk\s*=\s*\"dK=dS\^T@Q\""),
         ("contract_dq_formula", r"kDq\s*=\s*\"dQ=dS@K\""),
+        ("contract_fp16_dkv_accumulation",
+         r"kDkvUsesFp16MmacAccumulation\s*=\s*true"),
+        ("contract_native_dkv_store",
+         r"kDkvUsesNativeMatrixStore\s*=\s*true"),
         ("resource_lds_budget", r"k(?:LdsLimitBytes|LdsBudgetBytes|PlannedLdsBytes|SteadyBytes|PhysicalLdsBytes)"),
         ("resource_vgpr_budget", r"k(?:Consumer|Producer).*Vgprs|kPerSimd.*Vgprs"),
         ("resource_no_private", r"kRequireNoPrivateSegment"),
