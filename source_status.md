@@ -11948,3 +11948,16 @@ views gives `0/8` exact results while every tile is complete and bank conflict
 is zero. Store T/R does not change the mismatch signature. Classification:
 `ACCEPT_FWD_LAYOUT_CONTROL / REJECT_NATURAL_FP32_PACK_TO_WRITER`. Canonical
 FA kernels remain unchanged.
+
+## 2026-08-24 Production Matrix-Store Ownership Gate
+
+The real fused5 dK/dV integration rejects the current N16-per-wave output
+ownership for native matrix store. Builds were resource-clean and PMD completed
+with bank0, but dK/dV were a deterministic source-slot permutation on H1/S128.
+The trans writer produced correct rows and column order `0,16,4,20,...`; store
+T/R did not alter it. This is not evidence against MMAC 4interleave. It proves
+that two independent N16 owners do not automatically form the same writer
+source ABI as one N32xD32 owner. Canonical direct stores remain active.
+Restoration was verified by a clean rebuild and H1/S128 full correctness run:
+delta/dK/dV/dQ all passed, bank conflict was zero, and fused5 took 11,380,005
+ticks.

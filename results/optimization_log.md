@@ -17884,3 +17884,21 @@ not change MMAC result ownership.
 - Decision: `ACCEPT_FWD_LAYOUT_CONTROL / REJECT_NATURAL_FP32_PACK_TO_WRITER`.
   This closes stride/completion/store-view attribution. The remaining open
   contract is a compiler/ISA-defined FP32-C-to-F16-writer source conversion.
+
+## 2026-08-24 Fused5 Native dK/dV Matrix-Store Integration
+
+The matrix-store chain was tested inside the real five-GEMM FA BWD kernel.
+The first version used one 16x32 output page per N16 consumer; the second paired
+two N16 consumers into one 32x32 page and let the even owner issue the store.
+Normal/trans writers and matrix-store T modes all completed with bank0 and no
+spill, but dK/dV failed H1/S128 while delta and dQ remained correct.
+
+Layout dumps showed valid dK/dV values in a deterministic source-slot order,
+not missing stores: the trans writer fixed rows but produced columns in
+`0,16,4,20,8,24,...` order. Classification:
+`REJECT_CURRENT_N16_OUTPUT_OWNERSHIP`. The 4interleave left-layout rule remains
+accepted; a promoted matrix-store epilogue must make one wave own the complete
+native N32xD32 C/store tile. The canonical FP32 global-store path is restored.
+The restored source was rebuilt and re-run at H1/S128: all three correctness
+stages passed, bank conflict was zero, fused5 took 11,380,005 ticks, and the
+three-dispatch total was 14,838,005 ticks.

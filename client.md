@@ -6545,3 +6545,17 @@ The same packed Vec8 passed through the two supported F16 writers and all four
 and bank0. Keep direct global B16 stores in canonical dK/dV. Revisit native
 matrix store only with a compiler-documented FP32-C conversion/source ABI;
 do not add scalar gather or lane permutation to the hot path.
+
+## 2026-08-24 Real FA dK/dV Matrix-Store Result
+
+The requested direct FA experiment is complete. A paired-wave 32x32 epilogue
+compiled with SGPR62/VGPR128, no spill/private/scratch, and bank0. H1/S128 kept
+delta and dQ correct but failed dK/dV. The values were written completely in a
+fixed source-slot swizzle; this was not a PMD completion fault. Current N16
+per-wave output ownership is incompatible with a no-permute native store
+epilogue. Preserve direct global stores. Retry only after redesigning one wave
+to own a complete N32xD32 C/store tile.
+
+Canonical restoration is verified, not inferred: H1/S128 full backward passed
+delta/dK/dV/dQ with bank0 after rebuilding the direct FP32-store source. The
+run is `/zys/sb/fa3b_h5_restore_canonical/b1_h1_s128_d128_c1_20260824_191352`.

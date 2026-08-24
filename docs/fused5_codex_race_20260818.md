@@ -198,3 +198,52 @@ H4 is closed at the integration layer. Do not add another layout workaround
 to the canonical kernel. A future retry requires a focused dense-MMAC oracle
 for the exact tuple `raw-Q MLS writer -> normal D32 reader in dQ-writer role
 -> dS-normal lhs -> dK output`, including lane-level fragment evidence.
+
+## H5: Native dK/dV Matrix-Store Epilogue
+
+User-provided ISA rule: `mmac_4interleave` keeps the C-fragment layout of its
+left matrix. Therefore the production experiment preserves that layout
+directly instead of searching for a generic FP32-C conversion:
+
+```text
+dS^T/P^T left-layout FP32 accumulators
+  -> pair adjacent D16 accumulators in source-slot order
+  -> cvt_pk FP16 concat
+  -> ds_write_matrix_format_f16(trans)
+  -> released LDS page
+  -> matrix_store_32x16_b16(T=1,R=0,stride=128 elements)
+```
+
+Each of the eight dKV waves still owns one N16 row tile and all D128 columns.
+The four D32 dK tiles and four D32 dV tiles are unique; GEMM work and output
+ownership do not change. A CTA-wide ownership barrier after all q-loop work
+releases resident K/V, raw Q/dO, sidecar, and final dS pages before the
+epilogue reuses V-LDS. Each wave uses two private 1KB writer pages and issues
+one dK plus one dV matrix store per D32 block, then reuses the pages.
+
+This branch intentionally changes fused5 dK/dV output storage to FP16, which
+matches the requested matrix-store contract; the harness converts it to FP32
+only for comparison with the existing CPU golden. Admission is S128 full
+correctness, no spill/private/scratch, bank0, exact matrix-store ISA, then an
+S1024 same-environment tick comparison. Failure restores the canonical direct
+FP32 global-store path rather than adding a layout workaround.
+
+Result: `REJECT_CURRENT_N16_OUTPUT_OWNERSHIP`.
+
+- The experiment compiled with `SGPR=62`, `VGPR=128`, no private segment or
+  spill, and ran without PMD panic or LDS bank conflict.
+- Both 32x16-per-wave and paired-wave 32x32 matrix-store epilogues wrote all
+  elements, but H1/S128 dK/dV correctness failed. Delta and dQ stayed correct.
+- A dumped actual-to-golden map proved that values were preserved but emitted
+  in a fixed source-slot swizzle. With the trans writer, rows were correct while
+  columns followed `0,16,4,20,...`; store T/R flags did not change the map.
+- This does not reject the `mmac_4interleave` left-layout rule. It rejects the
+  assumption that two waves, each owning N16xD32, can compose the same native
+  writer source contract as one wave owning a complete N32xD32 C tile.
+- The next legal production experiment must give one store owner the complete
+  N32xD32 result tile. Do not add lane gather, permute, or another pack sweep to
+  the current N16 ownership path.
+- After removing the rejected epilogue, the restored canonical FP32-store
+  source rebuilt at SGPR60/VGPR128 with no spill/private segment. H1/S128 full
+  backward passed delta/dK/dV/dQ with bank0; fused5 ticks were 11,380,005 and
+  total three-dispatch ticks were 14,838,005 on the same locked environment.
