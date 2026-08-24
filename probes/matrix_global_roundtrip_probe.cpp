@@ -16,8 +16,8 @@ namespace {
 using Vec8F16 = __attribute__((__vector_size__(8 * sizeof(_Float16)))) _Float16;
 
 constexpr int kWaveSize = 64;
-constexpr int kRows = 32;
-constexpr int kCols = 16;
+constexpr int kRows = 16;
+constexpr int kCols = 32;
 constexpr int kMatrixElems = kRows * kCols;
 constexpr int kPageElems = 64 * 16;
 constexpr int kLoadModeCount = 4;

@@ -1,5 +1,14 @@
 # Source Status
 
+## 2026-08-24 Matrix Store Shape Contract Corrected
+
+The focused 32x16 and 64x16 direct probes pass exactly on PMD HEAD1734 when
+the global tensors are described as 16x32/stride32 and 16x64/stride64.
+The previous matrix-store truncation conclusion came from reversed shape and
+stride assumptions and is superseded.  Canonical FA kernels are unchanged.
+The only open epilogue issue is the FP32 MMAC C-fragment to FP16
+`ds_write_matrix` source-slot contract.
+
 ## 2026-08-18 N64 Boundary Closed; Canonical Active Again
 
 Both the remote clean repo and the local branch

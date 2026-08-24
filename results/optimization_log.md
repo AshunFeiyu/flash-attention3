@@ -17852,3 +17852,17 @@ not change MMAC result ownership.
 - Boundary: `row=1,col=2` F16 writer is rejected by both clang and gfx946
   assembler. FP32 accumulator packing remains unresolved.
 - Decision: `ACCEPT_A4_FP16_OWNERSHIP`; no canonical kernel change.
+
+## 2026-08-24 32x16/64x16 Shape Correction
+
+- The old probes incorrectly interpreted the instruction suffix as the
+  row-major global shape.  Correct contracts are 16x32/stride32 for
+  `32x16` and 16x64/stride64 for `64x16`.
+- Corrected direct MLS-to-matrix-store tests pass `512/512` and `1024/1024`
+  respectively on PMD HEAD1734.  The 64x16 test reserves 8 KiB for the MLS
+  swizzled LDS footprint.
+- The old 32x16 `240` mismatches are exactly explained by overlapping rows
+  from stride16; this was probe misuse, not a PMD truncation defect.
+- Decision: `ACCEPT_NATIVE_MATRIX_STORE_DIRECT`; supersede the PMD-005
+  conclusion for 32x16/64x16.  `MMAC FP32 C -> packed FP16 -> ds_write`
+  source-slot ABI remains `OPEN`.

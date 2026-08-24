@@ -1,5 +1,14 @@
 # Matrix Global Roundtrip Probe
 
+> **SUPERSEDED (2026-08-24):** This probe treated `32x16` as a row-major
+> `32 rows x 16 columns` tile with stride 16.  The corrected row-major
+> contract is `16 rows x 32 columns` with stride 32.  On PMD HEAD1734 the
+> corrected direct `matrix_load_32x16_b16 -> matrix_store_32x16_b16` chain
+> is exact for all 512 elements.  See
+> `results/matrix_store_shape_correction_20260824.md`.  The truncation and
+> PMD-defect interpretation below is retained only as historical evidence
+> of the invalid probe contract.
+
 ## Question
 
 Does a `32x16` FP16 matrix survive this native path bit-for-bit?
@@ -69,4 +78,3 @@ cd /zys/shaobo/fa3_bwd_wasp_clean
 GPU_CHIP=sb GPU_ARGS="['--SQCIPfLines=7']" \
   scripts/run_matrix_global_roundtrip_probe.sh
 ```
-

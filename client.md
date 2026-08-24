@@ -6517,3 +6517,13 @@ The same FP16 chain also passes with two-wave cooperative ownership of one
 32x32 result page. Current gfx946 compiler/assembler supports the F16 writer
 as `row=2,col=1` and rejects `row=1,col=2`; do not treat the rejected shape as
 a PMD runtime defect.
+
+## 2026-08-24 Matrix Store Shape Correction
+
+The 32x16 and 64x16 direct matrix-store paths are healthy.  Their corrected
+row-major contracts are 16x32/stride32 and 16x64/stride64; both pass exactly
+on PMD HEAD1734.  The old 32x16 240-mismatch result was caused by overlapping
+stride16 rows, and the old 64x16 failure also used the wrong shape plus an
+insufficient LDS reservation.  Keep the focused probes as the contract
+oracles.  Do not call this a PMD defect again unless a corrected direct test
+fails.  The MMAC FP32-C packing/writer source ABI is a separate open item.

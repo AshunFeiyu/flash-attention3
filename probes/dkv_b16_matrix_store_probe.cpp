@@ -17,9 +17,9 @@ namespace {
 using Vec8F32 = __attribute__((__vector_size__(8 * sizeof(float)))) float;
 
 constexpr int kWaveSize = 64;
-constexpr int kThreads = 16 * kWaveSize;
-constexpr int kRows = 32;
-constexpr int kCols = 16;
+constexpr int kThreads = kWaveSize;
+constexpr int kRows = 16;
+constexpr int kCols = 32;
 constexpr int kElems = kRows * kCols;
 constexpr int kStoreModes = 1;
 constexpr int kCandidates = 2 * kStoreModes;
@@ -49,7 +49,7 @@ __device__ __forceinline__ F16x8 load_control_fragment(
     ins::wait_vbcnt0();
     ins::wait_lgkm(0);
     fragment.vec = __builtin_hcu_ds_read_matrix_format_f16(
-        control_lds, kCols, 2, 1, 0);
+        control_lds, 0, 2, 1, 0);
     ins::wait_lgkm(0);
 #else
     (void)seed;
@@ -108,7 +108,7 @@ __device__ __forceinline__ void write_and_store_matrix_tile(
     int& store_phase) {
 #if defined(__gfx946__) || defined(__gfx92a__)
     __builtin_hcu_ds_write_matrix_format_f16(
-        packed.vec, lds, kCols, 2, 1, 0, 0);
+        packed.vec, lds, 0, 2, 1, 0, 0);
     ins::wait_lgkm(0);
     matrix_store_tile<Transpose, Reverse>(lds, output, store_phase);
 #else
