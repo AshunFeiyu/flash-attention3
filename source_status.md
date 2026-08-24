@@ -12820,3 +12820,17 @@ terminal ebarrier sequence and must pass the global best gate.
 
 Evidence: commit `3388f47`,
 `results/fused5_native_dkv_matrix_store_20260824.md`.
+
+## 2026-08-24 dQ B32 Matrix-Store Probe Only
+
+Status: `REJECT_DIRECT_CANONICAL_LAYOUT`; canonical source unchanged.
+
+The compiler exposes and PMD executes `matrix_store_16x16_b32`. A focused
+bit-preserving FP32->U32 DS-writer probe is resource-clean and bank0, but no
+writer/store T/R pair reproduces the canonical dense dQ tile. The best pair
+has a fixed 4x4 component transpose and 192/256 mismatches. Because B32 has
+only a 16x16 store shape, it also does not reduce the current eight-fragment
+dQ store count. Keep direct FP32 global stores until a native MMAC output mode
+passes the writer-source ABI oracle.
+
+Evidence: `results/dq_b32_matrix_store_probe_20260824.md`.

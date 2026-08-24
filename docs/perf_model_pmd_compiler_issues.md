@@ -131,6 +131,9 @@ Evidence:
 - Remote run:
   `/zys/shaobo/runs/dkv_pds_f32_roundtrip_probe_20260716_215919`.
 - Static result: `private=0`, `sgpr=18`, `vgpr=45`, no spill, scratch, or trap.
+- The same probe was rebuilt without WDRA flags and re-run on PMD HEAD1734 at
+  `/zys/sb/f32pmd1734/run_nowa_20260824_224337`; it still aborts decoding the
+  f32 writer (`Invalid opcode encountered: 0xd38b5008`).
 
 Current interpretation:
 
@@ -139,6 +142,7 @@ Current interpretation:
 - This does not prove that Shaobo hardware lacks the instruction.
 - A compiler/PMD ISA-version mismatch remains possible; do not assign this
   solely to PMD until the owners compare the encoding tables.
+- Updating from HEAD1694 to HEAD1734 did not close this specific decode gap.
 
 Impact and workaround:
 

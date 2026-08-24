@@ -7328,3 +7328,27 @@ improve `3.548%`, and MMAC active rises `36.579709% -> 38.403324%`. XCU shows
 the remaining cost is the terminal writer-page ebarrier sequence. Future work
 must start from commit `3388f47` and pass `scripts/check_best_baseline_gate.py`;
 do not compare against or extend an older branch directly.
+
+## 2026-08-24 dQ FP32 Matrix-Store Boundary
+
+`matrix_store_16x16_b32` exists and runs on the locked stack. The tested B32
+chain preserves FP32 bits, but the canonical dQ lane/component ownership does
+not match the native DS-writer source layout: the best mode produces a fixed
+4x4 component transpose and 192/256 dense mismatches. No production source was
+changed, no FP16 downcast was admitted, and the dK/dV matrix-store best remains
+the canonical baseline.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: replacing a lane-wise FP32 output epilogue
+  with `ds_write_matrix -> matrix_store_b32`.
+- Rule / reusable rule: prove the producer register source ABI with a dense
+  bitwise oracle before budgeting LDS or integrating the store; instruction
+  existence and transport completion are not layout compatibility.
+- Evidence / evidence: eight T/R combinations execute, bank0 and no resource
+  debt; best mode has 192/256 mismatches with a fixed 4x4 transpose.
+- Boundary / boundary: applies to the canonical dQ accumulator ownership and
+  compiler `e0f10535`; another native MMAC output mode may match directly.
+- Counterexample / not applicable: accepted dK/dV FP16-output MMAC already
+  matches its B16 writer/store contract and improves ticks.
+- Proposed Target / target: Shaobo instruction probe registry/reference.

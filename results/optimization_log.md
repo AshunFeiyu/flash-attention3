@@ -18849,3 +18849,23 @@ global baseline gate passes on correctness, resources, ticks and active share.
 Evidence: `results/fused5_native_dkv_matrix_store_20260824.md`, commit
 `3388f47`, shared perf directory
 `/Volumes/172.20.68.76/共享/shaobo/perf/20260824_213327_C84_C83_native_dkv_matrix_store_H1S1024_causal_SQ7`.
+
+## 2026-08-24 dQ FP32 B32 Matrix Store Rejected Before Integration
+
+Status: `REJECT_DIRECT_CANONICAL_LAYOUT`.
+
+The locked compiler exposes `matrix_store_16x16_b32`. A focused probe keeps
+the FP32 bit patterns intact, writes them through
+`ds_write_matrix_format_u32`, and stores with the B32 matrix instruction.
+Both instructions execute with no spill/scratch, scalar DS fallback, permute
+or bank conflict, but all eight writer/store T/R combinations fail the dense
+16x16 identity oracle. The best mode has 192/256 mismatches and a fixed 4x4
+component transpose on every row.
+
+This is a source-layout ABI mismatch, not a precision failure. The production
+dQ path is unchanged: B32 only offers 16x16 stores, so it would not reduce the
+eight dQ fragment stores and would add DS/LDS completion ownership. A native
+MMAC output mode must first prove direct writer compatibility.
+
+Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, remote run
+`/zys/sb/dqb32_head1694_map/dq_b32_matrix_store_20260824_225346`.
