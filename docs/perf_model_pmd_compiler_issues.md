@@ -252,7 +252,23 @@ session is not a PMD hang. Launch long S1024/fullperf runs detached, persist
 
 ### PMD-005: B16 Matrix Store Writes Only 17 Of 32 Rows
 
-Status: `SUSPECTED PMD/UNDOCUMENTED CONTRACT`; canonical integration blocked.
+Status: `CLOSED_INVALID_PROBE_CONTRACT` (2026-08-24).
+
+Correction: the probe interpreted `32x16` as 32 row-major rows by 16 columns
+and passed stride16.  For the verified row-major path, the correct contract is
+16 rows by 32 columns with **stride32 elements**.  The corrected direct path
+passes `512/512` on PMD HEAD1734.  Likewise, `64x16` passes as 16 rows by 64
+columns with stride64 elements and an 8 KiB LDS reservation (`1024/1024`).
+The old 240 mismatches are exactly the overlapping-row result of stride16,
+not matrix-store truncation.  The historical investigation below is retained
+to show how the invalid conclusion was reached; do not use it for current
+PMD attribution.
+
+The corrected completion-policy probe passes ordinary vmcnt, ABarrier,
+GLC, SLC, GLC+SLC, and cache-invalidate paths (`6/6`).  The `_rtn` builtin is
+a separate open issue: it writes non-poison but incorrect output and PMD warns
+that return VGPRs are read before initialization.  Do not merge `_rtn` with
+the ordinary matrix-store conclusion.
 
 Environment fingerprint:
 

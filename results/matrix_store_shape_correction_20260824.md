@@ -34,6 +34,12 @@ HEAD1734.
   `MLS -> ds_read_matrix -> ds_write_matrix -> matrix_store` combinations
   are complete permutations but none is exact.
   Run: `/zys/sb/matrix_store_32x16_head1734/sweep_20260824_170709`.
+- Corrected completion-policy sweep: ordinary vmcnt, ABarrier, GLC, SLC,
+  GLC+SLC, and cache-invalidate paths all pass (`6/6`, zero mismatches).
+  The `_rtn` variant remains `0/1` and emits PMD return-VGPR initialization
+  warnings, so it is tracked separately rather than weakening the direct
+  store result.
+  Run: `/zys/sb/matrix_store_32x16_completion_probe/run_20260824_174110`.
 
 The old 32x16 result had exactly 240 mismatches because a 32x16 logical
 matrix was written with stride 16.  The resulting 32 overlapping 16-wide

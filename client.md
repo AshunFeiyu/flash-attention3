@@ -6527,3 +6527,8 @@ stride16 rows, and the old 64x16 failure also used the wrong shape plus an
 insufficient LDS reservation.  Keep the focused probes as the contract
 oracles.  Do not call this a PMD defect again unless a corrected direct test
 fails.  The MMAC FP32-C packing/writer source ABI is a separate open item.
+
+The corrected completion-policy sweep passes six ordinary modes. The `_rtn`
+variant still fails with PMD return-VGPR initialization warnings and must be
+treated as a separate builtin/PMD ABI probe, not evidence against ordinary
+matrix store.

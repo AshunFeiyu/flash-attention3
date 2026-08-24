@@ -1,8 +1,13 @@
 # HEAD1734 Matrix-Store Recheck
 
+> **SUPERSEDED (2026-08-24):** The 32x16/64x16 failures below used reversed
+> row-major shapes and stride16. Corrected 16x32/stride32 and
+> 16x64/stride64 direct paths pass exactly. See
+> `results/matrix_store_shape_correction_20260824.md`.
+
 Date: 2026-08-24
 
-Decision: `HEAD1734_RUNNABLE / 32X32_PASS / 32X16_AND_64X16_FAIL`.
+Historical decision: `HEAD1734_RUNNABLE / INVALID_32X16_64X16_CONTRACT`.
 
 ## Question
 

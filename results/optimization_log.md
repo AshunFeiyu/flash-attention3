@@ -17866,3 +17866,7 @@ not change MMAC result ownership.
 - Decision: `ACCEPT_NATIVE_MATRIX_STORE_DIRECT`; supersede the PMD-005
   conclusion for 32x16/64x16.  `MMAC FP32 C -> packed FP16 -> ds_write`
   source-slot ABI remains `OPEN`.
+- Corrected completion-policy follow-up passes vmcnt, ABarrier, GLC, SLC,
+  GLC+SLC, and cache-invalidate modes (`6/6`). `matrix_store_32x16_b16_rtn`
+  remains incorrect (`0/1`) with PMD return-VGPR initialization warnings and
+  is reclassified as a separate `OBSERVE_RTN_ABI` result.

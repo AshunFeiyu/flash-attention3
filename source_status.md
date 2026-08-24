@@ -9,6 +9,10 @@ stride assumptions and is superseded.  Canonical FA kernels are unchanged.
 The only open epilogue issue is the FP32 MMAC C-fragment to FP16
 `ds_write_matrix` source-slot contract.
 
+The corrected completion-policy probe also passes all six ordinary store
+policies. Only the `_rtn` form remains incorrect and emits a PMD return-VGPR
+initialization warning; track it independently from canonical store paths.
+
 ## 2026-08-18 N64 Boundary Closed; Canonical Active Again
 
 Both the remote clean repo and the local branch
