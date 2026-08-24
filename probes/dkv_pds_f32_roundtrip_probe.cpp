@@ -38,7 +38,7 @@ __device__ __forceinline__ void write_f32(ins::Vec4F32 value,
 #if defined(__gfx946__) || defined(__gfx92a__)
     auto* ptr = reinterpret_cast<float*>(lds + byte_offset);
     __builtin_hcu_ds_write_matrix_format_f32(
-        value, ptr, 16, 1, 1, 0, Transpose ? 1 : 0);
+        value, ptr, 0, 1, 1, 0, Transpose ? 1 : 0);
 #else
     (void)value;
     (void)lds;
@@ -54,9 +54,9 @@ __device__ __forceinline__ ins::Vec4F32 read_f32(
     auto* ptr = reinterpret_cast<float*>(lds + byte_offset);
     if constexpr (Transpose) {
         return __builtin_hcu_ds_read_matrix_trans_format_f32(
-            ptr, 16, 1, 1, 0);
+            ptr, 0, 1, 1, 0);
     }
-    return __builtin_hcu_ds_read_matrix_format_f32(ptr, 16, 1, 1, 0);
+    return __builtin_hcu_ds_read_matrix_format_f32(ptr, 0, 1, 1, 0);
 #else
     (void)lds;
     (void)byte_offset;

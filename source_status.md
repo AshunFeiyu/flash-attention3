@@ -12823,14 +12823,18 @@ Evidence: commit `3388f47`,
 
 ## 2026-08-24 dQ B32 Matrix-Store Probe Only
 
-Status: `REJECT_DIRECT_CANONICAL_LAYOUT`; canonical source unchanged.
+Status: `OBSERVE_SOURCE_FRAGMENT_ABI_OPEN`; canonical source unchanged.
 
-The compiler exposes and PMD executes `matrix_store_16x16_b32`. A focused
-bit-preserving FP32->U32 DS-writer probe is resource-clean and bank0, but no
-writer/store T/R pair reproduces the canonical dense dQ tile. The best pair
-has a fixed 4x4 component transpose and 192/256 mismatches. Because B32 has
-only a 16x16 store shape, it also does not reduce the current eight-fragment
-dQ store count. Keep direct FP32 global stores until a native MMAC output mode
-passes the writer-source ABI oracle.
+The first manual lane-linear negative is superseded. Corrected probes prove
+that `matrix_store_16x16_b32` executes in direct VGPR form and that its
+descriptor stride is in elements. The exact production D128 stride leaves all
+padding guards intact. However, crossing four MMAC LIT/LTS modes, four store
+T/R modes and three mfmt modes yields 0/48 exact matches against current dQ
+ownership. This is an unresolved source-fragment ABI, not a stride failure.
+The native FP32 DS writer cannot close the question on PMD HEAD1694 because it
+stops at invalid opcode `0xd38b5008`.
+
+Current dQ partial workspace is FP16, not FP32. Precision preservation and B32
+matrix-store scheduling remain separate hypotheses; neither is integrated.
 
 Evidence: `results/dq_b32_matrix_store_probe_20260824.md`.

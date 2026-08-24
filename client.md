@@ -7331,22 +7331,29 @@ do not compare against or extend an older branch directly.
 
 ## 2026-08-24 dQ FP32 Matrix-Store Boundary
 
-`matrix_store_16x16_b32` exists and runs on the locked stack. The tested B32
-chain preserves FP32 bits, but the canonical dQ lane/component ownership does
-not match the native DS-writer source layout: the best mode produces a fixed
-4x4 component transpose and 192/256 dense mismatches. No production source was
-changed, no FP16 downcast was admitted, and the dK/dV matrix-store best remains
-the canonical baseline.
+Status: `OBSERVE_SOURCE_FRAGMENT_ABI_OPEN`; the first lane-linear negative is
+superseded. The corrected probe uses production `stride=128`, checks untouched
+padding, and crosses LIT/LTS, store T/R and descriptor mfmt. Direct
+VGPR-to-global `matrix_store_16x16_b32` executes cleanly, but all 48 modes have
+252/256 dense mismatches and zero guard corruption. The native FP32 DS writer
+now emits the correct offset0 form, but PMD HEAD1694 rejects opcode
+`0xd38b5008` before semantic validation.
+
+No production source changed. The open item is the MMAC-C source fragment ABI,
+not stride or B32 store existence. Also correct the precision record: current
+dQ partial workspace is FP16; an FP32 direct-store workspace must be measured
+before comparing a native B32 epilogue.
 
 ### Skill Candidate
 
 - Trigger / applicable scenario: replacing a lane-wise FP32 output epilogue
   with `ds_write_matrix -> matrix_store_b32`.
-- Rule / reusable rule: prove the producer register source ABI with a dense
-  bitwise oracle before budgeting LDS or integrating the store; instruction
-  existence and transport completion are not layout compatibility.
-- Evidence / evidence: eight T/R combinations execute, bank0 and no resource
-  debt; best mode has 192/256 mismatches with a fixed 4x4 transpose.
+- Rule / reusable rule: validate exact production stride and padding first,
+  then cross MMAC output mode, matrix-store T/R and descriptor mfmt before
+  attributing a failure to hardware or PMD.
+- Evidence / evidence: D128 stride guard0; 48 direct VGPR B32 modes execute
+  resource-clean but mismatch 252/256; native FP32 DS writer is PMD-blocked on
+  opcode `0xd38b5008` after runner defects are removed.
 - Boundary / boundary: applies to the canonical dQ accumulator ownership and
   compiler `e0f10535`; another native MMAC output mode may match directly.
 - Counterexample / not applicable: accepted dK/dV FP16-output MMAC already

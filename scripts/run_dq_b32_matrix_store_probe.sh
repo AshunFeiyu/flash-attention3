@@ -29,14 +29,17 @@ python3 scripts/check_symbol_metadata_gate.py \
   --symbol-regex dq_b32_matrix_store_probe_kernel
 
 awk '
-  /^[[:space:]]*ds_write_matrix_format/ && /element:3/ { writer += 1 }
+  /^[[:space:]]*v_mmac_f32_16x16x16_f16/ { mmac += 1 }
   /^[[:space:]]*matrix_store_16x16_b32/ { store += 1 }
+  /^[[:space:]]*matrix_store_16x16_b32/ && /lds/ { lds_store += 1 }
   /^[[:space:]]*ds_read_b/ { scalar_read += 1 }
+  /^[[:space:]]*ds_write/ { ds_write += 1 }
   /^[[:space:]]*ds_(m|b)permute/ { permute += 1 }
   END {
-    printf("asm_gate writer_b32=%d matrix_store_b32=%d scalar_read=%d permute=%d\n",
-           writer, store, scalar_read, permute)
-    if (writer == 0 || store == 0 || scalar_read != 0 || permute != 0) exit 1
+    printf("asm_gate mmac=%d matrix_store_b32=%d lds_store=%d scalar_read=%d ds_write=%d permute=%d\n",
+           mmac, store, lds_store, scalar_read, ds_write, permute)
+    if (mmac == 0 || store == 0 || lds_store != 0 || scalar_read != 0 ||
+        ds_write != 0 || permute != 0) exit 1
   }
 ' "${ASM_ABS}"
 
@@ -55,7 +58,7 @@ cat pmd_stdout.log
 
 panic_lines="$(grep -ciE 'panic:|fatal:|not init or has been freed' \
   pmd_stdout.log || true)"
-pass_lines="$(grep -c 'dq_b32_matrix_store passing=[1-8]/8' \
+pass_lines="$(grep -cE 'dq_b32_vgpr_matrix_store passing=[1-9][0-9]*/48' \
   pmd_stdout.log || true)"
 bank_conflicts=0
 mapfile -t stats_files < <(find m5out -type f -name stats.txt -size +0c)
@@ -72,6 +75,6 @@ if [[ "${pmd_status}" != "0" || "${panic_lines}" != "0" || \
   exit 1
 fi
 
-grep 'dq_b32_matrix_store' pmd_stdout.log | tee result.txt
+grep 'dq_b32_vgpr_matrix_store' pmd_stdout.log | tee result.txt
 printf 'dq_b32_matrix_store_status=PASS bank=%s run=%s\n' \
   "${bank_conflicts}" "${RUN_DIR}" | tee -a result.txt

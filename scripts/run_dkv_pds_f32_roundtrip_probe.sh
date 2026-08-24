@@ -28,6 +28,8 @@ trap cleanup_probe_processes EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+SHAOBO_DISABLE_WDRA_FLAGS=1 \
+SHAOBO_EXPLICIT_WDRA_INIT=0 \
 TARGET_GFX=946 \
 BUILD_ASM=1 \
 SRC=probes/dkv_pds_f32_roundtrip_probe.cpp \
@@ -41,10 +43,10 @@ python3 scripts/check_symbol_metadata_gate.py \
   --symbol-regex dkv_pds_f32_roundtrip_probe_kernel
 
 awk '
-  /s_trap/ { trap += 1 }
-  /ds_write_matrix/ { write += 1 }
-  /ds_read_matrix/ { read += 1 }
-  /v_mmac_f32_16x16x16_f16/ { mmac += 1 }
+  /^[[:space:]]*s_trap([[:space:]]|$)/ { trap += 1 }
+  /^[[:space:]]*ds_write_matrix/ { write += 1 }
+  /^[[:space:]]*ds_read_matrix/ { read += 1 }
+  /^[[:space:]]*v_mmac_f32_16x16x16_f16/ { mmac += 1 }
   END {
     printf("asm trap=%d ds_write=%d ds_read=%d mmac=%d\n",
            trap, write, read, mmac)
@@ -52,7 +54,8 @@ awk '
   }
 ' "${ASM}"
 
-mkdir -p "${RUN_DIR}"
+mkdir -p "${RUN_DIR}/m5out"
+cp "${PMD_CONFIG_SEED}" "${RUN_DIR}/m5out/config.ini"
 cd "${RUN_DIR}"
 set +e
 timeout --kill-after=5 "${PMD_TIMEOUT}" \
@@ -65,7 +68,7 @@ cat pmd_stdout.log
 set -e
 
 panic_lines="$(grep -ciE 'panic:|fatal:' pmd_stdout.log || true)"
-invalid_f32_opcode_lines="$(grep -ci 'Invalid opcode encountered: 0xd38b5007' \
+invalid_f32_opcode_lines="$(grep -ciE 'Invalid opcode encountered: 0xd38b500[78]' \
   pmd_stdout.log || true)"
 result_lines="$(grep -c 'f32_pds_roundtrip candidate=' pmd_stdout.log || true)"
 semantic_pass_lines="$(grep -c 'f32_pds_roundtrip any_semantic_pair=1' \
@@ -78,7 +81,7 @@ fi
 
 if [[ "${invalid_f32_opcode_lines}" != "0" &&
       "${EXPECT_PMD_SUPPORT}" == "0" ]]; then
-  printf 'pds_f32_roundtrip_status=DEFER_PMD_UNIMPLEMENTED opcode=0xd38b5007 pmd_status=%s run=%s\n' \
+  printf 'pds_f32_roundtrip_status=DEFER_PMD_UNIMPLEMENTED opcode=0xd38b5007_or_0xd38b5008 pmd_status=%s run=%s\n' \
     "${pmd_status}" "${RUN_DIR}" | tee result.txt
   exit 0
 fi

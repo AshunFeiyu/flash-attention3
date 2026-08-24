@@ -1,3 +1,4 @@
+#include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
 
 #include "shaobo_instr.h"
@@ -14,15 +15,16 @@ namespace {
 constexpr int kWaveSize = 64;
 constexpr int kRows = 16;
 constexpr int kCols = 16;
-constexpr int kElements = kRows * kCols;
-constexpr int kLdsBytes = 2 * 1024;
-constexpr int kStoreBarrier = 0;
-constexpr int kCandidates = 8;
+constexpr int kDstStride = 128;
+constexpr int kStorageElements = kRows * kDstStride;
+constexpr int kMmacModes = 4;
+constexpr int kStoreModes = 4;
+constexpr int kMfmtModes = 3;
+constexpr int kCandidates = kMmacModes * kStoreModes * kMfmtModes;
 
-union F32x4 {
+union F32Bits {
     ins::Vec4F32 f32;
     ins::Vec4U32 u32;
-    float scalar[4];
 };
 
 uint32_t float_bits(float value) {
@@ -33,88 +35,106 @@ uint32_t float_bits(float value) {
     return bits.u32;
 }
 
-__device__ __forceinline__ ins::Vec4U32 matrix_dst(float* output) {
-    return ins::prepare_matrix_src(
-        reinterpret_cast<const __half*>(output), kCols);
+__device__ __forceinline__ ins::Vec4U32 matrix_desc(
+    const float* ptr, int row_stride_elements, int mfmt) {
+    ins::Vec4U32 desc{};
+    *reinterpret_cast<unsigned long long*>(&desc) =
+        reinterpret_cast<unsigned long long>(ptr) & 0xffffffffffffULL;
+    desc[2] = static_cast<uint32_t>(row_stride_elements);
+    desc[3] = static_cast<uint32_t>(mfmt) << 17;
+    return desc;
 }
 
-__device__ __forceinline__ void write_u32(int writer_t,
-                                          ins::Vec4U32 value,
-                                          uint32_t* lds) {
-    if (writer_t == 0) {
-        __builtin_hcu_ds_write_matrix_format_u32(
-            value, lds, 0, 1, 1, 0, 0);
-    } else {
-        __builtin_hcu_ds_write_matrix_format_u32(
-            value, lds, 0, 1, 1, 0, 1);
+template <int Lit, int Lts>
+__device__ __forceinline__ ins::Vec4F32 mmac_mode(
+    ins::Vec4F16 lhs, ins::Vec4F16 rhs) {
+    ins::Vec4F32 zero = {0.0f, 0.0f, 0.0f, 0.0f};
+    return __builtin_hcu_mmac_f32_16x16x16_f16_lit_lts(
+        lhs, rhs, zero, Lit, Lts);
+}
+
+__device__ __forceinline__ ins::Vec4F32 select_mmac(
+    int mode, ins::Vec4F16 lhs, ins::Vec4F16 rhs) {
+    switch (mode) {
+        case 0:
+            return mmac_mode<0, 0>(lhs, rhs);
+        case 1:
+            return mmac_mode<1, 0>(lhs, rhs);
+        case 2:
+            return mmac_mode<0, 1>(lhs, rhs);
+        default:
+            return mmac_mode<1, 1>(lhs, rhs);
     }
 }
 
-__device__ __forceinline__ void store_b32(int store_mode,
-                                          ins::Vec4U32 dst,
-                                          uint32_t* lds) {
-    switch (store_mode) {
+__device__ __forceinline__ void matrix_store_b32(
+    int mode, ins::Vec4U32 value, ins::Vec4U32 dst) {
+    const uint32_t offset = 0;
+    switch (mode) {
         case 0:
-            __builtin_hcu_matrix_store_16x16_b32(
-                dst, reinterpret_cast<int*>(lds), 0, false, false, false,
-                false);
+            asm volatile("matrix_store_16x16_b32 %0 %1 %2\n"
+                         :
+                         : "v"(value), "s"(dst), "s"(offset)
+                         : "memory");
             break;
         case 1:
-            __builtin_hcu_matrix_store_16x16_b32(
-                dst, reinterpret_cast<int*>(lds), 0, true, false, false,
-                false);
+            asm volatile("matrix_store_16x16_b32 %0 %1 %2 t\n"
+                         :
+                         : "v"(value), "s"(dst), "s"(offset)
+                         : "memory");
             break;
         case 2:
-            __builtin_hcu_matrix_store_16x16_b32(
-                dst, reinterpret_cast<int*>(lds), 0, false, true, false,
-                false);
+            asm volatile("matrix_store_16x16_b32 %0 %1 %2 r\n"
+                         :
+                         : "v"(value), "s"(dst), "s"(offset)
+                         : "memory");
             break;
         default:
-            __builtin_hcu_matrix_store_16x16_b32(
-                dst, reinterpret_cast<int*>(lds), 0, true, true, false,
-                false);
+            asm volatile("matrix_store_16x16_b32 %0 %1 %2 t r\n"
+                         :
+                         : "v"(value), "s"(dst), "s"(offset)
+                         : "memory");
             break;
     }
 }
 
 __global__ void __launch_bounds__(kWaveSize, 1)
-    dq_b32_matrix_store_probe_kernel(float* output) {
+    dq_b32_matrix_store_probe_kernel(
+        float* control, float* candidate_output) {
 #if defined(__gfx946__) || defined(__gfx92a__)
-    __shared__ __align__(2048) uint32_t lds[kLdsBytes / sizeof(uint32_t)];
     const int lane = static_cast<int>(threadIdx.x % kWaveSize);
     const int candidate = static_cast<int>(blockIdx.x);
+    const int mmac = candidate / (kStoreModes * kMfmtModes);
+    const int store = (candidate / kMfmtModes) & 3;
+    const int mfmt = candidate % kMfmtModes;
     const int row = lane & 15;
     const int lane_col = (lane >> 4) * 4;
 
-    if (lane == 0) {
-        __builtin_hcu_s_abarrier_init(kStoreBarrier, 1);
-    }
-    __builtin_hcu_s_ebarrier_sync(0);
-
-    F32x4 value{};
+    ins::Vec4F16 lhs{};
+    ins::Vec4F16 rhs{};
 #pragma unroll
     for (int i = 0; i < 4; ++i) {
-        const int col = lane_col + i;
-        value.scalar[i] = static_cast<float>(row * kCols + col) + 0.25f;
+        lhs[i] = static_cast<_Float16>(
+            static_cast<float>((lane * 4 + i) % 29 + 1) / 32.0f);
+        rhs[i] = static_cast<_Float16>(
+            static_cast<float>((lane * 7 + i * 3) % 31 + 1) / 64.0f);
     }
 
-    write_u32(candidate >> 2, value.u32, lds);
-    ins::wait_lgkm(0);
+    F32Bits result{};
+    result.f32 = select_mmac(mmac, lhs, rhs);
+    auto* control_vec = reinterpret_cast<ins::Vec4F32*>(
+        control + candidate * kStorageElements + row * kDstStride + lane_col);
+    *control_vec = result.f32;
 
-    int store_phase = 0;
-    ins::abarrier_seq<false>(kStoreBarrier);
-    store_b32(candidate & 3,
-              matrix_dst(output + candidate * kElements), lds);
-    ins::abarrier_arrive_cnt<false>(kStoreBarrier, 1);
-    ins::abarrier_try_wait<false>(kStoreBarrier, store_phase);
+    matrix_store_b32(
+        store,
+        result.u32,
+        matrix_desc(candidate_output + candidate * kStorageElements,
+                    kDstStride, mfmt));
     ins::wait_vmem_lgkm();
-
-    __builtin_hcu_s_ebarrier_sync(0);
-    if (lane == 0) {
-        __builtin_hcu_s_abarrier_inv(kStoreBarrier);
-    }
 #else
-    (void)output;
+    (void)control;
+    (void)candidate_output;
 #endif
 }
 
@@ -128,59 +148,76 @@ void check_hip(hipError_t error, const char* what) {
 }  // namespace
 
 int main() {
-    std::vector<float> output(kCandidates * kElements, -1.0f);
-    float* output_device = nullptr;
-    check_hip(hipMalloc(&output_device, output.size() * sizeof(float)),
-              "hipMalloc output");
-    check_hip(hipMemcpy(output_device, output.data(),
-                        output.size() * sizeof(float),
+    std::vector<float> control(kCandidates * kStorageElements, -1.0f);
+    std::vector<float> candidate(kCandidates * kStorageElements, -2.0f);
+    float* control_device = nullptr;
+    float* candidate_device = nullptr;
+    const size_t bytes = control.size() * sizeof(float);
+    check_hip(hipMalloc(&control_device, bytes), "hipMalloc control");
+    check_hip(hipMalloc(&candidate_device, bytes), "hipMalloc candidate");
+    check_hip(hipMemcpy(control_device, control.data(), bytes,
                         hipMemcpyHostToDevice),
-              "initialize output");
+              "initialize control");
+    check_hip(hipMemcpy(candidate_device, candidate.data(), bytes,
+                        hipMemcpyHostToDevice),
+              "initialize candidate");
 
     hipLaunchKernelGGL(dq_b32_matrix_store_probe_kernel,
                        dim3(kCandidates), dim3(kWaveSize), 0, 0,
-                       output_device);
+                       control_device, candidate_device);
     check_hip(hipGetLastError(), "launch");
     check_hip(hipDeviceSynchronize(), "synchronize");
-    check_hip(hipMemcpy(output.data(), output_device,
-                        output.size() * sizeof(float),
+    check_hip(hipMemcpy(control.data(), control_device, bytes,
                         hipMemcpyDeviceToHost),
-              "copy output");
-    check_hip(hipFree(output_device), "hipFree output");
+              "copy control");
+    check_hip(hipMemcpy(candidate.data(), candidate_device, bytes,
+                        hipMemcpyDeviceToHost),
+              "copy candidate");
+    check_hip(hipFree(control_device), "hipFree control");
+    check_hip(hipFree(candidate_device), "hipFree candidate");
 
     int passing = 0;
-    for (int candidate = 0; candidate < kCandidates; ++candidate) {
+    for (int slot = 0; slot < kCandidates; ++slot) {
         int mismatches = 0;
+        int guard_mismatches = 0;
         int first = -1;
-        for (int i = 0; i < kElements; ++i) {
-            const float expected = static_cast<float>(i) + 0.25f;
-            const float actual = output[candidate * kElements + i];
-            if (float_bits(actual) != float_bits(expected)) {
-                ++mismatches;
-                if (first < 0) {
-                    first = i;
+        for (int row = 0; row < kRows; ++row) {
+            for (int col = 0; col < kDstStride; ++col) {
+                const int offset =
+                    slot * kStorageElements + row * kDstStride + col;
+                if (col < kCols) {
+                    if (float_bits(control[offset]) !=
+                        float_bits(candidate[offset])) {
+                        ++mismatches;
+                        if (first < 0) {
+                            first = row * kCols + col;
+                        }
+                    }
+                } else if (candidate[offset] != -2.0f) {
+                    ++guard_mismatches;
                 }
             }
         }
-        passing += mismatches == 0;
+        passing += mismatches == 0 && guard_mismatches == 0;
+        const int mmac = slot / (kStoreModes * kMfmtModes);
+        const int store = (slot / kMfmtModes) & 3;
+        const int mfmt = slot % kMfmtModes;
         std::printf(
-            "dq_b32_matrix_store writer_t=%d store_t=%d store_r=%d "
-            "mismatches=%d first=%d pass=%d\n",
-            candidate >> 2, candidate & 1, (candidate >> 1) & 1,
-            mismatches, first, mismatches == 0 ? 1 : 0);
+            "dq_b32_vgpr_matrix_store mmac_lit=%d mmac_lts=%d "
+            "store_t=%d store_r=%d mfmt=%d stride=%d mismatches=%d "
+            "guard=%d first=%d pass=%d\n",
+            mmac & 1,
+            (mmac >> 1) & 1,
+            store & 1,
+            (store >> 1) & 1,
+            mfmt,
+            kDstStride,
+            mismatches,
+            guard_mismatches,
+            first,
+            mismatches == 0 && guard_mismatches == 0 ? 1 : 0);
     }
-    constexpr int kMapCandidate = 4;
-    for (int row = 0; row < kRows; ++row) {
-        std::printf("dq_b32_slot_map row=%d", row);
-        for (int col = 0; col < kCols; ++col) {
-            const float value =
-                output[kMapCandidate * kElements + row * kCols + col];
-            std::printf(",%d",
-                        static_cast<int>(value - 0.25f));
-        }
-        std::printf("\n");
-    }
-    std::printf("dq_b32_matrix_store passing=%d/%d\n", passing,
-                kCandidates);
-    return passing == 0 ? 1 : 0;
+    std::printf("dq_b32_vgpr_matrix_store passing=%d/%d\n",
+                passing, kCandidates);
+    return passing > 0 ? 0 : 1;
 }

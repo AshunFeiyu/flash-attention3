@@ -18850,22 +18850,28 @@ Evidence: `results/fused5_native_dkv_matrix_store_20260824.md`, commit
 `3388f47`, shared perf directory
 `/Volumes/172.20.68.76/共享/shaobo/perf/20260824_213327_C84_C83_native_dkv_matrix_store_H1S1024_causal_SQ7`.
 
-## 2026-08-24 dQ FP32 B32 Matrix Store Rejected Before Integration
+## 2026-08-24 dQ FP32 B32 Matrix Store Probe Corrected
 
-Status: `REJECT_DIRECT_CANONICAL_LAYOUT`.
+Status: `OBSERVE_SOURCE_FRAGMENT_ABI_OPEN`.
 
-The locked compiler exposes `matrix_store_16x16_b32`. A focused probe keeps
-the FP32 bit patterns intact, writes them through
-`ds_write_matrix_format_u32`, and stores with the B32 matrix instruction.
-Both instructions execute with no spill/scratch, scalar DS fallback, permute
-or bank conflict, but all eight writer/store T/R combinations fail the dense
-16x16 identity oracle. The best mode has 192/256 mismatches and a fixed 4x4
-component transpose on every row.
+The earlier lane-linear `REJECT` is superseded. Audit found an incorrect
+page-relative offset, a comment miscounted as `s_trap`, missing PMD config
+seeding and unrelated WDRA flags in the historical FP32 runner. After those
+are fixed, the native FP32 writer reaches PMD and is blocked by unsupported
+opcode `0xd38b5008` on HEAD1694.
 
-This is a source-layout ABI mismatch, not a precision failure. The production
-dQ path is unchanged: B32 only offers 16x16 stores, so it would not reduce the
-eight dQ fragment stores and would add DS/LDS completion ownership. A native
-MMAC output mode must first prove direct writer compatibility.
+An independent direct VGPR-to-global B32 probe avoids that PMD writer gap.
+It uses the production D128 row stride, sentinel padding, real MMAC C data,
+LIT/LTS, store T/R and mfmt0/1/2. The instruction executes with no spill,
+scratch, DS fallback, permute or guard corruption, but 0/48 modes match the
+current direct dQ ownership. Therefore stride and bounds are ruled out; the
+remaining question is the native MMAC-C source-fragment contract, including
+whether `DS_MATRIX_TRANSPOSE_4V` is the intended bridge.
 
-Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, remote run
-`/zys/sb/dqb32_head1694_map/dq_b32_matrix_store_20260824_225346`.
+No production path is changed. The current dQ partial workspace is FP16, so a
+future precision experiment must first create an FP32 direct-store baseline.
+
+Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, remote runs
+`/zys/sb/dq_b32_vgpr_store_mfmt/layout_probes/dq_b32_matrix_store_20260825_000145`
+and
+`/zys/sb/dq_f32_writer_offset0_test/layout_probes/dkv_pds_f32_roundtrip_probe_20260824_234613`.
