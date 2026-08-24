@@ -1,0 +1,10 @@
+fwd_native_mmac_writer writer=normal store=t0r0 direct_mismatch=0 direct_poison=0 direct_max_abs=0 direct_first=(-1,-1) matrix_mismatch=408 matrix_poison=0 matrix_max_abs=44 matrix_first=(0,2)
+fwd_native_mmac_writer writer=normal store=t1r0 direct_mismatch=0 direct_poison=0 direct_max_abs=0 direct_first=(-1,-1) matrix_mismatch=408 matrix_poison=0 matrix_max_abs=44 matrix_first=(0,2)
+fwd_native_mmac_writer writer=normal store=t0r1 direct_mismatch=0 direct_poison=0 direct_max_abs=0 direct_first=(-1,-1) matrix_mismatch=408 matrix_poison=0 matrix_max_abs=44 matrix_first=(0,2)
+fwd_native_mmac_writer writer=normal store=t1r1 direct_mismatch=0 direct_poison=0 direct_max_abs=0 direct_first=(-1,-1) matrix_mismatch=408 matrix_poison=0 matrix_max_abs=44 matrix_first=(0,2)
+fwd_native_mmac_writer writer=trans store=t0r0 direct_mismatch=0 direct_poison=0 direct_max_abs=0 direct_first=(-1,-1) matrix_mismatch=384 matrix_poison=0 matrix_max_abs=44 matrix_first=(0,2)
+fwd_native_mmac_writer writer=trans store=t1r0 direct_mismatch=0 direct_poison=0 direct_max_abs=0 direct_first=(-1,-1) matrix_mismatch=384 matrix_poison=0 matrix_max_abs=44 matrix_first=(0,2)
+fwd_native_mmac_writer writer=trans store=t0r1 direct_mismatch=0 direct_poison=0 direct_max_abs=0 direct_first=(-1,-1) matrix_mismatch=384 matrix_poison=0 matrix_max_abs=44 matrix_first=(0,2)
+fwd_native_mmac_writer writer=trans store=t1r1 direct_mismatch=0 direct_poison=0 direct_max_abs=0 direct_first=(-1,-1) matrix_mismatch=384 matrix_poison=0 matrix_max_abs=44 matrix_first=(0,2)
+fwd_native_mmac_writer_status=PASS direct_exact=8/8 matrix_exact=0/8 writer_status=OPEN
+fwd_native_mmac_writer_probe status=PASS pmd_status=0 panic=0 stats=1 bank=0 run=/zys/sb/fwd_native_mmac_writer_chain_probe/run_20260824_183413
