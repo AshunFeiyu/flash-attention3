@@ -41,15 +41,16 @@ awk '
   /^[[:space:]]*matrix_store_32x32_b16/ { store += 1 }
   /^[[:space:]]*v_mmac_f32_16x16x16_f16/ { mmac_f32 += 1 }
   /^[[:space:]]*v_mmac_16x16x16_f16/ { mmac_f16 += 1 }
+  /^[[:space:]]*v_cvt_pk_f16_f32/ { cvt_pk += 1 }
   /^[[:space:]]*ds_read_b/ { scalar_read += 1 }
   /^[[:space:]]*ds_(m|b)permute/ { permute += 1 }
   /permlane/ { permlane += 1 }
   END {
-    printf("asm_gate mls=%d read=%d writer=%d store=%d mmac_f32=%d mmac_f16=%d scalar_read=%d permute=%d permlane=%d\n",
-           mls, read, writer, store, mmac_f32, mmac_f16,
+    printf("asm_gate mls=%d read=%d writer=%d store=%d mmac_f32=%d mmac_f16=%d cvt_pk=%d scalar_read=%d permute=%d permlane=%d\n",
+           mls, read, writer, store, mmac_f32, mmac_f16, cvt_pk,
            scalar_read, permute, permlane)
     if (mls < 2 || read < 4 || writer < 2 || store < 1 ||
-        mmac_f32 < 8 || mmac_f16 < 8 || scalar_read != 0 ||
+        mmac_f32 < 8 || mmac_f16 < 8 || cvt_pk < 8 || scalar_read != 0 ||
         permute != 0 || permlane != 0) exit 1
   }
 ' "${ASM_ABS}"

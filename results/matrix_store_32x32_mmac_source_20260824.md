@@ -19,15 +19,15 @@ dense 32x32x32 GEMM
 ```
 
 The probe covers FP32-output and FP16-output MMAC, all four LIT/LTS modes,
-normal/trans writers, adjacent-N/adjacent-M fragment pairs, and concat/FWD
-interleave packing. Inputs are dense asymmetric integers, so both FP32 and
-FP16 accumulation have an exact CPU oracle.
+normal/trans writers, adjacent-N/adjacent-M fragment pairs, and scalar/native
+packed concat/interleave conversion. Inputs are dense asymmetric integers, so
+both FP32 and FP16 accumulation have an exact CPU oracle.
 
 ## Evidence
 
 - Source: `probes/dkv_b16_matrix_store_32x32_mmac_probe.cpp`
 - Runner: `scripts/run_dkv_b16_matrix_store_32x32_mmac_probe.sh`
-- PMD run: `/zys/sb/matrix_store_32x32_mmac_probe/run_20260824_162517`
+- PMD run: `/zys/sb/matrix_store_32x32_mmac_probe/run_20260824_163529`
 - Local archive: `artifacts/matrix_store_32x32_probe_20260824`
 - Compiler LLVM: `e0f10535a0d681bcf3885ea2c398cc494bf6e332`
 - PMD: `CoreArch:HEAD_1734`, `GPU_CHIP=sb`, `SQCIPfLines=7`
@@ -38,6 +38,7 @@ Static gate:
 private=0, SGPR=24, VGPR=40, spill=0
 matrix_load=2, ds_read_matrix=4, ds_write_matrix=16
 MMAC-f32=32, MMAC-f16=32, matrix_store_32x32=1
+native packed FP32-to-FP16 conversion=32
 ordinary ds_read=0, permute=0, permlane=0
 ldsBankConflict=0
 ```
@@ -52,13 +53,19 @@ FP16 MMAC lit0/lts0
   -> 0/1024 mismatch
 ```
 
-This is the only exact native tuple in the 64-candidate sweep. All 64 paths
-commit all 1,024 elements; no output remains poisoned.
+This is the only exact native layout tuple in the 128-candidate sweep. It is
+reported twice because pack IDs 0 and 2 both resolve to concat for an already
+FP16 MMAC result; `cvt_pk_f16_f32` is exercised only by FP32-output paths. All
+128 paths commit all 1,024 elements; no output remains poisoned.
 
-All 32 FP32-accumulator paths are non-exact. The production-like
+All 64 FP32-accumulator paths are non-exact. The production-like
 `lit1/lts0 -> trans writer -> adjacent-N concat` path has 765/1024
 mismatches. Therefore a lane-local FP32-to-FP16 cast plus the tested natural
 pair/pack choices does not produce the writer source-slot ABI.
+
+The native packed conversion does not rescue the layout: its mismatch counts
+are identical to the corresponding scalar concat/interleave paths. It changes
+conversion code generation, not MMAC C-fragment ownership.
 
 The earlier run at `run_20260824_155916` is invalid: its input formulas made
 all A rows and all B rows identical, so permutations were invisible. It is
@@ -75,9 +82,10 @@ excluded from evidence.
   FP32-C-to-B16-writer contract is found. The accepted direct-global FP16
   store remains the production control.
 
-Next: inspect compiler HCU tests for an intended FP32 accumulator pack or a
-different B16 writer shape. If none exists, send this source and result to the
-compiler/PMD owners as an ABI question rather than reporting a PMD failure.
+The HCU test audit found no intended FP32-accumulator pack or alternate F16
+writer shape that closes this chain. The remaining action is a compiler-owner
+ABI question: which native C-fragment mode or conversion feeds the supported
+B16 writer source slots? Do not report this as a PMD failure.
 
 ## Writer Shape Boundary
 

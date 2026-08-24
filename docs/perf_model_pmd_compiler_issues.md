@@ -379,6 +379,8 @@ Owner question:
   adjacent-N concat. It is bitwise correct against the CPU GEMM oracle.
 - FP32-output MMAC followed by lane-local FP16 packing has no exact tuple in
   the tested LIT/LTS, writer, adjacent-pair, and concat/interleave space.
+  Native `cvt_pk_f16_f32` produces the same mismatch signatures as scalar
+  conversion and therefore does not alter source ownership.
 - Reclassify the 32x32 production blocker as a compiler/source-slot ABI gap,
   not a PMD matrix-store failure. The 32x16/64x16 shape failures remain open.
 - Evidence: `results/matrix_store_32x32_mmac_source_20260824.md`.

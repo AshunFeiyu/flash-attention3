@@ -11910,7 +11910,8 @@ Probe-only files add a dense 32x32 MMAC-to-matrix-store source ABI test; the
 canonical FA kernel is unchanged. On compiler `e0f10535` and PMD HEAD1734,
 the FP16-output `lit0/lts0 -> trans writer -> adjacent-N concat` chain is
 bitwise exact. All FP32-output lane-local pack candidates fail while all
-paths commit 1,024/1,024 elements. Classification:
+paths commit 1,024/1,024 elements. Native `cvt_pk_f16_f32` reproduces the
+scalar-pack mapping and does not fix source ownership. Classification:
 `ACCEPT_PROBE_FP16_NATIVE / FP32_SOURCE_ABI_OPEN`.
 
 ## 2026-08-24 32x32 Two-Wave Ownership Probe

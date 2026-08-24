@@ -19,7 +19,7 @@ constexpr int kElems = kRows * kCols;
 constexpr int kMmacModes = 4;
 constexpr int kWriters = 2;
 constexpr int kPairings = 2;
-constexpr int kPacks = 2;
+constexpr int kPacks = 4;
 constexpr int kOutputKinds = 2;
 constexpr int kCandidates =
     kOutputKinds * kMmacModes * kWriters * kPairings * kPacks;
@@ -31,6 +31,7 @@ constexpr uint16_t kPoison = 0xfefe;
 union Frag8 {
     ins::Vec8F16 f16x8;
     ins::Vec4F16 f16x4[2];
+    ins::Vec2F16 f16x2[4];
     _Float16 scalar[8];
 };
 
@@ -141,13 +142,56 @@ __device__ __forceinline__ Frag8 pack_pair(
     for (int i = 0; i < 4; ++i) {
         const _Float16 a = fragment_value(first, i);
         const _Float16 b = fragment_value(second, i);
-        if (pack == 0) {
+        if ((pack & 1) == 0) {
             out.scalar[i] = a;
             out.scalar[4 + i] = b;
         } else {
             out.scalar[2 * i] = a;
             out.scalar[2 * i + 1] = b;
         }
+    }
+    return out;
+}
+
+template <>
+__device__ __forceinline__ Frag8 pack_pair<Acc4>(
+    const Acc4& first, const Acc4& second, int pack) {
+    if (pack < 2) {
+        Frag8 out{};
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            const _Float16 a = static_cast<_Float16>(first.scalar[i]);
+            const _Float16 b = static_cast<_Float16>(second.scalar[i]);
+            if (pack == 0) {
+                out.scalar[i] = a;
+                out.scalar[4 + i] = b;
+            } else {
+                out.scalar[2 * i] = a;
+                out.scalar[2 * i + 1] = b;
+            }
+        }
+        return out;
+    }
+
+    Frag8 out{};
+    if (pack == 2) {
+        out.f16x2[0] = __builtin_hcu_cvt_pk_f16_f32(
+            first.scalar[0], first.scalar[1], false, 0);
+        out.f16x2[1] = __builtin_hcu_cvt_pk_f16_f32(
+            first.scalar[2], first.scalar[3], false, 0);
+        out.f16x2[2] = __builtin_hcu_cvt_pk_f16_f32(
+            second.scalar[0], second.scalar[1], false, 0);
+        out.f16x2[3] = __builtin_hcu_cvt_pk_f16_f32(
+            second.scalar[2], second.scalar[3], false, 0);
+    } else {
+        out.f16x2[0] = __builtin_hcu_cvt_pk_f16_f32(
+            first.scalar[0], second.scalar[0], false, 0);
+        out.f16x2[1] = __builtin_hcu_cvt_pk_f16_f32(
+            first.scalar[1], second.scalar[1], false, 0);
+        out.f16x2[2] = __builtin_hcu_cvt_pk_f16_f32(
+            first.scalar[2], second.scalar[2], false, 0);
+        out.f16x2[3] = __builtin_hcu_cvt_pk_f16_f32(
+            first.scalar[3], second.scalar[3], false, 0);
     }
     return out;
 }
@@ -282,7 +326,9 @@ int main() {
     const char* writer_names[kWriters] = {
         "m32x16_normal", "m32x16_trans"};
     const char* pairing_names[kPairings] = {"npair", "mpair"};
-    const char* pack_names[kPacks] = {"concat", "interleave"};
+    const char* pack_names[kPacks] = {
+        "scalar_concat", "scalar_interleave",
+        "cvtpk_concat", "cvtpk_interleave"};
 
     std::vector<_Float16> a(kRows * kDim);
     std::vector<_Float16> b(kRows * kDim);

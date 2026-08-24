@@ -103,14 +103,16 @@ No canonical FA kernel was changed by this recheck.
 ## 32x32 MMAC Source Follow-up
 
 The required follow-up was completed at
-`/zys/sb/matrix_store_32x32_mmac_probe/run_20260824_162517`.
+`/zys/sb/matrix_store_32x32_mmac_probe/run_20260824_163529`.
 
 - Dense FP16-output MMAC has one exact native chain:
   `lit0/lts0 -> trans writer -> adjacent-N concat -> matrix_store_32x32`.
-- All 64 candidates commit all 1,024 values, so writer/store transport is
+- All 128 candidates commit all 1,024 values, so writer/store transport is
   complete.
-- None of the 32 FP32-accumulator lane-local pack candidates is exact. The
+- None of the 64 FP32-accumulator lane-local pack candidates is exact. The
   production-like `lit1/lts0` path is a source-slot mismatch, not data loss.
+- Native `__builtin_hcu_cvt_pk_f16_f32` concat/interleave has the same
+  mismatch counts as scalar conversion. It is not a source-layout transform.
 - Static resources are SGPR24/VGPR40, private/spill0, bank0, with no scalar
   matrix reads or permutation instructions.
 

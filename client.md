@@ -6509,6 +6509,10 @@ writer source slots after natural lane-local FP16 packing. Canonical dK/dV
 remains unchanged; ask for the intended FP32-C-to-B16-writer ABI before using
 this epilogue.
 
+`__builtin_hcu_cvt_pk_f16_f32` was tested explicitly. It matches scalar
+conversion slot-for-slot and is not a fragment-layout conversion; do not
+retry it as an FP32 source-ABI fix.
+
 The same FP16 chain also passes with two-wave cooperative ownership of one
 32x32 result page. Current gfx946 compiler/assembler supports the F16 writer
 as `row=2,col=1` and rejects `row=1,col=2`; do not treat the rejected shape as

@@ -17829,10 +17829,17 @@ The HEAD1734 direct 32x32 result was extended with a dense 32x32x32 MMAC
 oracle. One native path is exact: FP16-output MMAC `lit0/lts0`, trans writer,
 adjacent-N concat, then `matrix_store_32x32_b16`. All paths commit the full
 tile, bank conflict is zero, and there are no scalar matrix reads or lane
-permutations. None of 32 FP32-output lane-local pack choices is exact.
+permutations. None of the initial 32 scalar FP32-output lane-local pack
+choices is exact.
 
 Decision: `ACCEPT_PROBE_FP16_NATIVE / FP32_SOURCE_ABI_OPEN`. This clears PMD
 32x32 transport but does not admit the epilogue for FP32-accumulated dK/dV.
+
+Native packed conversion follow-up: `__builtin_hcu_cvt_pk_f16_f32` was added
+as concat/interleave variants. All 128 candidates commit the full tile, but
+FP32 exact remains zero and each native-pack mismatch count equals its scalar
+counterpart. Decision: `REJECT_CVTPK_SOURCE_RESCUE`; conversion packing does
+not change MMAC result ownership.
 
 ## 2026-08-24 32x32 Two-Wave Probe
 
