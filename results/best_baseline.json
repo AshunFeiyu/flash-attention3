@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "kernel": "fused5",
+  "commit": "73e8119138e07ebcdb0dae80f5405a51bd36da6c",
+  "tag": "best/fused5-causal-kernel-specialization-20260823",
+  "case": {
+    "shape": "B1/H1/S1024/D128",
+    "dtype": "fp16",
+    "causal": true
+  },
+  "environment": {
+    "compiler": "e0f10535",
+    "pmd": "HEAD1694",
+    "gpu_chip": "sb",
+    "gpu_args": "['--SQCIPfLines=7']"
+  },
+  "gates": {
+    "correctness_pass": true,
+    "resource_pass": true,
+    "lds_bank_conflict": 0
+  },
+  "metrics": {
+    "dot_do_o_ticks": 2443350,
+    "fused_ticks": 40884935,
+    "dq_reduce_ticks": 1641185,
+    "total_ticks": 44969470,
+    "mmac_active_percent": 36.58,
+    "mmop": 88064,
+    "valu": 90032,
+    "sca": 35592,
+    "lds": 61056,
+    "vmem": 1408,
+    "flat": 3616
+  },
+  "perf_archive": "/Volumes/172.20.68.76/\u5171\u4eab/shaobo/perf/20260823_214710_C83_best_fused5_H1S1024_causal_SQ7/C83_best_fused5_H1S1024_causal_SQ7.perf"
+}
+
