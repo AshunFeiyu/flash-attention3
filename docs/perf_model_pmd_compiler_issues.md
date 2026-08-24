@@ -352,6 +352,25 @@ Owner question:
   `ds_matrix_write_lds_dump_20260722_214911` and
   `results/ds_matrix_write_lds_dump_20260722.md`.
 
+2026-08-24 HEAD1734 shape-family recheck:
+
+- The refreshed core package is runnable when installed with the official
+  split layout. The sidecar must put its own `bin/gem5` symlink first in
+  `PATH`; otherwise `run.py` silently executes the old monolithic
+  `/opt/rocm/bin/gem5` and reports a false `cp_prefetch` ABI mismatch.
+- HEAD1734 reproduces the 32x16 failure for every completion policy tested:
+  modes `0,2,6,7,8,9` all leave 240 poisoned values beginning at row17/col0.
+- The same model also fails the direct 64x16 family probe, with 1,024
+  mismatches and 992 poisoned values.
+- The direct 32x32 control now passes exactly: 1,024/1,024 values, no poison.
+- Therefore PMD-005 is not a failure of the whole B16 matrix-store family. It
+  is specific to the 32x16/64x16 shape or source-layout/descriptor contract on
+  the model. The passing 32x32 MLS-to-matrix-store path does not yet prove the
+  required `FP32 accumulator -> FP16 pack -> ds_write_matrix -> matrix_store`
+  epilogue; that chain needs a separate focused probe.
+- Evidence: `/zys/sb/ms1734_sweep_20260824` and
+  `results/pmd_head1734_matrix_store_recheck_20260824.md`.
+
 ### PMD-006: HEAD1698 Core Package Has An Internal Config ABI Mismatch
 
 Status: `CONFIRMED PMD PACKAGE COMPATIBILITY / NOT PROMOTED`.
@@ -412,6 +431,81 @@ Owner question:
 > Can the PMD provider publish a HEAD1698 core tarball whose `gem5.opt`,
 > `libgem5_opt.so`, Python configs, and config schema are built from one
 > revision, or provide the matching Shaobo C0 `config.ini` seed?
+
+### PMD-007: HEAD1734 Sidecar Must Select Its Split Generator Explicitly
+
+Status: `RESOLVED INSTALLATION ERROR / HEAD1734 RUNNABLE`.
+
+The fixed core package was refreshed on 2026-08-24:
+
+```text
+URL: http://172.19.22.214/files/core/pmd.tar.gz
+Last-Modified: Mon, 24 Aug 2026 03:40:46 GMT
+ETag: "b5d2c06-659c2c061d87d"
+tar SHA256: 06376f031f90420e5e2ab7be850dc30a0f1cef710d56cc0cb30026b1b7128fc1
+runtime: CoreArch:HEAD_1734(lib_ini_opt), compiled Aug 24 2026 03:39:38
+gem5.opt SHA256: d2fb7078b28da9ecdb1f6ebaa3163befaed3ed9512b3721898737ec451cbe00f
+libgem5_opt.so SHA256: f1dc80e9358ace4640ec69dbb6ff95e57c943489bf157844d02b0337d81b3cc3
+```
+
+The Shaobo C0 SOC fixed package is unchanged from 2026-04-14. The new core was
+installed side by side under `/zys/shaobo/toolchains/pmd_20260824`; the locked
+HEAD1694 installation was not modified.
+
+The first isolated launch appeared to fail config generation with:
+
+```text
+AttributeError: Class GPUDispatcher has no parameter cp_prefetch
+```
+
+and an old seed failed with:
+
+```text
+Element not found for parameter: cp_client_id
+```
+
+`strace -f -e execve` proved that this was not a HEAD1734 package defect:
+`run.py` was invoking the old `/opt/rocm/bin/gem5`. The corrected sidecar uses
+the official split-tool layout:
+
+```text
+bin/gem5        -> ../core/gem5.opt
+bin/aqlReplayer -> ../core/aqlReplayer
+lib/libgem5.so  -> ../core/libgem5_opt.so
+bin/gem5_soc    -> ../soc/gem5.opt
+```
+
+After prefixing this `bin` in `PATH` and pointing `LD_LIBRARY_PATH` and
+`RPY_PATH` at the sidecar, fresh config generation reports
+`CoreArch:HEAD:1734(exec_ini_opt)` and runtime dispatch reports
+`CoreArch:HEAD_1734(lib_ini_opt)`. The generated config is:
+
+```text
+/zys/sb/ms1734_coherent/mode0/m5out/config.ini
+SHA256 d94d10bb7d01a322ec073c2d32f08f8913626995058f33d656f5dc3eda2a29af
+```
+
+This correction is an environment-selection lesson: before attributing config
+schema errors to PMD, capture the executed generator path. Do not mix a new
+runtime library with an old generator or seed.
+
+Evidence:
+
+- initial mixed-PATH runs: `/zys/sb/ms824/mode0/pmd_stdout.log` and
+  `/zys/sb/ms824_seed/mode0/pmd_stdout.log`;
+- coherent HEAD1734 config: `/zys/sb/ms1734_coherent/mode0`;
+- HEAD1734 matrix-store sweep: `/zys/sb/ms1734_sweep_20260824`;
+- unchanged HEAD1694 control:
+  `/zys/sb/ms1694_recheck_20260824/mode0/pmd_stdout.log`, which still reaches
+  the kernel and reproduces exactly 240 poisoned values from row17/col0;
+- local audit: `results/pmd_head1734_matrix_store_recheck_20260824.md`.
+
+Remaining owner question:
+
+> On HEAD1734, why do direct MLS-source 32x16 and 64x16 B16 matrix stores remain
+> incomplete while the direct 32x32 form commits all 1,024 values? What exact
+> source-layout, descriptor, and writer-fragment contract is required for each
+> shape?
 
 ## Compiler And Compiler/PMD Issues
 
