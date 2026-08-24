@@ -7337,7 +7337,8 @@ padding, and crosses LIT/LTS, store T/R and descriptor mfmt. Direct
 VGPR-to-global `matrix_store_16x16_b32` executes cleanly, but all 48 modes have
 252/256 dense mismatches and zero guard corruption. The native FP32 DS writer
 now emits the correct offset0 form, but PMD HEAD1694 rejects opcode
-`0xd38b5008` before semantic validation.
+`0xd38b5008` before semantic validation; the existing HEAD1734 no-WDRA run
+reproduces the same opcode rejection.
 
 No production source changed. The open item is the MMAC-C source fragment ABI,
 not stride or B32 store existence. Also correct the precision record: current

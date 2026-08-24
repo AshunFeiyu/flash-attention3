@@ -12831,8 +12831,8 @@ descriptor stride is in elements. The exact production D128 stride leaves all
 padding guards intact. However, crossing four MMAC LIT/LTS modes, four store
 T/R modes and three mfmt modes yields 0/48 exact matches against current dQ
 ownership. This is an unresolved source-fragment ABI, not a stride failure.
-The native FP32 DS writer cannot close the question on PMD HEAD1694 because it
-stops at invalid opcode `0xd38b5008`.
+The native FP32 DS writer cannot close the question because both PMD HEAD1694
+and the existing HEAD1734 no-WDRA run stop at invalid opcode `0xd38b5008`.
 
 Current dQ partial workspace is FP16, not FP32. Precision preservation and B32
 matrix-store scheduling remain separate hypotheses; neither is integrated.

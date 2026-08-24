@@ -18858,7 +18858,7 @@ The earlier lane-linear `REJECT` is superseded. Audit found an incorrect
 page-relative offset, a comment miscounted as `s_trap`, missing PMD config
 seeding and unrelated WDRA flags in the historical FP32 runner. After those
 are fixed, the native FP32 writer reaches PMD and is blocked by unsupported
-opcode `0xd38b5008` on HEAD1694.
+opcode `0xd38b5008` on both HEAD1694 and the existing HEAD1734 no-WDRA run.
 
 An independent direct VGPR-to-global B32 probe avoids that PMD writer gap.
 It uses the production D128 row stride, sentinel padding, real MMAC C data,
@@ -18874,4 +18874,5 @@ future precision experiment must first create an FP32 direct-store baseline.
 Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, remote runs
 `/zys/sb/dq_b32_vgpr_store_mfmt/layout_probes/dq_b32_matrix_store_20260825_000145`
 and
-`/zys/sb/dq_f32_writer_offset0_test/layout_probes/dkv_pds_f32_roundtrip_probe_20260824_234613`.
+`/zys/sb/dq_f32_writer_offset0_test/layout_probes/dkv_pds_f32_roundtrip_probe_20260824_234613`;
+HEAD1734 cross-check `/zys/sb/f32pmd1734/run_nowa_20260824_224337`.

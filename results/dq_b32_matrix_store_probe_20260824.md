@@ -21,7 +21,8 @@ MMAC C -> ds_write_matrix_f32/u32 -> LDS -> matrix_store_16x16_b32
 ## Corrected Evidence
 
 - Compiler: `e0f10535`.
-- PMD: `CoreArch:HEAD_1694`.
+- PMD: `CoreArch:HEAD_1694`; native FP32 writer was also rechecked on
+  `CoreArch:HEAD_1734`.
 - ISA defines the matrix resource stride in matrix elements. The production
   dQ test therefore uses `stride=128`, not `16` or bytes.
 - Direct VGPR B32 matrix store compiles and executes with SGPR14/VGPR20,
@@ -32,8 +33,9 @@ MMAC C -> ds_write_matrix_f32/u32 -> LDS -> matrix_store_16x16_b32
   All execute, but none matches the current direct dQ row/component ownership;
   every mode reports 252/256 dense mismatches.
 - The corrected native FP32 DS writer emits the documented
-  `element:3,row:1,col:1,offset:0` form with no real `s_trap`. PMD HEAD1694
-  stops at `Invalid opcode encountered: 0xd38b5008`, before a semantic result.
+  `element:3,row:1,col:1,offset:0` form with no real `s_trap`. Both PMD
+  HEAD1694 and HEAD1734 stop at
+  `Invalid opcode encountered: 0xd38b5008`, before a semantic result.
 
 ## Conclusion
 
@@ -58,6 +60,8 @@ workspace baseline, then compare any native B32 epilogue against it.
   `/zys/sb/dq_b32_vgpr_store_mfmt/layout_probes/dq_b32_matrix_store_20260825_000145`
 - Corrected FP32 writer run:
   `/zys/sb/dq_f32_writer_offset0_test/layout_probes/dkv_pds_f32_roundtrip_probe_20260824_234613`
+- HEAD1734 no-WDRA cross-check:
+  `/zys/sb/f32pmd1734/run_nowa_20260824_224337`
 
 The runner intentionally returns failure until at least one direct source ABI
 combination passes.
