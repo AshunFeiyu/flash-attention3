@@ -6499,3 +6499,17 @@ the measured Q/dO readiness dependency, not from seq-count reduction.
   A dQ fragment-slot read-ahead probe was rejected by S128 correctness
   (`dq_rel_l2=1.00551`); restored by git. Fragment slots cannot be reused
   before the complete native MMAC/read lifecycle is proven.
+
+## 2026-08-24 32x32 Store ABI
+
+The isolated 32x32 probe now has a dense positive control. FP16-output MMAC
+`lit0/lts0` can feed a trans matrix writer and `matrix_store_32x32_b16`
+directly with zero mismatch. FP32 dK/dV accumulators still do not match the
+writer source slots after natural lane-local FP16 packing. Canonical dK/dV
+remains unchanged; ask for the intended FP32-C-to-B16-writer ABI before using
+this epilogue.
+
+The same FP16 chain also passes with two-wave cooperative ownership of one
+32x32 result page. Current gfx946 compiler/assembler supports the F16 writer
+as `row=2,col=1` and rejects `row=1,col=2`; do not treat the rejected shape as
+a PMD runtime defect.

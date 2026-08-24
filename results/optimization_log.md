@@ -17822,3 +17822,26 @@ so pages arrive on time and the producer spin is off the critical path.
 - Decision: `REJECT_LAYOUT_INTEGRATION_CANONICAL_RESTORED`; no performance
   claim. Require a focused dense-MMAC fragment oracle before revisiting this
   ownership topology.
+
+## 2026-08-24 32x32 MMAC-to-B16 Matrix Store
+
+The HEAD1734 direct 32x32 result was extended with a dense 32x32x32 MMAC
+oracle. One native path is exact: FP16-output MMAC `lit0/lts0`, trans writer,
+adjacent-N concat, then `matrix_store_32x32_b16`. All paths commit the full
+tile, bank conflict is zero, and there are no scalar matrix reads or lane
+permutations. None of 32 FP32-output lane-local pack choices is exact.
+
+Decision: `ACCEPT_PROBE_FP16_NATIVE / FP32_SOURCE_ABI_OPEN`. This clears PMD
+32x32 transport but does not admit the epilogue for FP32-accumulated dK/dV.
+
+## 2026-08-24 32x32 Two-Wave Probe
+
+- Hypothesis: the accepted FP16 MMAC/writer/store tuple remains correct when
+  two waves own separate 16x32 halves of one 32x32 LDS result page.
+- Result: PASS on HEAD1734, `0/1024` mismatch, bank0, SGPR20/VGPR16,
+  private/spill0.
+- ISA: MLS2, matrix-read4, FP16-MMAC8, writer2, matrix-store1; scalar matrix
+  DS read and permute0.
+- Boundary: `row=1,col=2` F16 writer is rejected by both clang and gfx946
+  assembler. FP32 accumulator packing remains unresolved.
+- Decision: `ACCEPT_A4_FP16_OWNERSHIP`; no canonical kernel change.

@@ -99,3 +99,35 @@ signature at `/zys/sb/ms1694_recheck_20260824/mode0`.
   matrix_store_32x32_b16`.
 
 No canonical FA kernel was changed by this recheck.
+
+## 32x32 MMAC Source Follow-up
+
+The required follow-up was completed at
+`/zys/sb/matrix_store_32x32_mmac_probe/run_20260824_162517`.
+
+- Dense FP16-output MMAC has one exact native chain:
+  `lit0/lts0 -> trans writer -> adjacent-N concat -> matrix_store_32x32`.
+- All 64 candidates commit all 1,024 values, so writer/store transport is
+  complete.
+- None of the 32 FP32-accumulator lane-local pack candidates is exact. The
+  production-like `lit1/lts0` path is a source-slot mismatch, not data loss.
+- Static resources are SGPR24/VGPR40, private/spill0, bank0, with no scalar
+  matrix reads or permutation instructions.
+
+Detailed evidence: `results/matrix_store_32x32_mmac_source_20260824.md`.
+
+## Two-Wave 32x32 Follow-up
+
+The accepted FP16 tuple also passes when two waves cooperatively own one
+32x32 LDS result page. Wave0 and wave1 publish separate 16x32 row halves;
+wave0 then issues the 32x32 matrix store after a CTA synchronization.
+
+```text
+run: /zys/sb/matrix_store_32x32_two_wave_probe/run_20260824_161843
+result: 0/1024 mismatch, max_abs=0, bank conflict=0
+resource: SGPR20, VGPR16, private/spill=0
+```
+
+Current compiler and `llvm-mc` both reject an F16 writer encoded as
+`element:2 row:1 col:2`, including its transpose form. The available writer
+shape remains `element:2 row:2 col:1`.

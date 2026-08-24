@@ -371,6 +371,18 @@ Owner question:
 - Evidence: `/zys/sb/ms1734_sweep_20260824` and
   `results/pmd_head1734_matrix_store_recheck_20260824.md`.
 
+2026-08-24 32x32 MMAC-source follow-up:
+
+- HEAD1734 completes all 1,024 values for every tested
+  `ds_write_matrix_format_f16 -> matrix_store_32x32_b16` path.
+- The exact dense native tuple is FP16-output MMAC `lit0/lts0`, trans writer,
+  adjacent-N concat. It is bitwise correct against the CPU GEMM oracle.
+- FP32-output MMAC followed by lane-local FP16 packing has no exact tuple in
+  the tested LIT/LTS, writer, adjacent-pair, and concat/interleave space.
+- Reclassify the 32x32 production blocker as a compiler/source-slot ABI gap,
+  not a PMD matrix-store failure. The 32x16/64x16 shape failures remain open.
+- Evidence: `results/matrix_store_32x32_mmac_source_20260824.md`.
+
 ### PMD-006: HEAD1698 Core Package Has An Internal Config ABI Mismatch
 
 Status: `CONFIRMED PMD PACKAGE COMPATIBILITY / NOT PROMOTED`.
@@ -836,3 +848,15 @@ Status: `OBSERVE / SINGLE-DISPATCH FOLLOW-UP ONLY`.
   share and active-CU/SIMD proof. If instruction-level dot attribution becomes
   necessary, create a single-dispatch harness before escalating the helper;
   standalone dKV/dQ helper capture remains known-good in the same environment.
+
+## 2026-08-24 32x32 Matrix Writer/Store Boundary
+
+- PMD HEAD1734 executes a two-wave 32x32 cooperative result page exactly:
+  `0/1024` mismatch, bank conflict zero, no panic. PMD tracks this focused
+  multi-wave LDS publication and final matrix store correctly.
+- Gfx946 clang and `llvm-mc` both reject the F16 `ds_write_matrix_format`
+  combination `element=2,row=1,col=2`, normal and transpose. This is a
+  compiler/ISA format boundary, not a PMD runtime failure.
+- The supported writer control is `element=2,row=2,col=1`.
+- FP32 MMAC accumulator conversion to the B16 writer source-slot ABI remains
+  open; do not diagnose its wrong values as general matrix-store data loss.

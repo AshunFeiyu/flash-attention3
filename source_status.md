@@ -11903,3 +11903,22 @@ Classification: `REJECT_LAYOUT_INTEGRATION_CANONICAL_RESTORED`. Canonical
 source is restored. A future retry requires an isolated dense dK-MMAC oracle
 for the exact writer-role Q fragment contract, not another production-kernel
 layout patch.
+
+## 2026-08-24 32x32 B16 MMAC Store Probe
+
+Probe-only files add a dense 32x32 MMAC-to-matrix-store source ABI test; the
+canonical FA kernel is unchanged. On compiler `e0f10535` and PMD HEAD1734,
+the FP16-output `lit0/lts0 -> trans writer -> adjacent-N concat` chain is
+bitwise exact. All FP32-output lane-local pack candidates fail while all
+paths commit 1,024/1,024 elements. Classification:
+`ACCEPT_PROBE_FP16_NATIVE / FP32_SOURCE_ABI_OPEN`.
+
+## 2026-08-24 32x32 Two-Wave Ownership Probe
+
+The minimal two-wave chain passes on PMD HEAD1734: wave0/wave1 each publish a
+16x32 FP16-MMAC result half, then wave0 stores the shared 32x32 page. Result is
+bitwise exact (`0/1024` mismatch), SGPR20/VGPR16, private/spill0, bank0, with
+no ordinary matrix DS read or permute. The attempted F16 writer shape
+`row=1,col=2` is rejected by both clang builtin lowering and gfx946
+`llvm-mc`; only `row=2,col=1` is admitted. Classification:
+`ACCEPT_A4_FP16_OWNERSHIP / FP32_SOURCE_ABI_OPEN`.
