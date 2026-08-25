@@ -7364,3 +7364,22 @@ before comparing a native B32 epilogue.
 - Counterexample / not applicable: accepted dK/dV FP16-output MMAC already
   matches its B16 writer/store contract and improves ticks.
 - Proposed Target / target: Shaobo instruction probe registry/reference.
+
+## 2026-08-25 Native FP32 dQ Epilogue Contract
+
+Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_PENDING`.
+
+The exact LDS-source chain is now proven with a dense CPU GEMM oracle. A
+direct B32 MLS-to-store control passes, and the dQ operand pairing passes as
+`lit0/lts0 -> trans FP32 writer -> matrix_store_16x16_b32`. The alternative
+`lit0/lts1 -> normal writer` also passes. FWD `mmac_4interleave` is
+`lit1/lts0`; it does not match either FP32 writer orientation.
+
+The production experiment must therefore change only the terminal dQ MMAC
+mode to lit0, keep score/dP/dK/dV unchanged, preserve dQ partials as FP32,
+and use the released-LDS gap for per-writer store pages. BPS-to-LDS readiness
+requires `vbcnt0`; omitting it produced a false all-NaN writer result.
+
+Evidence: `results/dq_f32_dswrite_matrix_store_probe_20260825.md` and
+`/zys/sb/dq_f32_writer_store_test/layout_probes/`
+`dq_f32_dswrite_store_20260825_112154`.

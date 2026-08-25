@@ -18884,3 +18884,20 @@ Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, remote runs
 `/zys/sb/dq_b32_vgpr_store_mfmt/layout_probes/dq_b32_matrix_store_20260825_000145`
 and
 `/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_104710`.
+
+## 2026-08-25 FP32 dQ DS-Write/Matrix-Store ABI Accepted
+
+Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_PENDING`.
+
+A new dense probe tests real dQ operands through MLS/BPS, matrix readers,
+FP32 MMAC C, FP32 DS writer and LDS-source B32 matrix store. The exact native
+tuples are `lit0/lts0 + trans writer` and `lit0/lts1 + normal writer`; both
+have max_abs0 and bank0. `lit1/lts0` (FWD `mmac_4interleave`) fails both
+writer orientations. The direct B32 MLS/store control passes, and the result
+is resource-clean with no scalar gather or permutation.
+
+The first MMAC run emitted NaNs because the probe omitted BPS `vbcnt0`; after
+the readiness wait, all values are finite. This supersedes any attribution of
+that NaN symptom to FP32 DS write. Next step is a single production candidate
+using lit0 dQ accumulation, trans FP32 writer, FP32 workspace and B32 matrix
+store.

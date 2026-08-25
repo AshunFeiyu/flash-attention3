@@ -12846,3 +12846,22 @@ matrix-store scheduling remain separate hypotheses; neither is integrated.
 
 Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, corrected run
 `/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_104710`.
+
+## 2026-08-25 Native FP32 dQ Writer To B32 Matrix Store
+
+Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_PENDING`.
+
+- A dense 16x16 probe now covers the real LDS-source chain, not the earlier
+  direct-VGPR store approximation.
+- `matrix_load_16x16_b32 -> matrix_store_16x16_b32` is exact, proving the
+  descriptor, element stride and PMD store path.
+- Two exact MMAC source contracts pass: `lit0/lts0 -> trans writer` and
+  `lit0/lts1 -> normal writer`. Both reach B32 global output with max_abs0.
+- FWD `mmac_4interleave == lit1/lts0` fails both writer orientations, so the
+  production candidate must change only the terminal dQ GEMM to lit0.
+- The probe is SGPR24/VGPR12, private/spill/scratch0, bank0, with no scalar
+  matrix read or permutation. BPS requires `vbcnt0` before LDS consumption.
+
+Evidence: `results/dq_f32_dswrite_matrix_store_probe_20260825.md` and
+`/zys/sb/dq_f32_writer_store_test/layout_probes/`
+`dq_f32_dswrite_store_20260825_112154`.
