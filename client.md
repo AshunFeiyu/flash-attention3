@@ -7367,7 +7367,7 @@ before comparing a native B32 epilogue.
 
 ## 2026-08-25 Native FP32 dQ Epilogue Contract
 
-Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_PENDING`.
+Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_REJECTED`.
 
 The exact LDS-source chain is now proven with a dense CPU GEMM oracle. A
 direct B32 MLS-to-store control passes, and the dQ operand pairing passes as
@@ -7375,11 +7375,29 @@ direct B32 MLS-to-store control passes, and the dQ operand pairing passes as
 `lit0/lts1 -> normal writer` also passes. FWD `mmac_4interleave` is
 `lit1/lts0`; it does not match either FP32 writer orientation.
 
-The production experiment must therefore change only the terminal dQ MMAC
-mode to lit0, keep score/dP/dK/dV unchanged, preserve dQ partials as FP32,
-and use the released-LDS gap for per-writer store pages. BPS-to-LDS readiness
-requires `vbcnt0`; omitting it produced a false all-NaN writer result.
+The production experiment changed only terminal dQ to lit0, kept other MMAC
+modes unchanged, and used FP32 partials plus per-writer LDS pages. It passed
+correctness/resources but regressed lifecycle ticks by `10.954%`, so the
+canonical path stays on interleave plus FP16 direct partial stores.
+BPS-to-LDS readiness still requires `vbcnt0`; omitting it produced a false
+all-NaN writer result.
 
 Evidence: `results/dq_f32_dswrite_matrix_store_probe_20260825.md` and
 `/zys/sb/dq_f32_writer_store_test/layout_probes/`
 `dq_f32_dswrite_store_20260825_112154`.
+
+## 2026-08-25 Native FP32 dQ Operator Decision
+
+Status: `REJECT_PRODUCTION / ACCEPT_INSTRUCTION_ABI`.
+
+The instruction contract is valid, but the operator schedule is not
+competitive. On causal H1/S1024, native FP32 writer/store raises fused ticks
+`40.253M -> 44.712M` and lifecycle ticks `44.273M -> 49.123M`. A correct
+`mmac_4interleave + FP32 direct-store` control finishes at `44.356M` total,
+so the main debt is the eight serial 16x16 writer/store handoffs per dQ writer
+wave, not merely the wider workspace.
+
+Keep canonical dQ on `mmac_4interleave` and FP16 direct partial stores.
+Plain MMAC is only legal for the transposed FP32 writer path; direct storage
+from that fragment is wrong-layout. The full correctness gate has been
+tightened so low-magnitude wrong-layout dQ cannot pass by RMSE alone.

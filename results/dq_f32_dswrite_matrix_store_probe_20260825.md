@@ -1,6 +1,6 @@
 # dQ FP32 DS-Write To Matrix-Store Probe
 
-Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_PENDING`.
+Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_REJECTED`.
 
 ## Contract
 
@@ -40,13 +40,10 @@ Evidence:
 
 ## Integration Decision
 
-The canonical dQ GEMM currently uses the same `lit1/lts0` operation as FWD
-`mmac_4interleave`. That layout is useful when an MMAC result chains into
-another MMAC, but dQ is a terminal output. The first production candidate
-will therefore use `lit0/lts0` for dQ only, followed by the transposed FP32
-writer and `matrix_store_16x16_b32`. dK/dV and score/dP MMAC modes remain
-unchanged.
-
-Production promotion still requires complete FA backward correctness,
-FP32-workspace reduction correctness, resource gates, and lower same-shape
-lifecycle ticks.
+The canonical dQ GEMM uses the same `lit1/lts0` operation as FWD
+`mmac_4interleave`. The production candidate changed dQ only to `lit0/lts0`,
+then used the transposed FP32 writer and `matrix_store_16x16_b32`. It passed
+full correctness and resources but regressed H1/S1024 lifecycle ticks by
+`10.954%`, so production remains on the accepted interleave plus FP16 direct
+partial-store path. See
+`results/dq_f32_native_matrix_store_operator_ab_20260825.md`.

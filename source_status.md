@@ -12849,7 +12849,7 @@ Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, corrected run
 
 ## 2026-08-25 Native FP32 dQ Writer To B32 Matrix Store
 
-Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_PENDING`.
+Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_REJECTED`.
 
 - A dense 16x16 probe now covers the real LDS-source chain, not the earlier
   direct-VGPR store approximation.
@@ -12861,7 +12861,28 @@ Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_PENDING`.
   production candidate must change only the terminal dQ GEMM to lit0.
 - The probe is SGPR24/VGPR12, private/spill/scratch0, bank0, with no scalar
   matrix read or permutation. BPS requires `vbcnt0` before LDS consumption.
+- Operator integration later regressed lifecycle ticks by `10.954%`; the ABI
+  remains accepted but the hot-path schedule is rejected.
 
 Evidence: `results/dq_f32_dswrite_matrix_store_probe_20260825.md` and
 `/zys/sb/dq_f32_writer_store_test/layout_probes/`
 `dq_f32_dswrite_store_20260825_112154`.
+
+## 2026-08-25 FP32 dQ Native Matrix-Store Operator Reject
+
+Status: `REJECT_PRODUCTION / ACCEPT_INSTRUCTION_ABI`.
+
+The exact `lit0/lts0 -> trans FP32 writer -> matrix_store_16x16_b32` tuple
+passes S128/S1024 full backward correctness and all resource/bank gates, but
+regresses H1/S1024 fused ticks by `11.077%` and lifecycle ticks by `10.954%`
+against commit `3388f47`. An FP32 direct-store control is only `0.187%` slower
+end to end, localizing the main loss to serialized 16x16 writer/store page
+reuse rather than FP32 workspace alone.
+
+FWD `mmac_4interleave` remains canonical for direct dQ output but does not
+match the FP32 writer ABI. A plain-MMAC direct-store negative also exposed an
+RMSE-based correctness false positive; the full harness now requires both dQ
+RMSE and relative-L2 limits. Production source is restored to the accepted
+FP16 direct dQ epilogue.
+
+Evidence: `results/dq_f32_native_matrix_store_operator_ab_20260825.md`.

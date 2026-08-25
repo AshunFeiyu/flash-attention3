@@ -463,8 +463,8 @@ int main(int argc, char** argv) {
                           dv_metrics.rel_l2 <= kGradientRelL2Limit;
     const bool dq_pass = outputs_copied && dq_metrics.nonfinite == 0 &&
                          dq_metrics.max_abs <= kGradientMaxAbsLimit &&
-                         (dq_metrics.rel_l2 <= kGradientRelL2Limit ||
-                          dq_metrics.rmse <= kGradientRmseLimit);
+                         dq_metrics.rmse <= kGradientRmseLimit &&
+                         dq_metrics.rel_l2 <= kGradientRelL2Limit;
 #else
     const bool dkv_pass = outputs_copied && dk_metrics.nonfinite == 0 &&
                           dv_metrics.nonfinite == 0 &&

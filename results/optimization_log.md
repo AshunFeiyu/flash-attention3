@@ -18887,7 +18887,7 @@ and
 
 ## 2026-08-25 FP32 dQ DS-Write/Matrix-Store ABI Accepted
 
-Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_PENDING`.
+Status: `ACCEPT_NATIVE_LIT0_WRITER_STORE_ABI / PRODUCTION_REJECTED`.
 
 A new dense probe tests real dQ operands through MLS/BPS, matrix readers,
 FP32 MMAC C, FP32 DS writer and LDS-source B32 matrix store. The exact native
@@ -18898,6 +18898,24 @@ is resource-clean with no scalar gather or permutation.
 
 The first MMAC run emitted NaNs because the probe omitted BPS `vbcnt0`; after
 the readiness wait, all values are finite. This supersedes any attribution of
-that NaN symptom to FP32 DS write. Next step is a single production candidate
-using lit0 dQ accumulation, trans FP32 writer, FP32 workspace and B32 matrix
-store.
+that NaN symptom to FP32 DS write. The later operator candidate is correct but
+rejected on ticks; see the next entry.
+
+## 2026-08-25 FP32 dQ Native Matrix Store Rejected In Operator
+
+Status: `REJECT_PRODUCTION / ACCEPT_INSTRUCTION_ABI`.
+
+The native FP32 dQ chain is correct and resource-clean, but H1/S1024 changes
+fused/lifecycle ticks from `40,252,940/44,272,865` to
+`44,711,940/49,122,710` (`+11.077%/+10.954%`). The FP32 direct-store control
+is `39,794,300/44,355,675`, proving that FP32 workspace itself is nearly
+neutral end to end and that serialized 16x16 writer/store page reuse is the
+dominant regression.
+
+`mmac_4interleave` is already the canonical dQ mode, but it cannot feed the
+FP32 writer ABI. The required plain-MMAC layout is useful only with the
+transposed writer. A plain direct-store diagnostic has `dQ rel_l2 ~= 1.25`
+and is a correctness negative, not a performance candidate. Canonical source
+is restored; the harness now requires both dQ RMSE and relative-L2 limits.
+
+Evidence: `results/dq_f32_native_matrix_store_operator_ab_20260825.md`.
