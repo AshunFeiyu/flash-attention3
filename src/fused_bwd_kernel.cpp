@@ -852,38 +852,54 @@ __device__ __forceinline__ void store_dkv_outputs(
     const int pair = n_owner >> 1;
     const int pair_half = n_owner & 1;
     const int pair_row = k_base + pair * 32;
-    const int dk_page = LdsLayout::kVBase +
-                        2 * pair * Tile::kWriterPageBytes;
-    const int dv_page = dk_page + Tile::kWriterPageBytes;
+    const int pair_page = LdsLayout::kVBase +
+                          pair * Tile::kDkvStoreBytesPerPair;
     const int writer_offset = pair_half * Tile::kWriterStrideBytes;
+    static_assert(kMatrixBlocksD % Tile::kDkvStoreDblocksPerBatch == 0);
 #pragma unroll
-    for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
-        const int out = 2 * d_block;
-        Fragment dk_packed{};
-        Fragment dv_packed{};
-        dk_packed.f16x4[0] = dk_acc[out];
-        dk_packed.f16x4[1] = dk_acc[out + 1];
-        dv_packed.f16x4[0] = dv_acc[out];
-        dv_packed.f16x4[1] = dv_acc[out + 1];
-        ins::ds_write_matrix_32x16_trans_f16(
-            dk_packed.f16x8, lds, dk_page + writer_offset);
-        ins::ds_write_matrix_32x16_trans_f16(
-            dv_packed.f16x8, lds, dv_page + writer_offset);
+    for (int d_batch = 0; d_batch < kMatrixBlocksD;
+         d_batch += Tile::kDkvStoreDblocksPerBatch) {
+#pragma unroll
+        for (int slot = 0; slot < Tile::kDkvStoreDblocksPerBatch; ++slot) {
+            const int d_block = d_batch + slot;
+            const int out = 2 * d_block;
+            const int dk_page = pair_page +
+                2 * slot * Tile::kWriterPageBytes;
+            const int dv_page = dk_page + Tile::kWriterPageBytes;
+            Fragment dk_packed{};
+            Fragment dv_packed{};
+            dk_packed.f16x4[0] = dk_acc[out];
+            dk_packed.f16x4[1] = dk_acc[out + 1];
+            dv_packed.f16x4[0] = dv_acc[out];
+            dv_packed.f16x4[1] = dv_acc[out + 1];
+            ins::ds_write_matrix_32x16_trans_f16(
+                dk_packed.f16x8, lds, dk_page + writer_offset);
+            ins::ds_write_matrix_32x16_trans_f16(
+                dv_packed.f16x8, lds, dv_page + writer_offset);
+        }
         __builtin_hcu_s_ebarrier_sync(0);
         if (pair_half == 0) {
-            const int64_t output = tensor_base +
-                static_cast<int64_t>(pair_row) * Tile::kHeadDim +
-                d_block * 32;
-            auto* dk_source = reinterpret_cast<short*>(
-                reinterpret_cast<char*>(lds) + dk_page);
-            auto* dv_source = reinterpret_cast<short*>(
-                reinterpret_cast<char*>(lds) + dv_page);
-            __builtin_hcu_matrix_store_32x32_b16(
-                ins::prepare_matrix_src(dk + output, Tile::kHeadDim),
-                dk_source, 0, false, false, false, false);
-            __builtin_hcu_matrix_store_32x32_b16(
-                ins::prepare_matrix_src(dv + output, Tile::kHeadDim),
-                dv_source, 0, false, false, false, false);
+#pragma unroll
+            for (int slot = 0; slot < Tile::kDkvStoreDblocksPerBatch;
+                 ++slot) {
+                const int d_block = d_batch + slot;
+                const int dk_page = pair_page +
+                    2 * slot * Tile::kWriterPageBytes;
+                const int dv_page = dk_page + Tile::kWriterPageBytes;
+                const int64_t output = tensor_base +
+                    static_cast<int64_t>(pair_row) * Tile::kHeadDim +
+                    d_block * 32;
+                auto* dk_source = reinterpret_cast<short*>(
+                    reinterpret_cast<char*>(lds) + dk_page);
+                auto* dv_source = reinterpret_cast<short*>(
+                    reinterpret_cast<char*>(lds) + dv_page);
+                __builtin_hcu_matrix_store_32x32_b16(
+                    ins::prepare_matrix_src(dk + output, Tile::kHeadDim),
+                    dk_source, 0, false, false, false, false);
+                __builtin_hcu_matrix_store_32x32_b16(
+                    ins::prepare_matrix_src(dv + output, Tile::kHeadDim),
+                    dv_source, 0, false, false, false, false);
+            }
             ins::wait_vmem_lgkm();
         }
         __builtin_hcu_s_ebarrier_sync(0);
@@ -892,7 +908,9 @@ __device__ __forceinline__ void store_dkv_outputs(
 
 __device__ __forceinline__ void wait_dkv_store_epilogue() {
 #pragma unroll
-    for (int d_block = 0; d_block < kMatrixBlocksD; ++d_block) {
+    for (int d_batch = 0;
+         d_batch < kMatrixBlocksD / Tile::kDkvStoreDblocksPerBatch;
+         ++d_batch) {
         __builtin_hcu_s_ebarrier_sync(0);
         __builtin_hcu_s_ebarrier_sync(0);
     }

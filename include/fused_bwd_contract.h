@@ -88,6 +88,12 @@ struct FusedBwdContract {
     // fragment view.
     static constexpr int kWriterPageBytes = 64 * 16 * kHalfBytes;
     static constexpr int kWriterStrideBytes = 32 * 16 * kHalfBytes;
+    static constexpr int kDkvStoreDblocksPerBatch = 2;
+    static constexpr int kDkvStorePairCount = kNk / 32;
+    static constexpr int kDkvStoreBytesPerPair =
+        kDkvStoreDblocksPerBatch * 2 * kWriterPageBytes;
+    static constexpr int kDkvStoreScratchBytes =
+        kDkvStorePairCount * kDkvStoreBytesPerPair;
     static constexpr int kActiveWriterPages =
         kConsumerGroups * kWavesPerConsumerGroup;
     static constexpr int kPdsGenerationBytes =
@@ -177,6 +183,9 @@ struct FusedBwdContract {
                   "resident/raw/P-dS LDS regions must retain their fixed sizes");
     static_assert(kPdsGenerationCount == 1,
                   "local P/dS conversion uses one private-page generation");
+    static_assert(kDkvStoreDblocksPerBatch == 2 &&
+                      kDkvStoreScratchBytes == kResidentKvBytes / 2,
+                  "two-D-block dK/dV store batch must fit released V LDS");
     static_assert(kBatchPdsBytes == kResidentKvBytes / 2,
                   "four packed dS panels must reuse half the resident K/V LDS");
     static_assert(kSteadyKvReuseBytes <= kResidentKvBytes,
