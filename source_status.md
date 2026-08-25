@@ -12845,4 +12845,4 @@ Current dQ partial workspace is FP16, not FP32. Precision preservation and B32
 matrix-store scheduling remain separate hypotheses; neither is integrated.
 
 Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, corrected run
-`/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_103654`.
+`/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_104710`.

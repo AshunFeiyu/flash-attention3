@@ -55,6 +55,8 @@ awk '
 
 mkdir -p "${RUN_DIR}/m5out"
 cp "${PMD_CONFIG_SEED}" "${RUN_DIR}/m5out/config.ini"
+"${ROOT}/scripts/extract_device_isa.sh" "${ROOT}/${BIN}" \
+  "${RUN_DIR}/device_isa"
 cd "${RUN_DIR}"
 set +e
 timeout --kill-after=5 "${PMD_TIMEOUT}" \
@@ -69,6 +71,16 @@ set -e
 panic_lines="$(grep -ciE 'panic:|fatal:' pmd_stdout.log || true)"
 invalid_opcode_lines="$(grep -ci 'Invalid opcode encountered:' \
   pmd_stdout.log || true)"
+if [[ "${invalid_opcode_lines}" != "0" ]]; then
+  : >invalid_opcode_map.txt
+  while read -r reported_word; do
+    printf 'reported_word=%s\n' "${reported_word}" | \
+      tee -a invalid_opcode_map.txt
+    grep -i "${reported_word#0x}" device_isa/device_isa_raw.txt | \
+      tee -a invalid_opcode_map.txt || true
+  done < <(grep -ioE 'Invalid opcode encountered: 0x[0-9a-f]+' \
+    pmd_stdout.log | awk '{print $NF}' | sort -u)
+fi
 result_lines="$(grep -c 'f32_pds_roundtrip candidate=' pmd_stdout.log || true)"
 semantic_pass_lines="$(grep -c 'f32_pds_roundtrip any_semantic_pair=1' \
   pmd_stdout.log || true)"

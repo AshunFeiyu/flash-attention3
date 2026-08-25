@@ -18883,4 +18883,4 @@ future precision experiment must first create an FP32 direct-store baseline.
 Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, remote runs
 `/zys/sb/dq_b32_vgpr_store_mfmt/layout_probes/dq_b32_matrix_store_20260825_000145`
 and
-`/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_103654`.
+`/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_104710`.

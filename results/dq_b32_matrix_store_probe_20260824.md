@@ -65,10 +65,11 @@ workspace baseline, then compare any native B32 epilogue against it.
 
 - Source: `probes/dq_b32_matrix_store_probe.cpp`
 - Runner: `scripts/run_dq_b32_matrix_store_probe.sh`
+- Device ISA extractor: `scripts/extract_device_isa.sh`
 - Direct VGPR D128/mfmt sweep:
   `/zys/sb/dq_b32_vgpr_store_mfmt/layout_probes/dq_b32_matrix_store_20260825_000145`
 - Corrected FP32 writer run:
-  `/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_103654`
+  `/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_104710`
 - Superseded pre-writer failures:
   `/zys/sb/dq_f32_writer_offset0_test/layout_probes/dkv_pds_f32_roundtrip_probe_20260824_234613`
   and `/zys/sb/f32pmd1734/run_nowa_20260824_224337`

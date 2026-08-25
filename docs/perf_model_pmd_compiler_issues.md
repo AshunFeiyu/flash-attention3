@@ -97,6 +97,12 @@ artifacts. Preserve the binary and toolchain fingerprints across the retry.
 
 ## PMD Issues
 
+Attribution gate: treat the hexadecimal value in `Invalid opcode encountered`
+as an unclassified 32-bit code word. Extract the target device code object and
+map the word in raw disassembly before naming an instruction or component. A
+source-level builtin, nearby `.asm` line, or expected control-flow position is
+not sufficient evidence that PMD reached that instruction.
+
 ### PMD-001: F32 Writer Decode Attribution Was Wrong
 
 Status: `SUPERSEDED_NOT_A_DS_OPCODE`.
@@ -132,7 +138,7 @@ Evidence:
 - Source: `probes/dkv_pds_f32_roundtrip_probe.cpp`.
 - Runner: `scripts/run_dkv_pds_f32_roundtrip_probe.sh`.
 - Corrected run:
-  `/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_103654`.
+  `/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_104710`.
 - Superseded pre-writer runs:
   `/zys/sb/dq_f32_writer_offset0_test/layout_probes/dkv_pds_f32_roundtrip_probe_20260824_234613`
   and `/zys/sb/f32pmd1734/run_nowa_20260824_224337`.
