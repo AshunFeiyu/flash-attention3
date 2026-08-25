@@ -7312,3 +7312,30 @@ must change useful ownership overlap, because ABarrier issue gaps remain
   duplication should remain one runtime body.
 - Proposed Target / target: Shaobo reference material in a later consolidated
   skill update; do not edit public skills in this task.
+
+## 2026-08-25 dK/dV Store-Epoch Batching
+
+Status: `ACCEPT_SMALL_TICKS_AND_ACTIVE_MMAC50_OPEN`.
+
+The C84 epilogue used only 16 KiB of the released V region and synchronized
+once per D32 block. C85 uses the full 32 KiB to publish two blocks per epoch.
+This preserves the mainloop and all resource gates while reducing stats-only
+fused mean by `0.604%`, fullperf by `1.198%`, and raising MMAC active to
+`39.054060%`. The store path is now closed to further micro-tuning; ABarrier
+token tomography is the next admitted hypothesis.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: an LDS-mediated matrix-store epilogue repeats
+  CTA-wide synchronization for several independent output blocks.
+- Rule / reusable rule: if producer fragments remain live and released LDS is
+  available, publish multiple output blocks before one store epoch to amortize
+  synchronization; keep output ownership and store count unchanged.
+- Evidence / evidence: commit `0f3527e`, H1/S1024, ebarrier executions
+  `1,408 -> 896`, stats mean `-0.604%`, fullperf `-1.198%`, bank0.
+- Boundary / boundary: the extra writer pages must fit released LDS and must
+  not overlap live mainloop data; benefits are small when store is not critical.
+- Counterexample / not applicable: FP32 dQ matrix-store serialization increased
+  lifecycle time by about 11% despite a correct native instruction chain.
+- Proposed Target / target: Shaobo optimization reference in a later
+  consolidation round; do not edit public skills in this task.

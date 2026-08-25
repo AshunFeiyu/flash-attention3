@@ -12801,3 +12801,17 @@ bottleneck is unchanged ownership: XCU ABarrier issue gaps are still `22.13%`.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84, local archive
 `outputs/019ea61f-c117-76b2-abad-e776092d47a0/c83_fullperf`.
+
+## 2026-08-25 Fused5 C85 Canonical Promotion
+
+Status: `ACCEPT_SMALL_TICKS_AND_ACTIVE_MMAC50_OPEN`.
+
+The canonical terminal dK/dV matrix-store path batches two D32 blocks in the
+released 32 KiB V LDS region. The five-GEMM mainloop, tile, roles and ABarrier
+ledger are unchanged. Full correctness and resource gates pass. Three-run
+stats mean improves `0.604%`; fullperf improves `1.198%`; MMAC active reaches
+`39.054060%`. XCU proves terminal ebarrier reduction but shows the main
+ABarrier ownership debt remains open.
+
+Evidence: commit `0f3527e`,
+`results/fused5_dkv_store_batch2_20260825.md`.

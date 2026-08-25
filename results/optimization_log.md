@@ -18828,3 +18828,17 @@ the ownership-DAG level rather than another causal micro-specialization.
 Evidence: `docs/fused5_causal_kernel_specialization_design_20260823.md`,
 workbook sections83-84,
 `/zys/sb/runs/fused5_c83_fullperf/b1_hq1_hkv1_s1024_d128_c1_fullperf_perfonly_20260823_150530`.
+
+## 2026-08-25 dK/dV Two-D-Block Store Batch Accepted
+
+Status: `ACCEPT_SMALL_TICKS_AND_ACTIVE_MMAC50_OPEN`.
+
+C84's terminal dK/dV writer now uses all 32 KiB of released V LDS and stores
+two D32 blocks per synchronization epoch. Mainloop work and resources are
+unchanged. Three stats-only runs improve fused mean by `0.604%`; fullperf
+improves `1.198%`, and MMAC active rises `38.392786% -> 39.054060%`.
+XCU confirms dynamic ebarriers fall `1,408 -> 896`, while correctness,
+no-spill and bank0 gates pass. This closes terminal store batching; next work
+must identify consumer-critical ABarrier IDs rather than continue store edits.
+
+Evidence: `results/fused5_dkv_store_batch2_20260825.md`, commit `0f3527e`.
