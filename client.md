@@ -3798,6 +3798,8 @@ dKV native P/dS handoff correction, 2026-07-16:
   matrix write/read accepts the natural `Vec4F32` MMAC output. The focused
   probe compiles cleanly, but current PMD aborts at its first writer with
   `Invalid opcode 0xd38b5007`; it cannot be used in the validated mainline.
+  This attribution is superseded by the 2026-08-25 raw-ISA audit: that opcode
+  is pre-writer packed-U16 setup, while the corrected FP32 transport executes.
 
 dKV direction update, 2026-07-16:
 
@@ -5621,9 +5623,10 @@ superseded by `Latest Compiler Is The Only Optimization Baseline` and the
   `scripts/toolchain_lock.sh`; no old per-kernel compiler exception remains.
 - `build.sh` records the compiler/PMD/WDRA fingerprint beside each artifact,
   and `scripts/env.sh` rejects an unrecognized PMD before simulation.
-- Latest-toolchain f32 matrix-writer revalidation still fails in PMD at opcode
-  `0xd38b5008` even when the unrelated WDRA path is disabled. Keep this route
-  isolated until compiler/PMD owners align the encoding.
+- The historical latest-toolchain f32 recheck stopped at `0xd38b5008` with
+  WDRA disabled. This is superseded: raw ISA maps it to pre-writer
+  `v_pk_sub_u16`; the opcode-clean HEAD1694 run executes FP32 writer/read
+  transport. Only its permutation-aware semantic ABI remains open.
 
 ### Skill Candidate: Fail-Closed Toolchain Identity
 
@@ -7336,9 +7339,10 @@ superseded. The corrected probe uses production `stride=128`, checks untouched
 padding, and crosses LIT/LTS, store T/R and descriptor mfmt. Direct
 VGPR-to-global `matrix_store_16x16_b32` executes cleanly, but all 48 modes have
 252/256 dense mismatches and zero guard corruption. The native FP32 DS writer
-now emits the correct offset0 form, but PMD HEAD1694 rejects opcode
-`0xd38b5008` before semantic validation; the existing HEAD1734 no-WDRA run
-reproduces the same opcode rejection.
+emits the correct offset0 form. Raw code-object disassembly proves the old
+`0xd38b5008` failure was pre-writer `v_pk_sub_u16`, not DS. After removing that
+setup opcode, PMD HEAD1694 executes all writer/read combinations as complete
+slot permutations; the remaining task is a permutation-aware MMAC oracle.
 
 No production source changed. The open item is the MMAC-C source fragment ABI,
 not stride or B32 store existence. Also correct the precision record: current
@@ -7353,8 +7357,8 @@ before comparing a native B32 epilogue.
   then cross MMAC output mode, matrix-store T/R and descriptor mfmt before
   attributing a failure to hardware or PMD.
 - Evidence / evidence: D128 stride guard0; 48 direct VGPR B32 modes execute
-  resource-clean but mismatch 252/256; native FP32 DS writer is PMD-blocked on
-  opcode `0xd38b5008` after runner defects are removed.
+  resource-clean but mismatch 252/256; FP32 DS transport executes on HEAD1694
+  as four complete permutations after removing pre-writer `v_pk_sub_u16`.
 - Boundary / boundary: applies to the canonical dQ accumulator ownership and
   compiler `e0f10535`; another native MMAC output mode may match directly.
 - Counterexample / not applicable: accepted dK/dV FP16-output MMAC already

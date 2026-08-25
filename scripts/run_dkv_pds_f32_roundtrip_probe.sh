@@ -11,7 +11,6 @@ ASM="${BUILD_DIR}/dkv_pds_f32_roundtrip_probe.asm"
 RUN_ROOT="${PDS_RUN_ROOT:-/zys/shaobo/runs}"
 RUN_DIR="${RUN_ROOT}/dkv_pds_f32_roundtrip_probe_$(date +%Y%m%d_%H%M%S)"
 PMD_TIMEOUT="${PDS_F32_PMD_TIMEOUT:-120}"
-EXPECT_PMD_SUPPORT="${PDS_F32_EXPECT_PMD_SUPPORT:-0}"
 
 cleanup_probe_processes() {
   # PMD may detach the simulated executable from timeout's process group.
@@ -68,7 +67,7 @@ cat pmd_stdout.log
 set -e
 
 panic_lines="$(grep -ciE 'panic:|fatal:' pmd_stdout.log || true)"
-invalid_f32_opcode_lines="$(grep -ciE 'Invalid opcode encountered: 0xd38b500[78]' \
+invalid_opcode_lines="$(grep -ci 'Invalid opcode encountered:' \
   pmd_stdout.log || true)"
 result_lines="$(grep -c 'f32_pds_roundtrip candidate=' pmd_stdout.log || true)"
 semantic_pass_lines="$(grep -c 'f32_pds_roundtrip any_semantic_pair=1' \
@@ -79,20 +78,15 @@ if compgen -G 'm5out/0/*/stats.txt' >/dev/null; then
     m5out/0/*/stats.txt)"
 fi
 
-if [[ "${invalid_f32_opcode_lines}" != "0" &&
-      "${EXPECT_PMD_SUPPORT}" == "0" ]]; then
-  printf 'pds_f32_roundtrip_status=DEFER_PMD_UNIMPLEMENTED opcode=0xd38b5007_or_0xd38b5008 pmd_status=%s run=%s\n' \
-    "${pmd_status}" "${RUN_DIR}" | tee result.txt
-  exit 0
-fi
-
 if [[ "${pmd_status}" != "0" || "${panic_lines}" != "0" ||
+      "${invalid_opcode_lines}" != "0" ||
       "${result_lines}" != "4" ||
       "${semantic_pass_lines}" != "1" ||
       "${bank_conflicts}" != "0" ]]; then
-  printf 'pds_f32_roundtrip_status=FAIL pmd_status=%s result_lines=%s semantic_pass=%s panic=%s bank=%s\n' \
+  printf 'pds_f32_roundtrip_status=FAIL pmd_status=%s result_lines=%s semantic_pass=%s panic=%s invalid_opcode=%s bank=%s\n' \
     "${pmd_status}" "${result_lines}" "${semantic_pass_lines}" \
-    "${panic_lines}" "${bank_conflicts}"
+    "${panic_lines}" "${invalid_opcode_lines}" "${bank_conflicts}" | \
+    tee result.txt
   exit 1
 fi
 

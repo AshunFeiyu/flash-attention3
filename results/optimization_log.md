@@ -13984,7 +13984,7 @@ Status: `REJECT_SOURCE_SLOT_ABI_MAIN_SOURCE_RESTORED`
 
 ## 2026-07-16 dKV f32 Matrix-Writer Probe
 
-Status: `DEFER_PMD_UNIMPLEMENTED_F32_DS_MATRIX`
+Status: `SUPERSEDED_PRE_WRITER_OPCODE_MISATTRIBUTED`
 
 - A minimal one-wave probe isolates the remaining no-permute candidate:
   natural `Vec4F32` MMAC -> f32 m16x16 matrix write/read -> fp16 -> downstream
@@ -13993,6 +13993,8 @@ Status: `DEFER_PMD_UNIMPLEMENTED_F32_DS_MATRIX`
   ASM contains 4 f32 matrix writes, 8 f32 matrix reads, and 6 MMACs.
 - PMD reaches the kernel and aborts at the first f32 writer with
   `Invalid opcode 0xd38b5007`, before reader or numerical evidence exists.
+- 2026-08-25 raw-ISA correction: the opcode is pre-writer test-data setup, not
+  DS. An opcode-clean HEAD1694 run executes the full FP32 transport chain.
 - The deterministic runner reproduces this at
   `/zys/shaobo/runs/dkv_pds_f32_roundtrip_probe_20260716_215919`, cleans all
   detached PMD children, and requires `any_semantic_pair=1` once supported.
@@ -16416,6 +16418,10 @@ Status: `REJECT_REQUEST_AGE_REGRESSION_SOURCE_RESTORED`.
   no `s_set_vgpr_size` can mask the result. PMD still aborts at the first
   `ds_write_matrix_format ... element:3` opcode (`0xd38b5008`). Classify this
   as `DEFER_PMD_COMPILER_ENCODING`; do not integrate f32 writer into dKV/dQ.
+- Superseded on 2026-08-25: raw code-object disassembly maps `0xd38b5008` to
+  pre-writer `v_pk_sub_u16`; the actual DS writer is `D9DE0000 08010309` and
+  executes on HEAD1694. Integration remains blocked only by semantic source
+  ABI validation.
 
 ## 2026-07-21 BPS Nonzero VBCNT Threshold Probe
 
@@ -18856,11 +18862,14 @@ Status: `OBSERVE_SOURCE_FRAGMENT_ABI_OPEN`.
 
 The earlier lane-linear `REJECT` is superseded. Audit found an incorrect
 page-relative offset, a comment miscounted as `s_trap`, missing PMD config
-seeding and unrelated WDRA flags in the historical FP32 runner. After those
-are fixed, the native FP32 writer reaches PMD and is blocked by unsupported
-opcode `0xd38b5008` on both HEAD1694 and the existing HEAD1734 no-WDRA run.
+seeding and unrelated WDRA flags in the historical FP32 runner. A raw
+code-object audit additionally proves `0xd38b5008` is pre-writer
+`v_pk_sub_u16` from the modulo-based test-data generator, not a DS instruction.
+Replacing that setup lets PMD HEAD1694 execute all four FP32 writers and eight
+readers; all four transport paths are complete permutations and bank0. The
+remaining `0/4` direct-fragment result is a source-ABI/oracle issue.
 
-An independent direct VGPR-to-global B32 probe avoids that PMD writer gap.
+An independent direct VGPR-to-global B32 probe tests the production epilogue.
 It uses the production D128 row stride, sentinel padding, real MMAC C data,
 LIT/LTS, store T/R and mfmt0/1/2. The instruction executes with no spill,
 scratch, DS fallback, permute or guard corruption, but 0/48 modes match the
@@ -18874,5 +18883,4 @@ future precision experiment must first create an FP32 direct-store baseline.
 Evidence: `results/dq_b32_matrix_store_probe_20260824.md`, remote runs
 `/zys/sb/dq_b32_vgpr_store_mfmt/layout_probes/dq_b32_matrix_store_20260825_000145`
 and
-`/zys/sb/dq_f32_writer_offset0_test/layout_probes/dkv_pds_f32_roundtrip_probe_20260824_234613`;
-HEAD1734 cross-check `/zys/sb/f32pmd1734/run_nowa_20260824_224337`.
+`/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_103654`.

@@ -32,20 +32,29 @@ MMAC C -> ds_write_matrix_f32/u32 -> LDS -> matrix_store_16x16_b32
 - LIT/LTS, store T/R and descriptor `mfmt={0,1,2}` were crossed for 48 modes.
   All execute, but none matches the current direct dQ row/component ownership;
   every mode reports 252/256 dense mismatches.
-- The corrected native FP32 DS writer emits the documented
-  `element:3,row:1,col:1,offset:0` form with no real `s_trap`. Both PMD
-  HEAD1694 and HEAD1734 stop at
-  `Invalid opcode encountered: 0xd38b5008`, before a semantic result.
+- Raw code-object disassembly proves the earlier `0xd38b5008` failure was
+  `v_pk_sub_u16` in the probe's modulo-based test-data generator, not a DS
+  instruction. The actual first FP32 writer encodes as
+  `D9DE0000 08010309`.
+- After replacing that unrelated setup arithmetic, PMD HEAD1694 executes all
+  four FP32 writers and eight FP32 readers. All four writer/read combinations
+  are complete 256-slot permutations, with no panic, invalid opcode, spill,
+  scratch or LDS bank conflict.
+- None of the four combinations is lane-linear identity and the current
+  direct-fragment semantic comparison reports `0/4`. That oracle does not yet
+  reconstruct the measured slot permutation, so it leaves the MMAC-C source
+  ABI open; it is not evidence that the writer or PMD is broken.
 
 ## Conclusion
 
 `matrix_store_16x16_b32`, its descriptor stride, and the direct VGPR form are
 not broken by this evidence. The open issue is the producer register ABI: the
 current dQ MMAC C fragment is not arranged as the B32 matrix-store source
-fragment expected by the tested native forms. The ISA-documented
-`DS_MATRIX_TRANSPOSE_4V` or another compiler-provided output-layout contract
-must be probed before production integration; do not call this an instruction
-failure and do not add scalar gather/permute code.
+fragment expected by the tested direct-store forms. The next probe must
+reconstruct the measured writer/read permutation and validate the downstream
+dense MMAC. `DS_MATRIX_TRANSPOSE_4V` or another compiler-provided output
+contract is only needed if that native chain still cannot satisfy the consumer
+ABI; do not add scalar gather/permute code first.
 
 The production path was not modified. It currently stores each dQ partial as
 FP16 before the reduction, despite older notes calling it FP32. Preserving dQ
@@ -59,9 +68,10 @@ workspace baseline, then compare any native B32 epilogue against it.
 - Direct VGPR D128/mfmt sweep:
   `/zys/sb/dq_b32_vgpr_store_mfmt/layout_probes/dq_b32_matrix_store_20260825_000145`
 - Corrected FP32 writer run:
+  `/zys/sb/dq_f32_writer_opcode_clean/layout_probes/dkv_pds_f32_roundtrip_probe_20260825_103654`
+- Superseded pre-writer failures:
   `/zys/sb/dq_f32_writer_offset0_test/layout_probes/dkv_pds_f32_roundtrip_probe_20260824_234613`
-- HEAD1734 no-WDRA cross-check:
-  `/zys/sb/f32pmd1734/run_nowa_20260824_224337`
+  and `/zys/sb/f32pmd1734/run_nowa_20260824_224337`
 
 The runner intentionally returns failure until at least one direct source ABI
 combination passes.

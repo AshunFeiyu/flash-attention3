@@ -111,18 +111,32 @@ __global__ void __launch_bounds__(kWaveSize, 1)
     F16x4 upstream_lhs{};
     F16x4 upstream_rhs{};
     F16x4 downstream_rhs{};
-#pragma unroll
-    for (int i = 0; i < kValuesPerLane; ++i) {
-        const int lhs_code = (lane * 3 + i * 5) % 17 - 8;
-        const int rhs_code = (lane * 7 + i * 3 + 1) % 19 - 9;
-        const int down_code = (lane * 11 + i * 7 + 2) % 23 - 11;
-        upstream_lhs.scalar[i] =
-            static_cast<_Float16>(lhs_code * 0.03125f);
-        upstream_rhs.scalar[i] =
-            static_cast<_Float16>(rhs_code * 0.025f);
-        downstream_rhs.scalar[i] =
-            static_cast<_Float16>(down_code * 0.015625f);
-    }
+    // Keep setup free of packed-u16 arithmetic so PMD failures isolate the
+    // matrix writer/reader chain rather than unrelated test-data codegen.
+    const float lane_f = static_cast<float>(lane + 1);
+    upstream_lhs.scalar[0] = static_cast<_Float16>(lane_f * 0.0078125f);
+    upstream_lhs.scalar[1] =
+        static_cast<_Float16>((lane_f + 3.0f) * 0.0078125f);
+    upstream_lhs.scalar[2] =
+        static_cast<_Float16>((lane_f + 7.0f) * -0.0078125f);
+    upstream_lhs.scalar[3] =
+        static_cast<_Float16>((lane_f + 11.0f) * 0.00390625f);
+    upstream_rhs.scalar[0] =
+        static_cast<_Float16>((lane_f + 1.0f) * -0.00390625f);
+    upstream_rhs.scalar[1] =
+        static_cast<_Float16>((lane_f + 5.0f) * 0.0078125f);
+    upstream_rhs.scalar[2] =
+        static_cast<_Float16>((lane_f + 9.0f) * 0.00390625f);
+    upstream_rhs.scalar[3] =
+        static_cast<_Float16>((lane_f + 13.0f) * -0.0078125f);
+    downstream_rhs.scalar[0] =
+        static_cast<_Float16>((lane_f + 2.0f) * 0.00390625f);
+    downstream_rhs.scalar[1] =
+        static_cast<_Float16>((lane_f + 6.0f) * -0.0078125f);
+    downstream_rhs.scalar[2] =
+        static_cast<_Float16>((lane_f + 10.0f) * 0.0078125f);
+    downstream_rhs.scalar[3] =
+        static_cast<_Float16>((lane_f + 14.0f) * 0.00390625f);
     const ins::Vec4F32 natural =
         run_mmac(upstream_lhs.vec, upstream_rhs.vec);
 
