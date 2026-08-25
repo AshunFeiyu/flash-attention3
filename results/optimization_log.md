@@ -18842,3 +18842,22 @@ no-spill and bank0 gates pass. This closes terminal store batching; next work
 must identify consumer-critical ABarrier IDs rather than continue store edits.
 
 Evidence: `results/fused5_dkv_store_batch2_20260825.md`, commit `0f3527e`.
+
+## 2026-08-25 C1 Early-dS Scheduling Tier Closed
+
+Status: `REJECT_SCHEDULING_TIER_CLOSED_CANONICAL_RESTORED`.
+
+C86A proved the intended ownership effect: early C1 dS publication reduced
+consumer-critical ABarrier wait by `28.8%`. It simultaneously exposed about
+`281K` cycles of dV matrix-read first-use latency, so fullperf ticks regressed
+and MMAC active stayed flat. C86B held all four dV packets across publication;
+it remained correct and spill-free at C1 `194/204` VGPRs but regressed the
+three-run S1024 fused mean by `0.608%`.
+
+Conclusion: the current `producer -> C0/C1 -> dQ writer` graph is the limit,
+not the local ordering around one wait. Production source is restored to C85.
+The next admitted experiment changes role and output ownership topology.
+
+Evidence: `docs/fused5_c1_early_ds_publish_design_20260825.md`, remote runs
+`/zys/sb/runs/c86_c1_early_ds_eca19b2` and
+`/zys/sb/runs/c86b_c1_ds_packet_hold_d97d50c`.

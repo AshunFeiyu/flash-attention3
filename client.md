@@ -7339,3 +7339,21 @@ token tomography is the next admitted hypothesis.
   lifecycle time by about 11% despite a correct native instruction chain.
 - Proposed Target / target: Shaobo optimization reference in a later
   consolidation round; do not edit public skills in this task.
+
+## 2026-08-25 Readiness-Debt Migration Boundary
+
+### Skill Candidate
+
+- Trigger / applicable scenario: an ownership wait is reduced by moving a
+  downstream matrix phase later, but total ticks or MMAC active do not improve.
+- Rule / reusable rule: quantify the whole readiness chain after the move. If
+  ABarrier cycles reappear as matrix-read first-use cycles, stop local ordering
+  work and redesign role/output ownership.
+- Evidence / evidence: C86A consumer-critical ABarrier `-28.8%`, matrix-read
+  gaps `+281K` cycles, fullperf `+0.38%`; C86B packet hold `+0.608%` ticks.
+- Boundary / boundary: a packet can still be held when resource use is low and
+  the read genuinely ages under independent work; here C1 reached `194/204`.
+- Counterexample / not applicable: C1 dO lag-one and C0 dS-scale scheduling
+  reduced both readiness debt and ticks without changing ownership.
+- Proposed Target / target: `dcu-kernel-optimization` in a later consolidation
+  round; do not edit the public skill in this task.

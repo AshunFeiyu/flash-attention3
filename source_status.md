@@ -1,5 +1,17 @@
 # Source Status
 
+## 2026-08-25 C86 Scheduling Experiment Rejected
+
+- Status: `REJECT_SCHEDULING_TIER_CLOSED_CANONICAL_RESTORED`.
+- Early C1 dS publication reduced the measured consumer-critical ABarrier
+  chain, but moved the same readiness debt into dV matrix reads.
+- Holding four packets was legal at C1 `194/204` VGPRs and passed all golden,
+  resource and bank gates, yet regressed S1024 fused mean by `0.608%`.
+- Canonical source is restored to C85 commit `0f3527e`. The next source branch
+  must remove the two-consumer handoff topology rather than tune read order.
+
+Evidence: `docs/fused5_c1_early_ds_publish_design_20260825.md`.
+
 ## 2026-08-23 dQ Writer Read8 Batch Rejected
 
 - Status: `REJECT_OUTSTANDING_LDS_PRESSURE_CANONICAL_RESTORED`.

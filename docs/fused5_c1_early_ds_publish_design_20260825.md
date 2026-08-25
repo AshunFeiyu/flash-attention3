@@ -1,6 +1,6 @@
 # Fused5 C1 Early dS Publication
 
-Status: `DESIGN_READY_FOR_ONE_HYPOTHESIS_EXPERIMENT`.
+Status: `REJECT_SCHEDULING_TIER_CLOSED_CANONICAL_RESTORED`.
 
 ## Evidence
 
@@ -69,3 +69,23 @@ new barrier, extra GEMM, or layout conversion is introduced.
 - Same-build stats-only ticks must improve over C85.
 - A winning fullperf must reduce `BatchDsFilled1` wait and total ticks. Higher
   MMAC active without lower ticks is not sufficient.
+
+## Result
+
+Two bounded schedules were tested on compiler `e0f10535`, PMD `HEAD1694`,
+`GPU_CHIP=sb`, and SQ7.
+
+- C86A published C1 dS before issuing dV. Three stats runs improved fused mean
+  `39.319M -> 38.937M` (`-0.971%`), but fullperf regressed
+  `39.308M -> 39.458M` and MMAC active was flat at `38.991%`. Token tomography
+  reduced consumer-critical ABarrier wait `723,184 -> 514,868` cycles, while
+  transpose/normal matrix-read waits grew by about `281K` cycles.
+- C86B issued and held all four dV operand packets across dS publication. The
+  kernel passed causal/noncausal/GQA correctness, bank0, and no-spill gates;
+  C1 used `194/204` role VGPRs. Three S1024 fused runs were
+  `39.542M/39.669M/39.462M`, mean `39.558M`, a `+0.608%` regression.
+
+The experiment proves that the current two-consumer topology only migrates
+readiness debt between ABarrier and LDS first use. Further instruction-order
+changes in this ownership graph are closed. The next experiment must remove a
+handoff or consumer role, not move reads around it.
