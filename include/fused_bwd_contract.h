@@ -217,9 +217,13 @@ struct FusedBwdBarrierLedger {
     static constexpr int kDqDone1 = 9;
     static constexpr int kBatchDsFilled0Alt = 10;
     static constexpr int kDqDone0Alt = 11;
-    static constexpr int kCount = 12;
+    // Raw Q/dO readiness is independent from sidecar readiness. RawUsed still
+    // guards the complete page lifetime, including its sidecar values.
+    static constexpr int kSidecarFilled0 = 12;
+    static constexpr int kSidecarFilled1 = 13;
+    static constexpr int kCount = 14;
 
-    static_assert(kDqDone0Alt + 1 == kCount,
+    static_assert(kSidecarFilled1 + 1 == kCount,
                   "barrier IDs must be contiguous and explicit");
 };
 

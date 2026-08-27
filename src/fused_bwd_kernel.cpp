@@ -222,6 +222,16 @@ __device__ __forceinline__ void producer_load_raw_sidecar(
     }
 }
 
+template <int Page>
+__device__ __forceinline__ void wait_raw_sidecar(int& phase) {
+    static_assert(Page == 0 || Page == 1);
+    if constexpr (Page == 0) {
+        ins::abarrier_try_wait<true>(Bar::kSidecarFilled0, phase);
+    } else {
+        ins::abarrier_try_wait<true>(Bar::kSidecarFilled1, phase);
+    }
+}
+
 __device__ __forceinline__ void f16_mmac_single(const Fragment& lhs,
                                                  const Fragment& rhs,
                                                  const ins::F16x8& zero,
@@ -749,7 +759,8 @@ __device__ __forceinline__ void run_c1_causal_zero_front(
     __half* lds,
     int owner,
     const ins::F16x8& zero,
-    int& raw_phase) {
+    int& raw_phase,
+    int& sidecar_phase) {
     ins::abarrier_try_wait<true>(Bar::kRawFilled0, raw_phase);
     Fragment zero_ds;
     zero_ds.f16x8 = zero.f16x8;
@@ -758,6 +769,7 @@ __device__ __forceinline__ void run_c1_causal_zero_front(
     publish_final_ds<2, 1>(zero_ds, lds, owner);
     publish_final_ds<3, 1>(zero_ds, lds, owner);
     ins::abarrier_arrive_cnt<false>(Bar::kBatchDsFilled1, 1);
+    wait_raw_sidecar<0>(sidecar_phase);
     ins::abarrier_arrive_cnt<false>(Bar::kRawUsed0, 1);
     ins::abarrier_arrive_cnt<false>(Bar::kDqDone1, 1);
 }
@@ -933,6 +945,7 @@ __device__ __forceinline__ void run_consumer_q_tile(
     ins::Vec4F16 (&dv_acc)[8],
     ins::Vec4F16 (&dk_acc)[8],
     int& raw_phase,
+    int& sidecar_phase,
     int& dq_done_phase) {
     static_assert(Page == 0 || Page == 1);
     if constexpr (Page == 0) {
@@ -972,6 +985,9 @@ __device__ __forceinline__ void run_consumer_q_tile(
                                : 0);
             mmac_product_island(q_buf[m_block & 1], resident.k_trans,
                                 mmac_zero, score);
+            if (m_block == 0) {
+                wait_raw_sidecar<Page>(sidecar_phase);
+            }
             probability_stage(
                 score, lane, q_base, m_block, k_base, n_owner, causal,
                 sidecar_field(mutable_lds, Page, 0)[sidecar_row],
@@ -994,6 +1010,9 @@ __device__ __forceinline__ void run_consumer_q_tile(
             wait_matrix_packet<0>(score_packet);
             mmac_product_island(
                 score_packet, resident.k_trans, mmac_zero, score);
+            if (m_block == 0) {
+                wait_raw_sidecar<Page>(sidecar_phase);
+            }
             probability_stage(
                 score, lane, q_base, m_block, k_base, n_owner, causal,
                 sidecar_field(mutable_lds, Page, 0)[sidecar_row],
@@ -1113,6 +1132,8 @@ __device__ __forceinline__ void run_consumer_group(
     ins::zero_f16x8(mmac_zero);
     int raw0_phase = 0;
     int raw1_phase = 0;
+    int sidecar0_phase = 0;
+    int sidecar1_phase = 0;
     int done0_phase = 0;
     int done1_phase = 0;
 
@@ -1122,15 +1143,15 @@ __device__ __forceinline__ void run_consumer_group(
             run_consumer_q_tile<0, 0, false, true>(
                 lds, mutable_lds, k_base, q_tile_begin, qi, Causal ? 1 : 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-                dv_acc, dk_acc, raw0_phase, done0_phase);
+                dv_acc, dk_acc, raw0_phase, sidecar0_phase, done0_phase);
         } else if constexpr (Causal) {
             run_c1_causal_zero_front(
-                mutable_lds, owner, mmac_zero, raw0_phase);
+                mutable_lds, owner, mmac_zero, raw0_phase, sidecar0_phase);
         } else {
             run_consumer_q_tile<1, 0, false, true>(
                 lds, mutable_lds, k_base, q_tile_begin, qi, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-                dv_acc, dk_acc, raw0_phase, done0_phase);
+                dv_acc, dk_acc, raw0_phase, sidecar0_phase, done0_phase);
         }
         ++qi;
     }
@@ -1139,17 +1160,17 @@ __device__ __forceinline__ void run_consumer_group(
             run_consumer_q_tile<0, 1, false, false>(
                 lds, mutable_lds, k_base, q_tile_begin, qi, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-                dv_acc, dk_acc, raw1_phase, done1_phase);
+                dv_acc, dk_acc, raw1_phase, sidecar1_phase, done1_phase);
         } else if constexpr (Causal) {
             run_consumer_q_tile<1, 1, true, true>(
                 lds, mutable_lds, k_base, q_tile_begin, qi, 1,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-                dv_acc, dk_acc, raw1_phase, done0_phase);
+                dv_acc, dk_acc, raw1_phase, sidecar1_phase, done0_phase);
         } else {
             run_consumer_q_tile<1, 1, true, false>(
                 lds, mutable_lds, k_base, q_tile_begin, qi, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-                dv_acc, dk_acc, raw1_phase, done0_phase);
+                dv_acc, dk_acc, raw1_phase, sidecar1_phase, done0_phase);
         }
         ++qi;
     }
@@ -1159,24 +1180,24 @@ __device__ __forceinline__ void run_consumer_group(
         run_consumer_q_tile<Group, 0, true, false>(
             lds, mutable_lds, k_base, q_tile_begin, qi, 0,
             softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-            dv_acc, dk_acc, raw0_phase, done0_phase);
+            dv_acc, dk_acc, raw0_phase, sidecar0_phase, done0_phase);
         if constexpr (Group == 0) {
             run_consumer_q_tile<0, 1, true, false>(
                 lds, mutable_lds, k_base, q_tile_begin, qi + 1, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-                dv_acc, dk_acc, raw1_phase, done1_phase);
+                dv_acc, dk_acc, raw1_phase, sidecar1_phase, done1_phase);
         } else {
             run_consumer_q_tile<1, 1, true, false>(
                 lds, mutable_lds, k_base, q_tile_begin, qi + 1, 0,
                 softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-                dv_acc, dk_acc, raw1_phase, done0_phase);
+                dv_acc, dk_acc, raw1_phase, sidecar1_phase, done0_phase);
         }
     }
     if (qi < q_tile_count) {
         run_consumer_q_tile<Group, 0, true, false>(
             lds, mutable_lds, k_base, q_tile_begin, qi, 0,
             softmax_scale, n_owner, owner, lane, resident, mmac_zero,
-            dv_acc, dk_acc, raw0_phase, done0_phase);
+            dv_acc, dk_acc, raw0_phase, sidecar0_phase, done0_phase);
     }
 
     __builtin_hcu_s_ebarrier_sync(0);
@@ -1369,6 +1390,8 @@ __device__ __forceinline__ void run_fused5_kernel_body(
         __builtin_hcu_s_abarrier_init(Bar::kDqDone1, 8);
         __builtin_hcu_s_abarrier_init(Bar::kBatchDsFilled0Alt, 4);
         __builtin_hcu_s_abarrier_init(Bar::kDqDone0Alt, 8);
+        __builtin_hcu_s_abarrier_init(Bar::kSidecarFilled0, 4);
+        __builtin_hcu_s_abarrier_init(Bar::kSidecarFilled1, 4);
     }
     __builtin_hcu_s_ebarrier_sync(0);
 
@@ -1409,18 +1432,20 @@ __device__ __forceinline__ void run_fused5_kernel_body(
         int raw1_used_phase = 0;
         if (q_tile_count != 0) {
             ins::abarrier_seq<false>(Bar::kRawFilled0);
+            ins::abarrier_seq<false>(Bar::kSidecarFilled0);
             producer_load_raw_matrices(
                 q, dout, lds, q_tensor_base,
                 q_tile_begin * Tile::kMq, LdsLayout::kRaw0Base,
                 wave_local);
+            ins::maybe_wait_bps_vbcnt_before_arrive();
+            ins::abarrier_arrive_cnt<false>(Bar::kRawFilled0, 1);
             ins::abarrier_try_wait<true>(Bar::kVSidecarReady,
                                          kv_latched_phase);
             producer_load_raw_sidecar(
                 packed_sidecar, lds, row_base,
                 q_tile_begin * Tile::kMq, 0, wave_local, lane);
             ins::wait_vmem_lgkm();
-            ins::maybe_wait_bps_vbcnt_before_arrive();
-            ins::abarrier_arrive_cnt<false>(Bar::kRawFilled0, 1);
+            ins::abarrier_arrive_cnt<false>(Bar::kSidecarFilled0, 1);
         }
         for (int qi = 1; qi < q_tile_count; ++qi) {
             const int page = qi & 1;
@@ -1435,22 +1460,29 @@ __device__ __forceinline__ void run_fused5_kernel_body(
             }
             if (page == 0) {
                 ins::abarrier_seq<false>(Bar::kRawFilled0);
+                ins::abarrier_seq<false>(Bar::kSidecarFilled0);
             } else {
                 ins::abarrier_seq<false>(Bar::kRawFilled1);
+                ins::abarrier_seq<false>(Bar::kSidecarFilled1);
             }
             const int q_base = (q_tile_begin + qi) * Tile::kMq;
             producer_load_raw_matrices(
                 q, dout, lds, q_tensor_base, q_base,
                 raw_page_base(page), wave_local);
-            producer_load_raw_sidecar(
-                packed_sidecar, lds, row_base, q_base, page,
-                wave_local, lane);
-            ins::wait_vmem_lgkm();
             ins::maybe_wait_bps_vbcnt_before_arrive();
             if (page == 0) {
                 ins::abarrier_arrive_cnt<false>(Bar::kRawFilled0, 1);
             } else {
                 ins::abarrier_arrive_cnt<false>(Bar::kRawFilled1, 1);
+            }
+            producer_load_raw_sidecar(
+                packed_sidecar, lds, row_base, q_base, page,
+                wave_local, lane);
+            ins::wait_vmem_lgkm();
+            if (page == 0) {
+                ins::abarrier_arrive_cnt<false>(Bar::kSidecarFilled0, 1);
+            } else {
+                ins::abarrier_arrive_cnt<false>(Bar::kSidecarFilled1, 1);
             }
         }
         if (q_tile_count != 0) {
@@ -1544,6 +1576,8 @@ __device__ __forceinline__ void run_fused5_kernel_body(
         __builtin_hcu_s_abarrier_inv(Bar::kDqDone1);
         __builtin_hcu_s_abarrier_inv(Bar::kBatchDsFilled0Alt);
         __builtin_hcu_s_abarrier_inv(Bar::kDqDone0Alt);
+        __builtin_hcu_s_abarrier_inv(Bar::kSidecarFilled0);
+        __builtin_hcu_s_abarrier_inv(Bar::kSidecarFilled1);
     }
 #else
     (void)dout;
