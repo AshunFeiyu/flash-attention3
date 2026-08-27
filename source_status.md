@@ -1,5 +1,26 @@
 # Source Status
 
+## 2026-08-27 C111 dK/dV Four-Block Store Batch Promoted
+
+- Status: `ACCEPT_TICKS_AND_ACTIVE_MMAC50_OPEN`.
+- Commit `34d5f39` reuses the dead 32--96 KiB K/V LDS range after the
+  existing pre-store rendezvous and publishes all four D32 dK/dV blocks in
+  one matrix-store epoch. The mainloop, exact five GEMMs and ownership are
+  unchanged.
+- H1/S128 causal/noncausal and H1/S1024 causal full golden pass; roles are
+  `9/142/87/130`, private/spill/scratch0 and bank0.
+- Three interleaved S1024 pairs improve fused/lifecycle means
+  `0.910%/0.679%`; same-time fullperf improves `0.201%/0.135%`; MMAC active
+  rises `39.442415% -> 39.792603%`.
+- SQTT attributes the gain to the intended epilogue: consumer terminal store
+  waits shrink about 20--23%, and writer terminal ebarrier gap falls
+  `3241 -> 931` cycles.
+- Next: close store micro-tuning and return to steady-mainloop ownership and
+  MMAC/VALU overlap. Preserve C109's raw/sidecar readiness split.
+
+Evidence: `results/fused5_dkv_store_batch4_20260827.md` and shared perf
+`20260827_113114_C111_dkv_store_batch4_H1S1024_causal_SQ7`.
+
 ## 2026-08-27 C109 Raw/Sidecar Readiness Split Promoted
 
 - Status: `ACCEPT_TICKS_AND_ACTIVE_MMAC50_OPEN`.

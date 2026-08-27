@@ -1,5 +1,26 @@
 # Optimization Log
 
+## 2026-08-27 C111 dK/dV Four-Block Store Batch Accepted
+
+Status: `ACCEPT_TICKS_AND_ACTIVE_MMAC50_OPEN`.
+
+After the canonical all-role pre-store rendezvous, K/V and raw packets are
+dead. C111 reuses the already exercised 32--96 KiB K/V range to publish all
+four D32 dK/dV output blocks before one matrix-store epoch. It removes one
+terminal CTA-wide store epoch without changing the mainloop, exact five GEMMs,
+output ownership or store count.
+
+H1/S128 causal/noncausal and H1/S1024 causal pass complete golden checks;
+roles are `9/142/87/130`, private/spill/scratch0 and bank0. Three interleaved
+S1024 pairs improve fused/lifecycle means by `0.910%/0.679%`. Same-time
+fullperf improves `0.201%/0.135%`, and MMAC active rises to `39.792603%`.
+Role SQTT confirms terminal store waits and writer ebarrier gaps shrink.
+
+The first bring-up at 64--128 KiB failed dK/dV correctness. It was replaced,
+not retained, and is not classified as a hardware defect without a focused
+address/layout probe. Store micro-tuning is now closed; the next meaningful
+target is steady-mainloop ownership and MMAC/VALU overlap.
+
 ## 2026-08-23 Sidecar Pair Read Rejected
 
 Status: `REJECT_LGKM_BARRIER_MIGRATION_CANONICAL_RESTORED`.

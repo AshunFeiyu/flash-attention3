@@ -7369,3 +7369,32 @@ correctness/resource/bank gates pass. S1024 fused and lifecycle means improve
   control lifetimes without exposing consumer work.
 - Proposed Target / target: Shaobo ABarrier/readiness reference in a later
   consolidation round; do not edit public skills in this task.
+
+## 2026-08-27 Terminal Matrix-Store Epoch Batching
+
+Status: `ACCEPT_TICKS_AND_ACTIVE_MMAC50_OPEN`.
+
+The dK/dV epilogue now reuses the full dead K/V LDS range and publishes all
+four D32 output blocks in one matrix-store epoch. This removes a repeated
+CTA-wide rendezvous while preserving exact work and mainloop ownership.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a matrix-store epilogue has several output
+  blocks, dead LDS is available, and profiler evidence identifies repeated
+  terminal store/barrier gaps.
+- Rule / reusable rule: batch all output blocks that fit the proven-dead LDS
+  lifetime into one publication epoch; validate the exact address range,
+  store count and output ownership instead of assuming all allocated LDS is
+  interchangeable.
+- Evidence / evidence: commit `34d5f39`, H1/S1024 fused mean `-0.910%`,
+  lifecycle mean `-0.679%`, MMAC active `+0.350188 pp`, consumer store waits
+  about `20--23%` lower, correctness/resource/bank gates PASS.
+- Boundary / boundary: this applies only after every former LDS owner has
+  completed and all producer fragments remain live. It does not improve the
+  steady mainloop or justify larger store batches beyond released capacity.
+- Counterexample / not applicable: the unverified 64--128 KiB source layout
+  failed dK/dV correctness; do not infer hardware failure or reuse that range
+  without a focused probe.
+- Proposed Target / target: Shaobo matrix-store/lifetime reference during a
+  later skill consolidation; no public skill edit in this task.

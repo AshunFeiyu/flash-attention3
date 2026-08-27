@@ -60,3 +60,16 @@ barriers and one terminal wait boundary per dKV wave.
 
 Accept a small repeatable gain. If matrix-store queue pressure makes one large
 epoch slower, restore C109 and close this store-batching tier.
+
+## Result
+
+Accepted at commit `34d5f39`. Three interleaved stats pairs improve fused and
+lifecycle means by `0.910%` and `0.679%`. Same-time fullperf improves by
+`0.201%` and `0.135%`, while MMAC active rises by `0.350188 pp` to
+`39.792603%`. Correctness, resources, bank conflicts and exact-work gates all
+pass. Role-filtered SQTT confirms smaller terminal matrix-store and CTA
+rendezvous gaps, so the gain matches the design hypothesis.
+
+The rejected 64--128 KiB bring-up layout is not retained. Its dK/dV failure
+does not prove a hardware limit; it is only an unverified address/layout
+observation and requires an isolated probe before reuse.
