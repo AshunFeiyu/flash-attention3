@@ -1,5 +1,13 @@
 # Source Status
 
+## 2026-08-27 score/dP Dead-Half Experiment Restored
+
+- Status: `REJECT_STATIC_NO_ISA_CHANGE_CANONICAL_RESTORED`.
+- Removing source-level initialization of the unused score/dP high half does
+  not change gfx946 machine instructions under compiler `e0f10535`.
+- No PMD time was spent. Canonical fused source remains byte-identical to
+  commit `21eb5aa`; only the negative evidence document is retained.
+
 ## 2026-08-27 dot_do_o Native FP16 dot2 Promoted
 
 - Status: `ACCEPT_LIFECYCLE_TICKS_NATIVE_DOT2`.

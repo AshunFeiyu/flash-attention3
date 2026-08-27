@@ -1,5 +1,14 @@
 # Client
 
+## 2026-08-27 score/dP Dead-Half Static Boundary
+
+The compiler already eliminates the unused high-half initialization of local
+score and dP fragments. Rewriting their C++ initialization produces identical
+gfx946 instructions, so this route is closed before PMD. Keep explicit
+high-half initialization for P/dS because those fragments cross the native
+writer/reader boundary; the dead-local score/dP result does not generalize to
+transported fragments.
+
 ## 2026-08-27 Native Packed Dot Promotion
 
 The canonical pre-kernel now maps each D128 row to 64 adjacent FP16 pairs and

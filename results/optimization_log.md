@@ -1,5 +1,17 @@
 # Optimization Log
 
+## 2026-08-27 score/dP Dead-Half Initialization Prune Rejected
+
+Status: `REJECT_STATIC_NO_ISA_CHANGE_CANONICAL_RESTORED`.
+
+Only the unused high half of local score/dP fragments was left uninitialized;
+the low-half MMAC zero seed and transported P/dS high-half initialization were
+preserved. Compiler `e0f10535` generated the same causal-symbol MMAC, matrix
+read and `v_mov` counts, the same role resources, and byte-identical normalized
+`llvm-objdump -d` output. The static gate therefore stopped before PMD, and the
+canonical source was restored. Evidence:
+`docs/fused5_score_dp_dead_half_init_prune_20260827.md`.
+
 ## 2026-08-27 dot_do_o Native FP16 dot2 Accepted
 
 Status: `ACCEPT_LIFECYCLE_TICKS_NATIVE_DOT2`.
