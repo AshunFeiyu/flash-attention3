@@ -56,6 +56,8 @@ struct LdsLayout {
                   "alternate C0 dS page must fit released V LDS");
     static_assert(kBytes == Tile::kPlannedLdsBytes,
                   "implementation and contract LDS ledgers disagree");
+    static_assert(kKBase + Tile::kDkvStoreScratchBytes <= kRaw1Base,
+                  "terminal dK/dV scratch must fit released K/V LDS");
 };
 
 __host__ __device__ constexpr int raw_page_base(int page) {
@@ -864,7 +866,7 @@ __device__ __forceinline__ void store_dkv_outputs(
     const int pair = n_owner >> 1;
     const int pair_half = n_owner & 1;
     const int pair_row = k_base + pair * 32;
-    const int pair_page = LdsLayout::kVBase +
+    const int pair_page = LdsLayout::kKBase +
                           pair * Tile::kDkvStoreBytesPerPair;
     const int writer_offset = pair_half * Tile::kWriterStrideBytes;
     static_assert(kMatrixBlocksD % Tile::kDkvStoreDblocksPerBatch == 0);
