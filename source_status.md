@@ -1,5 +1,23 @@
 # Source Status
 
+## 2026-08-28 C1 Early dS Publication Restored
+
+- Status: `REJECT_LOCKSTEP_MMAC_CONTENTION_CANONICAL_RESTORED`.
+- C1 retained four P fragments, published all dS before dV, then executed the
+  unchanged dV/dK work. Five GEMMs, BPS, matrix reads, LDS128KiB, ABarrier IDs
+  and output ownership stayed exact.
+- S128 causal/noncausal and S1024 causal full golden pass; roles are
+  `9/142/87/135`, SGPR72/VGPR128, private/spill/scratch0, warning0 and bank0.
+- Three interleaved S1024 pairs regress fused means
+  `38,816,353 -> 40,798,182` (`+5.106%`) and lifecycle means
+  `42,844,468 -> 44,921,847` (`+4.849%`). Dynamic VALU rises
+  `89,040 -> 94,096`, successful coissue falls, and SIMD imbalance worsens.
+- C1's per-panel dS-VALU/dV-MMAC cadence is useful stagger. Do not align both
+  consumers' dV islands merely to publish the writer earlier.
+
+Evidence: `docs/fused5_c1_early_ds_publish_design_20260827.md` and
+`/zys/sb/ab_c1_early_ds_20260827`.
+
 ## 2026-08-27 dO/Sidecar Early-Prefetch Experiment Restored
 
 - Status: `REJECT_BARRIER_MIGRATION_CANONICAL_RESTORED`.

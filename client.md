@@ -1,5 +1,29 @@
 # Client
 
+## 2026-08-28 C1 Publication Is Not Symmetric With C0
+
+C0 early dS publication was profitable, but applying the same shape to C1 is
+not. C1's canonical per-panel `dS VALU -> dV MMAC` is the useful asymmetry that
+keeps peer work staggered. Deferring all C1 dV makes both consumers align and
+adds writer dQ to the same MMAC contention window. Three S1024 pairs regress
+fused/lifecycle means by `5.106%/4.849%`; keep C111's asymmetric cadence.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: moving a producer-consumer publication point
+  earlier by deferring independent compute after publication.
+- Rule / reusable rule: verify the peer-pipeline phase relation before making
+  symmetric stage orders; earlier readiness can regress when the deferred work
+  removes VALU/MMAC stagger or contends with the newly released consumer.
+- Evidence / evidence: exact work/resources/correctness pass, but VALU rises
+  `89,040 -> 94,096`, successful coissue falls and fused ticks regress `5.106%`.
+- Boundary / boundary: profitable when the released consumer fills a true
+  idle pipe and deferred work uses a different execution resource.
+- Counterexample / not applicable: C0 early publication improved `2.015%`
+  because it exposed writer work without destroying C1's per-panel stagger.
+- Proposed Target / target: future `dcu-kernel-optimization` pipeline-design
+  consolidation; retain locally until reviewed with another architecture.
+
 ## 2026-08-27 Split dO Lifetime Boundary
 
 Early dO/sidecar overwrite is mathematically legal after both consumer groups

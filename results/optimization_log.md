@@ -1,5 +1,33 @@
 # Optimization Log
 
+## 2026-08-28 C1 Early dS Publication Rejected
+
+Status: `REJECT_LOCKSTEP_MMAC_CONTENTION_CANONICAL_RESTORED`.
+
+The candidate changed only C1's legal stage order from per-panel
+`dP/score/P/dS/dV` to `dP/score/P/dS x4 -> publish -> dV x4`, retaining four
+FP16 P fragments so the G1-first dQ writer could start earlier. Exact five-GEMM
+work, LDS128KiB, BPS/matrix traffic, ABarrier IDs and output ownership were
+unchanged. Static/resource gates pass at roles `9/142/87/135`, SGPR72/VGPR128,
+private/spill/scratch0. Full S128 causal/noncausal and S1024 causal golden pass
+with PMD warning0 and bank0.
+
+Three interleaved S1024 pairs all reject the schedule. Fused means move
+`38,816,353 -> 40,798,182` (`+5.106%`) and lifecycle means move
+`42,844,468 -> 44,921,847` (`+4.849%`). A matched stats pair keeps MMOP
+`88,064`, LDS `61,568`, SCA `40,888` and VMEM `1,664` exact, but VALU rises
+`89,040 -> 94,096`, successful coissue falls `17,357 -> 16,746`,
+no-VALU-ready cycles rise `286,825 -> 302,302`, and SIMD active CV worsens
+`0.4212 -> 0.4368`.
+
+The accepted asymmetric C1 per-panel dS-VALU/dV-MMAC cadence is real useful
+stagger. Earlier dS publication is not independently beneficial when it
+aligns both consumers and makes their dV/dK MMAC compete with writer dQ MMAC.
+No fullperf/xcu was admitted; canonical source is restored.
+
+Evidence: `docs/fused5_c1_early_ds_publish_design_20260827.md` and
+`/zys/sb/ab_c1_early_ds_20260827`.
+
 ## 2026-08-27 dO/Sidecar Early Prefetch Rejected
 
 Status: `REJECT_BARRIER_MIGRATION_CANONICAL_RESTORED`.
