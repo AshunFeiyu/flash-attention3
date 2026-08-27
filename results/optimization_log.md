@@ -18842,3 +18842,31 @@ no-spill and bank0 gates pass. This closes terminal store batching; next work
 must identify consumer-critical ABarrier IDs rather than continue store edits.
 
 Evidence: `results/fused5_dkv_store_batch2_20260825.md`, commit `0f3527e`.
+
+## 2026-08-27 Raw/Sidecar Readiness Split Accepted
+
+Status: `ACCEPT_TICKS_AND_ACTIVE_MMAC50_OPEN`.
+
+C85 made sidecar global-to-LDS completion part of `RawFilled`, so every
+consumer waited for metadata before beginning score. Commit `07e224d` adds
+one producer-filled `SidecarFilled` token per raw page. Q/dO BPS completion
+publishes `RawFilled` first; sidecar publication follows. Consumer0 waits only
+after score, and consumer1 waits after dP plus score. `RawUsed` still guards
+the complete page and no new storage or output owner is introduced.
+
+The source/ASM/resource gates pass at roles `9/142/87/130`, WDRA
+`16/204/88/204`, metadata VGPR128, no private/spill/scratch and exact
+LDS128KiB. S128 causal/noncausal and S1024 causal complete correctness pass
+with bank0. Repeated S1024 fused/lifecycle means improve
+`39.690M -> 38.730M` and `43.759M -> 42.822M`; fullperf improves
+`39.308M -> 38.772M` and `43.554M -> 42.819M`. MMAC active rises
+`39.054060% -> 39.563669%`.
+
+XCU supports the intended mechanism: `s_waitcnt` hot latency share falls
+`28.46% -> 23.90%`, while post-ABarrier `s_xor` falls
+`22.59% -> 20.37%`. The two extra tokens raise SCA and failed coissue, but
+that control cost is smaller than the removed readiness serialization. Keep
+this change and use it as the baseline for exact LGKM wait auditing.
+
+Evidence: `results/fused5_sidecar_ready_split_20260827.md`, tag
+`best/fused5-sidecar-ready-split-20260827`.

@@ -1,5 +1,28 @@
 # Source Status
 
+## 2026-08-27 C109 Raw/Sidecar Readiness Split Promoted
+
+- Status: `ACCEPT_TICKS_AND_ACTIVE_MMAC50_OPEN`.
+- Commit `07e224d` separates Q/dO matrix readiness from sidecar readiness with
+  two producer-filled tokens. `RawUsed0/1` remains the sole page-lifetime
+  guard, so no data ownership or LDS allocation changes.
+- Consumer0 covers sidecar publication with score MMAC; consumer1 covers it
+  with dP plus score MMAC. Generated ISA confirms the waits occur after these
+  islands.
+- S128 causal/noncausal and S1024 causal complete golden correctness pass;
+  private/spill/scratch0, producer9/16 VGPR, LDS128KiB and bank0.
+- Repeated S1024 fused/lifecycle means improve `2.421%/2.140%`; fullperf
+  improves `1.365%/1.687%`. MMAC active rises
+  `39.054060% -> 39.563669%`.
+- XCU `s_waitcnt` and post-ABarrier `s_xor` latency shares fall
+  `28.46% -> 23.90%` and `22.59% -> 20.37%`. SCA/failed coissue increase,
+  but the shorter readiness critical path wins net ticks.
+- Next: preserve C109 and audit exact LGKM first-use waits. Do not merge
+  sidecar readiness back into `RawFilled`.
+
+Evidence: `results/fused5_sidecar_ready_split_20260827.md` and shared perf
+`20260827_102500_C109_sidecar_ready_split_H1S1024_causal_SQ7`.
+
 ## 2026-08-23 dQ Writer Read8 Batch Rejected
 
 - Status: `REJECT_OUTSTANDING_LDS_PRESSURE_CANONICAL_RESTORED`.

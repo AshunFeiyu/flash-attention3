@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "kernel": "fused5",
-  "commit": "0f3527e431a6dcacc95f33e61e08593f099ab4de",
-  "tag": "best/fused5-dkv-store-batch2-20260825",
+  "commit": "07e224d482b7d109bbbf7f9a6765465ecd934ded",
+  "tag": "best/fused5-sidecar-ready-split-20260827",
   "case": {
     "shape": "B1/H1/S1024/D128",
     "dtype": "fp16",
@@ -20,19 +20,19 @@
     "lds_bank_conflict": 0
   },
   "metrics": {
-    "dot_do_o_ticks": 2443805,
-    "fused_ticks": 39301080,
-    "dq_reduce_ticks": 1555190,
-    "total_ticks": 43300075,
-    "fullperf_fused_ticks": 39308360,
-    "fullperf_total_ticks": 43553965,
-    "mmac_active_percent": 39.054060,
+    "dot_do_o_ticks": 2448507,
+    "fused_ticks": 38729600,
+    "dq_reduce_ticks": 1644067,
+    "total_ticks": 42822173,
+    "fullperf_fused_ticks": 38771915,
+    "fullperf_total_ticks": 42819140,
+    "mmac_active_percent": 39.563669,
     "mmop": 88064,
     "valu": 89040,
-    "sca": 38344,
+    "sca": 41048,
     "lds": 61568,
     "vmem": 1664,
     "flat": 2592
   },
-  "perf_archive": "/Volumes/172.20.68.76/\u5171\u4eab/shaobo/perf/20260825_134415_C85_dkv_store_batch2_H1S1024_causal_SQ7/C85_dkv_store_batch2.perf"
+  "perf_archive": "/Volumes/172.20.68.76/\u5171\u4eab/shaobo/perf/20260827_102500_C109_sidecar_ready_split_H1S1024_causal_SQ7/C109_sidecar_ready_split.perf"
 }

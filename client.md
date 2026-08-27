@@ -7339,3 +7339,33 @@ token tomography is the next admitted hypothesis.
   lifecycle time by about 11% despite a correct native instruction chain.
 - Proposed Target / target: Shaobo optimization reference in a later
   consolidation round; do not edit public skills in this task.
+
+## 2026-08-27 Raw/Sidecar Readiness Split
+
+Status: `ACCEPT_TICKS_AND_ACTIVE_MMAC50_OPEN`.
+
+The canonical producer now publishes Q/dO readiness before sidecar readiness.
+Consumers begin useful score/dP MMAC and wait for sidecar only at the first
+softmax use. `RawUsed` still owns the entire page lifetime, so the change adds
+readiness overlap without changing storage or output ownership. Full
+correctness/resource/bank gates pass. S1024 fused and lifecycle means improve
+`2.421%/2.140%`; MMAC active reaches `39.563669%`.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a producer token bundles a large matrix
+  packet and small metadata that have different first consumers.
+- Rule / reusable rule: keep one lifetime/overwrite guard, but publish
+  readiness independently and move each wait to the true first use. Price the
+  extra token against the overlap it exposes.
+- Evidence / evidence: commit `07e224d`, exact work/traffic, complete golden
+  PASS, fused mean `-2.421%`, lifecycle mean `-2.140%`, active `+0.510 pp`,
+  XCU waitcnt share `-4.56 pp`.
+- Boundary / boundary: storage regions must not alias while independently
+  visible, and every skipped generation must still advance each waiting
+  wave's phase.
+- Counterexample / not applicable: moving sidecar loads earlier while keeping
+  one bundled readiness token regressed about 2% because it extended VGPR and
+  control lifetimes without exposing consumer work.
+- Proposed Target / target: Shaobo ABarrier/readiness reference in a later
+  consolidation round; do not edit public skills in this task.
