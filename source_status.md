@@ -1,5 +1,23 @@
 # Source Status
 
+## 2026-08-27 dO/Sidecar Early-Prefetch Experiment Restored
+
+- Status: `REJECT_BARRIER_MIGRATION_CANONICAL_RESTORED`.
+- Candidate preserves exact five GEMMs, BPS traffic, LDS128KiB and output
+  ownership; S128 causal/noncausal and S1024 causal golden checks pass with
+  bank0 and no private/spill/scratch.
+- Three interleaved S1024 pairs regress fused means
+  `38,676,365 -> 39,452,140` (`+2.006%`) and lifecycle means
+  `42,791,840 -> 43,556,847` (`+1.788%`).
+- The new dS-ready proof waits replace the former RawUsed stall and C0's
+  reordered dV delays dS publication. No fullperf was admitted after ticks
+  lost all three pairs.
+- Production contract and kernel source are restored to commit `458a42a`;
+  only design/result evidence is retained.
+
+Evidence: `docs/fused5_dout_sidecar_early_prefetch_20260827.md` and
+`/zys/sb/ab_dout_early_20260827`.
+
 ## 2026-08-27 score/dP Dead-Half Experiment Restored
 
 - Status: `REJECT_STATIC_NO_ISA_CHANGE_CANONICAL_RESTORED`.

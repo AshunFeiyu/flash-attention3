@@ -1,5 +1,24 @@
 # Optimization Log
 
+## 2026-08-27 dO/Sidecar Early Prefetch Rejected
+
+Status: `REJECT_BARRIER_MIGRATION_CANONICAL_RESTORED`.
+
+The candidate reused the existing dS-ready publications as proof that dO and
+sidecar were dead, then loaded dO/sidecar for tile `t+2` before the unchanged
+RawUsed event and loaded only Q afterward. Exact five-GEMM work, BPS traffic,
+LDS bytes and output ownership were preserved. Static resources and full
+S128/S1024 golden checks pass with bank0 and no private/spill/scratch.
+
+Three interleaved S1024 pairs all lose. Fused means move
+`38,676,365 -> 39,452,140` (`+2.006%`) and lifecycle means move
+`42,791,840 -> 43,556,847` (`+1.788%`). The added page-local dS-ready waits
+and delayed C0 dS publication migrate the ownership bubble instead of hiding
+it. Fullperf/xcu was intentionally skipped; canonical source is restored.
+
+Evidence: `docs/fused5_dout_sidecar_early_prefetch_20260827.md` and
+`/zys/sb/ab_dout_early_20260827`.
+
 ## 2026-08-27 score/dP Dead-Half Initialization Prune Rejected
 
 Status: `REJECT_STATIC_NO_ISA_CHANGE_CANONICAL_RESTORED`.

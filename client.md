@@ -1,5 +1,31 @@
 # Client
 
+## 2026-08-27 Split dO Lifetime Boundary
+
+Early dO/sidecar overwrite is mathematically legal after both consumer groups
+finish dV, but it is not a free overlap on the current ABarrier graph. Reusing
+two page-local dS-ready publications adds producer waits and delays C0 dS
+publication; three interleaved S1024 pairs regress fused/lifecycle means by
+`2.006%/1.788%`. Keep the canonical single RawUsed lifetime unless a future
+design removes an ownership edge rather than inserting replacement waits.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: splitting one shared-memory page into tensor
+  sub-lifetimes to prefetch a dead operand early.
+- Rule / reusable rule: count the complete synchronization path, not only the
+  shortened post-release load burst; an early overwrite is useful only when
+  its proof event already lies off the producer critical path.
+- Evidence / evidence: exact work/resources and full golden PASS, but three
+  S1024 pairs regress fused `2.006%` and lifecycle `1.788%`.
+- Boundary / boundary: hardware-managed independent operand readiness or an
+  already-observed death event may make the split profitable.
+- Counterexample / not applicable: C109 raw/sidecar readiness split improved
+  ticks because it separated first-use visibility while keeping one lifetime
+  guard; this rejected experiment split overwrite ownership itself.
+- Proposed Target / target: Shaobo ABarrier/lifetime reference in a later
+  consolidation round; do not edit a public skill here.
+
 ## 2026-08-27 score/dP Dead-Half Static Boundary
 
 The compiler already eliminates the unused high-half initialization of local
