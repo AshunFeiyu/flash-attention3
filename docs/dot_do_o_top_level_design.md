@@ -100,9 +100,9 @@ local-wave mode is required.
 ## Expected Pipeline
 
 ```text
-time0  all lanes: dO[lane], dO[lane+64] loads
-time1  all lanes: O[lane], O[lane+64] loads
-time2  all lanes: convert and two products
+time0  all lanes: packed dO[2*lane:2*lane+2] load
+time1  all lanes: packed O[2*lane:2*lane+2] load
+time2  all lanes: native FP16x2 dot to FP32
        lane0:     max/sum prefetch when scheduling permits
 time3  shuffle/add offset 32
 time4  shuffle/add offset 16
@@ -123,8 +123,8 @@ intra-CTA buffering. The six-step reduction is a bounded dependency chain.
 - Private/scratch/spill: exactly 0.
 - VGPR target: at most 32 per wave; generated metadata is authoritative.
 - SGPR target: at most 32 per wave; generated metadata is authoritative.
-- Main loads: two scalar FP16 values from each tensor per lane. A packed
-  `half2` refinement remains optional because A1 already passes the hard goal.
+- Main loads: one aligned FP16x2 value from each tensor per lane, consumed by
+  native `v_dot2_f32_f16` without an explicit conversion chain.
 - Bank conflict: exactly 0 because there is no LDS path.
 - Build: ordinary translation unit without local-wave/WDRA flags.
 
@@ -132,10 +132,10 @@ intra-CTA buffering. The six-step reduction is a bounded dependency chain.
 
 1. **A1 wave scalar-pair -- ACCEPT**: use the proven `lane` and `lane+64`
    mapping. This alone fixes launch parallelism and passes the 5% target.
-2. **A2 packed half2 -- DEFER**: use one aligned dword load per tensor/lane.
-   Reopen only if a stricter target justifies another correctness/codegen risk.
-3. **A3 native dot2 partial**: only after a focused builtin/ASM probe proves a
-   better instruction chain and full correctness.
+2. **A2 packed half2 -- REJECT**: dword loads alone add unpack VALU and do not
+   produce stable ticks.
+3. **A3 native dot2 -- ACCEPT**: use the same dword loads with
+   `__builtin_amdgcn_fdot2`; full correctness and paired lifecycle ticks pass.
 4. **A4 sidecar scheduling**: move only existing max/sum work under the shuffle
    tree if Source/xcu proves it is on the critical path.
 5. Fusion is last resort and requires a new full DAG/resource design.

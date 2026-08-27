@@ -25,6 +25,7 @@ def main() -> int:
         "four_waves_per_block": r"kWavesPerBlock\s*=\s*4",
         "wave64_reduce": r"__shfl_down\(value, offset, kWaveSize\)",
         "d128_only": r"kHeadDim\s*=\s*128",
+        "native_packed_dot": r"__builtin_amdgcn_fdot2",
     }
     source_forbidden = {
         "cta_barrier": r"__syncthreads|s_barrier|s_abarrier",
@@ -45,6 +46,10 @@ def main() -> int:
             failures.append("asm_missing_dot_kernel")
         if len(re.findall(r"\bds_bpermute_b32\b", asm)) < 6:
             failures.append("asm_missing_six_wave_permute_steps")
+        if len(re.findall(r"\bv_dot2_f32_f16\b", asm)) < 2:
+            failures.append("asm_missing_native_dot2")
+        if re.search(r"^\s*global_load_ushort\b", asm, flags=re.MULTILINE):
+            failures.append("asm_contains_scalar_fp16_load")
         if re.search(r"^\s*s_(?:a|e)?barrier\b", asm, flags=re.MULTILINE):
             failures.append("asm_contains_barrier")
         if re.search(r"^\s*s_set_vgpr_size\b", asm, flags=re.MULTILINE):

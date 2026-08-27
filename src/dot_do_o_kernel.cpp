@@ -13,6 +13,7 @@ constexpr int kHeadDim = 128;
 constexpr int kWaveSize = 64;
 constexpr int kWavesPerBlock = 4;
 constexpr int kThreads = kWaveSize * kWavesPerBlock;
+using Vec2F16 = __attribute__((__vector_size__(2 * sizeof(_Float16)))) _Float16;
 
 __device__ __forceinline__ float wave_reduce_sum(float value) {
 #pragma unroll
@@ -39,10 +40,10 @@ __global__ void dot_do_o_kernel(const __half* __restrict__ dout,
     }
 
     const int64_t base = static_cast<int64_t>(row) * kHeadDim;
-    float dot = __half2float(dout[base + lane]) *
-                __half2float(out[base + lane]);
-    dot += __half2float(dout[base + lane + kWaveSize]) *
-           __half2float(out[base + lane + kWaveSize]);
+    const auto* dout_pairs = reinterpret_cast<const Vec2F16*>(dout + base);
+    const auto* out_pairs = reinterpret_cast<const Vec2F16*>(out + base);
+    float dot = __builtin_amdgcn_fdot2(dout_pairs[lane], out_pairs[lane],
+                                       0.0f, false);
     dot = wave_reduce_sum(dot);
 
     if (lane == 0) {

@@ -1,5 +1,41 @@
 # Optimization Log
 
+## 2026-08-27 dot_do_o Native FP16 dot2 Accepted
+
+Status: `ACCEPT_LIFECYCLE_TICKS_NATIVE_DOT2`.
+
+Each lane loads one aligned FP16x2 pair from dO and O and feeds the pair
+directly to `__builtin_amdgcn_fdot2`. Generated gfx946 ISA contains two
+`global_load_dword` plus one `v_dot2_f32_f16` per wave instance, with no
+scalar FP16 loads or explicit FP16-to-FP32 conversions. Metadata remains
+SGPR18/22, VGPR11/12 and private/spill/scratch0.
+
+Full golden correctness passes S128 causal/noncausal and S1024 causal with
+bank0. Three interleaved S1024 pairs all improve lifecycle ticks; means move
+`43.015M -> 42.743M` (`-0.634%`) and dot means move
+`2.499M -> 2.384M` (`-4.584%`). Same-API fullperf dot ticks improve
+`2.572M -> 2.544M`; SQTT issues fall `100,352 -> 97,280` and duration falls
+`5620 -> 5568`. The fused kernel and its `39.792603%` MMAC-active baseline are
+unchanged.
+
+## 2026-08-27 dot_do_o Packed half2 Rejected
+
+Status: `REJECT_NO_STABLE_TICKS_CANONICAL_RESTORED`.
+
+Each wave remapped D128 from two scalar FP16 elements per lane to one aligned
+FP16x2 pair per lane. ISA improved the load shape from four
+`global_load_ushort` to two `global_load_dword`, but unpack/conversion work
+raised dynamic VALU `66,560 -> 70,656` while FLAT fell
+`7,168 -> 5,120`. S128 and three S1024 full-lifecycle runs pass correctness,
+bank0 and no private/spill/scratch. S1024 dot median changes only
+`2,416,050 -> 2,414,230` ticks (`-0.075%`), while the candidate mean regresses
+because of one high outlier. This is not a stable lifecycle optimization.
+
+The source is restored to canonical `main`. Do not retry packed loads with
+explicit half-to-float expansion; the next admissible dot experiment requires
+a focused gfx946 native packed-dot ISA probe that removes both load and VALU
+work.
+
 ## 2026-08-27 Tri Dao FA3 Backward API v2 Accepted
 
 Status: `ACCEPT_API_CONTRACT_NO_FUSED_ISA_CHANGE`.

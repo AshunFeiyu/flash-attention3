@@ -1,5 +1,43 @@
 # Client
 
+## 2026-08-27 Native Packed Dot Promotion
+
+The canonical pre-kernel now maps each D128 row to 64 adjacent FP16 pairs and
+uses one native `v_dot2_f32_f16` per lane before the existing wave reduction.
+This keeps one wave per row and four waves per CTA, while removing two input
+loads and the explicit conversion chain. Full correctness and resource gates
+pass. Three interleaved S1024 pairs reduce total lifecycle ticks by `0.634%`;
+the dot kernel itself improves `4.584%` on mean paired ticks.
+
+The important boundary is conversion-free consumption: the rejected half2
+variant reduced loads but expanded unpack VALU, while native dot2 converts the
+same packed data into a measurable end-to-end win.
+
+## 2026-08-27 Packed dot_do_o Boundary
+
+Packing two FP16 values per lane is structurally legal and halves the dot
+kernel's input-load instruction count, but the current compiler expands the
+pair with enough VALU work to erase the gain. Three same-environment S1024
+runs show only `0.075%` median dot improvement, so canonical remains scalar.
+Future packed-dot work must first prove a native gfx946 dot2 instruction path
+in isolation, then pass the full lifecycle gate.
+
+### Skill Candidate
+
+- Trigger / applicable scenario: a reduction kernel where packed loads reduce
+  memory instructions but require explicit element conversion.
+- Rule / reusable rule: compare dynamic instruction classes and kernel ticks;
+  packed memory syntax is not an optimization when unpack VALU replaces the
+  removed load work.
+- Evidence / evidence: S1024 FLAT `7,168 -> 5,120`, VALU
+  `66,560 -> 70,656`, median dot ticks `2,416,050 -> 2,414,230`.
+- Boundary / boundary: native packed dot or conversion-free consumers may
+  change the result.
+- Counterexample / not applicable: architectures whose vector load directly
+  feeds a packed arithmetic instruction.
+- Proposed Target / target: future `dcu-kernel-optimization` consolidation;
+  keep this candidate local until a native-dot probe exists.
+
 ## 2026-08-27 Tri Dao FA3 Backward API Contract
 
 The framework-facing five-GEMM path now has a versioned C ABI matching the

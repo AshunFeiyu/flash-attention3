@@ -1,5 +1,28 @@
 # Source Status
 
+## 2026-08-27 dot_do_o Native FP16 dot2 Promoted
+
+- Status: `ACCEPT_LIFECYCLE_TICKS_NATIVE_DOT2`.
+- Canonical dot uses aligned FP16x2 loads and `v_dot2_f32_f16`; its static gate
+  rejects scalar FP16 input loads or loss of the native dot instruction.
+- S128 causal/noncausal and S1024 causal full golden pass; dot metadata is
+  SGPR18/22, VGPR11/12, private/spill/scratch0 and bank0.
+- Three interleaved S1024 pairs improve mean dot/lifecycle ticks by
+  `4.584%/0.634%`. Same-API SQTT issues and duration improve
+  `100,352 -> 97,280` and `5620 -> 5568`.
+- Fused5 source and MMAC-active quality are unchanged; mainloop optimization
+  continues from C111 after this lifecycle win.
+
+## 2026-08-27 dot_do_o Packed half2 Restored
+
+- Status: `REJECT_NO_STABLE_TICKS_CANONICAL_RESTORED`.
+- Packed loads compile cleanly and reduce FP16 global-load instructions, but
+  add 4,096 dynamic VALU instructions at H1/S1024.
+- Full correctness passes at S128 and S1024 with bank0 and clean resources.
+- Dot median improves only `0.075%`; no source from this experiment remains.
+- Next allowed dot direction is a focused native packed-dot probe, not another
+  source-level half2 conversion variant.
+
 ## 2026-08-27 Tri Dao FA3 Backward API v2
 
 - Status: `ACCEPT_API_CONTRACT_NO_FUSED_ISA_CHANGE`.
