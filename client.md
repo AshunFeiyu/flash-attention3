@@ -1,5 +1,29 @@
 # Client
 
+## 2026-08-27 Tri Dao FA3 Backward API Contract
+
+The framework-facing five-GEMM path now has a versioned C ABI matching the
+parameter surface of Tri Dao's Hopper FA3 backward. The v2 call consumes
+natural-log `softmax_lse`, accepts optional preallocated `softmax_d`, exposes
+fixed/varlen metadata, window, softcap, deterministic and `sm_margin` fields,
+and provides a machine-readable capability mask.
+
+This is an interface alignment, not a false claim that every upstream mode is
+already implemented. The current canonical kernel supports fixed FP16 BHSD,
+D128, equal aligned Q/K lengths, MHA/GQA, causal/full attention and default or
+explicit softmax scale. BF16, BSHD, varlen/seqused, local window, softcap,
+nonzero `sm_margin`, unequal lengths and other head dimensions fail validation
+before dispatch. The legacy ABI remains unchanged.
+
+The adapter packs LSE without reconstructing forward max/sum:
+`exp(score*scale-LSE) = exp2(score*scale*log2(e)-LSE*log2(e))`. API contract,
+H1/S128 default-scale, H1/S128 noncausal, H1/S1024 causal and Hq4/Hkv2 GQA
+full lifecycle checks pass on PMD with bank0 and clean resources. The
+normalized C111 fused ISA remains byte-equivalent to the accepted baseline.
+
+Evidence: `docs/tridao_fa3_bwd_api.md`, remote runs under
+`/zys/sb/api_v2*`, branch `feat/tridao-fa3-bwd-api`.
+
 ## 2026-08-23 Writer Packet-Size Boundary
 
 The dQ writer can legally issue eight dS matrix reads before one wait by

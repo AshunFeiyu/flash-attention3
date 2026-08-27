@@ -1,5 +1,18 @@
 # Optimization Log
 
+## 2026-08-27 Tri Dao FA3 Backward API v2 Accepted
+
+Status: `ACCEPT_API_CONTRACT_NO_FUSED_ISA_CHANGE`.
+
+The five-GEMM lifecycle now accepts the same public parameter families as Tri
+Dao's Hopper FA3 backward and consumes natural-log LSE directly. A capability
+query and fail-closed validator separate ABI presence from implemented kernel
+support. The supported fixed FP16 BHSD D128 causal/full MHA/GQA path passes API
+contract and full delta/dQ/dK/dV golden checks, including default scale and
+GQA reduction. Unsupported BF16/BSHD/varlen/window/softcap shapes are rejected
+before launch. The fused kernel source and normalized C111 ISA are unchanged;
+this entry has no performance claim.
+
 ## 2026-08-27 C111 dK/dV Four-Block Store Batch Accepted
 
 Status: `ACCEPT_TICKS_AND_ACTIVE_MMAC50_OPEN`.

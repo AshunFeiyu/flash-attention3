@@ -1,5 +1,11 @@
 # Shaobo FA3 BWD 7-GEMM
 
+The current C111 branch also contains the canonical five-GEMM fused path. Its
+framework-facing backward ABI is documented in
+`docs/tridao_fa3_bwd_api.md`; new integrations use `shaobo_fa3_bwd_v2` with
+Tri Dao-style natural-log `softmax_lse` input. Unsupported parameter families
+fail capability validation before dispatch.
+
 This is the clean Shaobo FA3 backward lane. It contains separate canonical
 dKV and dQ kernels plus an end-to-end correctness harness. Historical phase
 stacks and PMD output stay outside this repository.

@@ -185,6 +185,9 @@ int main(int argc, char** argv) {
     const float softmax_scale = arg_float(
         argc, argv, "--softmax-scale",
         env_float("SOFTMAX_SCALE", 0.08838834764831845f));
+    const int softmax_scale_is_set = arg_int(
+        argc, argv, "--softmax-scale-is-set",
+        env_int("SOFTMAX_SCALE_IS_SET", 1));
     const char* env_golden = std::getenv("GOLDEN_DIR");
     const std::string golden_dir = arg_string(
         argc, argv, "--golden-dir", env_golden != nullptr ? env_golden : "");
@@ -198,7 +201,7 @@ int main(int argc, char** argv) {
     const size_t kv_rows = static_cast<size_t>(batch) * heads_kv * seqlen;
     const size_t kv_elems = kv_rows * dim;
     std::vector<__half> q, k, v, out, dout;
-    std::vector<float> scores_max, scores_sum;
+    std::vector<float> scores_max, scores_sum, softmax_lse;
     std::vector<float> delta_expected, dq_expected, dk_expected, dv_expected;
     const auto path = [&](const char* name) {
         return golden_dir + "/" + name;
@@ -223,10 +226,16 @@ int main(int argc, char** argv) {
     if (!loaded) {
         return 2;
     }
+    softmax_lse.resize(rows);
+    for (size_t row = 0; row < rows; ++row) {
+        softmax_lse[row] =
+            scores_max[row] * softmax_scale + std::log(scores_sum[row]);
+    }
 
     __half *q_dev = nullptr, *k_dev = nullptr, *v_dev = nullptr;
     __half *out_dev = nullptr, *dout_dev = nullptr;
     float *scores_max_dev = nullptr, *scores_sum_dev = nullptr;
+    float* softmax_lse_dev = nullptr;
     float *delta_dev = nullptr, *packed_sidecar_dev = nullptr;
 #if defined(SHAOBO_FULL_BWD_FUSED5)
     __half *dq_dev = nullptr, *dk_dev = nullptr, *dv_dev = nullptr;
@@ -261,6 +270,7 @@ int main(int argc, char** argv) {
         !allocate(&dout_dev, half_bytes) ||
         !allocate(&scores_max_dev, row_bytes) ||
         !allocate(&scores_sum_dev, row_bytes) ||
+        !allocate(&softmax_lse_dev, row_bytes) ||
         !allocate(&delta_dev, row_bytes) ||
         !allocate(&packed_sidecar_dev, packed_bytes) ||
         !allocate(&dq_dev, dq_output_bytes) ||
@@ -296,6 +306,8 @@ int main(int argc, char** argv) {
                               hipMemcpyHostToDevice), "copy scores_max") &&
              hip_ok(hipMemcpy(scores_sum_dev, scores_sum.data(), row_bytes,
                               hipMemcpyHostToDevice), "copy scores_sum") &&
+             hip_ok(hipMemcpy(softmax_lse_dev, softmax_lse.data(), row_bytes,
+                              hipMemcpyHostToDevice), "copy softmax_lse") &&
              hip_ok(hipMemset(delta_dev, 0, row_bytes), "clear delta") &&
              hip_ok(hipMemset(packed_sidecar_dev, 0, packed_bytes),
                     "clear packed sidecar") &&
@@ -308,7 +320,11 @@ int main(int argc, char** argv) {
     }
 
     ShaoboFa3Params params{};
+#if defined(SHAOBO_FULL_BWD_FUSED5)
+    shaobo_fa3_params_init(&params);
+#else
     params.struct_size = sizeof(params);
+#endif
     params.batch = batch;
     params.seqlen_q = seqlen;
     params.seqlen_k = seqlen;
@@ -318,9 +334,14 @@ int main(int argc, char** argv) {
     params.head_dim_v = dim;
     params.causal = causal != 0 ? 1 : 0;
     params.softmax_scale = softmax_scale;
+#if defined(SHAOBO_FULL_BWD_FUSED5)
+    params.softmax_scale_is_set = softmax_scale_is_set != 0 ? 1 : 0;
+#endif
     params.dtype = SHAOBO_FA3_DTYPE_FP16;
     params.layout = SHAOBO_FA3_LAYOUT_BHSD;
-    params.softmax_aux_mode = SHAOBO_FA3_SOFTMAX_AUX_SMAX_SSUM;
+    params.softmax_aux_mode = SHAOBO_FA3_SOFTMAX_AUX_LSE;
+    params.window_left = -1;
+    params.window_right = -1;
 #if defined(SHAOBO_FULL_BWD_FUSED5)
     params.dkv_path = 0;
     params.dq_path = 0;
@@ -332,7 +353,7 @@ int main(int argc, char** argv) {
 
 #if defined(SHAOBO_FULL_BWD_FUSED5)
     const size_t fused5_workspace_bytes =
-        shaobo_fa3_bwd_fused5_workspace_bytes(&params);
+        shaobo_fa3_bwd_v2_workspace_bytes(&params);
     if (fused5_workspace_bytes == 0 ||
         !allocate(&fused5_workspace_dev, fused5_workspace_bytes)) {
         free_device(allocations);
@@ -342,20 +363,19 @@ int main(int argc, char** argv) {
     params.workspace_bytes = fused5_workspace_bytes;
 #endif
 
-    const int dot_status = shaobo_fa3_bwd_dot_do_o(
-        dout_dev, out_dev, scores_max_dev, scores_sum_dev, delta_dev,
-        packed_sidecar_dev, &params);
 #if defined(SHAOBO_FULL_BWD_FUSED5)
-    const int fused_status = dot_status == SHAOBO_FA3_STATUS_SUCCESS
-                                 ? shaobo_fa3_bwd_fused5(
-                                       dout_dev, q_dev, k_dev, v_dev,
-                                       packed_sidecar_dev, dq_dev, dk_dev,
-                                       dv_dev, &params)
-                                 : dot_status;
+    const int fused_status = shaobo_fa3_bwd_v2(
+        dout_dev, q_dev, k_dev, v_dev, out_dev, softmax_lse_dev, dq_dev,
+        dk_dev, dv_dev, delta_dev, &params);
+    const int dot_status = fused_status;
     const int dkv_status = fused_status;
     const int dq_status = fused_status;
     constexpr const char* kPathName = "fused5";
 #else
+    params.softmax_aux_mode = SHAOBO_FA3_SOFTMAX_AUX_SMAX_SSUM;
+    const int dot_status = shaobo_fa3_bwd_dot_do_o(
+        dout_dev, out_dev, scores_max_dev, scores_sum_dev, delta_dev,
+        packed_sidecar_dev, &params);
     params.reserved_ptr[3] = packed_sidecar_dev;
     const int dkv_status = dot_status == SHAOBO_FA3_STATUS_SUCCESS
                                ? shaobo_fa3_bwd_dkv(

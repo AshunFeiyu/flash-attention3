@@ -33,6 +33,11 @@ TARGET_GFX="${TARGET_GFX}" BUILD_DIR="${BUILD_DIR}" \
   SRC=src/fused_bwd_dq_reduce.cpp BUILD_ASM=1 COMPILE_ONLY=1 \
   SHAOBO_DISABLE_WDRA_FLAGS=1 SHAOBO_EXPLICIT_WDRA_INIT=0 ./build.sh
 
+TARGET_GFX="${TARGET_GFX}" BUILD_DIR="${BUILD_DIR}" \
+  BIN="${BUILD_DIR}/shaobo_fa3_bwd_api.o" \
+  SRC=src/shaobo_fa3_bwd_api.cpp BUILD_ASM=0 COMPILE_ONLY=1 \
+  SHAOBO_DISABLE_WDRA_FLAGS=1 SHAOBO_EXPLICIT_WDRA_INIT=0 ./build.sh
+
 python3 scripts/check_dot_do_o_kernel_gate.py \
   --asm "${BUILD_DIR}/dot_do_o_kernel.asm"
 python3 scripts/check_symbol_metadata_gate.py \
@@ -70,8 +75,19 @@ TARGET_GFX="${TARGET_GFX}" BUILD_DIR="${BUILD_DIR}" \
   EXTRA_CXXFLAGS="-DSHAOBO_FULL_BWD_FUSED5=1" ./build.sh
 
 TARGET_GFX="${TARGET_GFX}" BUILD_DIR="${BUILD_DIR}" \
+  BIN="${BUILD_DIR}/fused_bwd_api_contract.o" \
+  SRC=tests/fused_bwd_api_contract.cpp BUILD_ASM=0 COMPILE_ONLY=1 \
+  SHAOBO_DISABLE_WDRA_FLAGS=1 SHAOBO_EXPLICIT_WDRA_INIT=0 ./build.sh
+
+TARGET_GFX="${TARGET_GFX}" BUILD_DIR="${BUILD_DIR}" \
   BIN="${BUILD_DIR}/fa3_bwd_fused5_full_correctness" BUILD_ASM=0 \
-  LINK_OBJECTS="${BUILD_DIR}/fused_bwd_kernel.o ${BUILD_DIR}/dot_do_o_kernel.o ${BUILD_DIR}/fused_bwd_dq_reduce.o ${BUILD_DIR}/full_bwd_correctness.o" \
+  LINK_OBJECTS="${BUILD_DIR}/fused_bwd_kernel.o ${BUILD_DIR}/dot_do_o_kernel.o ${BUILD_DIR}/fused_bwd_dq_reduce.o ${BUILD_DIR}/shaobo_fa3_bwd_api.o ${BUILD_DIR}/full_bwd_correctness.o" \
   ./build.sh
+
+TARGET_GFX="${TARGET_GFX}" BUILD_DIR="${BUILD_DIR}" \
+  BIN="${BUILD_DIR}/fused_bwd_api_contract" BUILD_ASM=0 \
+  LINK_OBJECTS="${BUILD_DIR}/fused_bwd_kernel.o ${BUILD_DIR}/dot_do_o_kernel.o ${BUILD_DIR}/fused_bwd_dq_reduce.o ${BUILD_DIR}/shaobo_fa3_bwd_api.o ${BUILD_DIR}/fused_bwd_api_contract.o" \
+  ./build.sh
+"${BUILD_DIR}/fused_bwd_api_contract"
 
 echo "fused5 full backward correctness build: ${ROOT}/${BUILD_DIR}/fa3_bwd_fused5_full_correctness"

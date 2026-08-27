@@ -12,6 +12,7 @@ S="${S:-128}"
 D="${D:-128}"
 CAUSAL="${CAUSAL:-1}"
 SOFTMAX_SCALE="${SOFTMAX_SCALE:-0.08838834764831845}"
+SOFTMAX_SCALE_IS_SET="${SOFTMAX_SCALE_IS_SET:-1}"
 GOLDEN_ROOT="${SHAOBO_GOLDEN_ROOT:-/zys/shaobo_golden/fa3_bwd_fused5}"
 BUILD_DIR="${FUSED5_FULL_BUILD_DIR:-build/fused5_full}"
 BIN="${FUSED5_FULL_BIN:-${BUILD_DIR}/fa3_bwd_fused5_full_correctness}"
@@ -71,7 +72,7 @@ set -euo pipefail
 cd ${case_dir}
 echo "PMD_BINARY=${bin_abs}"
 sha256sum "${bin_abs}"
-exec "${bin_abs}" --golden-dir=${golden_dir} --perf-only=${PERF_ONLY} --B=${B} --H=${H} --Hkv=${HKV} --S=${S} --D=${D} --causal=${CAUSAL} --softmax-scale=${SOFTMAX_SCALE}
+exec "${bin_abs}" --golden-dir=${golden_dir} --perf-only=${PERF_ONLY} --B=${B} --H=${H} --Hkv=${HKV} --S=${S} --D=${D} --causal=${CAUSAL} --softmax-scale=${SOFTMAX_SCALE} --softmax-scale-is-set=${SOFTMAX_SCALE_IS_SET}
 EOF
 chmod +x "${case_script}"
 

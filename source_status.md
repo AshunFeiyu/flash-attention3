@@ -1,5 +1,21 @@
 # Source Status
 
+## 2026-08-27 Tri Dao FA3 Backward API v2
+
+- Status: `ACCEPT_API_CONTRACT_NO_FUSED_ISA_CHANGE`.
+- Added `shaobo_fa3_bwd_v2` with natural-log LSE, optional `softmax_d`,
+  default softmax scale, upstream-shaped varlen/window/softcap/deterministic
+  fields, capability discovery and strict pre-dispatch validation.
+- Supported now: fixed FP16 BHSD D128, equal 128-aligned lengths, MHA/GQA,
+  causal/full attention and deterministic ownership. Unsupported upstream
+  modes return `UNSUPPORTED`; they are not silently mapped to the fixed kernel.
+- API contract and full golden checks pass for H1/S128 default scale,
+  H1/S128 causal/noncausal, H1/S1024 causal and Hq4/Hkv2 GQA. Resources remain
+  private/spill/scratch0 and bank0. C111's normalized fused instruction hash
+  remains `b866f8ebfa2b58b8b15263423c923b6454277c228c741ec8cea99c117c9d2c15`.
+- PMD evidence: `/zys/sb/api_v2`, `/zys/sb/api_v2_final`, and
+  `/zys/sb/api_v2_default_scale`.
+
 ## 2026-08-27 C111 dK/dV Four-Block Store Batch Promoted
 
 - Status: `ACCEPT_TICKS_AND_ACTIVE_MMAC50_OPEN`.
